@@ -65,7 +65,7 @@ function DevLogsPage() {
   const copyExtra = async (entry: LogEntry) => {
     try {
       const payload = JSON.stringify(
-        { ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
+        { id: entry.id, ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
         null,
         2,
       );
@@ -75,6 +75,19 @@ function DevLogsPage() {
       setTimeout(() => setCopiedId((c) => (c === entry.id ? null : c)), 1200);
     } catch {
       toast.error("Nie udało się skopiować");
+    }
+  };
+
+  const copyResumeLink = async (id: number) => {
+    try {
+      const url = new URL("/api/dev/logs/stream", window.location.origin);
+      url.searchParams.set("since", String(id));
+      await navigator.clipboard.writeText(url.toString());
+      setCopiedLinkId(id);
+      toast.success(`Skopiowano link do wznowienia od #${id}`);
+      setTimeout(() => setCopiedLinkId((c) => (c === id ? null : c)), 1200);
+    } catch {
+      toast.error("Nie udało się skopiować linku");
     }
   };
 
