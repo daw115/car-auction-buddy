@@ -258,6 +258,17 @@ function Panel() {
   const fnPollScraper = useServerFn(pollScraperJob);
   const fnCancelScraper = useServerFn(cancelScraperJob);
   const fnGetJobLogs = useServerFn(getJobLogs);
+  const fnClearCache = useServerFn(clearScrapeCache);
+
+  async function clearCacheAll() {
+    if (!confirm("Wyczyścić cały cache wyników wyszukiwań?")) return;
+    try {
+      await fnClearCache({ data: {} });
+      toast.success("Cache wyczyszczony");
+    } catch (e) {
+      toast.error(`Błąd: ${(e as Error).message}`);
+    }
+  }
   const fnRunLotReports = useServerFn(runLotReports);
   const fnAddWatch = useServerFn(addToWatchlist);
 
