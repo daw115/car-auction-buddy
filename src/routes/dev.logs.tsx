@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pause, Play, Trash2, ArrowLeft } from "lucide-react";
+import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 
 type LogEntry = {
   id: number;
@@ -38,9 +39,36 @@ function DevLogsPage() {
     http: true,
   });
   const [connected, setConnected] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const pausedRef = useRef(paused);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<LogEntry[]>([]);
+
+  const toggleExpanded = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const copyExtra = async (entry: LogEntry) => {
+    try {
+      const payload = JSON.stringify(
+        { ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
+        null,
+        2,
+      );
+      await navigator.clipboard.writeText(payload);
+      setCopiedId(entry.id);
+      toast.success("Skopiowano JSON wpisu");
+      setTimeout(() => setCopiedId((c) => (c === entry.id ? null : c)), 1200);
+    } catch {
+      toast.error("Nie udało się skopiować");
+    }
+  };
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -181,29 +209,88 @@ function DevLogsPage() {
                   Brak wpisów. Wykonaj jakąś akcję w aplikacji…
                 </div>
               ) : (
-                filtered.map((e) => (
-                  <div
-                    key={e.id}
-                    className="flex items-start gap-2 border-b border-border/50 px-2 py-1 hover:bg-muted/30"
-                  >
-                    <span className="shrink-0 text-muted-foreground">
-                      {new Date(e.ts).toLocaleTimeString()}
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}
+                filtered.map((e) => {
+                  const isOpen = expanded.has(e.id);
+                  const hasExtra = !!e.extra && Object.keys(e.extra).length > 0;
+                  return (
+                    <div
+                      key={e.id}
+                      className="border-b border-border/50 hover:bg-muted/30"
                     >
-                      {e.level}
-                    </Badge>
-                    <span className="shrink-0 font-semibold text-foreground">{e.scope}</span>
-                    <span className="break-all text-foreground/90">{e.message}</span>
-                    {e.extra ? (
-                      <span className="ml-auto shrink-0 truncate text-muted-foreground">
-                        {JSON.stringify(e.extra)}
-                      </span>
-                    ) : null}
-                  </div>
-                ))
+                      <div className="flex items-start gap-2 px-2 py-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(e.id)}
+                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                          aria-label={isOpen ? "Zwiń" : "Rozwiń"}
+                        >
+                          <ChevronRight
+                            className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
+                          />
+                        </button>
+                        <span className="shrink-0 text-muted-foreground">
+                          {new Date(e.ts).toLocaleTimeString()}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}
+                        >
+                          {e.level}
+                        </Badge>
+                        <span className="shrink-0 font-semibold text-foreground">{e.scope}</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(e.id)}
+                          className="break-all text-left text-foreground/90 hover:underline"
+                        >
+                          {e.message}
+                        </button>
+                        {hasExtra && !isOpen ? (
+                          <span className="ml-auto shrink-0 max-w-[40%] truncate text-muted-foreground">
+                            {JSON.stringify(e.extra)}
+                          </span>
+                        ) : null}
+                      </div>
+                      {isOpen ? (
+                        <div className="ml-6 mr-2 mb-2 rounded-md border border-border/60 bg-muted/40">
+                          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                              {hasExtra ? "extra (JSON)" : "szczegóły"}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[11px]"
+                              onClick={() => copyExtra(e)}
+                            >
+                              {copiedId === e.id ? (
+                                <>
+                                  <Check className="mr-1 h-3 w-3" />
+                                  Skopiowano
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="mr-1 h-3 w-3" />
+                                  Kopiuj JSON
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 text-[11px] leading-relaxed text-foreground/90">
+                            {hasExtra
+                              ? JSON.stringify(e.extra, null, 2)
+                              : JSON.stringify(
+                                  { id: e.id, ts: e.ts, level: e.level, scope: e.scope, message: e.message },
+                                  null,
+                                  2,
+                                )}
+                          </pre>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
               )}
             </div>
           </ScrollArea>
