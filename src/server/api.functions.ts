@@ -267,7 +267,7 @@ function lotsToPromptShape(lots: CarLot[]): LotForPrompt[] {
     odometer_mi: lot.odometer_mi,
     odometer_km: lot.odometer_km,
     damage_primary: lot.damage_primary,
-    damage_secondary: lot.damage_secondary,
+    damage_secondary: lot.damage_secondary ?? null,
     title_type: lot.title_type,
     current_bid_usd: lot.current_bid_usd,
     buy_now_price_usd: lot.buy_now_price_usd ?? null,
@@ -278,7 +278,7 @@ function lotsToPromptShape(lots: CarLot[]): LotForPrompt[] {
     auction_date: lot.auction_date ?? null,
     airbags_deployed: lot.airbags_deployed,
     keys: lot.keys,
-    enriched_by_extension: lot.enriched_by_extension,
+    enriched_by_extension: lot.enriched_by_extension ?? null,
   }));
 }
 
