@@ -14,7 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      app_config: {
+        Row: {
+          ai_analysis_mode: string
+          collect_all_prefiltered_results: boolean
+          filter_seller_insurance_only: boolean
+          id: number
+          max_auction_window_hours: number
+          min_auction_window_hours: number
+          open_all_prefiltered_details: boolean
+          updated_at: string
+          use_mock_data: boolean
+        }
+        Insert: {
+          ai_analysis_mode?: string
+          collect_all_prefiltered_results?: boolean
+          filter_seller_insurance_only?: boolean
+          id?: number
+          max_auction_window_hours?: number
+          min_auction_window_hours?: number
+          open_all_prefiltered_details?: boolean
+          updated_at?: string
+          use_mock_data?: boolean
+        }
+        Update: {
+          ai_analysis_mode?: string
+          collect_all_prefiltered_results?: boolean
+          filter_seller_insurance_only?: boolean
+          id?: number
+          max_auction_window_hours?: number
+          min_auction_window_hours?: number
+          open_all_prefiltered_details?: boolean
+          updated_at?: string
+          use_mock_data?: boolean
+        }
+        Relationships: []
+      }
+      clients: {
+        Row: {
+          contact: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+        }
+        Insert: {
+          contact?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+        }
+        Update: {
+          contact?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
+      records: {
+        Row: {
+          ai_input: Json | null
+          ai_prompt: string | null
+          analysis: Json | null
+          client_id: string | null
+          created_at: string
+          criteria: Json
+          id: string
+          listings: Json
+          mail_html: string | null
+          report_html: string | null
+          status: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_input?: Json | null
+          ai_prompt?: string | null
+          analysis?: Json | null
+          client_id?: string | null
+          created_at?: string
+          criteria?: Json
+          id?: string
+          listings?: Json
+          mail_html?: string | null
+          report_html?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_input?: Json | null
+          ai_prompt?: string | null
+          analysis?: Json | null
+          client_id?: string | null
+          created_at?: string
+          criteria?: Json
+          id?: string
+          listings?: Json
+          mail_html?: string | null
+          report_html?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "records_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
