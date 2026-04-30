@@ -30,6 +30,16 @@ export type DevAuthResult =
   | { ok: true }
   | { ok: false; status: 401 | 403 | 503; reason: string };
 
+function timingSafeEqualStr(a: string, b: string): boolean {
+  // Constant-time string compare to avoid token leakage via timing.
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export function checkDevAuth(request: Request): DevAuthResult {
   if (!isDevEnvironment()) {
     return { ok: false, status: 403, reason: "Dev panel disabled in production" };
@@ -43,10 +53,16 @@ export function checkDevAuth(request: Request): DevAuthResult {
   const fromCookie = cookies[COOKIE_NAME];
   const url = new URL(request.url);
   const fromQuery = url.searchParams.get("token");
+  const authHeader = request.headers.get("authorization");
+  const fromBearer = authHeader && authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length).trim()
+    : null;
 
-  const provided = fromCookie || fromQuery;
+  const provided = fromCookie || fromBearer || fromQuery;
   if (!provided) return { ok: false, status: 401, reason: "Missing token" };
-  if (provided !== expected) return { ok: false, status: 401, reason: "Invalid token" };
+  if (!timingSafeEqualStr(provided, expected)) {
+    return { ok: false, status: 401, reason: "Invalid token" };
+  }
   return { ok: true };
 }
 
