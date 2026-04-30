@@ -7,9 +7,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   buildAuthCookie,
   checkDevAuth,
+  checkLoginRateLimit,
   clearAuthCookie,
+  getClientKey,
   getCookieTtlSeconds,
   getExpectedToken,
+  registerFailedAttempt,
+  resetAttempts,
 } from "@/server/dev-auth.server";
 
 export const Route = createFileRoute("/api/dev/auth")({
