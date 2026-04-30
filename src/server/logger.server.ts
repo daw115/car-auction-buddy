@@ -3,6 +3,7 @@
 // Sanitize before passing in.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { devLog } from "./dev-logger.server";
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
