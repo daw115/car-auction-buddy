@@ -634,6 +634,7 @@ function DevLogsGate() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    if (lockoutUntil && Date.now() < lockoutUntil) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/dev/auth", {
@@ -647,10 +648,32 @@ function DevLogsGate() {
         if (body.ttlSeconds) setExpiresAt(Date.now() + body.ttlSeconds * 1000);
         toast.success("Zalogowano");
         setToken("");
+        setLockoutUntil(null);
+        setAttemptsLeft(null);
         setStatus("ok");
+      } else if (res.status === 429) {
+        const body = (await res.json().catch(() => ({}))) as {
+          reason?: string;
+          retryAfterSeconds?: number;
+        };
+        const retry = body.retryAfterSeconds ?? 60;
+        setLockoutUntil(Date.now() + retry * 1000);
+        setAttemptsLeft(0);
+        setToken("");
+        toast.error(body.reason ?? `Zbyt wiele prób. Spróbuj za ${retry}s.`);
       } else {
-        const body = (await res.json().catch(() => ({}))) as { reason?: string };
-        toast.error(body.reason ?? "Nieprawidłowe hasło");
+        const body = (await res.json().catch(() => ({}))) as {
+          reason?: string;
+          attemptsRemaining?: number;
+        };
+        if (typeof body.attemptsRemaining === "number") {
+          setAttemptsLeft(body.attemptsRemaining);
+        }
+        toast.error(
+          body.reason
+            ? `${body.reason}${typeof body.attemptsRemaining === "number" ? ` (pozostało prób: ${body.attemptsRemaining})` : ""}`
+            : "Nieprawidłowe hasło",
+        );
       }
     } catch {
       toast.error("Błąd połączenia");
