@@ -256,7 +256,9 @@ function Panel() {
     }
     setBusy("scraper");
     try {
-      const r = (await fnRunScraper({ data: { criteria } })) as { listings: CarLot[] };
+      const r = (await fnRunScraper({
+        data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
+      })) as { listings: CarLot[] };
       setListings(r.listings);
       setListingsRaw(JSON.stringify(r.listings, null, 2));
       toast.success(`Scraper zwrócił ${r.listings.length} lotów`);
@@ -278,7 +280,9 @@ function Panel() {
     }
     setBusy("ai");
     try {
-      const r = (await fnRunAnalysis({ data: { criteria, listings } })) as {
+      const r = (await fnRunAnalysis({
+        data: { criteria, listings, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
+      })) as {
         ai_input: unknown;
         ai_prompt: string;
         analysis: AnalyzedLot[];
