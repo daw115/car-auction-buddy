@@ -205,6 +205,7 @@ function Panel() {
   const fnRunScraper = useServerFn(runScraperSearch);
   const fnStartScraper = useServerFn(startScraperSearch);
   const fnPollScraper = useServerFn(pollScraperJob);
+  const fnCancelScraper = useServerFn(cancelScraperJob);
   const fnRunLotReports = useServerFn(runLotReports);
   const fnAddWatch = useServerFn(addToWatchlist);
 
