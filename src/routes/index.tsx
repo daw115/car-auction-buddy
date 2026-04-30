@@ -275,6 +275,11 @@ function ScraperProgress({
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
+      {!isFinal && subtitle && (
+        <div className="text-[11px] text-muted-foreground leading-snug">
+          {subtitle}
+        </div>
+      )}
       {isFailed && job.errorMessage && (
         <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
           <div className="font-medium text-destructive mb-0.5">
