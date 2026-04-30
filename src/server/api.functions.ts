@@ -172,7 +172,7 @@ export const testAnthropic = createServerFn({ method: "POST" })
       };
     }
     const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "");
-    const model = data.model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+    const model = data.model || process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
     try {
       const res = await fetch(`${baseUrl}/v1/messages`, {
         method: "POST",
