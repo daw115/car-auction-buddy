@@ -1379,3 +1379,78 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
     };
   });
 
+
+// ---------- Report bundle (HTML + JSON ZIP) ----------
+
+export const getReportBundle = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ recordId: z.string().uuid() }).parse)
+  .handler(async ({ data }): Promise<{
+    filename: string;
+    base64: string;
+    size: number;
+  }> => {
+    const { zipSync, strToU8 } = await import("fflate");
+
+    const { data: row, error } = await supabaseAdmin
+      .from("records")
+      .select("id, title, status, created_at, criteria, listings, analysis, report_html, mail_html, client_id, clients(name)")
+      .eq("id", data.recordId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("Rekord nie istnieje");
+
+    const analyzed = (row.analysis ?? []) as AnalyzedLot[];
+    const clientName =
+      (row.clients as { name?: string } | null)?.name ?? "Klient";
+    const generatedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+    // Render HTML on-the-fly if not stored yet (handles older records).
+    let reportHtml = row.report_html as string | null;
+    if (!reportHtml && analyzed.length > 0) {
+      reportHtml = renderReportHtml({
+        clientName,
+        generatedAt,
+        lots: [...analyzed].sort((a, b) => b.analysis.score - a.analysis.score),
+      });
+    }
+
+    const meta = {
+      record_id: row.id,
+      title: row.title,
+      status: row.status,
+      created_at: row.created_at,
+      generated_at: generatedAt,
+      client: { id: row.client_id, name: clientName },
+      criteria: row.criteria,
+      lots_count: Array.isArray(row.listings) ? row.listings.length : 0,
+      analyzed_count: analyzed.length,
+    };
+
+    const files: Record<string, Uint8Array> = {
+      "report.html": strToU8(reportHtml ?? "<!doctype html><p>Brak raportu</p>"),
+      "analysis.json": strToU8(JSON.stringify(analyzed, null, 2)),
+      "lots.json": strToU8(JSON.stringify(row.listings ?? [], null, 2)),
+      "meta.json": strToU8(JSON.stringify(meta, null, 2)),
+    };
+    if (row.mail_html) {
+      files["mail.html"] = strToU8(row.mail_html as string);
+    }
+
+    const zipped = zipSync(files, { level: 6 });
+    // Convert to base64 (chunked to avoid call-stack issues on Workers).
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < zipped.length; i += chunk) {
+      binary += String.fromCharCode(...zipped.subarray(i, i + chunk));
+    }
+    const base64 = btoa(binary);
+
+    const safeTitle = (row.title ?? "raport")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .slice(0, 60) || "raport";
+    const datePart = new Date(row.created_at as string).toISOString().slice(0, 10);
+    const filename = `${safeTitle}_${datePart}.zip`;
+
+    return { filename, base64, size: zipped.length };
+  });
