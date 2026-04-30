@@ -829,7 +829,7 @@ export const getJobLogs = createServerFn({ method: "POST" })
       level: string;
       step: string | null;
       message: string;
-      details: Record<string, unknown> | null;
+      details: any;
       source: "local" | "scraper";
     };
 
