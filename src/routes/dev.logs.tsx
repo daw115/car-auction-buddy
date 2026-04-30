@@ -231,6 +231,45 @@ ${rows}
 
   const lastId = entries.length > 0 ? entries[entries.length - 1].id : null;
 
+  type ScopeGroup = {
+    scope: string;
+    entries: LogEntry[];
+    counts: Partial<Record<LogEntry["level"], number>>;
+    lastTs: string;
+  };
+
+  const grouped = useMemo<ScopeGroup[]>(() => {
+    if (!groupByScope) return [];
+    const map = new Map<string, ScopeGroup>();
+    for (const e of filtered) {
+      let g = map.get(e.scope);
+      if (!g) {
+        g = { scope: e.scope, entries: [], counts: {}, lastTs: e.ts };
+        map.set(e.scope, g);
+      }
+      g.entries.push(e);
+      g.counts[e.level] = (g.counts[e.level] ?? 0) + 1;
+      if (e.ts > g.lastTs) g.lastTs = e.ts;
+    }
+    const list = Array.from(map.values());
+    list.sort((a, b) => (sortDir === "asc" ? a.lastTs.localeCompare(b.lastTs) : b.lastTs.localeCompare(a.lastTs)));
+    return list;
+  }, [filtered, groupByScope, sortDir]);
+
+  const toggleScope = (scope: string) => {
+    setCollapsedScopes((prev) => {
+      const next = new Set(prev);
+      if (next.has(scope)) next.delete(scope);
+      else next.add(scope);
+      return next;
+    });
+  };
+
+  const collapseAllScopes = () => {
+    setCollapsedScopes(new Set(grouped.map((g) => g.scope)));
+  };
+  const expandAllScopes = () => setCollapsedScopes(new Set());
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
