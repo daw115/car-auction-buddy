@@ -89,3 +89,94 @@ export function clearAuthCookie(): string {
 }
 
 export const DEV_AUTH_COOKIE_NAME = COOKIE_NAME;
+
+// ---- Login attempt rate limiting (in-memory, per Worker instance) ----
+// Defaults: 5 prób w oknie 15 min, lockout 15 min po przekroczeniu.
+// Override via env: DEV_LOGS_MAX_ATTEMPTS, DEV_LOGS_ATTEMPT_WINDOW_SECONDS, DEV_LOGS_LOCKOUT_SECONDS.
+const DEFAULT_MAX_ATTEMPTS = 5;
+const DEFAULT_WINDOW_SECONDS = 15 * 60;
+const DEFAULT_LOCKOUT_SECONDS = 15 * 60;
+
+type AttemptRecord = {
+  failures: number[]; // timestamps (ms) of recent failed attempts within the window
+  lockedUntil: number; // epoch ms; 0 if not locked
+};
+
+const attemptStore = new Map<string, AttemptRecord>();
+const MAX_STORE_SIZE = 1000;
+
+function intFromEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function getLimits() {
+  return {
+    maxAttempts: intFromEnv("DEV_LOGS_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS, 1, 100),
+    windowMs: intFromEnv("DEV_LOGS_ATTEMPT_WINDOW_SECONDS", DEFAULT_WINDOW_SECONDS, 10, 86400) * 1000,
+    lockoutMs: intFromEnv("DEV_LOGS_LOCKOUT_SECONDS", DEFAULT_LOCKOUT_SECONDS, 10, 86400) * 1000,
+  };
+}
+
+export function getClientKey(request: Request): string {
+  const h = request.headers;
+  const fwd = h.get("cf-connecting-ip") || h.get("x-real-ip") || h.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return "unknown";
+}
+
+function pruneStore() {
+  if (attemptStore.size <= MAX_STORE_SIZE) return;
+  // Drop ~20% oldest entries.
+  const entries = Array.from(attemptStore.entries());
+  entries.sort((a, b) => {
+    const aMax = Math.max(a[1].lockedUntil, a[1].failures.at(-1) ?? 0);
+    const bMax = Math.max(b[1].lockedUntil, b[1].failures.at(-1) ?? 0);
+    return aMax - bMax;
+  });
+  const toRemove = Math.ceil(entries.length * 0.2);
+  for (let i = 0; i < toRemove; i++) attemptStore.delete(entries[i][0]);
+}
+
+export type RateLimitStatus =
+  | { allowed: true; remaining: number }
+  | { allowed: false; retryAfterSeconds: number };
+
+export function checkLoginRateLimit(key: string): RateLimitStatus {
+  const { maxAttempts, windowMs } = getLimits();
+  const now = Date.now();
+  const rec = attemptStore.get(key);
+  if (!rec) return { allowed: true, remaining: maxAttempts };
+
+  if (rec.lockedUntil > now) {
+    return { allowed: false, retryAfterSeconds: Math.ceil((rec.lockedUntil - now) / 1000) };
+  }
+  // Drop stale failures outside window.
+  rec.failures = rec.failures.filter((t) => now - t < windowMs);
+  return { allowed: true, remaining: Math.max(0, maxAttempts - rec.failures.length) };
+}
+
+export function registerFailedAttempt(key: string): RateLimitStatus {
+  const { maxAttempts, windowMs, lockoutMs } = getLimits();
+  const now = Date.now();
+  const rec = attemptStore.get(key) ?? { failures: [], lockedUntil: 0 };
+  rec.failures = rec.failures.filter((t) => now - t < windowMs);
+  rec.failures.push(now);
+  if (rec.failures.length >= maxAttempts) {
+    rec.lockedUntil = now + lockoutMs;
+    rec.failures = [];
+  }
+  attemptStore.set(key, rec);
+  pruneStore();
+  if (rec.lockedUntil > now) {
+    return { allowed: false, retryAfterSeconds: Math.ceil((rec.lockedUntil - now) / 1000) };
+  }
+  return { allowed: true, remaining: Math.max(0, maxAttempts - rec.failures.length) };
+}
+
+export function resetAttempts(key: string): void {
+  attemptStore.delete(key);
+}

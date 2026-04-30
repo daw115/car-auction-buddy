@@ -563,6 +563,8 @@ function DevLogsGate() {
   const [submitting, setSubmitting] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
 
   const check = async () => {
     try {
@@ -605,6 +607,19 @@ function DevLogsGate() {
     return () => clearInterval(id);
   }, [status, expiresAt]);
 
+  // Tick during lockout to update countdown.
+  useEffect(() => {
+    if (status !== "locked" || !lockoutUntil) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lockoutUntil) {
+        setLockoutUntil(null);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [status, lockoutUntil]);
+
   const logout = async () => {
     try {
       await fetch("/api/dev/auth", { method: "DELETE", credentials: "same-origin" });
@@ -619,6 +634,7 @@ function DevLogsGate() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    if (lockoutUntil && Date.now() < lockoutUntil) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/dev/auth", {
@@ -632,10 +648,32 @@ function DevLogsGate() {
         if (body.ttlSeconds) setExpiresAt(Date.now() + body.ttlSeconds * 1000);
         toast.success("Zalogowano");
         setToken("");
+        setLockoutUntil(null);
+        setAttemptsLeft(null);
         setStatus("ok");
+      } else if (res.status === 429) {
+        const body = (await res.json().catch(() => ({}))) as {
+          reason?: string;
+          retryAfterSeconds?: number;
+        };
+        const retry = body.retryAfterSeconds ?? 60;
+        setLockoutUntil(Date.now() + retry * 1000);
+        setAttemptsLeft(0);
+        setToken("");
+        toast.error(body.reason ?? `Zbyt wiele prób. Spróbuj za ${retry}s.`);
       } else {
-        const body = (await res.json().catch(() => ({}))) as { reason?: string };
-        toast.error(body.reason ?? "Nieprawidłowe hasło");
+        const body = (await res.json().catch(() => ({}))) as {
+          reason?: string;
+          attemptsRemaining?: number;
+        };
+        if (typeof body.attemptsRemaining === "number") {
+          setAttemptsLeft(body.attemptsRemaining);
+        }
+        toast.error(
+          body.reason
+            ? `${body.reason}${typeof body.attemptsRemaining === "number" ? ` (pozostało prób: ${body.attemptsRemaining})` : ""}`
+            : "Nieprawidłowe hasło",
+        );
       }
     } catch {
       toast.error("Błąd połączenia");
@@ -671,6 +709,10 @@ function DevLogsGate() {
   }
 
   if (status === "locked") {
+    const lockoutMs = lockoutUntil ? Math.max(0, lockoutUntil - now) : 0;
+    const isLocked = lockoutMs > 0;
+    const lockMin = Math.floor(lockoutMs / 60000);
+    const lockSec = Math.floor((lockoutMs % 60000) / 1000);
     return (
       <div className="min-h-screen bg-background p-4 md:p-6">
         <div className="mx-auto max-w-md">
@@ -681,6 +723,19 @@ function DevLogsGate() {
                 Wprowadź hasło dostępu (DEV_LOGS_TOKEN).
               </p>
             </div>
+            {isLocked ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                Zbyt wiele nieudanych prób. Spróbuj ponownie za{" "}
+                <span className="font-mono">
+                  {lockMin}:{String(lockSec).padStart(2, "0")}
+                </span>
+                .
+              </div>
+            ) : attemptsLeft !== null && attemptsLeft >= 0 ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                Nieprawidłowe hasło. Pozostało prób: {attemptsLeft}.
+              </div>
+            ) : null}
             <form onSubmit={submit} className="space-y-3">
               <Input
                 type="password"
@@ -688,6 +743,7 @@ function DevLogsGate() {
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Hasło"
                 autoFocus
+                disabled={isLocked}
               />
               <div className="flex items-center justify-between">
                 <Button asChild variant="ghost" size="sm">
@@ -695,8 +751,8 @@ function DevLogsGate() {
                     <ArrowLeft className="h-4 w-4 mr-1" /> Anuluj
                   </Link>
                 </Button>
-                <Button type="submit" size="sm" disabled={submitting || !token}>
-                  {submitting ? "Logowanie…" : "Zaloguj"}
+                <Button type="submit" size="sm" disabled={submitting || !token || isLocked}>
+                  {submitting ? "Logowanie…" : isLocked ? "Zablokowane" : "Zaloguj"}
                 </Button>
               </div>
             </form>

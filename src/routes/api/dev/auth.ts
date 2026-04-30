@@ -7,9 +7,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   buildAuthCookie,
   checkDevAuth,
+  checkLoginRateLimit,
   clearAuthCookie,
+  getClientKey,
   getCookieTtlSeconds,
   getExpectedToken,
+  registerFailedAttempt,
+  resetAttempts,
 } from "@/server/dev-auth.server";
 
 export const Route = createFileRoute("/api/dev/auth")({
@@ -41,6 +45,25 @@ export const Route = createFileRoute("/api/dev/auth")({
           );
         }
 
+        const clientKey = getClientKey(request);
+        const limit = checkLoginRateLimit(clientKey);
+        if (!limit.allowed) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              reason: "Too many failed attempts. Try again later.",
+              retryAfterSeconds: limit.retryAfterSeconds,
+            }),
+            {
+              status: 429,
+              headers: {
+                "Content-Type": "application/json",
+                "Retry-After": String(limit.retryAfterSeconds),
+              },
+            },
+          );
+        }
+
         let body: unknown;
         try {
           body = await request.json();
@@ -55,8 +78,29 @@ export const Route = createFileRoute("/api/dev/auth")({
           return Response.json({ ok: false, reason: "Missing token" }, { status: 400 });
         }
         if (token !== expected) {
-          return Response.json({ ok: false, reason: "Invalid token" }, { status: 401 });
+          const after = registerFailedAttempt(clientKey);
+          if (!after.allowed) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                reason: "Too many failed attempts. Try again later.",
+                retryAfterSeconds: after.retryAfterSeconds,
+              }),
+              {
+                status: 429,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Retry-After": String(after.retryAfterSeconds),
+                },
+              },
+            );
+          }
+          return Response.json(
+            { ok: false, reason: "Invalid token", attemptsRemaining: after.remaining },
+            { status: 401 },
+          );
         }
+        resetAttempts(clientKey);
         return new Response(JSON.stringify({ ok: true, ttlSeconds: getCookieTtlSeconds() }), {
           status: 200,
           headers: {
