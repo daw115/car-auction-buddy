@@ -199,3 +199,68 @@ export function LogsPanel({ clientId, recordId }: Props) {
     </Card>
   );
 }
+
+function scopeLabel(clientId: string | null, recordId?: string | null): string {
+  if (recordId) return `record-${recordId.slice(0, 8)}`;
+  if (clientId) return `client-${clientId.slice(0, 8)}`;
+  return "all";
+}
+
+function csvEscape(value: unknown): string {
+  if (value == null) return "";
+  const s = typeof value === "string" ? value : JSON.stringify(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function toCsv(rows: LogRow[]): string {
+  const headers = [
+    "created_at",
+    "operation",
+    "step",
+    "level",
+    "message",
+    "duration_ms",
+    "client_id",
+    "record_id",
+    "details",
+  ];
+  const lines = [headers.join(",")];
+  for (const r of rows) {
+    lines.push(
+      [
+        r.created_at,
+        r.operation,
+        r.step ?? "",
+        r.level,
+        r.message,
+        r.duration_ms ?? "",
+        r.client_id ?? "",
+        r.record_id ?? "",
+        r.details ? JSON.stringify(r.details) : "",
+      ]
+        .map(csvEscape)
+        .join(","),
+    );
+  }
+  return lines.join("\n");
+}
+
+function triggerDownload(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadLogs(rows: LogRow[], format: "json" | "csv", scope: string) {
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  if (format === "json") {
+    triggerDownload(`logs-${scope}-${ts}.json`, JSON.stringify(rows, null, 2), "application/json");
+  } else {
+    triggerDownload(`logs-${scope}-${ts}.csv`, toCsv(rows), "text/csv");
+  }
+}
