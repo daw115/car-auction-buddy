@@ -856,6 +856,24 @@ function Panel() {
                   downloadFile("report.md", md, "text/markdown");
                 }}
               />
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!activeRecordId || !analysis}
+                onClick={() => window.open(`/api/reports/pdf?recordId=${activeRecordId}&mode=broker`, "_blank")}
+                title={!activeRecordId ? "Najpierw zapisz rekord" : ""}
+              >
+                <Download className="h-3.5 w-3.5" /> PDF brokera
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!activeRecordId || !analysis}
+                onClick={() => window.open(`/api/reports/pdf?recordId=${activeRecordId}&mode=client`, "_blank")}
+                title={!activeRecordId ? "Najpierw zapisz rekord" : ""}
+              >
+                <Download className="h-3.5 w-3.5" /> PDF klienta (TOP3+2)
+              </Button>
             </div>
           </Card>
         </section>
