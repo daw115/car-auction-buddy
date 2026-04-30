@@ -60,6 +60,9 @@ function toIsoEnd(localDate: string): string | undefined {
 export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) {
   const fnList = useServerFn(listLogs);
   const fnClear = useServerFn(clearLogs);
+  const fnRetention = useServerFn(getLogRetention);
+  const fnCleanup = useServerFn(cleanupLogs);
+  const [retention, setRetention] = useState<{ days: number; source: string } | null>(null);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "scrape" | "ai_analysis">("all");
