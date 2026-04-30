@@ -313,14 +313,69 @@ function Panel() {
       return;
     }
     setBusy("scraper");
+    const startedAt = Date.now();
+    setScrapeJob({ status: "queued", startedAt, elapsedMs: 0 });
     try {
-      const r = (await fnRunScraper({
+      const start = (await fnStartScraper({
         data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
-      })) as { listings: CarLot[] };
-      setListings(r.listings);
-      setListingsRaw(JSON.stringify(r.listings, null, 2));
-      toast.success(`Scraper zwrócił ${r.listings.length} lotów`);
+      })) as
+        | { mode: "sync"; listings: CarLot[]; source: string }
+        | { mode: "job"; job_id: string; source: string };
+
+      if (start.mode === "sync") {
+        setListings(start.listings);
+        setListingsRaw(JSON.stringify(start.listings, null, 2));
+        setScrapeJob({ status: "done", startedAt, elapsedMs: Date.now() - startedAt, progress: 1 });
+        toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        return;
+      }
+
+      // Poll loop
+      const jobId = start.job_id;
+      setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
+      const deadline = Date.now() + 5 * 60 * 1000;
+      let listingsResult: CarLot[] = [];
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
+        try {
+          p = (await fnPollScraper({ data: { jobId } })) as typeof p;
+        } catch (e) {
+          // transient — keep polling
+          continue;
+        }
+        setScrapeJob((s) =>
+          s
+            ? {
+                ...s,
+                status: p.status,
+                progress: p.progress,
+                elapsedMs: Date.now() - s.startedAt,
+              }
+            : s,
+        );
+        if (["done", "completed", "finished"].includes(p.status)) {
+          listingsResult = Array.isArray(p.listings) ? p.listings : [];
+          setScrapeJob((s) =>
+            s ? { ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          break;
+        }
+        if (["error", "failed"].includes(p.status)) {
+          setScrapeJob((s) =>
+            s ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          throw new Error(p.error ?? "Job failed");
+        }
+      }
+      if (!["done", "completed", "finished"].includes(scrapeJob?.status ?? "")) {
+        // either set above, or timeout
+      }
+      setListings(listingsResult);
+      setListingsRaw(JSON.stringify(listingsResult, null, 2));
+      toast.success(`Scraper zwrócił ${listingsResult.length} lotów`);
     } catch (e) {
+      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
       toast.error((e as Error).message);
     } finally {
       setBusy(null);
