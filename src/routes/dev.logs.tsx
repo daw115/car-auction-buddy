@@ -607,6 +607,19 @@ function DevLogsGate() {
     return () => clearInterval(id);
   }, [status, expiresAt]);
 
+  // Tick during lockout to update countdown.
+  useEffect(() => {
+    if (status !== "locked" || !lockoutUntil) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lockoutUntil) {
+        setLockoutUntil(null);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [status, lockoutUntil]);
+
   const logout = async () => {
     try {
       await fetch("/api/dev/auth", { method: "DELETE", credentials: "same-origin" });
