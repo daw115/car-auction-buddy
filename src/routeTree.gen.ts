@@ -10,33 +10,63 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiRecordsRouteImport } from './routes/api/records'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as ApiConfigRouteImport } from './routes/api/config'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRecordsRoute = ApiRecordsRouteImport.update({
+  id: '/api/records',
+  path: '/api/records',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConfigRoute = ApiConfigRouteImport.update({
+  id: '/api/config',
+  path: '/api/config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/config': typeof ApiConfigRoute
+  '/api/health': typeof ApiHealthRoute
+  '/api/records': typeof ApiRecordsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/config': typeof ApiConfigRoute
+  '/api/health': typeof ApiHealthRoute
+  '/api/records': typeof ApiRecordsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/config': typeof ApiConfigRoute
+  '/api/health': typeof ApiHealthRoute
+  '/api/records': typeof ApiRecordsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/config' | '/api/health' | '/api/records'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/config' | '/api/health' | '/api/records'
+  id: '__root__' | '/' | '/api/config' | '/api/health' | '/api/records'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiConfigRoute: typeof ApiConfigRoute
+  ApiHealthRoute: typeof ApiHealthRoute
+  ApiRecordsRoute: typeof ApiRecordsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,21 +78,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/records': {
+      id: '/api/records'
+      path: '/api/records'
+      fullPath: '/api/records'
+      preLoaderRoute: typeof ApiRecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/config': {
+      id: '/api/config'
+      path: '/api/config'
+      fullPath: '/api/config'
+      preLoaderRoute: typeof ApiConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiConfigRoute: ApiConfigRoute,
+  ApiHealthRoute: ApiHealthRoute,
+  ApiRecordsRoute: ApiRecordsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
