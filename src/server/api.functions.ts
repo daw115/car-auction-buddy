@@ -963,6 +963,11 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       listings: j.listings,
       error: j.error,
       progress: typeof j.progress === "number" ? j.progress : undefined,
+      step: j.step,
+      message: j.message,
+      current: typeof j.current === "number" ? j.current : undefined,
+      total: typeof j.total === "number" ? j.total : undefined,
+      phase: j.phase,
     };
   });
 
