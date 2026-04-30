@@ -439,20 +439,47 @@ export const runAnalysis = createServerFn({ method: "POST" })
     const startedAt = Date.now();
     const criteria = data.criteria as ClientCriteria;
     const listings = data.listings as CarLot[];
-    const userPrompt = buildUserPrompt(criteria, listings);
+    // Default 4096 — Anthropic responses for typical batches (≤30 lots) fit in
+    // ~3-4k tokens. Cap higher only via env override. Keeps response time and
+    // cost predictable, also reduces 524 timeout risk.
     const maxTokens = Math.min(
       parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? "0", 10) ||
-        Math.max(1500, listings.length * 400),
-      8192,
+        Math.max(1500, listings.length * 300),
+      4096,
     );
 
-    await log.info("start", `Rozpoczęto analizę AI ${listings.length} lotów`, {
-      listings_count: listings.length,
+    // Auto-trim prompt if input + reserved output would overflow context window.
+    const built = buildPromptWithinBudget(criteria, listings, maxTokens);
+    const userPrompt = built.prompt;
+    const trimmedListings =
+      built.trimmed.droppedLots > 0
+        ? listings.filter((l) => built.includedLotIds.includes(l.lot_id))
+        : listings;
+
+    await log.info("start", `Rozpoczęto analizę AI ${trimmedListings.length} lotów`, {
+      listings_count: trimmedListings.length,
+      original_listings_count: listings.length,
       criteria_make: criteria.make,
       criteria_model: criteria.model ?? null,
       budget_usd: criteria.budget_usd,
       prompt_chars: userPrompt.length,
+      max_tokens: maxTokens,
+      auto_trimmed: built.trimmed.droppedLots > 0 || built.trimmed.droppedFields,
+      dropped_optional_fields: built.trimmed.droppedFields,
+      dropped_lots: built.trimmed.droppedLots,
     });
+
+    if (built.trimmed.droppedLots > 0 || built.trimmed.droppedFields) {
+      await log.warn(
+        "prompt_trimmed",
+        `Prompt skrócony automatycznie: ${built.trimmed.droppedLots > 0 ? `pominięto ${built.trimmed.droppedLots} lotów, ` : ""}${built.trimmed.droppedFields ? "usunięto opcjonalne pola (url, vin, trim, city, …)" : ""}`,
+        {
+          dropped_lots: built.trimmed.droppedLots,
+          dropped_optional_fields: built.trimmed.droppedFields,
+          final_lot_count: built.trimmed.finalCount,
+        },
+      );
+    }
 
     let raw: string;
     try {
