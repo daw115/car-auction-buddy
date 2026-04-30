@@ -54,7 +54,7 @@ export async function callAnthropic(opts: {
       },
       body: JSON.stringify({
         model,
-        max_tokens: opts.maxTokens ?? 8192,
+        max_tokens: opts.maxTokens ?? 4096,
         system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: opts.userPrompt }],
       }),
