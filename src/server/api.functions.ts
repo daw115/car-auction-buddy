@@ -693,7 +693,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
           lastStatus = pj.status;
           await log.info("poll", `Job status: ${pj.status}`, { job_id: jobId, status: pj.status });
         }
-        if (pj.status === "done" || pj.status === "completed" || pj.status === "finished") {
+        if (pj.status === "done" || pj.status === "completed" || pj.status === "finished" || pj.status === "success" || pj.status === "complete" || (typeof pj.progress === "number" && pj.progress >= 1.0)) {
           listings = Array.isArray(pj.listings) ? pj.listings : [];
           break;
         }
@@ -706,7 +706,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
         }
       }
 
-      if (lastStatus !== "done" && lastStatus !== "completed" && lastStatus !== "finished") {
+      if (lastStatus !== "done" && lastStatus !== "completed" && lastStatus !== "finished" && lastStatus !== "success" && lastStatus !== "complete") {
         await log.error("timeout", `Polling timeout po 5 min`, { job_id: jobId, last_status: lastStatus });
         throw new Error(`Scraper job timeout (job_id=${jobId}, last_status=${lastStatus})`);
       }
@@ -887,7 +887,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
 
     // Persist to cache when the job finishes successfully.
     if (
-      ["done", "completed", "finished"].includes(status) &&
+      ["done", "completed", "finished", "success", "complete"].includes(status) &&
       Array.isArray(j.listings) &&
       data.cacheKey &&
       data.criteria

@@ -550,6 +550,7 @@ function Panel() {
       const cacheKey = start.cache_key;
       setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
       const deadline = Date.now() + 5 * 60 * 1000;
+      const DONE_STATUSES = ["done", "completed", "finished", "success", "complete"];
       let listingsResult: CarLot[] = [];
       while (Date.now() < deadline) {
         if (cancelRequestedRef.current) {
@@ -582,7 +583,7 @@ function Panel() {
               }
             : s,
         );
-        if (["done", "completed", "finished"].includes(p.status)) {
+        if (DONE_STATUSES.includes(p.status) || (typeof p.progress === "number" && p.progress >= 1.0)) {
           listingsResult = Array.isArray(p.listings) ? p.listings : [];
           setScrapeJob((s) =>
             s ? { ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt } : s,
@@ -605,7 +606,7 @@ function Panel() {
           throw new Error(errMsg);
         }
       }
-      if (!["done", "completed", "finished"].includes(scrapeJob?.status ?? "")) {
+      if (!DONE_STATUSES.includes(scrapeJob?.status ?? "")) {
         // either set above, or timeout
       }
       setListings(listingsResult);
