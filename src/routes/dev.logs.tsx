@@ -351,6 +351,30 @@ ${rows}
                 )}
                 {sortDir === "asc" ? "Rosnąco" : "Malejąco"}
               </Button>
+              <Button
+                variant={groupByScope ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setGroupByScope((g) => !g)}
+                className="h-8"
+                title="Grupuj wpisy po scope"
+              >
+                <Layers className="mr-1 h-3.5 w-3.5" />
+                Grupuj
+              </Button>
+              {groupByScope ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8">
+                      <ChevronDown className="mr-1 h-3.5 w-3.5" />
+                      Grupy
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={expandAllScopes}>Rozwiń wszystkie</DropdownMenuItem>
+                    <DropdownMenuItem onClick={collapseAllScopes}>Zwiń wszystkie</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8">
