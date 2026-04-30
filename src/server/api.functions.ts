@@ -904,6 +904,28 @@ export const pollScraperJob = createServerFn({ method: "POST" })
   });
 
 // Cancel a running scraper job.
+// Clear scrape cache. Pass cacheKey to drop a single entry, or omit to wipe all.
+export const clearScrapeCache = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      cacheKey: z.string().min(1).optional(),
+      onlyExpired: z.boolean().optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    let q = supabaseAdmin.from("scrape_cache").delete();
+    if (data.cacheKey) {
+      q = q.eq("cache_key", data.cacheKey);
+    } else if (data.onlyExpired) {
+      q = q.lt("expires_at", new Date().toISOString());
+    } else {
+      q = q.not("id", "is", null);
+    }
+    const { error, count } = await q;
+    if (error) throw new Error(error.message);
+    return { ok: true, deleted: count ?? null };
+  });
+
 export const cancelScraperJob = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
