@@ -41,12 +41,13 @@ export async function callAnthropic(opts: {
     headers: {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
+      "anthropic-beta": "prompt-caching-2024-07-31",
       "content-type": "application/json",
     },
     body: JSON.stringify({
       model,
       max_tokens: opts.maxTokens ?? 8192,
-      system: opts.system,
+      system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: opts.userPrompt }],
     }),
   });

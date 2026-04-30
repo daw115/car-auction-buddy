@@ -232,18 +232,24 @@ function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
   const lotsData = lots.map((lot) => ({
     lot_id: lot.lot_id,
     source: lot.source,
+    url: lot.url ?? null,
+    vin: lot.vin ?? null,
     year: lot.year,
     make: lot.make,
     model: lot.model,
+    trim: lot.trim ?? null,
     odometer_mi: lot.odometer_mi,
     odometer_km: lot.odometer_km,
     damage_primary: lot.damage_primary,
     damage_secondary: lot.damage_secondary,
     title_type: lot.title_type,
     current_bid_usd: lot.current_bid_usd,
+    buy_now_price_usd: lot.buy_now_price_usd ?? null,
     seller_reserve_usd: lot.seller_reserve_usd,
     seller_type: lot.seller_type,
     location_state: lot.location_state,
+    location_city: lot.location_city ?? null,
+    auction_date: lot.auction_date ?? null,
     airbags_deployed: lot.airbags_deployed,
     keys: lot.keys,
     enriched_by_extension: lot.enriched_by_extension,
@@ -322,6 +328,11 @@ export const runAnalysis = createServerFn({ method: "POST" })
     const criteria = data.criteria as ClientCriteria;
     const listings = data.listings as CarLot[];
     const userPrompt = buildUserPrompt(criteria, listings);
+    const maxTokens = Math.min(
+      parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? "0", 10) ||
+        Math.max(1500, listings.length * 400),
+      8192,
+    );
 
     await log.info("start", `Rozpoczęto analizę AI ${listings.length} lotów`, {
       listings_count: listings.length,
@@ -333,7 +344,7 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      const result = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt });
+      const result = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt, maxTokens });
       raw = result.text;
       await log.info(
         "anthropic_response",
