@@ -764,11 +764,14 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
     const broker_html = buildBrokerHtml(
       withImages.map(({ lot, images, group }) => ({ lot, images, group })),
     );
-    // Klient: TOP3 jako 3 sekcje pod sobą (bez wzmianki o odrzuconych — zabieg marketingowy)
+    // Klient: TOP3 + 2 odrzucone (jako 4 i 5, bez wzmianki że to najgorsze — zabieg marketingowy).
+    // Wszystkie 5 prezentowane jako równorzędna oferta.
     const tops = withImages.filter((x) => x.group === "TOP").slice(0, 3);
+    const fillers = withImages.filter((x) => x.group === "REJECTED").slice(0, 2);
+    const clientLots = [...tops, ...fillers];
     let client_html = "";
-    if (tops.length > 0) {
-      const docs = tops.map((t) => buildClientHtml(t.lot, t.images));
+    if (clientLots.length > 0) {
+      const docs = clientLots.map((t) => buildClientHtml(t.lot, t.images));
       // wyciągnij <body>...</body> z każdego, połącz w pierwszym dokumencie
       const bodies = docs.map((d) => {
         const m = d.match(/<body>([\s\S]*?)<\/body>/i);
