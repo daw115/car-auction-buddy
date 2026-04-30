@@ -561,6 +561,8 @@ function DevLogsGate() {
   const [unavailableReason, setUnavailableReason] = useState<string>("");
   const [token, setToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const check = async () => {
     try {
@@ -571,8 +573,14 @@ function DevLogsGate() {
         setStatus("unavailable");
         return;
       }
-      const body = (await res.json()) as { authenticated: boolean };
-      setStatus(body.authenticated ? "ok" : "locked");
+      const body = (await res.json()) as { authenticated: boolean; ttlSeconds?: number };
+      if (body.authenticated) {
+        if (body.ttlSeconds) setExpiresAt(Date.now() + body.ttlSeconds * 1000);
+        setStatus("ok");
+      } else {
+        setExpiresAt(null);
+        setStatus("locked");
+      }
     } catch {
       setStatus("locked");
     }
@@ -581,6 +589,32 @@ function DevLogsGate() {
   useEffect(() => {
     void check();
   }, []);
+
+  // Tick every second when authenticated to update countdown + auto-lock at expiry.
+  useEffect(() => {
+    if (status !== "ok" || !expiresAt) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= expiresAt) {
+        toast.warning("Sesja Dev Logs wygasła — zaloguj się ponownie");
+        setStatus("locked");
+        setExpiresAt(null);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [status, expiresAt]);
+
+  const logout = async () => {
+    try {
+      await fetch("/api/dev/auth", { method: "DELETE", credentials: "same-origin" });
+    } catch {
+      // ignore
+    }
+    setExpiresAt(null);
+    setStatus("locked");
+    toast.success("Wylogowano");
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -594,6 +628,8 @@ function DevLogsGate() {
         body: JSON.stringify({ token }),
       });
       if (res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { ttlSeconds?: number };
+        if (body.ttlSeconds) setExpiresAt(Date.now() + body.ttlSeconds * 1000);
         toast.success("Zalogowano");
         setToken("");
         setStatus("ok");
@@ -670,7 +706,28 @@ function DevLogsGate() {
     );
   }
 
-  return <DevLogsPage />;
+  const remainingMs = expiresAt ? Math.max(0, expiresAt - now) : 0;
+  const remainingMin = Math.floor(remainingMs / 60000);
+  const remainingSec = Math.floor((remainingMs % 60000) / 1000);
+
+  return (
+    <>
+      {expiresAt ? (
+        <div className="sticky top-0 z-30 flex items-center justify-end gap-3 border-b border-border/50 bg-background/80 px-4 py-1 text-[11px] text-muted-foreground backdrop-blur">
+          <span>
+            Sesja Dev Logs wygasa za{" "}
+            <span className="font-mono text-foreground">
+              {remainingMin}:{String(remainingSec).padStart(2, "0")}
+            </span>
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={logout}>
+            Wyloguj
+          </Button>
+        </div>
+      ) : null}
+      <DevLogsPage />
+    </>
+  );
 }
 
 export const Route = createFileRoute("/dev/logs")({
