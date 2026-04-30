@@ -683,7 +683,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
           });
           continue;
         }
-        let pj: { status?: string; listings?: CarLot[]; error?: string };
+        let pj: { status?: string; listings?: CarLot[]; error?: string; progress?: number };
         try {
           pj = await pollRes.json();
         } catch {
