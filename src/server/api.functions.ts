@@ -841,7 +841,13 @@ export const startScraperSearch = createServerFn({ method: "POST" })
 
 // Poll scraper job status (called by UI every 4s).
 export const pollScraperJob = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
+  .inputValidator(
+    z.object({
+      jobId: z.string().min(1),
+      cacheKey: z.string().min(1).optional(),
+      criteria: criteriaSchema.optional(),
+    }).parse,
+  )
   .handler(async ({ data }): Promise<{
     status: string;
     listings?: CarLot[];
@@ -865,8 +871,32 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       error?: string;
       progress?: number;
     };
+
+    const status = j.status ?? "unknown";
+
+    // Persist to cache when the job finishes successfully.
+    if (
+      ["done", "completed", "finished"].includes(status) &&
+      Array.isArray(j.listings) &&
+      data.cacheKey &&
+      data.criteria
+    ) {
+      try {
+        const { configSnapshot } = await buildScrapeCacheKey(data.criteria);
+        await writeScrapeCache({
+          cacheKey: data.cacheKey,
+          criteria: data.criteria,
+          configSnapshot,
+          listings: j.listings,
+          source: baseUrl,
+        });
+      } catch {
+        // Cache write failures should not break the user-visible flow.
+      }
+    }
+
     return {
-      status: j.status ?? "unknown",
+      status,
       listings: j.listings,
       error: j.error,
       progress: typeof j.progress === "number" ? j.progress : undefined,
