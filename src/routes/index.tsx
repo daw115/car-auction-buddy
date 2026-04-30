@@ -694,8 +694,23 @@ function Panel() {
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={runAi} disabled={busy === "ai" || listings.length === 0}>
                 {busy === "ai" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                Uruchom analizę AI
+                {analysis && analysis.length > 0 ? "Uruchom analizę AI ponownie" : "Uruchom analizę AI"}
               </Button>
+              {analysis && analysis.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={runAi}
+                  disabled={busy === "ai" || listings.length === 0}
+                  title="Ponowna analiza AI tych samych lotów (bez scrapingu)"
+                >
+                  {busy === "ai" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Ponów analizę ({listings.length} lotów)
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={makeReport}
