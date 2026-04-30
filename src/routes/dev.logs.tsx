@@ -362,6 +362,19 @@ ${rows}
                             className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
                           />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => copyResumeLink(e.id)}
+                          title={`#${e.id} — kliknij, aby skopiować link wznawiający strumień od tego ID`}
+                          className="shrink-0 inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-1 py-0 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-border"
+                        >
+                          {copiedLinkId === e.id ? (
+                            <Check className="h-2.5 w-2.5" />
+                          ) : (
+                            <Link2 className="h-2.5 w-2.5" />
+                          )}
+                          #{e.id}
+                        </button>
                         <span className="shrink-0 text-muted-foreground">
                           {new Date(e.ts).toLocaleTimeString()}
                         </span>
