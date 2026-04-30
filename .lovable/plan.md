@@ -1,99 +1,124 @@
-## USA Car Finder — Operational Panel (Lovable + your Python scraper)
+## Zakres rozwoju USA Car Scout (wszystko darmowe, bez własnego scrapera)
 
-Single-operator panel that drives the full workflow: client → criteria → search (manual paste or call your Python scraper) → AI analysis (Anthropic) → HTML report + downloadable artifacts → saved record you can return to.
+Skupiamy się na 4 modułach funkcjonalnych zgodnie z wyborem. Wszystko działa w obrębie Lovable Cloud — bez zewnętrznego hostingu, bez płatnych API.
 
-No landing page. The root URL `/` is the operational panel.
+---
 
-### Architecture
+### Moduł 1 — Eksport PDF + wysyłka maili
+
+**Co użytkownik dostaje:**
+- W każdym widoku raportu (broker / klient TOP3+2) nowy przycisk **"Pobierz PDF"** generujący prawdziwy PDF (nie tylko HTML).
+- Przycisk **"Wyślij do klienta"** otwierający modal: wybór klienta z bazy → preview tematu i treści → wysyłka. Mail przychodzi z Twojego brandowanego adresu (np. `oferty@usacarscout.com`).
+- W rekordach (`records`) zapisywany status wysyłki: kiedy, na jaki adres, czy doszło, czy klient otworzył.
+
+**Pod spodem:**
+- PDF generowany server-side przez `@react-pdf/renderer` w nowym server function `renderPdf` (Worker-compatible, działa bez Chromium).
+- Nowy template `src/server/pdf/lot-report.tsx` mapujący strukturę z `lot-report.ts` na komponenty PDF (Page/View/Text/Image) — zachowuje brandowany layout.
+- Maile przez **Lovable Emails** (wbudowane, zero konfiguracji, darmowe). Wymagana konfiguracja domeny nadawczej → tu pojawi się dialog `<lov-open-email-setup>`.
+- Nowa tabela `email_sends` (record_id, client_id, recipient, sent_at, status, message_id) + log w `operation_logs`.
+- Template React Email `client-offer.tsx` z embedded HTML raportu klienta + linkiem do PDF (PDF jako Storage URL, bo email attachments nie są wspierane).
+- Nowy bucket Supabase Storage `reports/` (publiczny, signed URLs 7-dniowe) na PDF-y.
+
+---
+
+### Moduł 2 — VIN decoder (NHTSA) + kalkulator total cost
+
+**Co użytkownik dostaje:**
+- Na karcie pojedynczego lota (i w widoku ręcznego wprowadzania) nowe pole VIN z przyciskiem **"Dekoduj VIN"** → auto-uzupełnienie marki, modelu, rocznika, silnika, skrzyni, body type, fuel type, country of origin. Plus lista recall'i NHTSA.
+- Nowa zakładka **Kalkulator** w lewym panelu (obok Klienci/Rekordy) — narzędzie standalone:
+  - Input: cena auta (USD), stan USA, masa, pojemność silnika, paliwo
+  - Output: rozbicie kosztów (transport per stan, cło 10%, akcyza 3.1%/18.6%, VAT 23%, opłaty portowe, marża brokera %, łącznie PLN/EUR)
+  - Zapisywane presety per klient.
+- W analizie AI każdy lot dostaje wyliczony **total cost PL** (nie tylko `estimated_total_cost_usd` z AI, ale deterministyczny kalkulator).
+
+**Pod spodem:**
+- Nowy server function `decodeVin` → `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json` (darmowe, bez klucza, bez limitów).
+- Recall check: `https://api.nhtsa.gov/recalls/recallsByVehicle?make=X&model=Y&modelYear=Z`.
+- Nowy plik `src/lib/cost-calculator.ts` z czystymi funkcjami (transport per stan ze stałych, akcyza wg pojemności silnika, VAT, kurs USD→PLN→EUR z `https://api.frankfurter.app/latest?from=USD` — darmowe).
+- Nowa tabela `cost_presets` (id, client_id, broker_margin_pct, transport_override, exchange_rate_buffer_pct, updated_at).
+- Komponent `<CostBreakdown lot={...} />` używany w widoku raportu i kalkulatorze.
+
+---
+
+### Moduł 3 — Watchlist + alerty + porównywarka
+
+**Co użytkownik dostaje:**
+- Na każdym locie w analizie przycisk **"Dodaj do watchlist"** (gwiazdka).
+- Nowa zakładka **Watchlist** — lista śledzonych lotów (per klient lub globalnie) z aktualnym scoringiem AI, czasem do końca aukcji, ostatnią zmianą bidu.
+- Cron co X godzin (konfigurowalne 2/6/12/24h w settings) ponownie wywołuje AI analizę dla każdego lota z watchlisty. Jeśli `score` wzrósł o ≥1.0 lub bid spadł — wysyła alert mailowy do brokera.
+- Tryb **Porównaj** — checkbox przy każdym locie, max 3 zaznaczone → przycisk "Porównaj" otwiera widok side-by-side: tabela z wszystkimi parametrami + AI verdict + total cost + zdjęcie obok zdjęcia.
+
+**Pod spodem:**
+- Nowa tabela `watchlist` (id, client_id, lot_snapshot jsonb, current_score, last_bid_usd, last_checked_at, alert_threshold, created_at, removed_at).
+- Nowa tabela `watchlist_history` (watchlist_id, checked_at, score, bid_usd, ai_summary) — do wykresu trendu.
+- pg_cron + pg_net wywołuje endpoint `/api/public/hooks/refresh-watchlist` co 6h (default), endpoint iteruje aktywne wpisy, wywołuje istniejący `runAi` na pojedynczych lotach, porównuje, zapisuje history, wysyła mail jeśli próg przekroczony.
+- Mail-alert jako transactional template `watchlist-alert.tsx`.
+- Komponent `src/components/CompareView.tsx` + nowy route `/compare?ids=lot1,lot2,lot3`.
+- **Ograniczenie**: bez własnego scrapera nie mamy świeżych danych z aukcji — alert opiera się na PONOWNEJ analizie AI tego samego snapshotu (zmienia się tylko jeśli zmienisz prompt/model). Realny "auto-refresh bid" wymaga scrapera. **Sugeruję alternatywę**: alert uruchamia się gdy ręcznie wkleisz nowy snapshot tego samego lot_id — system wykryje zmianę i powiadomi.
+
+---
+
+### Moduł 4 — Dashboard analityczny
+
+**Co użytkownik dostaje:**
+- Nowa zakładka **Dashboard** (`/dashboard`) — pierwszy widok po wejściu w aplikację (zamiast pustego panelu):
+  - KPI cards: liczba analiz (7d/30d/all), liczba klientów, liczba zapisanych rekordów, średni AI score, średni szacowany koszt importu.
+  - Wykres liniowy: liczba analiz w czasie (ostatnie 30 dni).
+  - Wykres słupkowy: TOP 10 marek po liczbie analiz.
+  - Wykres kołowy: rozkład rekomendacji AI (POLECAM/RYZYKO/ODRZUĆ).
+  - Tabela: TOP 10 najczęstszych red flagów + ile razy wystąpiły.
+  - Per-klient: sortowalna lista klientów z liczbą analiz, średnim score, ostatnią aktywnością.
+
+**Pod spodem:**
+- Server function `getDashboardStats` (filtry: timeframe, client_id) — robi agregacje SQL na `records` + `analysis` jsonb.
+- Komponent `src/routes/dashboard.tsx` używający `recharts` (już dostępny w shadcn).
+- Materialized view `dashboard_stats_mv` z refresh co godzinę (pg_cron) — żeby nie liczyć wszystkiego live przy każdym wejściu.
+- Reorganizacja routera: `/` → przekierowanie na `/dashboard`, panel operacyjny przenosimy na `/workspace`.
+
+---
+
+### Migracje DB (jedna do zatwierdzenia)
 
 ```text
-Browser (React panel)
-        │
-        ▼
-TanStack Start server functions (Cloudflare Worker)
-   ├─ Lovable Cloud (Postgres)  ← clients, records, artifacts metadata
-   ├─ Anthropic API             ← analysis (your ANTHROPIC_API_KEY)
-   └─ Your Python scraper       ← optional, called via SCRAPER_BASE_URL
+NEW TABLES:
+- email_sends (record_id, client_id, recipient, status, message_id, sent_at, opened_at)
+- cost_presets (id, client_id, broker_margin_pct, transport_overrides jsonb, ...)
+- watchlist (id, client_id, lot_snapshot jsonb, current_score, last_bid_usd, last_checked_at, alert_threshold)
+- watchlist_history (watchlist_id, checked_at, score, bid_usd, ai_summary)
+
+NEW STORAGE BUCKET:
+- reports (public, signed URLs)
+
+NEW MATERIALIZED VIEW:
+- dashboard_stats_mv (refresh co 1h)
+
+NEW CRON JOBS:
+- refresh-watchlist (co 6h, konfigurowalne w app_config)
+- refresh-dashboard-stats (co 1h)
 ```
 
-Lovable Cloud handles persistence (no SQLite, no local files). Artifacts (AI input JSON, prompt, analysis JSON, HTML report, mail HTML) are stored as rows + downloadable on demand.
+RLS: aplikacja jest single-operator (bez auth) — wszystkie tabele dostają politykę `public read/write` jak istniejące. Storage bucket `reports` publiczny (signed URL → bezpieczne).
 
-### Panel layout (single page, 3 columns / stacked on mobile)
+---
 
-1. **Client column** — list of saved clients, "+ New client" form (name, contact, notes). Click loads client into the workspace.
-2. **Workspace column** (the main pane)
-   - Search criteria form: make, model, year range, max price, damage filters, auction-window hours (12–120 default), seller-type-insurance toggle (default on).
-   - Listings table — populated by either:
-     - **Manual / paste** mode: paste JSON or CSV of pre-filtered listings from your scraper output, OR
-     - **Online search** button (only enabled if `SCRAPER_BASE_URL` is configured) — POSTs criteria to your Python service, shows progress, fills the table.
-   - "Run AI analysis" button → calls Anthropic, shows results inline.
-   - "Generate report" → renders HTML in a preview frame.
-   - Download buttons: `ai_input.json`, `prompt.txt`, `analysis.json`, `report.html`, `mail.html`.
-   - "Save as record" → snapshots criteria + listings + analysis + report into a record row tied to the current client.
-3. **Records column** — list of past records for the selected client, click to reload everything into the workspace (read-only or "duplicate to edit").
+### Kolejność wdrożenia (4 osobne kroki, każdy weryfikowalny)
 
-### Database (Lovable Cloud)
+1. **Moduł 1** (PDF + mail) — najwięcej setupu (domena email), największa wartość biznesowa. Wymaga dialogu konfiguracji domeny nadawczej.
+2. **Moduł 2** (VIN + kalkulator) — całkowicie izolowany, zero zależności, szybka iteracja.
+3. **Moduł 4** (Dashboard) — wymaga danych z modułów 1+2, naturalne miejsce na aggregację.
+4. **Moduł 3** (Watchlist) — najbardziej złożony (cron, alerty), z zastrzeżeniem o ograniczeniu refresh bidu.
 
-- `clients` — id, name, contact, notes, created_at
-- `records` — id, client_id, criteria (jsonb), listings (jsonb), ai_input (jsonb), ai_prompt (text), analysis (jsonb), report_html (text), mail_html (text), status, created_at
-- `app_config` — singleton row for runtime flags: `use_mock_data`, `ai_analysis_mode`, `filter_seller_insurance_only`, `min_auction_window_hours`, `max_auction_window_hours`, `collect_all_prefiltered_results`, `open_all_prefiltered_details`. Editable from a small Settings drawer; defaults match your production list.
+Po każdym kroku możesz przetestować zanim przejdę do następnego.
 
-No auth. No RLS-per-user (single operator). Public access to the published URL — keep the URL private.
+---
 
-### AI analysis
+### Czego ŚWIADOMIE nie robimy
 
-Server function calls `https://api.anthropic.com/v1/messages` with `ANTHROPIC_API_KEY` (Lovable Cloud secret, never in code). Default model from `ANTHROPIC_MODEL` env (e.g. `claude-sonnet-4-5`). Prompt builder mirrors the structure used by `usa-car-finder/ai/analyzer.py` so the input JSON / prompt / output JSON download cleanly. Errors are caught and surfaced in the UI (no blank screens).
+- ❌ Własnego scrapera Copart/IAAI (na Workerach niewykonalne — brak Playwright/Chromium, agresywne anti-bot)
+- ❌ Firecrawl (Twój wybór "pomiń scraping")
+- ❌ Płatnych API (wszystko free tier: NHTSA bez klucza, Frankfurter bez klucza, Lovable AI w cenie planu, Lovable Emails w cenie planu)
+- ❌ Multi-user auth (zachowujemy single-operator zgodnie z `.lovable/plan.md`)
 
-### HTML report
+### Pierwsze pytanie po zatwierdzeniu
 
-Jinja-style template re-implemented in TS, styled to match `przyklady_maili_README.md` (HTML mail look). Output is HTML + Markdown + JSON. **No DOCX, no PDF** (WeasyPrint can't run on the Worker — explicitly out of scope).
-
-### Bridge to your Python service
-
-You deploy `usa-car-finder/` on a host that supports Playwright + persistent disk (Railway, Render, Fly.io, Hetzner — your choice). Lovable calls it via two endpoints, expected contract:
-
-- `POST {SCRAPER_BASE_URL}/api/search` — body: criteria JSON; auth: `Authorization: Bearer ${SCRAPER_API_TOKEN}`; returns pre-filtered listings (sorted by closest auction first, seller-type insurance, damage filtered, with detail data already opened — i.e. exactly the order your existing scraper does).
-- `GET {SCRAPER_BASE_URL}/health` — returns `{ ok: true }`.
-
-If your existing FastAPI doesn't expose these yet, I'll include a minimal patch (one new router file) to add them on top of your current scraper logic — no logic changes, no CAPTCHA bypass. CAPTCHA / login is your service's problem (storage_state, manual login) and stays on your host.
-
-The "Online search" button is hidden when `SCRAPER_BASE_URL` is unset, so the panel works standalone with manual paste from day one.
-
-### Validation endpoints (so you can sanity-check after deploy)
-
-- `GET /api/health` — returns `{ ok: true, scraper: <reachable|unconfigured|down> }`
-- `GET /api/config` — returns current `app_config` + which env vars are set (booleans only, never values)
-- `GET /api/records` — list of saved records (id, client name, created_at)
-
-### Required environment variables (you set these in Lovable Cloud secrets)
-
-- `ANTHROPIC_API_KEY` (required for AI)
-- `ANTHROPIC_MODEL` (optional, default `claude-sonnet-4-5`)
-- `ANTHROPIC_BASE_URL` (optional, default `https://api.anthropic.com`)
-- `SCRAPER_BASE_URL` (optional — when set, enables Online search button)
-- `SCRAPER_API_TOKEN` (required if `SCRAPER_BASE_URL` is set)
-
-These stay on your **Python host** and are NOT needed in Lovable: `COPART_EMAIL/PASSWORD`, `IAAI_EMAIL/PASSWORD`, `AUTOHELPERBOT_EMAIL/PASSWORD`. Scraper credentials never touch the Lovable side.
-
-### What's explicitly NOT included (and why)
-
-- Playwright scraping inside Lovable — Worker runtime has no Chromium / child_process. Lives on your Python host.
-- SQLite — replaced by Lovable Cloud Postgres.
-- WeasyPrint / DOCX / PDF — not runnable on Worker; out of scope per your spec ("No DOCX. HTML + markdown/JSON.").
-- Telegram / email_integration modules — not part of "online panel"; can be added later.
-- Multi-user auth — single operator per your answer.
-
-### Build steps
-
-1. Enable Lovable Cloud, create `clients`, `records`, `app_config` tables, seed `app_config` with your production defaults.
-2. Add Anthropic secrets.
-3. Build the operational panel UI (3-column workspace, replacing the placeholder index).
-4. Server functions: `listClients`, `createClient`, `saveRecord`, `listRecords`, `loadRecord`, `runAnalysis`, `renderReport`, `runScraperSearch` (optional bridge), `getConfig`, `updateConfig`.
-5. Server routes: `/api/health`, `/api/config`, `/api/records` for validation.
-6. Artifact download endpoints (return JSON / text / HTML with proper Content-Disposition).
-7. Optional: drop a `scraper_bridge.py` snippet in chat for you to paste into your FastAPI so the two endpoints exist on your host.
-
-### Final deliverable
-
-Working URL: your Lovable preview/published URL (`*.lovable.app`).
-You configure: `ANTHROPIC_API_KEY`, optionally `ANTHROPIC_MODEL`, `SCRAPER_BASE_URL`, `SCRAPER_API_TOKEN` in Lovable Cloud secrets. Scraper credentials stay on your Python host.
+Zanim wystartuję z Modułem 1, zapytam Cię o domenę nadawczą email (np. `notify.usacarscout.com`) i otworzę dialog konfiguracji DNS. Bez tego mail nie wyjdzie.
