@@ -415,6 +415,7 @@ function Panel() {
       return;
     }
     setBusy("scraper");
+    cancelRequestedRef.current = false;
     const startedAt = Date.now();
     setScrapeJob({ status: "queued", startedAt, elapsedMs: 0 });
     try {
