@@ -59,6 +59,7 @@ import {
   Calculator,
   BarChart3,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
