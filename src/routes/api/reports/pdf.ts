@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/reports/pdf")({
         });
 
         const filename = `usa-car-scout-${mode}-${recordId.slice(0, 8)}.pdf`;
-        return new Response(pdf, {
+        return new Response(new Uint8Array(pdf), {
           status: 200,
           headers: {
             "Content-Type": "application/pdf",
