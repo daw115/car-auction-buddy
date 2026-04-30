@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download } from "lucide-react";
+import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download, ArrowDownNarrowWide, ArrowUpNarrowWide, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -47,6 +47,8 @@ function DevLogsPage() {
   const [connected, setConnected] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const pausedRef = useRef(paused);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<LogEntry[]>([]);
