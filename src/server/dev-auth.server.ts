@@ -66,9 +66,21 @@ export function checkDevAuth(request: Request): DevAuthResult {
   return { ok: true };
 }
 
+// Default cookie TTL: 1h. Override via DEV_LOGS_TOKEN_TTL_SECONDS (min 60s, max 30 days).
+const DEFAULT_TTL_SECONDS = 60 * 60;
+const MIN_TTL_SECONDS = 60;
+const MAX_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+export function getCookieTtlSeconds(): number {
+  const raw = process.env.DEV_LOGS_TOKEN_TTL_SECONDS;
+  if (!raw) return DEFAULT_TTL_SECONDS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_TTL_SECONDS;
+  return Math.max(MIN_TTL_SECONDS, Math.min(MAX_TTL_SECONDS, Math.floor(n)));
+}
+
 export function buildAuthCookie(token: string): string {
-  // 7 days, httpOnly, lax. Secure when not on localhost-style request.
-  const maxAge = 60 * 60 * 24 * 7;
+  const maxAge = getCookieTtlSeconds();
   return `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax; Secure`;
 }
 
