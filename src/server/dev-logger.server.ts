@@ -64,6 +64,15 @@ export function devLog(
   } else {
     fn(line);
   }
+  // Mirror to in-memory stream for the dev logs panel.
+  try {
+    // Lazy import to avoid potential circular issues.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { publishLog } = require("./log-stream.server") as typeof import("./log-stream.server");
+    publishLog({ level, scope, message, extra: extra ?? null });
+  } catch {
+    // ignore
+  }
 }
 
 function statusColor(status: number): string {
