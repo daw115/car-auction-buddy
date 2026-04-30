@@ -184,6 +184,42 @@ export type Database = {
           },
         ]
       }
+      scrape_cache: {
+        Row: {
+          cache_key: string
+          config_snapshot: Json
+          created_at: string
+          criteria: Json
+          expires_at: string
+          id: string
+          listings: Json
+          listings_count: number
+          source: string | null
+        }
+        Insert: {
+          cache_key: string
+          config_snapshot?: Json
+          created_at?: string
+          criteria: Json
+          expires_at?: string
+          id?: string
+          listings?: Json
+          listings_count?: number
+          source?: string | null
+        }
+        Update: {
+          cache_key?: string
+          config_snapshot?: Json
+          created_at?: string
+          criteria?: Json
+          expires_at?: string
+          id?: string
+          listings?: Json
+          listings_count?: number
+          source?: string | null
+        }
+        Relationships: []
+      }
       watchlist: {
         Row: {
           active: boolean
