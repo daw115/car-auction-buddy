@@ -244,6 +244,8 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             ext_reason = None
         if ext_reason:
             notice_extra.append(ext_reason)
+
+    if not all_lots:
         progress_cb("ai_analyze", {"_status": "skipped", "reason": "no_lots"})
         top_recommendations: list = []
         ranked_results: list = []
