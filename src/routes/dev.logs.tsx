@@ -709,6 +709,10 @@ function DevLogsGate() {
   }
 
   if (status === "locked") {
+    const lockoutMs = lockoutUntil ? Math.max(0, lockoutUntil - now) : 0;
+    const isLocked = lockoutMs > 0;
+    const lockMin = Math.floor(lockoutMs / 60000);
+    const lockSec = Math.floor((lockoutMs % 60000) / 1000);
     return (
       <div className="min-h-screen bg-background p-4 md:p-6">
         <div className="mx-auto max-w-md">
@@ -719,6 +723,19 @@ function DevLogsGate() {
                 Wprowadź hasło dostępu (DEV_LOGS_TOKEN).
               </p>
             </div>
+            {isLocked ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                Zbyt wiele nieudanych prób. Spróbuj ponownie za{" "}
+                <span className="font-mono">
+                  {lockMin}:{String(lockSec).padStart(2, "0")}
+                </span>
+                .
+              </div>
+            ) : attemptsLeft !== null && attemptsLeft >= 0 ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                Nieprawidłowe hasło. Pozostało prób: {attemptsLeft}.
+              </div>
+            ) : null}
             <form onSubmit={submit} className="space-y-3">
               <Input
                 type="password"
@@ -726,6 +743,7 @@ function DevLogsGate() {
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Hasło"
                 autoFocus
+                disabled={isLocked}
               />
               <div className="flex items-center justify-between">
                 <Button asChild variant="ghost" size="sm">
@@ -733,8 +751,8 @@ function DevLogsGate() {
                     <ArrowLeft className="h-4 w-4 mr-1" /> Anuluj
                   </Link>
                 </Button>
-                <Button type="submit" size="sm" disabled={submitting || !token}>
-                  {submitting ? "Logowanie…" : "Zaloguj"}
+                <Button type="submit" size="sm" disabled={submitting || !token || isLocked}>
+                  {submitting ? "Logowanie…" : isLocked ? "Zablokowane" : "Zaloguj"}
                 </Button>
               </div>
             </form>
