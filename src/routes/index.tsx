@@ -718,7 +718,7 @@ function Panel() {
                 ) : (
                   <FileText className="h-4 w-4" />
                 )}
-                Generuj raporty LOT (broker + klient TOP3)
+                Generuj raporty LOT (broker + klient TOP3+2)
               </Button>
               {!env?.ANTHROPIC_API_KEY && (
                 <span className="inline-flex items-center gap-1 text-xs text-destructive">
