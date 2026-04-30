@@ -30,7 +30,21 @@ logger = logging.getLogger("api.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: init persistent job store + recover state
+    try:
+        from api import job_db
+        job_db.init_db()
+        orphans = job_db.mark_orphaned_running_as_interrupted()
+        if orphans:
+            logger.warning("[lifespan] Oznaczono %d zombi-jobów jako interrupted", orphans)
+        loaded = jobs_store.hydrate_jobs_from_db()
+        if loaded:
+            logger.info("[lifespan] Wczytano %d persystowanych jobów z DB", loaded)
+    except Exception:
+        logger.exception("[lifespan] Inicjalizacja job_db nieudana")
+
     yield
+
     try:
         from scraper.browser_context import close_shared_extension_context
 
@@ -394,15 +408,47 @@ async def _run_job(request: SearchRequest, job: jobs_store.Job) -> None:
         await jobs_store.mark_error(job, f"{exc.__class__.__name__}: {exc}")
 
 
+def _compute_criteria_hash(request: SearchRequest) -> str:
+    import hashlib
+    payload = {
+        "criteria": request.criteria.model_dump(mode="json"),
+        "demo": bool(request.demo),
+        "auction_min_hours": request.auction_min_hours,
+        "auction_max_hours": request.auction_max_hours,
+    }
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
+IDEMPOTENCY_TTL_SECONDS = int(os.getenv("IDEMPOTENCY_TTL_MIN", "30")) * 60
+
+
 @app.post("/search", status_code=202)
 async def search_cars(request: SearchRequest):
-    job = jobs_store.create_job()
+    criteria_hash = _compute_criteria_hash(request)
+    reused = jobs_store.find_reusable_job(criteria_hash, IDEMPOTENCY_TTL_SECONDS)
+    if reused is not None:
+        logger.info("[/search] Idempotent reuse job %s (status=%s)", reused.id, reused.status)
+        return {
+            "job_id": reused.id,
+            "status_url": f"/search/jobs/{reused.id}",
+            "stream_url": f"/search/stream/{reused.id}",
+            "cancel_url": f"/search/jobs/{reused.id}",
+            "idempotent": True,
+            "reused_status": reused.status,
+        }
+
+    job = jobs_store.create_job(
+        criteria_hash=criteria_hash,
+        request_snapshot=request.model_dump(mode="json"),
+    )
     job.task = asyncio.create_task(_run_job(request, job))
     return {
         "job_id": job.id,
         "status_url": f"/search/jobs/{job.id}",
         "stream_url": f"/search/stream/{job.id}",
         "cancel_url": f"/search/jobs/{job.id}",
+        "idempotent": False,
     }
 
 
