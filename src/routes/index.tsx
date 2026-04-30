@@ -181,6 +181,24 @@ function Panel() {
 
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Scraper job progress
+  const [scrapeJob, setScrapeJob] = useState<{
+    status: string; // queued | running | done | failed
+    jobId?: string;
+    startedAt: number;
+    progress?: number; // 0..1 if backend reports
+    elapsedMs: number;
+  } | null>(null);
+
+  // Tick elapsed every 1s while job is active
+  useEffect(() => {
+    if (!scrapeJob || scrapeJob.status === "done" || scrapeJob.status === "failed") return;
+    const t = setInterval(() => {
+      setScrapeJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [scrapeJob?.status, scrapeJob?.startedAt]);
+
   // new-client form
   const [newName, setNewName] = useState("");
   const [newContact, setNewContact] = useState("");
