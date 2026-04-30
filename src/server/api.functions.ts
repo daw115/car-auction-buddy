@@ -269,26 +269,25 @@ export const runAnalysis = createServerFn({ method: "POST" })
     }
 
     const lotsById = new Map(listings.map((l) => [l.lot_id, l]));
-    const analyzed: AnalyzedLot[] = (parsed as AIAnalysis[])
-      .map((a) => {
-        const lot = lotsById.get(a.lot_id);
-        if (!lot) return null;
-        return {
-          lot,
-          analysis: {
-            lot_id: a.lot_id,
-            score: typeof a.score === "number" ? a.score : 0,
-            recommendation: a.recommendation || "RYZYKO",
-            red_flags: Array.isArray(a.red_flags) ? a.red_flags : [],
-            estimated_repair_usd: a.estimated_repair_usd ?? null,
-            estimated_total_cost_usd: a.estimated_total_cost_usd ?? null,
-            client_description_pl: a.client_description_pl || "",
-            ai_notes: a.ai_notes ?? null,
-          },
-        } satisfies AnalyzedLot;
-      })
-      .filter((x): x is AnalyzedLot => x !== null)
-      .sort((a, b) => b.analysis.score - a.analysis.score);
+    const analyzed: AnalyzedLot[] = [];
+    for (const a of parsed as AIAnalysis[]) {
+      const lot = lotsById.get(a.lot_id);
+      if (!lot) continue;
+      analyzed.push({
+        lot,
+        analysis: {
+          lot_id: a.lot_id,
+          score: typeof a.score === "number" ? a.score : 0,
+          recommendation: a.recommendation || "RYZYKO",
+          red_flags: Array.isArray(a.red_flags) ? a.red_flags : [],
+          estimated_repair_usd: a.estimated_repair_usd ?? null,
+          estimated_total_cost_usd: a.estimated_total_cost_usd ?? null,
+          client_description_pl: a.client_description_pl || "",
+          ai_notes: a.ai_notes ?? null,
+        },
+      });
+    }
+    analyzed.sort((a, b) => b.analysis.score - a.analysis.score);
 
     return {
       ai_input: { criteria, listings },
