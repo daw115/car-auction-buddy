@@ -24,8 +24,21 @@ type EnvFlags = {
 };
 
 type TestResult =
-  | { ok: true; configured: true; model: string; baseUrl?: string; sample?: string }
+  | {
+      ok: true;
+      configured: true;
+      model: string;
+      baseUrl?: string;
+      sample?: string;
+      usage?: { input_tokens: number; output_tokens: number };
+    }
   | { ok: false; configured: boolean; model?: string; status?: number; error: string };
+
+const ANTHROPIC_MODEL_OPTIONS = [
+  "claude-opus-4-7",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5",
+] as const;
 
 function SettingsPage() {
   const getConfigFn = useServerFn(getConfig);
