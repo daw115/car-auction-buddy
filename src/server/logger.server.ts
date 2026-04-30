@@ -3,6 +3,7 @@
 // Sanitize before passing in.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { devLog } from "./dev-logger.server";
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
@@ -66,13 +67,23 @@ export function sanitizeDetails(input: unknown, depth = 0): unknown {
 }
 
 export async function writeLog(ctx: LogContext, entry: LogEntry): Promise<void> {
+  const level = entry.level ?? "info";
+  // Mirror to console with color first — DB write may be async/slow.
+  const scope = `${ctx.operation}${entry.step ? `:${entry.step}` : ""}`;
+  const extra: Record<string, unknown> = {};
+  if (ctx.clientId) extra.clientId = ctx.clientId;
+  if (ctx.recordId) extra.recordId = ctx.recordId;
+  if (entry.durationMs != null) extra.durationMs = entry.durationMs;
+  if (entry.details) Object.assign(extra, { details: sanitizeDetails(entry.details) });
+  devLog(level, scope, entry.message, extra);
+
   try {
     const row = {
       client_id: ctx.clientId ?? null,
       record_id: ctx.recordId ?? null,
       operation: ctx.operation,
       step: entry.step ?? null,
-      level: entry.level ?? "info",
+      level,
       message: truncate(entry.message, 1000),
       details: entry.details ? sanitizeDetails(entry.details) : null,
       duration_ms: entry.durationMs ?? null,
