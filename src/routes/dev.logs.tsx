@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pause, Play, Trash2, ArrowLeft } from "lucide-react";
+import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 
 type LogEntry = {
   id: number;
