@@ -8,6 +8,7 @@ import {
   buildAuthCookie,
   checkDevAuth,
   clearAuthCookie,
+  getCookieTtlSeconds,
   getExpectedToken,
 } from "@/server/dev-auth.server";
 
@@ -15,12 +16,13 @@ export const Route = createFileRoute("/api/dev/auth")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const ttlSeconds = getCookieTtlSeconds();
         const result = checkDevAuth(request);
         if (result.ok) {
-          return Response.json({ authenticated: true });
+          return Response.json({ authenticated: true, ttlSeconds });
         }
         return Response.json(
-          { authenticated: false, reason: result.reason },
+          { authenticated: false, reason: result.reason, ttlSeconds },
           { status: result.status === 401 ? 200 : result.status },
         );
       },
