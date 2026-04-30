@@ -15,6 +15,7 @@ import {
   runAnalysis,
   renderReport,
   runScraperSearch,
+  runLotReports,
 } from "@/server/api.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 import { LogsPanel } from "@/components/LogsPanel";
@@ -121,6 +122,7 @@ function Panel() {
   const fnRunAnalysis = useServerFn(runAnalysis);
   const fnRenderReport = useServerFn(renderReport);
   const fnRunScraper = useServerFn(runScraperSearch);
+  const fnRunLotReports = useServerFn(runLotReports);
 
   // ---- state
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -315,6 +317,32 @@ function Panel() {
       setReportHtml(r.report_html);
       setMailHtml(r.mail_html);
       toast.success("Raport wygenerowany");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function makeLotReports() {
+    if (listings.length === 0) {
+      toast.error("Brak lotów. Wczytaj wyniki scrapera lub wklej JSON.");
+      return;
+    }
+    if (!criteria.make.trim()) {
+      toast.error("Marka jest wymagana w kryteriach.");
+      return;
+    }
+    setBusy("lot");
+    try {
+      const r = (await fnRunLotReports({
+        data: { criteria, listings, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
+      })) as { report_html: string; mail_html: string; lots: Array<{ lot_id: string; score: number; group: string; rank_position: number | null }> };
+      setReportHtml(r.report_html);
+      setMailHtml(r.mail_html);
+      const tops = r.lots.filter((l) => l.group === "TOP").length;
+      const rejs = r.lots.filter((l) => l.group === "REJECTED").length;
+      toast.success(`Raporty LOT gotowe: TOP ${tops}, odrzucone ${rejs}`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -678,7 +706,19 @@ function Panel() {
                 ) : (
                   <FileText className="h-4 w-4" />
                 )}
-                Wygeneruj raport
+                Wygeneruj raport (prosty)
+              </Button>
+              <Button
+                onClick={makeLotReports}
+                disabled={busy === "lot" || listings.length === 0}
+                className="bg-primary"
+              >
+                {busy === "lot" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                Generuj raporty LOT (broker + klient TOP3)
               </Button>
               {!env?.ANTHROPIC_API_KEY && (
                 <span className="inline-flex items-center gap-1 text-xs text-destructive">
