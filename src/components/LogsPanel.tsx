@@ -5,7 +5,7 @@ import { listLogs, clearLogs } from "@/server/api.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download } from "lucide-react";
+import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download, ExternalLink } from "lucide-react";
 
 type LogRow = {
   id: string;
@@ -20,9 +20,13 @@ type LogRow = {
   duration_ms: number | null;
 };
 
+type RecordSummary = { id: string; title: string | null };
+
 type Props = {
   clientId: string | null;
   recordId?: string | null;
+  records?: RecordSummary[];
+  onOpenRecord?: (id: string) => void;
 };
 
 const LEVEL_STYLES: Record<string, string> = {
@@ -53,7 +57,7 @@ function toIsoEnd(localDate: string): string | undefined {
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
-export function LogsPanel({ clientId, recordId }: Props) {
+export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) {
   const fnList = useServerFn(listLogs);
   const fnClear = useServerFn(clearLogs);
   const [rows, setRows] = useState<LogRow[]>([]);
@@ -268,9 +272,17 @@ export function LogsPanel({ clientId, recordId }: Props) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="break-words leading-snug">{row.message}</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    {new Date(row.created_at).toLocaleTimeString("pl-PL")}
-                    {typeof row.duration_ms === "number" ? ` · ${row.duration_ms} ms` : ""}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                    <span>{new Date(row.created_at).toLocaleTimeString("pl-PL")}</span>
+                    {typeof row.duration_ms === "number" && <span>· {row.duration_ms} ms</span>}
+                    {row.record_id && (
+                      <RecordChip
+                        recordId={row.record_id}
+                        title={records?.find((r) => r.id === row.record_id)?.title ?? null}
+                        active={row.record_id === recordId}
+                        onOpen={onOpenRecord}
+                      />
+                    )}
                   </div>
                 </div>
               </button>
@@ -350,4 +362,46 @@ function downloadLogs(rows: LogRow[], format: "json" | "csv", scope: string) {
   } else {
     triggerDownload(`logs-${scope}-${ts}.csv`, toCsv(rows), "text/csv");
   }
+}
+
+function RecordChip({
+  recordId,
+  title,
+  active,
+  onOpen,
+}: {
+  recordId: string;
+  title: string | null;
+  active: boolean;
+  onOpen?: (id: string) => void;
+}) {
+  const label = title?.trim() || `${recordId.slice(0, 8)}`;
+  const baseCls =
+    "inline-flex items-center gap-1 rounded border px-1.5 py-0 text-[10px] max-w-[180px] truncate";
+  const stateCls = active
+    ? "border-primary/40 bg-primary/10 text-primary"
+    : "border-border bg-background hover:bg-accent hover:text-accent-foreground";
+
+  if (!onOpen) {
+    return (
+      <span className={`${baseCls} ${stateCls}`} title={`Rekord ${recordId}`}>
+        <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(recordId);
+      }}
+      className={`${baseCls} ${stateCls}`}
+      title={`Otwórz rekord ${recordId}`}
+    >
+      <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
 }
