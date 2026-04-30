@@ -1067,6 +1067,8 @@ function Panel() {
                 job={scrapeJob}
                 onCancel={cancelScrape}
                 onDownloadLogs={downloadJobLogs}
+                onRerun={callScraper}
+                rerunDisabled={busy === "scraper"}
               />
             )}
             <Textarea
