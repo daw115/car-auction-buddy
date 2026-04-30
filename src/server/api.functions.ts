@@ -869,11 +869,18 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
 
+    const log = makeLogger({ operation: "scrape", clientId: null, recordId: null });
+
     const res = await fetch(`${baseUrl}/api/jobs/${data.jobId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      await log.warn("poll_http", `Poll HTTP ${res.status} dla job ${data.jobId}`, {
+        job_id: data.jobId,
+        http_status: res.status,
+        body_preview: body.slice(0, 200),
+      });
       throw new Error(`Poll HTTP ${res.status}: ${body.slice(0, 200)}`);
     }
     const j = (await res.json()) as {
@@ -884,10 +891,29 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     };
 
     const status = j.status ?? "unknown";
+    const DONE_STATUSES = ["done", "completed", "finished", "success", "complete"];
+
+    await log.info("poll", `Job ${data.jobId} — status: ${status}`, {
+      job_id: data.jobId,
+      status,
+      progress: j.progress,
+    });
+
+    if (DONE_STATUSES.includes(status)) {
+      await log.info("done", `Job ${data.jobId} zakończony, wyników: ${j.listings?.length ?? 0}`, {
+        job_id: data.jobId,
+        listings_count: j.listings?.length ?? 0,
+      });
+    } else if (status === "failed" || status === "error") {
+      await log.error("job_failed", `Job ${data.jobId} zakończony błędem: ${j.error ?? "brak opisu"}`, {
+        job_id: data.jobId,
+        error: j.error,
+      });
+    }
 
     // Persist to cache when the job finishes successfully.
     if (
-      ["done", "completed", "finished", "success", "complete"].includes(status) &&
+      DONE_STATUSES.includes(status) &&
       Array.isArray(j.listings) &&
       data.cacheKey &&
       data.criteria
@@ -962,7 +988,7 @@ export const cancelScraperJob = createServerFn({ method: "POST" })
       headers,
     }).catch(() => null);
 
-    if (!res || (!res.ok && res.status === 404)) {
+    if (!res || !res.ok) {
       res = await fetch(`${baseUrl}/api/jobs/${data.jobId}/cancel`, {
         method: "POST",
         headers,
