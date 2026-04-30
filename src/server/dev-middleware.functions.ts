@@ -6,14 +6,18 @@ import { createMiddleware } from "@tanstack/react-start";
 import { logHttp, devLog } from "./dev-logger.server";
 
 export const devRequestLogger = createMiddleware({ type: "function" }).server(
-  async ({ next, functionId, method }) => {
+  async (ctx) => {
     const start = performance.now();
+    // functionId / method are present at runtime but typings are loose across versions.
+    const meta = ctx as unknown as { functionId?: string; method?: string };
+    const fnId = meta.functionId ?? "unknown";
+    const method = meta.method ?? "POST";
     try {
-      const result = await next();
+      const result = await ctx.next();
       const durationMs = performance.now() - start;
       logHttp({
-        method: method ?? "POST",
-        path: `fn:${functionId}`,
+        method,
+        path: `fn:${fnId}`,
         status: 200,
         durationMs,
         scope: "server-fn",
@@ -26,13 +30,13 @@ export const devRequestLogger = createMiddleware({ type: "function" }).server(
           ? (err as { status: number }).status
           : 500;
       logHttp({
-        method: method ?? "POST",
-        path: `fn:${functionId}`,
+        method,
+        path: `fn:${fnId}`,
         status,
         durationMs,
         scope: "server-fn",
       });
-      devLog("error", "server-fn", `${functionId} failed`, {
+      devLog("error", "server-fn", `${fnId} failed`, {
         message: (err as Error)?.message,
       });
       throw err;
