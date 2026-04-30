@@ -439,7 +439,19 @@ function Panel() {
       const deadline = Date.now() + 5 * 60 * 1000;
       let listingsResult: CarLot[] = [];
       while (Date.now() < deadline) {
+        if (cancelRequestedRef.current) {
+          setScrapeJob((s) =>
+            s ? { ...s, status: "cancelled", elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          return;
+        }
         await new Promise((r) => setTimeout(r, 4000));
+        if (cancelRequestedRef.current) {
+          setScrapeJob((s) =>
+            s ? { ...s, status: "cancelled", elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          return;
+        }
         let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
         try {
           p = (await fnPollScraper({ data: { jobId } })) as typeof p;
