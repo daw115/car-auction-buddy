@@ -17,6 +17,7 @@ import {
   runScraperSearch,
   runLotReports,
 } from "@/server/api.functions";
+import { addToWatchlist } from "@/server/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 import { LogsPanel } from "@/components/LogsPanel";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Calculator,
+  BarChart3,
+  Eye,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -124,6 +127,34 @@ function Panel() {
   const fnRenderReport = useServerFn(renderReport);
   const fnRunScraper = useServerFn(runScraperSearch);
   const fnRunLotReports = useServerFn(runLotReports);
+  const fnAddWatch = useServerFn(addToWatchlist);
+
+  const watchLot = async (a: AnalyzedLot) => {
+    try {
+      await fnAddWatch({
+        data: {
+          client_id: activeClientId ?? null,
+          source: a.lot.source ?? null,
+          lot_id: a.lot.lot_id ?? null,
+          url: (a.lot as any).url ?? null,
+          title: `${a.lot.year ?? ""} ${a.lot.make ?? ""} ${a.lot.model ?? ""}`.trim(),
+          make: a.lot.make ?? null,
+          model: a.lot.model ?? null,
+          year: a.lot.year ?? null,
+          vin: (a.lot as any).vin ?? null,
+          current_bid_usd: a.lot.current_bid_usd ?? null,
+          buy_now_usd: (a.lot as any).buy_now_usd ?? null,
+          score: a.analysis.score,
+          category: a.analysis.recommendation,
+          notes: a.analysis.client_description_pl ?? null,
+          snapshot: a as any,
+        },
+      });
+      toast.success("Dodano do watchlist");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Błąd dodawania");
+    }
+  };
 
   // ---- state
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -460,6 +491,18 @@ function Panel() {
           <div className="flex items-center gap-2">
             <EnvStatus env={env} />
             <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              <BarChart3 className="h-3.5 w-3.5" /> Dashboard
+            </Link>
+            <Link
+              to="/watchlist"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              <Eye className="h-3.5 w-3.5" /> Watchlist
+            </Link>
+            <Link
               to="/calculator"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
             >
@@ -789,8 +832,18 @@ function Panel() {
                         ))}
                       </div>
                     )}
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      Naprawa: ${a.analysis.estimated_repair_usd ?? "—"} · Łącznie: ${a.analysis.estimated_total_cost_usd ?? "—"}
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        Naprawa: ${a.analysis.estimated_repair_usd ?? "—"} · Łącznie: ${a.analysis.estimated_total_cost_usd ?? "—"}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => watchLot(a)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" /> Obserwuj
+                      </Button>
                     </div>
                   </div>
                 ))}
