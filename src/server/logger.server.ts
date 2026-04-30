@@ -77,7 +77,7 @@ export async function writeLog(ctx: LogContext, entry: LogEntry): Promise<void> 
       details: entry.details ? (sanitizeDetails(entry.details) as Record<string, unknown>) : null,
       duration_ms: entry.durationMs ?? null,
     };
-    const { error } = await supabaseAdmin.from("operation_logs").insert(row);
+    const { error } = await supabaseAdmin.from("operation_logs").insert([row]);
     if (error) console.error("[logger] failed to insert:", error.message);
   } catch (e) {
     console.error("[logger] exception:", e);
