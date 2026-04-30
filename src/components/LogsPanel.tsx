@@ -170,6 +170,69 @@ export function LogsPanel({ clientId, recordId }: Props) {
         ))}
       </div>
 
+      <div className="mb-2 flex flex-wrap items-center gap-1">
+        {ALL_LEVELS.map((lvl) => {
+          const active = levels.has(lvl);
+          return (
+            <button
+              key={lvl}
+              type="button"
+              onClick={() =>
+                setLevels((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(lvl)) next.delete(lvl);
+                  else next.add(lvl);
+                  // Don't allow empty selection — reset to all.
+                  if (next.size === 0) return new Set(ALL_LEVELS);
+                  return next;
+                })
+              }
+              className={`rounded border px-1.5 py-0.5 text-[10px] capitalize ${
+                active ? LEVEL_STYLES[lvl] ?? "" : "border-border bg-background text-muted-foreground opacity-60"
+              }`}
+              title={`Pokaż poziom: ${lvl}`}
+            >
+              {lvl}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-2 grid grid-cols-2 gap-1">
+        <label className="flex flex-col text-[10px] text-muted-foreground">
+          Od
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="mt-0.5 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
+          />
+        </label>
+        <label className="flex flex-col text-[10px] text-muted-foreground">
+          Do
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="mt-0.5 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
+          />
+        </label>
+        {(dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => {
+              setDateFrom("");
+              setDateTo("");
+            }}
+            className="col-span-2 text-left text-[10px] text-muted-foreground underline hover:text-foreground"
+          >
+            Wyczyść zakres dat
+          </button>
+        )}
+      </div>
+
       <div className="max-h-[40vh] space-y-1 overflow-y-auto">
         {rows.length === 0 && (
           <p className="px-1 py-2 text-xs text-muted-foreground">
