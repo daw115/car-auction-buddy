@@ -443,10 +443,27 @@ ${rows}
           </ScrollArea>
         </Card>
 
-        <p className="text-xs text-muted-foreground">
-          Endpoint: <code>/api/dev/logs/stream</code> · Bufor 500 ostatnich wpisów ·
-          Auto-scroll wyłącza się podczas pauzy.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <p>
+            Endpoint: <code>/api/dev/logs/stream</code> · Bufor 500 ostatnich wpisów ·
+            Auto-scroll wyłącza się podczas pauzy.
+          </p>
+          {lastId !== null ? (
+            <button
+              type="button"
+              onClick={() => copyResumeLink(lastId)}
+              className="inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-2 py-0.5 font-mono hover:text-foreground hover:border-border"
+              title="Skopiuj link wznawiający strumień od ostatniego ID"
+            >
+              {copiedLinkId === lastId ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <Link2 className="h-3 w-3" />
+              )}
+              resume od #{lastId}
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
