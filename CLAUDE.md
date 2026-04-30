@@ -175,6 +175,56 @@ Wszystkie paczki muszą być bundlowalne — nie ustawiaj `ssr.external` w `vite
 - **Toasty**: `sonner` (`import { toast } from "sonner"`).
 - **Ikony**: `lucide-react`.
 
+### Konwencja commitów (Conventional Commits)
+
+**Format wiadomości:**
+```
+<type>(<scope>): <krótki opis w trybie rozkazującym, max 72 znaki>
+
+[opcjonalny body — DLACZEGO, nie CO; zawijaj na 72 znakach]
+
+[opcjonalny footer: Refs #123, BREAKING CHANGE: ...]
+```
+
+**Dozwolone `type`:**
+- `feat` — nowa funkcjonalność
+- `fix` — naprawa buga
+- `refactor` — zmiana kodu bez zmiany zachowania
+- `perf` — poprawa wydajności
+- `style` — formatowanie, brak zmian logiki
+- `docs` — dokumentacja (README, CLAUDE.md, komentarze)
+- `test` — testy
+- `chore` — zależności, configi, narzędzia
+- `db` — migracje SQL / zmiany schematu
+
+**Typowe `scope`:** `scraper`, `cache`, `ai`, `pdf`, `watchlist`, `auth`, `ui`, `api`, `db`, `deps`, `config`.
+
+**Przykłady:**
+```
+feat(scraper): add cancel button to status panel
+fix(cache): include damage filter in cache key hash
+db(watchlist): add user_id index on watchlist_items
+docs(claude): document commit convention
+chore(deps): bump @tanstack/react-start to 1.168
+```
+
+### Po każdej zmianie — commit + push
+
+Claude Code MUSI po zakończeniu zadania (gdy build/typecheck przechodzi):
+1. `git add -A`
+2. `git commit -m "<type>(<scope>): <opis>"` zgodnie z formatem wyżej
+3. `git push origin main`
+
+**Zasady:**
+- Jeden logiczny zestaw zmian = jeden commit. Nie kumuluj kilku featurów w jednym commicie.
+- Jeśli zadanie obejmuje migrację SQL + kod aplikacji — dwa commity (`db(...)` najpierw, potem `feat(...)`).
+- Nigdy nie commituj `node_modules/`, `.env`, `dist/`, `.lovable/` (są w `.gitignore`).
+- Przed pushem: `git pull --rebase origin main` (Lovable mógł dopisać commit w międzyczasie — patrz sekcja 7).
+- Jeśli `git push` odrzucony (non-fast-forward) → `git pull --rebase` → rozwiąż konflikty → push ponownie.
+- Nie używaj `git push --force` na `main`.
+
+Gotowy template komendy: [`.claude/commands/commit-and-push.md`](.claude/commands/commit-and-push.md).
+
 ---
 
 ## 7. Workflow z Lovable
