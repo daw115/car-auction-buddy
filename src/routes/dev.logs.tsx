@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download } from "lucide-react";
+import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download, ArrowDownNarrowWide, ArrowUpNarrowWide, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -47,6 +47,8 @@ function DevLogsPage() {
   const [connected, setConnected] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const pausedRef = useRef(paused);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<LogEntry[]>([]);
@@ -63,7 +65,7 @@ function DevLogsPage() {
   const copyExtra = async (entry: LogEntry) => {
     try {
       const payload = JSON.stringify(
-        { ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
+        { id: entry.id, ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
         null,
         2,
       );
@@ -73,6 +75,19 @@ function DevLogsPage() {
       setTimeout(() => setCopiedId((c) => (c === entry.id ? null : c)), 1200);
     } catch {
       toast.error("Nie udało się skopiować");
+    }
+  };
+
+  const copyResumeLink = async (id: number) => {
+    try {
+      const url = new URL("/api/dev/logs/stream", window.location.origin);
+      url.searchParams.set("since", String(id));
+      await navigator.clipboard.writeText(url.toString());
+      setCopiedLinkId(id);
+      toast.success(`Skopiowano link do wznowienia od #${id}`);
+      setTimeout(() => setCopiedLinkId((c) => (c === id ? null : c)), 1200);
+    } catch {
+      toast.error("Nie udało się skopiować linku");
     }
   };
 
@@ -190,17 +205,17 @@ ${rows}
     return () => es.close();
   }, []);
 
-  // Auto-scroll to bottom on new entries (when not paused).
+  // Auto-scroll to newest entry (top in desc, bottom in asc).
   useEffect(() => {
     if (paused) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [entries, paused]);
+    el.scrollTop = sortDir === "asc" ? el.scrollHeight : 0;
+  }, [entries, paused, sortDir]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return entries.filter((e) => {
+    const list = entries.filter((e) => {
       if (!enabled[e.level]) return false;
       if (!q) return true;
       return (
@@ -209,7 +224,10 @@ ${rows}
         (e.extra ? JSON.stringify(e.extra).toLowerCase().includes(q) : false)
       );
     });
-  }, [entries, filter, enabled]);
+    return sortDir === "asc" ? list : [...list].reverse();
+  }, [entries, filter, enabled, sortDir]);
+
+  const lastId = entries.length > 0 ? entries[entries.length - 1].id : null;
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -278,6 +296,20 @@ ${rows}
                 {paused ? <Play className="mr-1 h-3.5 w-3.5" /> : <Pause className="mr-1 h-3.5 w-3.5" />}
                 {paused ? `Wznów${pendingRef.current.length ? ` (${pendingRef.current.length})` : ""}` : "Pauza"}
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                className="h-8"
+                title={sortDir === "asc" ? "Najnowsze na dole — kliknij aby odwrócić" : "Najnowsze na górze — kliknij aby odwrócić"}
+              >
+                {sortDir === "asc" ? (
+                  <ArrowDownNarrowWide className="mr-1 h-3.5 w-3.5" />
+                ) : (
+                  <ArrowUpNarrowWide className="mr-1 h-3.5 w-3.5" />
+                )}
+                {sortDir === "asc" ? "Rosnąco" : "Malejąco"}
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8">
@@ -329,6 +361,19 @@ ${rows}
                           <ChevronRight
                             className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
                           />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => copyResumeLink(e.id)}
+                          title={`#${e.id} — kliknij, aby skopiować link wznawiający strumień od tego ID`}
+                          className="shrink-0 inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-1 py-0 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-border"
+                        >
+                          {copiedLinkId === e.id ? (
+                            <Check className="h-2.5 w-2.5" />
+                          ) : (
+                            <Link2 className="h-2.5 w-2.5" />
+                          )}
+                          #{e.id}
                         </button>
                         <span className="shrink-0 text-muted-foreground">
                           {new Date(e.ts).toLocaleTimeString()}
@@ -398,10 +443,27 @@ ${rows}
           </ScrollArea>
         </Card>
 
-        <p className="text-xs text-muted-foreground">
-          Endpoint: <code>/api/dev/logs/stream</code> · Bufor 500 ostatnich wpisów ·
-          Auto-scroll wyłącza się podczas pauzy.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <p>
+            Endpoint: <code>/api/dev/logs/stream</code> · Bufor 500 ostatnich wpisów ·
+            Auto-scroll wyłącza się podczas pauzy.
+          </p>
+          {lastId !== null ? (
+            <button
+              type="button"
+              onClick={() => copyResumeLink(lastId)}
+              className="inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-2 py-0.5 font-mono hover:text-foreground hover:border-border"
+              title="Skopiuj link wznawiający strumień od ostatniego ID"
+            >
+              {copiedLinkId === lastId ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <Link2 className="h-3 w-3" />
+              )}
+              resume od #{lastId}
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
