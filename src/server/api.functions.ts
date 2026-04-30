@@ -670,3 +670,121 @@ function buildMockListings(criteria: ClientCriteria): CarLot[] {
     base(5, "copart", "FL", "HAIL", Math.round(budget * 0.5), 28000),
   ];
 }
+
+// ---------- Lot reports (broker + klient) — port generatora z Pythona ----------
+
+type LotMeta = { rank_group?: "TOP" | "REJECTED"; rank_position?: number; rank_reason?: string };
+
+export const runLotReports = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      criteria: criteriaSchema,
+      listings: z.array(lotSchema).min(1).max(100),
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    const log = makeLogger({
+      operation: "lot_reports",
+      clientId: data.clientId ?? null,
+      recordId: data.recordId ?? null,
+    });
+    const startedAt = Date.now();
+    const criteria = data.criteria as ClientCriteria;
+    const listings = data.listings as CarLot[];
+
+    const userPrompt = `Kryteria klienta:
+- Marka/model: ${criteria.make} ${criteria.model || "(dowolny)"}
+- Rocznik: ${criteria.year_from || "?"}–${criteria.year_to || "?"}
+- Budżet: ${criteria.budget_usd} USD
+- Max przebieg: ${criteria.max_odometer_mi || "bez limitu"} mi
+- Wykluczone uszkodzenia: ${(criteria.excluded_damage_types || ["Flood", "Fire"]).join(", ")}
+
+Loty wejściowe (${listings.length}):
+${JSON.stringify(listings, null, 2)}
+
+Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze schematem w system prompt.`;
+
+    await log.info("start", `Generuję raporty LOT (${listings.length} wejść)`, {
+      listings_count: listings.length,
+      prompt_chars: userPrompt.length,
+    });
+
+    let raw: string;
+    try {
+      const result = await callAnthropic({
+        system: LOT_SYSTEM_PROMPT,
+        userPrompt,
+        maxTokens: 16384,
+      });
+      raw = result.text;
+      await log.info(
+        "ai_response",
+        `AI: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
+        { response_chars: raw.length, model: result.model, usage: result.usage },
+        Date.now() - startedAt,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await log.error("ai_call", `Błąd Anthropic: ${msg}`);
+      throw new Error(`Anthropic API: ${msg}`);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = parseAnalysisJson(raw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await log.error("parse_json", `Niepoprawny JSON: ${msg}`, { preview: raw.slice(0, 400) });
+      throw new Error(`AI zwróciło niepoprawny JSON: ${msg}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error("AI nie zwróciło tablicy LOT.");
+    }
+
+    type LotWithMeta = Lot & { _meta?: LotMeta };
+    const lots = (parsed as LotWithMeta[]).filter((x) => x && typeof x === "object" && x.lot_id);
+
+    const withImages = await Promise.all(
+      lots.map(async (lot) => {
+        const urls = Array.isArray(lot.image_urls) ? lot.image_urls : [];
+        const images = await fetchImagesAsBase64(urls, 8);
+        const meta = (lot._meta ?? {}) as LotMeta;
+        const group: "TOP" | "REJECTED" = meta.rank_group === "REJECTED" ? "REJECTED" : "TOP";
+        return { lot, images, group, meta };
+      }),
+    );
+
+    withImages.sort((a, b) => {
+      if (a.group !== b.group) return a.group === "TOP" ? -1 : 1;
+      return (a.meta.rank_position ?? 99) - (b.meta.rank_position ?? 99);
+    });
+
+    const broker_html = buildBrokerHtml(
+      withImages.map(({ lot, images, group }) => ({ lot, images, group })),
+    );
+    const top1 = withImages.find((x) => x.group === "TOP");
+    const client_html = top1 ? buildClientHtml(top1.lot, top1.images) : "";
+
+    await log.info(
+      "done",
+      `Wygenerowano raporty: ${withImages.length} lotów (TOP=${withImages.filter((x) => x.group === "TOP").length}, REJ=${withImages.filter((x) => x.group === "REJECTED").length})`,
+      { lots_count: withImages.length },
+      Date.now() - startedAt,
+    );
+
+    return {
+      report_html: broker_html,
+      mail_html: client_html,
+      lots: withImages.map(({ lot, group, meta }) => ({
+        lot_id: lot.lot_id,
+        score: lot.score,
+        status: lot.status,
+        group,
+        rank_position: meta.rank_position ?? null,
+        rank_reason: meta.rank_reason ?? null,
+      })),
+    };
+  });
+
