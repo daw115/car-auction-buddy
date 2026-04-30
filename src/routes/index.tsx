@@ -1342,16 +1342,28 @@ function Panel() {
                       {new Date(r.created_at).toLocaleString("pl-PL")} · {r.status}
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void removeRecord(r.id);
-                    }}
-                    className="ml-2 opacity-0 group-hover:opacity-100"
-                    title="Usuń"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                  </button>
+                  <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadReportBundle(r.id);
+                      }}
+                      title="Pobierz pakiet raportu (ZIP: HTML + JSON)"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeRecord(r.id);
+                      }}
+                      title="Usuń"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
