@@ -321,7 +321,37 @@ function Panel() {
     }
   }
 
-  // new-client form
+  async function downloadJobLogs(jobId: string) {
+    const t = toast.loading("Pobieranie logów...");
+    try {
+      const r = (await fnGetJobLogs({ data: { jobId } })) as {
+        jobId: string;
+        logs: Array<{
+          id: string;
+          created_at: string;
+          level: string;
+          step: string | null;
+          message: string;
+          details: unknown;
+          source: "local" | "scraper";
+        }>;
+        local_error: string | null;
+        scraper_error: string | null;
+      };
+      const blob = new Blob([JSON.stringify(r, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `scraper-job-${jobId}-logs.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`Pobrano ${r.logs.length} wpisów logów`, { id: t });
+    } catch (e) {
+      toast.error(`Błąd: ${(e as Error).message}`, { id: t });
+    }
+  }
   const [newName, setNewName] = useState("");
   const [newContact, setNewContact] = useState("");
   const [newNotes, setNewNotes] = useState("");
