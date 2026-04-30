@@ -21,6 +21,7 @@ import {
   clearScrapeCache,
   getJobLogs,
   runLotReports,
+  getReportBundle,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
@@ -289,7 +290,31 @@ function Panel() {
     }
   }
   const fnRunLotReports = useServerFn(runLotReports);
+  const fnGetReportBundle = useServerFn(getReportBundle);
   const fnAddWatch = useServerFn(addToWatchlist);
+
+  async function downloadReportBundle(recordId: string) {
+    try {
+      const r = (await fnGetReportBundle({ data: { recordId } })) as {
+        filename: string;
+        base64: string;
+        size: number;
+      };
+      const bin = atob(r.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = r.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Pobrano ${r.filename} (${(r.size / 1024).toFixed(1)} KB)`);
+    } catch (e) {
+      toast.error(`Pobranie raportu nie powiodło się: ${(e as Error).message}`);
+    }
+  }
+
 
   const watchLot = async (a: AnalyzedLot) => {
     try {
@@ -645,6 +670,19 @@ function Panel() {
       setAiPrompt(r.ai_prompt);
       setAnalysis(r.analysis);
       toast.success(`Analiza gotowa (${r.analysis.length} lotów)`);
+
+      // Auto-generuj pakiet raportu (HTML + mail) — żeby był dostępny do pobrania w historii.
+      if (r.analysis.length > 0) {
+        try {
+          const rep = (await fnRenderReport({
+            data: { clientName: activeClient?.name ?? "Klient", analyzed: r.analysis },
+          })) as { report_html: string; mail_html: string };
+          setReportHtml(rep.report_html);
+          setMailHtml(rep.mail_html);
+        } catch (err) {
+          console.warn("Auto-render raportu nie powiódł się:", err);
+        }
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -1304,16 +1342,28 @@ function Panel() {
                       {new Date(r.created_at).toLocaleString("pl-PL")} · {r.status}
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void removeRecord(r.id);
-                    }}
-                    className="ml-2 opacity-0 group-hover:opacity-100"
-                    title="Usuń"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                  </button>
+                  <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadReportBundle(r.id);
+                      }}
+                      title="Pobierz pakiet raportu (ZIP: HTML + JSON)"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeRecord(r.id);
+                      }}
+                      title="Usuń"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
