@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
 import { callAnthropic, parseAnalysisJson } from "./anthropic.server";
 import { renderReportHtml, renderMailHtml } from "./report";
+import { makeLogger } from "./logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 
 // ---------- Clients ----------
@@ -293,6 +294,8 @@ export const runAnalysis = createServerFn({ method: "POST" })
     z.object({
       criteria: criteriaSchema,
       listings: z.array(lotSchema).min(1).max(100),
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
     }).parse,
   )
   .handler(async ({ data }): Promise<{
@@ -300,37 +303,71 @@ export const runAnalysis = createServerFn({ method: "POST" })
     ai_prompt: string;
     analysis: AnalyzedLot[];
   }> => {
+    const log = makeLogger({
+      operation: "ai_analysis",
+      clientId: data.clientId ?? null,
+      recordId: data.recordId ?? null,
+    });
+    const startedAt = Date.now();
     const criteria = data.criteria as ClientCriteria;
     const listings = data.listings as CarLot[];
     const userPrompt = buildUserPrompt(criteria, listings);
 
+    await log.info("start", `Rozpoczęto analizę AI ${listings.length} lotów`, {
+      listings_count: listings.length,
+      criteria_make: criteria.make,
+      criteria_model: criteria.model ?? null,
+      budget_usd: criteria.budget_usd,
+      prompt_chars: userPrompt.length,
+    });
+
     let raw: string;
     try {
       raw = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt });
-    } catch (err) {
-      throw new Error(
-        `Anthropic API: ${err instanceof Error ? err.message : String(err)}`,
+      await log.info(
+        "anthropic_response",
+        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków)`,
+        { response_chars: raw.length },
+        Date.now() - startedAt,
       );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await log.error("anthropic_call", `Błąd wywołania Anthropic: ${msg}`, {
+        error: msg,
+        prompt_chars: userPrompt.length,
+      });
+      throw new Error(`Anthropic API: ${msg}`);
     }
 
     let parsed: unknown;
     try {
       parsed = parseAnalysisJson(raw);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await log.error("parse_json", `AI zwróciło niepoprawny JSON: ${msg}`, {
+        error: msg,
+        response_preview: raw.slice(0, 300),
+      });
       throw new Error(
-        `AI zwróciło niepoprawny JSON: ${err instanceof Error ? err.message : String(err)}\n` +
-          `Pierwsze 500 znaków odpowiedzi: ${raw.slice(0, 500)}`,
+        `AI zwróciło niepoprawny JSON: ${msg}\nPierwsze 500 znaków odpowiedzi: ${raw.slice(0, 500)}`,
       );
     }
     if (!Array.isArray(parsed)) {
+      await log.error("parse_json", "AI nie zwróciło tablicy JSON", {
+        type: typeof parsed,
+      });
       throw new Error("AI nie zwróciło tablicy JSON.");
     }
 
     const lotsById = new Map(listings.map((l) => [l.lot_id, l]));
     const analyzed: AnalyzedLot[] = [];
+    let skipped = 0;
     for (const a of parsed as AIAnalysis[]) {
       const lot = lotsById.get(a.lot_id);
-      if (!lot) continue;
+      if (!lot) {
+        skipped++;
+        continue;
+      }
       analyzed.push({
         lot,
         analysis: {
@@ -346,6 +383,23 @@ export const runAnalysis = createServerFn({ method: "POST" })
       });
     }
     analyzed.sort((a, b) => b.analysis.score - a.analysis.score);
+
+    if (skipped > 0) {
+      await log.warn("match_lots", `Pominięto ${skipped} pozycji AI bez dopasowanego lota`, {
+        skipped,
+      });
+    }
+
+    const recs = analyzed.reduce<Record<string, number>>((acc, a) => {
+      acc[a.analysis.recommendation] = (acc[a.analysis.recommendation] ?? 0) + 1;
+      return acc;
+    }, {});
+    await log.info(
+      "done",
+      `Analiza zakończona: ${analyzed.length} lotów`,
+      { analyzed_count: analyzed.length, recommendations: recs },
+      Date.now() - startedAt,
+    );
 
     return {
       ai_input: { criteria, listings },
@@ -384,32 +438,130 @@ export const renderReport = createServerFn({ method: "POST" })
 // ---------- Scraper bridge (optional) ----------
 
 export const runScraperSearch = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ criteria: criteriaSchema }).parse)
+  .inputValidator(
+    z.object({
+      criteria: criteriaSchema,
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
+    }).parse,
+  )
   .handler(async ({ data }): Promise<{ listings: CarLot[]; source: string }> => {
+    const log = makeLogger({
+      operation: "scrape",
+      clientId: data.clientId ?? null,
+      recordId: data.recordId ?? null,
+    });
+    const startedAt = Date.now();
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl) {
+      await log.error("config", "Brak SCRAPER_BASE_URL w sekretach");
       throw new Error(
         "SCRAPER_BASE_URL nie jest ustawiony. Ustaw sekrety SCRAPER_BASE_URL i SCRAPER_API_TOKEN, " +
           "albo użyj wklejania ręcznego JSON z wynikami scrapera.",
       );
     }
-    const res = await fetch(`${baseUrl}/api/search`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ criteria: data.criteria }),
+
+    await log.info("start", "Rozpoczęto wyszukiwanie online", {
+      endpoint: `${baseUrl}/api/search`,
+      auth: token ? "bearer" : "none",
+      criteria_make: data.criteria.make,
+      criteria_model: data.criteria.model ?? null,
+      budget_usd: data.criteria.budget_usd,
     });
+
+    let res: Response;
+    try {
+      res = await fetch(`${baseUrl}/api/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ criteria: data.criteria }),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await log.error("network", `Błąd sieciowy: ${msg}`, {
+        endpoint: `${baseUrl}/api/search`,
+        error: msg,
+      });
+      throw new Error(`Scraper network error: ${msg}`);
+    }
+
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      await log.error(
+        "http_error",
+        `Scraper zwrócił HTTP ${res.status}`,
+        { status: res.status, body_preview: body.slice(0, 300) },
+      );
       throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
     }
-    const json: unknown = await res.json();
-    // Accept either { listings: [...] } or a raw array
+
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await log.error("parse", `Niepoprawny JSON od scrapera: ${msg}`, { error: msg });
+      throw new Error(`Scraper invalid JSON: ${msg}`);
+    }
+
     const listings = Array.isArray(json)
       ? (json as CarLot[])
       : (((json as { listings?: CarLot[] }).listings ?? []) as CarLot[]);
+
+    await log.info(
+      "done",
+      `Pobrano ${listings.length} ofert`,
+      { listings_count: listings.length, source: baseUrl },
+      Date.now() - startedAt,
+    );
+
     return { listings, source: baseUrl };
+  });
+
+// ---------- Operation logs ----------
+
+export const listLogs = createServerFn({ method: "GET" })
+  .inputValidator(
+    z.object({
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
+      operation: z.string().max(40).optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    let q = supabaseAdmin
+      .from("operation_logs")
+      .select("id, created_at, client_id, record_id, operation, step, level, message, details, duration_ms")
+      .order("created_at", { ascending: false })
+      .limit(data.limit ?? 100);
+    if (data.clientId) q = q.eq("client_id", data.clientId);
+    if (data.recordId) q = q.eq("record_id", data.recordId);
+    if (data.operation) q = q.eq("operation", data.operation);
+    const { data: rows, error } = await q;
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const clearLogs = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      clientId: z.string().uuid().nullable().optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    let q = supabaseAdmin.from("operation_logs").delete();
+    if (data.clientId) {
+      q = q.eq("client_id", data.clientId);
+    } else {
+      // Delete all when no scope provided.
+      q = q.not("id", "is", null);
+    }
+    const { error } = await q;
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
