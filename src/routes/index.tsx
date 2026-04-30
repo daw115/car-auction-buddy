@@ -129,6 +129,8 @@ function Panel() {
   const fnRunAnalysis = useServerFn(runAnalysis);
   const fnRenderReport = useServerFn(renderReport);
   const fnRunScraper = useServerFn(runScraperSearch);
+  const fnStartScraper = useServerFn(startScraperSearch);
+  const fnPollScraper = useServerFn(pollScraperJob);
   const fnRunLotReports = useServerFn(runLotReports);
   const fnAddWatch = useServerFn(addToWatchlist);
 
