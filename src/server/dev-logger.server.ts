@@ -1,4 +1,4 @@
-// Pretty colored console logger for the server (dev-friendly).
+import { publishLog } from "./log-stream.server";
 // Uses ANSI escape codes — works in Vite dev terminal and Worker logs.
 // In production (NODE_ENV=production) colors and verbose request logs are suppressed
 // unless DEBUG_SERVER=1 is set.
