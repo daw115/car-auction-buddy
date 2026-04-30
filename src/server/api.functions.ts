@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
-import { callAnthropic, parseAnalysisJson } from "./anthropic.server";
+import { callAnthropic, parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL, ANTHROPIC_MODELS } from "./anthropic.server";
 import { renderReportHtml, renderMailHtml } from "./report";
 import { makeLogger } from "./logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
@@ -127,7 +127,7 @@ export const getConfig = createServerFn({ method: "GET" }).handler(async () => {
     config: data,
     env: {
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-      ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
+      ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
       ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
       SCRAPER_BASE_URL: !!process.env.SCRAPER_BASE_URL,
       SCRAPER_API_TOKEN: !!process.env.SCRAPER_API_TOKEN,
@@ -172,7 +172,7 @@ export const testAnthropic = createServerFn({ method: "POST" })
       };
     }
     const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "");
-    const model = data.model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+    const model = data.model || process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
     try {
       const res = await fetch(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -197,14 +197,22 @@ export const testAnthropic = createServerFn({ method: "POST" })
           error: `Anthropic HTTP ${res.status}: ${body.slice(0, 300)}`,
         };
       }
-      const json: { content?: Array<{ type: string; text?: string }>; usage?: unknown } = await res.json();
+      const json: {
+        content?: Array<{ type: string; text?: string }>;
+        usage?: { input_tokens?: number; output_tokens?: number };
+        model?: string;
+      } = await res.json();
       const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("");
       return {
         ok: true,
         configured: true,
-        model,
+        model: json.model ?? model,
         baseUrl,
         sample: text.slice(0, 80),
+        usage: {
+          input_tokens: json.usage?.input_tokens ?? 0,
+          output_tokens: json.usage?.output_tokens ?? 0,
+        },
       };
     } catch (e) {
       return {
@@ -323,11 +331,17 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      raw = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt });
+      const result = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt });
+      raw = result.text;
       await log.info(
         "anthropic_response",
-        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków)`,
-        { response_chars: raw.length },
+        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów)`,
+        {
+          response_chars: raw.length,
+          model: result.model,
+          stop_reason: result.stop_reason,
+          usage: result.usage,
+        },
         Date.now() - startedAt,
       );
     } catch (err) {
