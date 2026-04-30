@@ -74,10 +74,11 @@ export async function writeLog(ctx: LogContext, entry: LogEntry): Promise<void> 
       step: entry.step ?? null,
       level: entry.level ?? "info",
       message: truncate(entry.message, 1000),
-      details: entry.details ? (sanitizeDetails(entry.details) as Record<string, unknown>) : null,
+      details: entry.details ? sanitizeDetails(entry.details) : null,
       duration_ms: entry.durationMs ?? null,
     };
-    const { error } = await supabaseAdmin.from("operation_logs").insert([row]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await supabaseAdmin.from("operation_logs").insert([row as any]);
     if (error) console.error("[logger] failed to insert:", error.message);
   } catch (e) {
     console.error("[logger] exception:", e);
