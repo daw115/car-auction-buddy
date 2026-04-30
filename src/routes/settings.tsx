@@ -154,14 +154,25 @@ function SettingsPage() {
           </p>
 
           <div className="mb-4">
-            <Label htmlFor="model">Model do testu (opcjonalnie)</Label>
-            <Input
+            <Label htmlFor="model">Model AI</Label>
+            <select
               id="model"
-              placeholder={env?.ANTHROPIC_MODEL || "claude-sonnet-4-5"}
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="mt-1.5"
-            />
+              className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">
+                Domyślny ({env?.ANTHROPIC_MODEL || "claude-sonnet-4-6"})
+              </option>
+              {ANTHROPIC_MODEL_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Wybierz konkretny model lub zostaw domyślny ze zmiennej <code>ANTHROPIC_MODEL</code>.
+            </p>
           </div>
 
           <Button onClick={handleTest} disabled={testing || !env?.ANTHROPIC_API_KEY}>
