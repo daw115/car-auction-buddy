@@ -815,6 +815,7 @@ function Panel() {
               </div>
             </div>
             {scrapeJob && <ScraperProgress job={scrapeJob} />}
+            <Textarea
               className="font-mono text-xs"
               rows={6}
               placeholder='Wklej tutaj JSON z lotami: [{"source":"copart","lot_id":"123","year":2020,...}]'
