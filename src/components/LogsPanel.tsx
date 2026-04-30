@@ -338,6 +338,7 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="break-words leading-snug">{row.message}</div>
+                  <ProgressLine details={row.details} />
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
                     <span>{new Date(row.created_at).toLocaleTimeString("pl-PL")}</span>
                     {typeof row.duration_ms === "number" && <span>· {row.duration_ms} ms</span>}
