@@ -18,6 +18,7 @@ import {
   startScraperSearch,
   pollScraperJob,
   cancelScraperJob,
+  getJobLogs,
   runLotReports,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
@@ -123,6 +124,8 @@ type ScrapeJobState = {
   startedAt: number;
   progress?: number;
   elapsedMs: number;
+  errorMessage?: string;
+  errorStep?: string;
 };
 
 function formatDuration(ms: number): string {
@@ -135,9 +138,11 @@ function formatDuration(ms: number): string {
 function ScraperProgress({
   job,
   onCancel,
+  onDownloadLogs,
 }: {
   job: ScrapeJobState;
   onCancel?: () => void;
+  onDownloadLogs?: (jobId: string) => void;
 }) {
   const ASSUMED_TOTAL_MS = 90_000;
   const isDone = job.status === "done";
@@ -178,10 +183,11 @@ function ScraperProgress({
         : "bg-muted border-border";
 
   return (
-    <div className={`rounded-md border px-3 py-2 ${variant}`}>
-      <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
+    <div className={`rounded-md border px-3 py-2 space-y-2 ${variant}`}>
+      <div className="flex items-center justify-between text-xs gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {!isFinal && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+          {isFailed && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
           <span className="font-medium truncate">
             {statusLabel[job.status] ?? job.status}
           </span>
@@ -204,9 +210,31 @@ function ScraperProgress({
               Anuluj
             </Button>
           )}
+          {job.jobId && onDownloadLogs && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-xs"
+              onClick={() => onDownloadLogs(job.jobId!)}
+              title="Pobierz logi tego job_id (lokalne + scraper) jako JSON"
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Pobierz logi
+            </Button>
+          )}
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
+      {isFailed && job.errorMessage && (
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
+          <div className="font-medium text-destructive mb-0.5">
+            Szczegóły błędu{job.errorStep ? ` (${job.errorStep})` : ""}:
+          </div>
+          <div className="font-mono text-foreground break-words whitespace-pre-wrap">
+            {job.errorMessage}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -228,6 +256,7 @@ function Panel() {
   const fnStartScraper = useServerFn(startScraperSearch);
   const fnPollScraper = useServerFn(pollScraperJob);
   const fnCancelScraper = useServerFn(cancelScraperJob);
+  const fnGetJobLogs = useServerFn(getJobLogs);
   const fnRunLotReports = useServerFn(runLotReports);
   const fnAddWatch = useServerFn(addToWatchlist);
 
@@ -279,13 +308,7 @@ function Panel() {
   const [busy, setBusy] = useState<string | null>(null);
 
   // Scraper job progress
-  const [scrapeJob, setScrapeJob] = useState<{
-    status: string; // queued | running | done | failed
-    jobId?: string;
-    startedAt: number;
-    progress?: number; // 0..1 if backend reports
-    elapsedMs: number;
-  } | null>(null);
+  const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
   // Tick elapsed every 1s while job is active
   useEffect(() => {
@@ -323,7 +346,37 @@ function Panel() {
     }
   }
 
-  // new-client form
+  async function downloadJobLogs(jobId: string) {
+    const t = toast.loading("Pobieranie logów...");
+    try {
+      const r = (await fnGetJobLogs({ data: { jobId } })) as {
+        jobId: string;
+        logs: Array<{
+          id: string;
+          created_at: string;
+          level: string;
+          step: string | null;
+          message: string;
+          details: unknown;
+          source: "local" | "scraper";
+        }>;
+        local_error: string | null;
+        scraper_error: string | null;
+      };
+      const blob = new Blob([JSON.stringify(r, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `scraper-job-${jobId}-logs.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`Pobrano ${r.logs.length} wpisów logów`, { id: t });
+    } catch (e) {
+      toast.error(`Błąd: ${(e as Error).message}`, { id: t });
+    }
+  }
   const [newName, setNewName] = useState("");
   const [newContact, setNewContact] = useState("");
   const [newNotes, setNewNotes] = useState("");
@@ -499,10 +552,19 @@ function Panel() {
           break;
         }
         if (["error", "failed"].includes(p.status)) {
+          const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
-            s ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt } : s,
+            s
+              ? {
+                  ...s,
+                  status: "failed",
+                  elapsedMs: Date.now() - s.startedAt,
+                  errorMessage: errMsg,
+                  errorStep: p.status,
+                }
+              : s,
           );
-          throw new Error(p.error ?? "Job failed");
+          throw new Error(errMsg);
         }
       }
       if (!["done", "completed", "finished"].includes(scrapeJob?.status ?? "")) {
@@ -512,8 +574,11 @@ function Panel() {
       setListingsRaw(JSON.stringify(listingsResult, null, 2));
       toast.success(`Scraper zwrócił ${listingsResult.length} lotów`);
     } catch (e) {
-      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
-      toast.error((e as Error).message);
+      const msg = (e as Error).message;
+      setScrapeJob((s) =>
+        s ? { ...s, status: "failed", errorMessage: s.errorMessage ?? msg } : s,
+      );
+      toast.error(msg);
     } finally {
       setBusy(null);
     }
@@ -951,7 +1016,13 @@ function Panel() {
                 </Button>
               </div>
             </div>
-            {scrapeJob && <ScraperProgress job={scrapeJob} onCancel={cancelScrape} />}
+            {scrapeJob && (
+              <ScraperProgress
+                job={scrapeJob}
+                onCancel={cancelScrape}
+                onDownloadLogs={downloadJobLogs}
+              />
+            )}
             <Textarea
               className="font-mono text-xs"
               rows={6}

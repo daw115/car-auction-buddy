@@ -818,6 +818,103 @@ export const listLogs = createServerFn({ method: "GET" })
     return rows ?? [];
   });
 
+// Logs scoped to a specific scraper job_id. Combines local operation_logs
+// (filtered by details->>job_id) with the scraper backend's own job logs if available.
+export const getJobLogs = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    type LogRow = {
+      id: string;
+      created_at: string;
+      level: string;
+      step: string | null;
+      message: string;
+      details: any;
+      source: "local" | "scraper";
+    };
+
+    // 1) Local operation_logs filtered by job_id stored in details.
+    const { data: localRows, error } = await supabaseAdmin
+      .from("operation_logs")
+      .select("id, created_at, level, step, message, details")
+      .eq("details->>job_id", data.jobId)
+      .order("created_at", { ascending: true })
+      .limit(500);
+
+    const local: LogRow[] = (localRows ?? []).map((r) => ({
+      id: r.id,
+      created_at: r.created_at,
+      level: r.level,
+      step: r.step,
+      message: r.message,
+      details: r.details,
+      source: "local" as const,
+    }));
+
+    // 2) Scraper backend logs (best-effort, not all backends expose this).
+    let scraper: LogRow[] = [];
+    let scraperFetchError: string | null = null;
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (baseUrl) {
+      try {
+        const headers: Record<string, string> = token
+          ? { Authorization: `Bearer ${token}` }
+          : {};
+        const res = await fetch(`${baseUrl}/api/jobs/${data.jobId}/logs`, { headers });
+        if (res.ok) {
+          const j = (await res.json()) as
+            | Array<{
+                ts?: string;
+                timestamp?: string;
+                level?: string;
+                step?: string;
+                message?: string;
+                msg?: string;
+                details?: unknown;
+              }>
+            | { logs?: unknown[] };
+          const arr = Array.isArray(j) ? j : Array.isArray(j.logs) ? j.logs : [];
+          scraper = arr.map((r, i) => {
+            const row = r as {
+              ts?: string;
+              timestamp?: string;
+              level?: string;
+              step?: string;
+              message?: string;
+              msg?: string;
+              details?: unknown;
+            };
+            return {
+              id: `scraper-${i}`,
+              created_at: row.ts ?? row.timestamp ?? new Date().toISOString(),
+              level: row.level ?? "info",
+              step: row.step ?? null,
+              message: row.message ?? row.msg ?? "",
+              details: row.details ?? null,
+              source: "scraper" as const,
+            };
+          });
+        } else if (res.status !== 404) {
+          scraperFetchError = `Scraper /logs HTTP ${res.status}`;
+        }
+      } catch (e) {
+        scraperFetchError = e instanceof Error ? e.message : String(e);
+      }
+    }
+
+    const all = [...local, ...scraper].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at),
+    );
+
+    return {
+      jobId: data.jobId,
+      logs: all,
+      local_error: error?.message ?? null,
+      scraper_error: scraperFetchError,
+    };
+  });
+
 export const clearLogs = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
