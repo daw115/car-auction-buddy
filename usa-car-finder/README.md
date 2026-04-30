@@ -121,3 +121,65 @@ Formularz → Scraper (Playwright) → HTML Cache → Parser → AI → Ranking/
 
 - `USE_MOCK_DATA=false` (domyślnie): prawdziwy scraping Copart/IAAI
 - `USE_MOCK_DATA=true`: dane testowe z `scraper/mock_data.py`
+
+## Zewnętrzny dashboard (np. car-auction-buddy) → lokalny serwer przez Cloudflare Tunnel
+
+Backend wystawia synchroniczny adapter `POST /api/search` zgodny z kontraktem
+[car-auction-buddy](https://github.com/daw115/car-auction-buddy):
+
+- Body: `{ "criteria": ClientCriteria }`
+- Response: `{ listings: CarLot[], source, job_id, criteria, vin_coverage, analysis_notice }`
+- Idempotency: ten sam `criteria` w oknie `IDEMPOTENCY_TTL_MIN` (default 30 min) zwraca ten sam `job_id`.
+- Auth: `Authorization: Bearer <SCRAPER_API_TOKEN>` (gdy zmienna ustawiona; pusta = endpoint otwarty).
+
+### .env
+
+```bash
+SCRAPER_API_TOKEN=<długi-losowy-string>           # opcjonalny, ale zalecany dla publicznego tunelu
+DASHBOARD_ORIGINS=https://twoj-dashboard.workers.dev,http://localhost:5173
+IDEMPOTENCY_TTL_MIN=30
+JOB_DB_PATH=./data/jobs.db
+```
+
+### Cloudflare Tunnel (quick mode, bez konta)
+
+```bash
+# 1. Zainstaluj cloudflared
+brew install cloudflared    # macOS
+# lub: https://github.com/cloudflare/cloudflared/releases
+
+# 2. Uruchom backend
+python -m api.main
+
+# 3. W drugim terminalu — szybki tunel z losową subdomeną
+cloudflared tunnel --url http://localhost:8000
+# Wypisze: https://<random>.trycloudflare.com
+```
+
+W dashboardzie (Cloudflare Workers) ustaw sekrety:
+
+```bash
+SCRAPER_BASE_URL=https://<random>.trycloudflare.com
+SCRAPER_API_TOKEN=<ten sam długi-losowy-string>
+```
+
+### Stała subdomena (z kontem CF)
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create usa-car-finder
+cloudflared tunnel route dns usa-car-finder scraper.twoja-domena.pl
+# config.yml: tunnel: <id>; ingress: [{ hostname: scraper.twoja-domena.pl, service: http://localhost:8000 }, ...]
+cloudflared tunnel run usa-car-finder
+```
+
+### Sanity check
+
+```bash
+# zewnętrznie:
+curl -X POST https://<tunel>/api/search \
+  -H "Authorization: Bearer $SCRAPER_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"criteria":{"make":"Toyota","budget_usd":20000}}'
+# oczekiwane: {"listings":[...],"source":"live","job_id":"...",...}
+```

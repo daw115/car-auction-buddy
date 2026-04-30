@@ -9,7 +9,8 @@ from datetime import datetime
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -55,6 +56,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="USA Car Finder", version="1.0.0", lifespan=lifespan)
+
+# CORS dla zdalnego dashboardu (np. Cloudflare Workers / Pages).
+# DASHBOARD_ORIGINS = lista originów przecinkiem; "*" aby otworzyć wszystkim (NIE w produkcji).
+_dashboard_origins_raw = os.getenv("DASHBOARD_ORIGINS", "").strip()
+if _dashboard_origins_raw:
+    _origins = [o.strip() for o in _dashboard_origins_raw.split(",") if o.strip()]
+    _allow_credentials = "*" not in _origins
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_credentials=_allow_credentials,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+    logger.info("[CORS] dozwolone originy: %s (credentials=%s)", _origins, _allow_credentials)
 
 HTML_CACHE_DIR = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache"))
 USE_EXTENSIONS = os.getenv("USE_EXTENSIONS", "false").lower() == "true"
@@ -421,6 +437,73 @@ def _compute_criteria_hash(request: SearchRequest) -> str:
 
 
 IDEMPOTENCY_TTL_SECONDS = int(os.getenv("IDEMPOTENCY_TTL_MIN", "30")) * 60
+
+
+SCRAPER_API_TOKEN = os.getenv("SCRAPER_API_TOKEN", "").strip()
+
+
+def _require_bearer(authorization: Optional[str] = Header(default=None)) -> None:
+    """Sprawdza Bearer token gdy SCRAPER_API_TOKEN jest ustawiony.
+    Pusty SCRAPER_API_TOKEN → endpoint otwarty (lokalne dev).
+    """
+    if not SCRAPER_API_TOKEN:
+        return
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Brak Bearer tokena")
+    token = authorization[7:].strip()
+    if token != SCRAPER_API_TOKEN:
+        raise HTTPException(status_code=403, detail="Nieprawidłowy token")
+
+
+@app.post("/api/search")
+async def dashboard_search(request: SearchRequest, _auth: None = Depends(_require_bearer)):
+    """Synchroniczny adapter dla zewnętrznych dashboardów (np. car-auction-buddy).
+
+    Wewnętrznie używa async pipeline + idempotency (jak POST /search).
+    Czeka na zakończenie i zwraca płaską listę lotów — to czego oczekuje
+    dashboard: { listings: CarLot[], source, job_id }.
+    """
+    criteria_hash = _compute_criteria_hash(request)
+    reused = jobs_store.find_reusable_job(criteria_hash, IDEMPOTENCY_TTL_SECONDS)
+
+    job = None
+    if reused is not None and reused.status in ("running", "done"):
+        job = reused
+        if job.status == "running" and job.task is not None:
+            try:
+                await job.task
+            except asyncio.CancelledError:
+                raise HTTPException(status_code=503, detail="Job anulowany w trakcie wykonania")
+    else:
+        job = jobs_store.create_job(
+            criteria_hash=criteria_hash,
+            request_snapshot=request.model_dump(mode="json"),
+        )
+        job.task = asyncio.create_task(_run_job(request, job))
+        try:
+            await job.task
+        except asyncio.CancelledError:
+            raise HTTPException(status_code=503, detail="Job anulowany w trakcie wykonania")
+
+    if job.status == "error":
+        raise HTTPException(status_code=502, detail=f"Scraper failed: {job.error}")
+    if job.status not in ("done",) or not job.result:
+        raise HTTPException(status_code=500, detail=f"Job zakończony statusem {job.status}")
+
+    result = job.result
+    all_results = result.get("all_results", []) or []
+    # all_results to AnalyzedLot — dashboard chce CarLot pod listings
+    listings = [item.get("lot") for item in all_results if item.get("lot")]
+
+    source = "mock" if (request.demo or USE_MOCK_DATA) else "live"
+    return {
+        "listings": listings,
+        "source": source,
+        "job_id": job.id,
+        "criteria": request.criteria.model_dump(mode="json"),
+        "vin_coverage": result.get("vin_coverage") or {},
+        "analysis_notice": result.get("analysis_notice"),
+    }
 
 
 @app.post("/search", status_code=202)
