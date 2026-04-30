@@ -1,5 +1,6 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
 
 import appCss from "../styles.css?url";
 
@@ -60,13 +61,13 @@ export const Route = createRootRoute({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body>
         {children}
-        <Toaster richColors position="top-right" />
         <Scripts />
       </body>
     </html>
@@ -74,5 +75,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <ThemeProvider>
+      <Outlet />
+      <Toaster richColors position="top-right" />
+    </ThemeProvider>
+  );
 }
