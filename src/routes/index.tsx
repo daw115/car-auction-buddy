@@ -140,10 +140,14 @@ function ScraperProgress({
   job,
   onCancel,
   onDownloadLogs,
+  onRerun,
+  rerunDisabled,
 }: {
   job: ScrapeJobState;
   onCancel?: () => void;
   onDownloadLogs?: (jobId: string) => void;
+  onRerun?: () => void;
+  rerunDisabled?: boolean;
 }) {
   const ASSUMED_TOTAL_MS = 90_000;
   const isDone = job.status === "done";
