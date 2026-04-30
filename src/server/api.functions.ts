@@ -228,8 +228,34 @@ export const testAnthropic = createServerFn({ method: "POST" })
 
 // ---------- AI analysis ----------
 
-function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
-  const lotsData = lots.map((lot) => ({
+type LotForPrompt = {
+  lot_id: string;
+  source: string | null | undefined;
+  url: string | null;
+  vin: string | null;
+  year: number | null | undefined;
+  make: string | null | undefined;
+  model: string | null | undefined;
+  trim: string | null;
+  odometer_mi: number | null | undefined;
+  odometer_km: number | null | undefined;
+  damage_primary: string | null | undefined;
+  damage_secondary: string | null;
+  title_type: string | null | undefined;
+  current_bid_usd: number | null | undefined;
+  buy_now_price_usd: number | null;
+  seller_reserve_usd: number | null | undefined;
+  seller_type: string | null | undefined;
+  location_state: string | null | undefined;
+  location_city: string | null;
+  auction_date: string | null;
+  airbags_deployed: boolean | null | undefined;
+  keys: boolean | null | undefined;
+  enriched_by_extension: boolean | null | undefined;
+};
+
+function lotsToPromptShape(lots: CarLot[]): LotForPrompt[] {
+  return lots.map((lot) => ({
     lot_id: lot.lot_id,
     source: lot.source,
     url: lot.url ?? null,
@@ -241,7 +267,7 @@ function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
     odometer_mi: lot.odometer_mi,
     odometer_km: lot.odometer_km,
     damage_primary: lot.damage_primary,
-    damage_secondary: lot.damage_secondary,
+    damage_secondary: lot.damage_secondary ?? null,
     title_type: lot.title_type,
     current_bid_usd: lot.current_bid_usd,
     buy_now_price_usd: lot.buy_now_price_usd ?? null,
@@ -252,8 +278,11 @@ function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
     auction_date: lot.auction_date ?? null,
     airbags_deployed: lot.airbags_deployed,
     keys: lot.keys,
-    enriched_by_extension: lot.enriched_by_extension,
+    enriched_by_extension: lot.enriched_by_extension ?? null,
   }));
+}
+
+function buildUserPromptFromShape(criteria: ClientCriteria, lotsData: LotForPrompt[]): string {
   const excluded =
     criteria.excluded_damage_types && criteria.excluded_damage_types.length > 0
       ? criteria.excluded_damage_types.join(", ")
@@ -284,6 +313,89 @@ Dla każdego lota zwróć obiekt JSON z polami:
 
 Zwróć WYŁĄCZNIE poprawny JSON array. Bez żadnego tekstu przed ani po.
 `.trim();
+}
+
+function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
+  return buildUserPromptFromShape(criteria, lotsToPromptShape(lots));
+}
+
+// Approximate token count. Anthropic/OpenAI tokenizers average ~3.5–4 chars per
+// token for mixed PL/EN + JSON. We use 3.5 conservatively (over-estimates rather
+// than under).
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+// Strip optional fields to shrink JSON when the prompt is too large.
+function compactLots(lots: LotForPrompt[]): LotForPrompt[] {
+  return lots.map((l) => ({
+    ...l,
+    url: null,
+    vin: null,
+    trim: null,
+    location_city: null,
+    damage_secondary: null,
+    auction_date: null,
+    enriched_by_extension: null,
+  }));
+}
+
+/**
+ * Iteratively shrink the prompt until input tokens + reserved output budget fit
+ * within a safe context window. Strategy:
+ *   1) build full prompt
+ *   2) if too big — drop verbose optional fields
+ *   3) if still too big — drop lots from the end (input is already sorted by
+ *      relevance from the scraper) until we fit
+ *
+ * Returns the final prompt + the lot ids actually included so the caller can
+ * match Anthropic's response back to the original CarLot objects.
+ */
+function buildPromptWithinBudget(
+  criteria: ClientCriteria,
+  lots: CarLot[],
+  reservedOutputTokens: number,
+  // Conservative budget. Claude 3.5/4 has 200k context; leave headroom for
+  // system prompt + cache + safety margin.
+  contextBudgetTokens = 180_000,
+): {
+  prompt: string;
+  includedLotIds: string[];
+  trimmed: { droppedFields: boolean; droppedLots: number; finalCount: number };
+} {
+  const fullShape = lotsToPromptShape(lots);
+  const inputBudget = Math.max(1000, contextBudgetTokens - reservedOutputTokens);
+
+  let shape = fullShape;
+  let prompt = buildUserPromptFromShape(criteria, shape);
+  let droppedFields = false;
+  let droppedLots = 0;
+
+  if (estimateTokens(prompt) <= inputBudget) {
+    return {
+      prompt,
+      includedLotIds: shape.map((l) => l.lot_id),
+      trimmed: { droppedFields: false, droppedLots: 0, finalCount: shape.length },
+    };
+  }
+
+  // Step 2: drop optional fields.
+  shape = compactLots(shape);
+  droppedFields = true;
+  prompt = buildUserPromptFromShape(criteria, shape);
+
+  // Step 3: drop tail lots until under budget. Keep at least 1.
+  while (estimateTokens(prompt) > inputBudget && shape.length > 1) {
+    shape = shape.slice(0, -1);
+    droppedLots += 1;
+    prompt = buildUserPromptFromShape(criteria, shape);
+  }
+
+  return {
+    prompt,
+    includedLotIds: shape.map((l) => l.lot_id),
+    trimmed: { droppedFields, droppedLots, finalCount: shape.length },
+  };
 }
 
 const criteriaSchema = z.object({
@@ -327,20 +439,47 @@ export const runAnalysis = createServerFn({ method: "POST" })
     const startedAt = Date.now();
     const criteria = data.criteria as ClientCriteria;
     const listings = data.listings as CarLot[];
-    const userPrompt = buildUserPrompt(criteria, listings);
+    // Default 4096 — Anthropic responses for typical batches (≤30 lots) fit in
+    // ~3-4k tokens. Cap higher only via env override. Keeps response time and
+    // cost predictable, also reduces 524 timeout risk.
     const maxTokens = Math.min(
       parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? "0", 10) ||
-        Math.max(1500, listings.length * 400),
-      8192,
+        Math.max(1500, listings.length * 300),
+      4096,
     );
 
-    await log.info("start", `Rozpoczęto analizę AI ${listings.length} lotów`, {
-      listings_count: listings.length,
+    // Auto-trim prompt if input + reserved output would overflow context window.
+    const built = buildPromptWithinBudget(criteria, listings, maxTokens);
+    const userPrompt = built.prompt;
+    const trimmedListings =
+      built.trimmed.droppedLots > 0
+        ? listings.filter((l) => built.includedLotIds.includes(l.lot_id))
+        : listings;
+
+    await log.info("start", `Rozpoczęto analizę AI ${trimmedListings.length} lotów`, {
+      listings_count: trimmedListings.length,
+      original_listings_count: listings.length,
       criteria_make: criteria.make,
       criteria_model: criteria.model ?? null,
       budget_usd: criteria.budget_usd,
       prompt_chars: userPrompt.length,
+      max_tokens: maxTokens,
+      auto_trimmed: built.trimmed.droppedLots > 0 || built.trimmed.droppedFields,
+      dropped_optional_fields: built.trimmed.droppedFields,
+      dropped_lots: built.trimmed.droppedLots,
     });
+
+    if (built.trimmed.droppedLots > 0 || built.trimmed.droppedFields) {
+      await log.warn(
+        "prompt_trimmed",
+        `Prompt skrócony automatycznie: ${built.trimmed.droppedLots > 0 ? `pominięto ${built.trimmed.droppedLots} lotów, ` : ""}${built.trimmed.droppedFields ? "usunięto opcjonalne pola (url, vin, trim, city, …)" : ""}`,
+        {
+          dropped_lots: built.trimmed.droppedLots,
+          dropped_optional_fields: built.trimmed.droppedFields,
+          final_lot_count: built.trimmed.finalCount,
+        },
+      );
+    }
 
     let raw: string;
     try {
