@@ -17,6 +17,7 @@ import {
   runScraperSearch,
 } from "@/server/api.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
+import { LogsPanel } from "@/components/LogsPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -840,6 +841,7 @@ function Panel() {
               ))}
             </div>
           </Card>
+          <LogsPanel clientId={activeClientId} recordId={activeRecordId} />
         </aside>
       </main>
     </div>
