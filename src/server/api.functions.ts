@@ -533,18 +533,83 @@ export const runScraperSearch = createServerFn({ method: "POST" })
       throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
     }
 
-    let json: unknown;
+    let initial: { job_id?: string; status?: string; listings?: CarLot[] } | CarLot[];
     try {
-      json = await res.json();
+      initial = await res.json();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await log.error("parse", `Niepoprawny JSON od scrapera: ${msg}`, { error: msg });
       throw new Error(`Scraper invalid JSON: ${msg}`);
     }
 
-    const listings = Array.isArray(json)
-      ? (json as CarLot[])
-      : (((json as { listings?: CarLot[] }).listings ?? []) as CarLot[]);
+    let listings: CarLot[];
+
+    // If backend returned listings synchronously, use them. Otherwise poll job.
+    if (Array.isArray(initial)) {
+      listings = initial as CarLot[];
+    } else if (initial.listings && Array.isArray(initial.listings) && !initial.job_id) {
+      listings = initial.listings;
+    } else if (initial.job_id) {
+      const jobId = initial.job_id;
+      await log.info("queued", `Job ${jobId} w kolejce, polling...`, { job_id: jobId });
+
+      const pollUrl = `${baseUrl}/api/jobs/${jobId}`;
+      const deadline = Date.now() + 5 * 60 * 1000; // 5 min
+      const pollIntervalMs = 4000;
+      let lastStatus = "queued";
+      listings = [];
+
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+        let pollRes: Response;
+        try {
+          pollRes = await fetch(pollUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await log.warn("poll_network", `Polling network error: ${msg}`, { job_id: jobId, error: msg });
+          continue;
+        }
+        if (!pollRes.ok) {
+          const body = await pollRes.text().catch(() => "");
+          await log.warn("poll_http", `Polling HTTP ${pollRes.status}`, {
+            job_id: jobId,
+            status: pollRes.status,
+            body_preview: body.slice(0, 200),
+          });
+          continue;
+        }
+        let pj: { status?: string; listings?: CarLot[]; error?: string };
+        try {
+          pj = await pollRes.json();
+        } catch {
+          continue;
+        }
+        if (pj.status && pj.status !== lastStatus) {
+          lastStatus = pj.status;
+          await log.info("poll", `Job status: ${pj.status}`, { job_id: jobId, status: pj.status });
+        }
+        if (pj.status === "done" || pj.status === "completed" || pj.status === "finished") {
+          listings = Array.isArray(pj.listings) ? pj.listings : [];
+          break;
+        }
+        if (pj.status === "error" || pj.status === "failed") {
+          await log.error("job_failed", `Job zakończony błędem: ${pj.error ?? "unknown"}`, {
+            job_id: jobId,
+            error: pj.error,
+          });
+          throw new Error(`Scraper job failed: ${pj.error ?? "unknown"}`);
+        }
+      }
+
+      if (lastStatus !== "done" && lastStatus !== "completed" && lastStatus !== "finished") {
+        await log.error("timeout", `Polling timeout po 5 min`, { job_id: jobId, last_status: lastStatus });
+        throw new Error(`Scraper job timeout (job_id=${jobId}, last_status=${lastStatus})`);
+      }
+    } else {
+      listings = [];
+    }
 
     await log.info(
       "done",
