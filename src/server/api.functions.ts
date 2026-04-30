@@ -733,6 +733,60 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     };
   });
 
+// Cancel a running scraper job.
+export const cancelScraperJob = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      jobId: z.string().min(1),
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
+    }).parse,
+  )
+  .handler(async ({ data }): Promise<{ ok: boolean; status?: string }> => {
+    const log = makeLogger({
+      operation: "scrape",
+      clientId: data.clientId ?? null,
+      recordId: data.recordId ?? null,
+    });
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
+
+    // Try DELETE /api/jobs/{id} first; fall back to POST /api/jobs/{id}/cancel.
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    let res = await fetch(`${baseUrl}/api/jobs/${data.jobId}`, {
+      method: "DELETE",
+      headers,
+    }).catch(() => null);
+
+    if (!res || (!res.ok && res.status === 404)) {
+      res = await fetch(`${baseUrl}/api/jobs/${data.jobId}/cancel`, {
+        method: "POST",
+        headers,
+      }).catch(() => null);
+    }
+
+    if (!res || !res.ok) {
+      const status = res?.status ?? 0;
+      const body = res ? await res.text().catch(() => "") : "";
+      await log.warn("cancel_failed", `Anulowanie nieudane (HTTP ${status})`, {
+        job_id: data.jobId,
+        status,
+        body_preview: body.slice(0, 200),
+      });
+      throw new Error(`Cancel HTTP ${status}: ${body.slice(0, 200)}`);
+    }
+
+    let parsed: { status?: string } = {};
+    try {
+      parsed = await res.json();
+    } catch {
+      /* empty body is fine */
+    }
+    await log.info("cancelled", `Job ${data.jobId} anulowany`, { job_id: data.jobId });
+    return { ok: true, status: parsed.status ?? "cancelled" };
+  });
+
 // ---------- Operation logs ----------
 
 export const listLogs = createServerFn({ method: "GET" })
