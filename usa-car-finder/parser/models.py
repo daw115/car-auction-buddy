@@ -139,3 +139,4 @@ class SearchResponse(BaseModel):
     artifact_urls: dict[str, str] = Field(default_factory=dict)  # Linki do pobrania artefaktów z UI
     analysis_notice: Optional[str] = None
     collected_count: int = 0  # Ile lotów zebrano przed skróceniem odpowiedzi UI
+    vin_coverage: dict[str, int] = Field(default_factory=dict)  # {"with_full_vin": N, "total": M}

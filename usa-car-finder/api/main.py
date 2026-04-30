@@ -277,6 +277,16 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     if notice_extra:
         notice = (notice + " | " if notice else "") + " ".join(notice_extra)
 
+    with_full_vin = sum(1 for lot in all_lots if lot.full_vin)
+    vin_coverage = {"with_full_vin": with_full_vin, "total": len(all_lots)}
+    if USE_EXTENSIONS and all_lots and with_full_vin < len(all_lots):
+        missing = len(all_lots) - with_full_vin
+        logger.warning(
+            "VIN coverage: %d/%d lotów bez full_vin po enrichmencie (USE_EXTENSIONS=true)",
+            missing,
+            len(all_lots),
+        )
+
     response_payload = SearchResponse(
         top_recommendations=top_recommendations,
         all_results=all_results,
@@ -287,6 +297,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         artifact_urls={key: value for key, value in artifact_urls.items() if value},
         analysis_notice=notice,
         collected_count=len(all_lots),
+        vin_coverage=vin_coverage,
     )
 
     try:

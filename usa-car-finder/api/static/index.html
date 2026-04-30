@@ -1479,7 +1479,9 @@ async function runSearch() {
     const count = getAllUniqueLots().length;
     const collected = result.collected_count || count;
     const notice = result.analysis_notice ? ` ${result.analysis_notice}.` : "";
-    setStatus("statusPanel", "ok", "Gotowe", `Zebrano ${collected} lotów, pokazuję ${count}.${notice}`);
+    const vin = result.vin_coverage || {};
+    const vinPart = vin.total ? ` VIN: ${vin.with_full_vin || 0}/${vin.total}.` : "";
+    setStatus("statusPanel", "ok", "Gotowe", `Zebrano ${collected} lotów, pokazuję ${count}.${vinPart}${notice}`);
   } catch (error) {
     if (error instanceof SearchCancelled) {
       setStatus("statusPanel", "", "Wyszukiwanie anulowane", "Job zatrzymany na żądanie.");
