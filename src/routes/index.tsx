@@ -951,7 +951,7 @@ function Panel() {
                 </Button>
               </div>
             </div>
-            {scrapeJob && <ScraperProgress job={scrapeJob} />}
+            {scrapeJob && <ScraperProgress job={scrapeJob} onCancel={cancelScrape} />}
             <Textarea
               className="font-mono text-xs"
               rows={6}
