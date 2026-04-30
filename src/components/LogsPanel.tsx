@@ -372,6 +372,46 @@ function scopeLabel(clientId: string | null, recordId?: string | null): string {
   return "all";
 }
 
+function ProgressLine({ details }: { details: Record<string, unknown> | null }) {
+  if (!details) return null;
+  const progress = typeof details.progress === "number" ? details.progress : null;
+  const current = typeof details.current === "number" ? details.current : null;
+  const total = typeof details.total === "number" ? details.total : null;
+  const phase = typeof details.phase === "string" ? details.phase : null;
+  const step = typeof details.step === "string" ? details.step : null;
+
+  if (progress === null && current === null && !phase && !step) return null;
+
+  const pct =
+    progress !== null
+      ? Math.min(100, Math.max(0, Math.round(progress * 100)))
+      : current !== null && total && total > 0
+        ? Math.min(100, Math.max(0, Math.round((current / total) * 100)))
+        : null;
+
+  const parts: string[] = [];
+  if (phase) parts.push(phase);
+  if (step && step !== phase) parts.push(step);
+  if (current !== null && total !== null) parts.push(`${current}/${total}`);
+  if (pct !== null) parts.push(`${pct}%`);
+
+  return (
+    <div className="mt-1 space-y-0.5">
+      {pct !== null && (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full bg-primary transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {parts.length > 0 && (
+        <div className="text-[10px] text-muted-foreground">{parts.join(" · ")}</div>
+      )}
+    </div>
+  );
+}
+
 function csvEscape(value: unknown): string {
   if (value == null) return "";
   const s = typeof value === "string" ? value : JSON.stringify(value);
