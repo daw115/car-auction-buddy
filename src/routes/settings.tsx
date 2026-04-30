@@ -196,6 +196,15 @@ function SettingsPage() {
                   <div className="space-y-1 text-muted-foreground">
                     <div>Model: <code>{result.model}</code></div>
                     {result.baseUrl && <div>Endpoint: <code>{result.baseUrl}</code></div>}
+                    {result.usage && (
+                      <div>
+                        Zużycie tokenów:{" "}
+                        <code>
+                          {result.usage.input_tokens} in + {result.usage.output_tokens} out ={" "}
+                          {result.usage.input_tokens + result.usage.output_tokens}
+                        </code>
+                      </div>
+                    )}
                     {result.sample && (
                       <div>
                         Odpowiedź (próbka): <code>{result.sample}</code>
