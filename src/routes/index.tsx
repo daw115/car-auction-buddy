@@ -281,13 +281,7 @@ function Panel() {
   const [busy, setBusy] = useState<string | null>(null);
 
   // Scraper job progress
-  const [scrapeJob, setScrapeJob] = useState<{
-    status: string; // queued | running | done | failed
-    jobId?: string;
-    startedAt: number;
-    progress?: number; // 0..1 if backend reports
-    elapsedMs: number;
-  } | null>(null);
+  const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
   // Tick elapsed every 1s while job is active
   useEffect(() => {
