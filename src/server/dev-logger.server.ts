@@ -111,4 +111,10 @@ export function logHttp(opts: {
   console.log(
     `${time} ${tag} ${C.bold}${scope}${C.reset} ${m} ${s} ${opts.path} ${C.dim}·${C.reset} ${fmtDuration(opts.durationMs)}`,
   );
+  publishLog({
+    level: "http",
+    scope,
+    message: `${opts.method} ${opts.path} → ${opts.status}`,
+    extra: { status: opts.status, durationMs: Math.round(opts.durationMs * 10) / 10 },
+  });
 }
