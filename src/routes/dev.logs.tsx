@@ -563,6 +563,8 @@ function DevLogsGate() {
   const [submitting, setSubmitting] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
 
   const check = async () => {
     try {
