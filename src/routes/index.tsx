@@ -59,6 +59,7 @@ import {
   Calculator,
   BarChart3,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -140,10 +141,14 @@ function ScraperProgress({
   job,
   onCancel,
   onDownloadLogs,
+  onRerun,
+  rerunDisabled,
 }: {
   job: ScrapeJobState;
   onCancel?: () => void;
   onDownloadLogs?: (jobId: string) => void;
+  onRerun?: () => void;
+  rerunDisabled?: boolean;
 }) {
   const ASSUMED_TOTAL_MS = 90_000;
   const isDone = job.status === "done";
@@ -221,6 +226,19 @@ function ScraperProgress({
             >
               <Download className="h-3 w-3 mr-1" />
               Pobierz logi
+            </Button>
+          )}
+          {isFinal && onRerun && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-xs"
+              onClick={onRerun}
+              disabled={rerunDisabled}
+              title="Uruchom nowy job z tymi samymi kryteriami klienta"
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Uruchom ponownie
             </Button>
           )}
         </div>
@@ -1049,6 +1067,8 @@ function Panel() {
                 job={scrapeJob}
                 onCancel={cancelScrape}
                 onDownloadLogs={downloadJobLogs}
+                onRerun={callScraper}
+                rerunDisabled={busy === "scraper"}
               />
             )}
             <Textarea
