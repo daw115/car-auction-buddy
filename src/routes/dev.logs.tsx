@@ -205,13 +205,13 @@ ${rows}
     return () => es.close();
   }, []);
 
-  // Auto-scroll to bottom on new entries (when not paused).
+  // Auto-scroll to newest entry (top in desc, bottom in asc).
   useEffect(() => {
     if (paused) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [entries, paused]);
+    el.scrollTop = sortDir === "asc" ? el.scrollHeight : 0;
+  }, [entries, paused, sortDir]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
