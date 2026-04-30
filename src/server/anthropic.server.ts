@@ -36,21 +36,40 @@ export async function callAnthropic(opts: {
   const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "");
   const model = opts.model || process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
 
-  const res = await fetch(`${baseUrl}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-beta": "prompt-caching-2024-07-31",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: opts.maxTokens ?? 8192,
-      system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: opts.userPrompt }],
-    }),
-  });
+  // Cloudflare Workers / proxy obcina request po ~100s i zwraca 524.
+  // Przerywamy fetch wcześniej, żeby zwrócić czytelny błąd zamiast surowego 524.
+  const TIMEOUT_MS = 110_000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: opts.maxTokens ?? 8192,
+        system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: opts.userPrompt }],
+      }),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    if ((err as { name?: string })?.name === "AbortError") {
+      throw new Error(
+        `Anthropic timeout po ${Math.round(TIMEOUT_MS / 1000)}s — model nie zdążył odpowiedzieć. Spróbuj ponownie lub zmniejsz prompt/max_tokens.`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
