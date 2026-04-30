@@ -101,8 +101,40 @@ def extensions_arg() -> str:
     return ",".join(extension_paths())
 
 
+_extensions_disabled_reason: Optional[str] = None
+_extensions_warning_logged: bool = False
+
+
+def extensions_disabled_reason() -> Optional[str]:
+    """Zwraca powód, dla którego rozszerzenia zostały auto-wyłączone (lub None)."""
+    return _extensions_disabled_reason
+
+
 def extensions_enabled() -> bool:
-    return os.getenv("USE_EXTENSIONS", "false").lower() == "true" and bool(extension_paths())
+    global _extensions_disabled_reason, _extensions_warning_logged
+
+    if os.getenv("USE_EXTENSIONS", "false").lower() != "true":
+        _extensions_disabled_reason = None
+        return False
+
+    # Headless-safe fallback: extension Chromium nie pracuje headless.
+    # Gdy HEADLESS=true (domyślnie) auto-disable + jednorazowe ostrzeżenie.
+    if os.getenv("HEADLESS", "true").lower() == "true":
+        _extensions_disabled_reason = (
+            "USE_EXTENSIONS=true wymaga HEADLESS=false (rozszerzenia Chromium nie działają headless). "
+            "Auto-wyłączono enrichment przez rozszerzenia."
+        )
+        if not _extensions_warning_logged:
+            logger.warning("[Browser] %s", _extensions_disabled_reason)
+            _extensions_warning_logged = True
+        return False
+
+    if not extension_paths():
+        _extensions_disabled_reason = "Brak prawidłowych katalogów rozszerzeń (./extensions/*)."
+        return False
+
+    _extensions_disabled_reason = None
+    return True
 
 
 def keep_browser_open() -> bool:

@@ -44,6 +44,18 @@ app = FastAPI(title="USA Car Finder", version="1.0.0", lifespan=lifespan)
 
 HTML_CACHE_DIR = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache"))
 USE_EXTENSIONS = os.getenv("USE_EXTENSIONS", "false").lower() == "true"
+
+
+def _extensions_disabled_reason_safe() -> Optional[str]:
+    """Bezpieczny wrapper — nie ładujemy scrapera, gdy nie jest potrzebny."""
+    if not USE_EXTENSIONS:
+        return None
+    try:
+        from scraper.browser_context import extensions_enabled, extensions_disabled_reason
+        extensions_enabled()  # compute reason eagerly
+        return extensions_disabled_reason()
+    except Exception:
+        return None
 USE_MOCK_DATA = os.getenv("USE_MOCK_DATA", "false").lower() == "true"
 SEARCH_ARTIFACT_DIR = Path(os.getenv("SEARCH_ARTIFACT_DIR", "./data/client_searches"))
 
@@ -223,6 +235,15 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     notice_extra: list[str] = []
     if not all_lots:
         notice_extra.append("Brak wyników z aukcji — zwracam pustą odpowiedź.")
+
+    if USE_EXTENSIONS and not request.demo and not USE_MOCK_DATA:
+        try:
+            from scraper.browser_context import extensions_disabled_reason
+            ext_reason = extensions_disabled_reason()
+        except Exception:
+            ext_reason = None
+        if ext_reason:
+            notice_extra.append(ext_reason)
         progress_cb("ai_analyze", {"_status": "skipped", "reason": "no_lots"})
         top_recommendations: list = []
         ranked_results: list = []
@@ -499,6 +520,7 @@ async def health():
     return {
         "status": "ok",
         "use_extensions": USE_EXTENSIONS,
+        "extensions_disabled_reason": _extensions_disabled_reason_safe(),
         "use_mock_data": USE_MOCK_DATA,
         "ai_analysis_mode": os.getenv("AI_ANALYSIS_MODE", "auto"),
         "openai_model": os.getenv("OPENAI_MODEL", "gpt-5.2"),
@@ -520,6 +542,8 @@ async def health():
 async def config():
     return {
         "use_extensions": USE_EXTENSIONS,
+        "extensions_disabled_reason": _extensions_disabled_reason_safe(),
+        "extensions_disabled_reason": _extensions_disabled_reason_safe(),
         "use_mock_data": USE_MOCK_DATA,
         "ai_analysis_mode": os.getenv("AI_ANALYSIS_MODE", "auto"),
         "openai_model": os.getenv("OPENAI_MODEL", "gpt-5.2"),
