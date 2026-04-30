@@ -497,19 +497,26 @@ function Panel() {
       const start = (await fnStartScraper({
         data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
       })) as
-        | { mode: "sync"; listings: CarLot[]; source: string }
-        | { mode: "job"; job_id: string; source: string };
+        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+        | { mode: "job"; job_id: string; source: string; cache_key: string };
 
       if (start.mode === "sync") {
         setListings(start.listings);
         setListingsRaw(JSON.stringify(start.listings, null, 2));
         setScrapeJob({ status: "done", startedAt, elapsedMs: Date.now() - startedAt, progress: 1 });
-        toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        if (start.cache_hit) {
+          toast.success(
+            `Z cache: ${start.listings.length} lotów (bez nowego scrape)`,
+          );
+        } else {
+          toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        }
         return;
       }
 
       // Poll loop
       const jobId = start.job_id;
+      const cacheKey = start.cache_key;
       setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
       const deadline = Date.now() + 5 * 60 * 1000;
       let listingsResult: CarLot[] = [];
