@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download, ArrowDownNarrowWide, ArrowUpNarrowWide, Link2 } from "lucide-react";
+import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download, ArrowDownNarrowWide, ArrowUpNarrowWide, Link2, Layers, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -49,6 +49,8 @@ function DevLogsPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [groupByScope, setGroupByScope] = useState(false);
+  const [collapsedScopes, setCollapsedScopes] = useState<Set<string>>(new Set());
   const pausedRef = useRef(paused);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<LogEntry[]>([]);
@@ -229,6 +231,119 @@ ${rows}
 
   const lastId = entries.length > 0 ? entries[entries.length - 1].id : null;
 
+  type ScopeGroup = {
+    scope: string;
+    entries: LogEntry[];
+    counts: Partial<Record<LogEntry["level"], number>>;
+    lastTs: string;
+  };
+
+  const grouped = useMemo<ScopeGroup[]>(() => {
+    if (!groupByScope) return [];
+    const map = new Map<string, ScopeGroup>();
+    for (const e of filtered) {
+      let g = map.get(e.scope);
+      if (!g) {
+        g = { scope: e.scope, entries: [], counts: {}, lastTs: e.ts };
+        map.set(e.scope, g);
+      }
+      g.entries.push(e);
+      g.counts[e.level] = (g.counts[e.level] ?? 0) + 1;
+      if (e.ts > g.lastTs) g.lastTs = e.ts;
+    }
+    const list = Array.from(map.values());
+    list.sort((a, b) => (sortDir === "asc" ? a.lastTs.localeCompare(b.lastTs) : b.lastTs.localeCompare(a.lastTs)));
+    return list;
+  }, [filtered, groupByScope, sortDir]);
+
+  const toggleScope = (scope: string) => {
+    setCollapsedScopes((prev) => {
+      const next = new Set(prev);
+      if (next.has(scope)) next.delete(scope);
+      else next.add(scope);
+      return next;
+    });
+  };
+
+  const collapseAllScopes = () => {
+    setCollapsedScopes(new Set(grouped.map((g) => g.scope)));
+  };
+  const expandAllScopes = () => setCollapsedScopes(new Set());
+
+  const renderEntry = (e: LogEntry) => {
+    const isOpen = expanded.has(e.id);
+    const hasExtra = !!e.extra && Object.keys(e.extra).length > 0;
+    return (
+      <div key={e.id} className="border-b border-border/50 last:border-b-0 hover:bg-muted/30">
+        <div className="flex items-start gap-2 px-2 py-1">
+          <button
+            type="button"
+            onClick={() => toggleExpanded(e.id)}
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={isOpen ? "Zwiń" : "Rozwiń"}
+          >
+            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => copyResumeLink(e.id)}
+            title={`#${e.id} — kliknij, aby skopiować link wznawiający strumień od tego ID`}
+            className="shrink-0 inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-1 py-0 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-border"
+          >
+            {copiedLinkId === e.id ? <Check className="h-2.5 w-2.5" /> : <Link2 className="h-2.5 w-2.5" />}
+            #{e.id}
+          </button>
+          <span className="shrink-0 text-muted-foreground">{new Date(e.ts).toLocaleTimeString()}</span>
+          <Badge variant="outline" className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}>
+            {e.level}
+          </Badge>
+          {!groupByScope ? (
+            <span className="shrink-0 font-semibold text-foreground">{e.scope}</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => toggleExpanded(e.id)}
+            className="break-all text-left text-foreground/90 hover:underline"
+          >
+            {e.message}
+          </button>
+          {hasExtra && !isOpen ? (
+            <span className="ml-auto shrink-0 max-w-[40%] truncate text-muted-foreground">
+              {JSON.stringify(e.extra)}
+            </span>
+          ) : null}
+        </div>
+        {isOpen ? (
+          <div className="ml-6 mr-2 mb-2 rounded-md border border-border/60 bg-muted/40">
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                {hasExtra ? "extra (JSON)" : "szczegóły"}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                onClick={() => copyExtra(e)}
+              >
+                {copiedId === e.id ? (
+                  <><Check className="mr-1 h-3 w-3" />Skopiowano</>
+                ) : (
+                  <><Copy className="mr-1 h-3 w-3" />Kopiuj JSON</>
+                )}
+              </Button>
+            </div>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 text-[11px] leading-relaxed text-foreground/90">
+              {hasExtra
+                ? JSON.stringify(e.extra, null, 2)
+                : JSON.stringify({ id: e.id, ts: e.ts, level: e.level, scope: e.scope, message: e.message }, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
@@ -310,6 +425,30 @@ ${rows}
                 )}
                 {sortDir === "asc" ? "Rosnąco" : "Malejąco"}
               </Button>
+              <Button
+                variant={groupByScope ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setGroupByScope((g) => !g)}
+                className="h-8"
+                title="Grupuj wpisy po scope"
+              >
+                <Layers className="mr-1 h-3.5 w-3.5" />
+                Grupuj
+              </Button>
+              {groupByScope ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8">
+                      <ChevronDown className="mr-1 h-3.5 w-3.5" />
+                      Grupy
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={expandAllScopes}>Rozwiń wszystkie</DropdownMenuItem>
+                    <DropdownMenuItem onClick={collapseAllScopes}>Zwiń wszystkie</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8">
@@ -342,102 +481,50 @@ ${rows}
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   Brak wpisów. Wykonaj jakąś akcję w aplikacji…
                 </div>
-              ) : (
-                filtered.map((e) => {
-                  const isOpen = expanded.has(e.id);
-                  const hasExtra = !!e.extra && Object.keys(e.extra).length > 0;
+              ) : groupByScope ? (
+                grouped.map((g) => {
+                  const isCollapsed = collapsedScopes.has(g.scope);
                   return (
-                    <div
-                      key={e.id}
-                      className="border-b border-border/50 hover:bg-muted/30"
-                    >
-                      <div className="flex items-start gap-2 px-2 py-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(e.id)}
-                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-                          aria-label={isOpen ? "Zwiń" : "Rozwiń"}
-                        >
-                          <ChevronRight
-                            className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyResumeLink(e.id)}
-                          title={`#${e.id} — kliknij, aby skopiować link wznawiający strumień od tego ID`}
-                          className="shrink-0 inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-1 py-0 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-border"
-                        >
-                          {copiedLinkId === e.id ? (
-                            <Check className="h-2.5 w-2.5" />
-                          ) : (
-                            <Link2 className="h-2.5 w-2.5" />
-                          )}
-                          #{e.id}
-                        </button>
-                        <span className="shrink-0 text-muted-foreground">
-                          {new Date(e.ts).toLocaleTimeString()}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}
-                        >
-                          {e.level}
+                    <div key={g.scope} className="mb-2 rounded-md border border-border/60 bg-muted/10">
+                      <button
+                        type="button"
+                        onClick={() => toggleScope(g.scope)}
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted/30"
+                      >
+                        <ChevronRight
+                          className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                        />
+                        <span className="font-semibold text-foreground">{g.scope}</span>
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-muted-foreground">
+                          {g.entries.length}
                         </Badge>
-                        <span className="shrink-0 font-semibold text-foreground">{e.scope}</span>
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(e.id)}
-                          className="break-all text-left text-foreground/90 hover:underline"
-                        >
-                          {e.message}
-                        </button>
-                        {hasExtra && !isOpen ? (
-                          <span className="ml-auto shrink-0 max-w-[40%] truncate text-muted-foreground">
-                            {JSON.stringify(e.extra)}
-                          </span>
-                        ) : null}
-                      </div>
-                      {isOpen ? (
-                        <div className="ml-6 mr-2 mb-2 rounded-md border border-border/60 bg-muted/40">
-                          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {hasExtra ? "extra (JSON)" : "szczegóły"}
-                            </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-[11px]"
-                              onClick={() => copyExtra(e)}
-                            >
-                              {copiedId === e.id ? (
-                                <>
-                                  <Check className="mr-1 h-3 w-3" />
-                                  Skopiowano
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="mr-1 h-3 w-3" />
-                                  Kopiuj JSON
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 text-[11px] leading-relaxed text-foreground/90">
-                            {hasExtra
-                              ? JSON.stringify(e.extra, null, 2)
-                              : JSON.stringify(
-                                  { id: e.id, ts: e.ts, level: e.level, scope: e.scope, message: e.message },
-                                  null,
-                                  2,
-                                )}
-                          </pre>
+                        <div className="flex items-center gap-1">
+                          {LEVELS.map((lvl) =>
+                            g.counts[lvl] ? (
+                              <span
+                                key={lvl}
+                                className={`rounded border px-1 py-0 text-[10px] uppercase ${LEVEL_STYLES[lvl]}`}
+                                title={`${g.counts[lvl]} × ${lvl}`}
+                              >
+                                {lvl}:{g.counts[lvl]}
+                              </span>
+                            ) : null,
+                          )}
                         </div>
-                      ) : null}
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                          ostatni: {new Date(g.lastTs).toLocaleTimeString()}
+                        </span>
+                      </button>
+                      {isCollapsed ? null : (
+                        <div className="border-t border-border/60">
+                          {g.entries.map((e) => renderEntry(e))}
+                        </div>
+                      )}
                     </div>
                   );
                 })
+              ) : (
+                filtered.map((e) => renderEntry(e))
               )}
             </div>
           </ScrollArea>
