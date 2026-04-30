@@ -178,11 +178,25 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
             <Download className="h-3.5 w-3.5" />
             <span className="ml-1 text-[10px]">CSV</span>
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCleanup}
+            title={`Usuń logi starsze niż ${retention?.days ?? 30} dni`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="ml-1 text-[10px]">{retention?.days ?? 30}d</span>
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleClear} title="Wyczyść logi">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
+      {retention && (
+        <div className="mb-2 text-[10px] text-muted-foreground">
+          Retencja logów: {retention.days} dni ({retention.source === "env" ? "z LOG_RETENTION_DAYS" : "domyślna"}). Auto-czyszczenie codziennie.
+        </div>
+      )}
 
       <div className="mb-2 flex gap-1">
         {(["all", "scrape", "ai_analysis"] as const).map((f) => (
