@@ -25,6 +25,7 @@ import {
 import { addToWatchlist } from "@/server/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 import { LogsPanel } from "@/components/LogsPanel";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
