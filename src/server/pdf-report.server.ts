@@ -185,5 +185,6 @@ function costRow(label: string, value: string) {
 
 export async function generateReportPdf(props: ReportProps): Promise<Buffer> {
   const doc = React.createElement(ReportDoc, props);
-  return renderToBuffer(doc as React.ReactElement);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return renderToBuffer(doc as any);
 }
