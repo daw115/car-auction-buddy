@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BROKER | {{ make }} {{ model }} {{ year }} — Lot #{{ lot_id }}</title>
+<style>
+  :root {
+    --navy: #0a1628;
+    --blue: #1a56a0;
+    --accent: #f0a500;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --amber: #b45309;
+    --amber-bg: #fef3c7;
+    --red: #b91c1c;
+    --red-bg: #fee2e2;
+    --info: #1d4ed8;
+    --info-bg: #dbeafe;
+    --text: #0f172a;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --bg: #f1f5f9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+  /* CONFIDENTIAL BAR */
+  .conf-bar { background: var(--red); color: #fff; text-align: center; padding: 6px; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+
+  /* HEADER */
+  .header { background: var(--navy); color: #fff; padding: 28px 32px; border-bottom: 3px solid var(--accent); }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .header-title { font-size: 22px; font-weight: 700; }
+  .header-sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .score-badge { text-align: center; flex-shrink: 0; }
+  .score-num { font-size: 40px; font-weight: 900; color: var(--accent); line-height: 1; }
+  .score-max { font-size: 16px; color: #64748b; }
+  .score-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+  .status-pill { display: inline-block; padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-top: 10px; }
+  .status-polecam { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+  .status-obserwuj { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+  .status-odrzuc { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+
+  /* META ROW */
+  .meta-row { background: #1e3a5f; color: #94a3b8; padding: 10px 32px; font-size: 11px; display: flex; flex-wrap: wrap; gap: 20px; }
+  .meta-item strong { color: #cbd5e1; }
+
+  /* STAT CARDS */
+  .stat-cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 8px; padding: 14px; border: 1px solid var(--border); text-align: center; }
+  .card-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+  .card-value { font-size: 18px; font-weight: 700; color: var(--navy); }
+  .card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .card.warn { border-color: var(--amber); }
+  .card.warn .card-value { color: var(--amber); }
+
+  /* SECTION */
+  .section { background: #fff; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 16px; overflow: hidden; }
+  .section-head { background: var(--navy); color: #fff; padding: 12px 20px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .section-body { padding: 16px 20px; }
+  .pill { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: rgba(26,86,160,.1); color: var(--blue); margin-bottom: 12px; }
+  .pill.amber { background: var(--amber-bg); color: var(--amber); }
+
+  /* KV TABLE */
+  .kv-table { width: 100%; border-collapse: collapse; }
+  .kv-table tr:nth-child(odd) td { background: #f8fafc; }
+  .kv-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .kv-table td:first-child { font-weight: 600; color: var(--navy); width: 35%; white-space: nowrap; }
+  .kv-table td code { font-family: monospace; font-size: 12px; background: #f1f5f9; padding: 1px 5px; border-radius: 3px; }
+
+  /* DATA TABLE */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .data-table th { background: #1e3a5f; color: #e2e8f0; padding: 8px 10px; text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .5px; white-space: nowrap; }
+  .data-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tr:nth-child(odd) td { background: #f8fafc; }
+  .data-table td code { font-family: monospace; font-size: 11px; background: #e2e8f0; padding: 1px 4px; border-radius: 2px; word-break: break-all; }
+
+  /* SCORING TABLE */
+  .score-table { width: 100%; border-collapse: collapse; }
+  .score-table th { background: #1e3a5f; color: #e2e8f0; padding: 8px 10px; font-size: 11px; font-weight: 600; text-align: left; }
+  .score-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: top; }
+  .score-table tr:nth-child(odd) td { background: #f8fafc; }
+  .score-table tfoot td { font-weight: 700; font-size: 14px; background: #f0f4f8; border-top: 2px solid var(--navy); }
+  .delta-pos { color: var(--ok); font-weight: 700; }
+  .delta-neg { color: var(--red); font-weight: 700; }
+  .delta-neu { color: var(--muted); }
+
+  /* COST TABLE */
+  .cost-table { width: 100%; border-collapse: collapse; }
+  .cost-table th { background: #1e3a5f; color: #e2e8f0; padding: 8px 10px; font-size: 11px; font-weight: 600; }
+  .cost-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .cost-table tr:nth-child(odd) td { background: #f8fafc; }
+  .cost-table tfoot td { font-weight: 700; font-size: 13px; background: #1e3a5f; color: #fff; border-top: 2px solid var(--accent); }
+  .cost-opt { color: var(--ok); font-weight: 600; }
+  .cost-pes { color: var(--amber); font-weight: 600; }
+
+  /* FLAGS */
+  .flag-list { display: flex; flex-direction: column; gap: 10px; }
+  .flag { padding: 12px 16px; border-radius: 6px; border-left: 4px solid; }
+  .flag.critical { background: var(--red-bg); border-color: var(--red); }
+  .flag.high { background: var(--amber-bg); border-color: var(--amber); }
+  .flag.medium { background: #fefce8; border-color: #ca8a04; }
+  .flag.info { background: var(--info-bg); border-color: var(--info); }
+  .flag-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .flag-title { font-weight: 700; font-size: 13px; }
+  .flag.critical .flag-title { color: var(--red); }
+  .flag.high .flag-title { color: var(--amber); }
+  .flag.medium .flag-title { color: #92400e; }
+  .flag.info .flag-title { color: var(--info); }
+  .level-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .badge-critical { background: var(--red); color: #fff; }
+  .badge-high { background: var(--amber); color: #fff; }
+  .badge-medium { background: #ca8a04; color: #fff; }
+  .badge-info { background: var(--info); color: #fff; }
+  .flag-body { font-size: 12px; color: #374151; line-height: 1.5; }
+
+  /* BID TABLE */
+  .btbl { width: 100%; border-collapse: collapse; }
+  .btbl td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .btbl .bk { font-weight: 600; color: var(--navy); width: 30%; background: #f8fafc; }
+  .btbl .bv { color: #1f2937; }
+  .btbl .bv.wrn { color: var(--amber); }
+
+  /* CHECKLIST */
+  .ctbl { width: 100%; border-collapse: collapse; }
+  .ctbl th { background: #1e3a5f; color: #e2e8f0; padding: 8px 10px; font-size: 11px; font-weight: 600; text-align: left; }
+  .ctbl td { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
+  .ctbl .cnum { color: var(--muted); width: 32px; text-align: center; }
+  .ctbl .ccheck { text-align: center; width: 40px; font-size: 16px; }
+  .cprio { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+  .cprio.c { background: var(--red); color: #fff; }
+  .cprio.h { background: var(--amber); color: #fff; }
+  .cprio.m { background: #ca8a04; color: #fff; }
+  .cprio.l { background: var(--muted); color: #fff; }
+
+  /* NOTES TABLE */
+  .notes-tbl { width: 100%; border-collapse: collapse; }
+  .notes-tbl td { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: top; }
+  .notes-tbl .nk { font-weight: 700; color: var(--navy); width: 25%; background: #f8fafc; white-space: nowrap; }
+  .notes-tbl .nv { color: #1f2937; line-height: 1.6; }
+
+  /* FOOTER */
+  .footer { text-align: center; color: var(--muted); font-size: 11px; padding: 16px; margin-top: 8px; }
+
+  @media print {
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="conf-bar">&#128274; Dokument POUFNY &mdash; przeznaczony wy&#322;&#261;cznie do u&#380;ytku wewn&#281;trznego brokera. Nie udost&#281;pnia&#263; klientowi.</div>
+
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="header-title">{{ make }} {{ model }}{% if trim %} {{ trim }}{% endif %} {{ year }}</div>
+        <div class="header-sub">Lot #{{ lot_id }} &nbsp;&middot;&nbsp; {{ source | upper }} {{ location_city }}{{ ', ' if location_city and location_state }}{{ location_state }}</div>
+        <div class="header-sub">VIN: <code style="color:#93c5fd">{{ vin | default('—') }}</code>{% if full_vin and full_vin != vin %} &nbsp;(pełny: <code style="color:#93c5fd">{{ full_vin }}</code>){% endif %}</div>
+        <div style="margin-top:10px">
+          <span class="status-pill status-{{ recommendation_css }}">{{ recommendation }}</span>
+        </div>
+      </div>
+      <div class="score-badge">
+        <div class="score-num">{{ score }}</div>
+        <div class="score-max">/10</div>
+        <div class="score-label">AI Score</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- META ROW -->
+  <div class="meta-row">
+    <div class="meta-item"><strong>Wygenerowano:</strong> {{ generated_at }}</div>
+    <div class="meta-item"><strong>Kryteria:</strong> {{ criteria_summary }}</div>
+    <div class="meta-item"><strong>Źródła:</strong> {{ sources_str }}</div>
+    {% if excluded_damage %}
+    <div class="meta-item"><strong>Wykluczone szkody:</strong> {{ excluded_damage }}</div>
+    {% endif %}
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stat-cards">
+    <div class="card">
+      <div class="card-label">Lotów zbadano</div>
+      <div class="card-value">{{ lots_scanned | default('—') }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Score AI</div>
+      <div class="card-value">{{ score }}<span style="font-size:12px;color:var(--muted)">/10</span></div>
+    </div>
+    <div class="card{% if damage_score is defined and damage_score > 50 %} warn{% endif %}">
+      <div class="card-label">Damage score</div>
+      <div class="card-value">{{ damage_score | default('—') }}</div>
+      <div class="card-sub">/100</div>
+    </div>
+    <div class="card">
+      <div class="card-label">ACV</div>
+      <div class="card-value" style="font-size:14px">{{ acv_usd | default('—') }}</div>
+      <div class="card-sub">USD</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Koszt opt.</div>
+      <div class="card-value" style="font-size:14px">{{ cost_optimistic_usd | default('—') }}</div>
+      <div class="card-sub">USD</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Koszt pes.</div>
+      <div class="card-value" style="font-size:14px">{{ cost_pessimistic_usd | default('—') }}</div>
+      <div class="card-sub">USD</div>
+    </div>
+  </div>
+
+  <!-- SECTION 1: PIPELINE CONFIG -->
+  <div class="section">
+    <div class="section-head">&#9881; Konfiguracja pipeline</div>
+    <div class="section-body">
+      <span class="pill">&#9658; Kryteria wyszukiwania</span>
+      <table class="kv-table">
+        <tr><td>Marka</td><td>{{ criteria.make }}</td></tr>
+        <tr><td>Model</td><td>{{ criteria.model | default('—') }}</td></tr>
+        <tr><td>Rocznik</td><td>{{ criteria.year_from | default('—') }} – {{ criteria.year_to | default('—') }}</td></tr>
+        <tr><td>Budżet</td><td>{{ criteria.budget_usd | default('—') }} USD</td></tr>
+        <tr><td>Maks. przebieg</td><td>{{ criteria.max_odometer_mi | default('—') }} mi</td></tr>
+        <tr><td>Wykluczone szkody</td><td>{{ criteria.excluded_damage_types | join(', ') | default('—') }}</td></tr>
+        <tr><td>Źródła</td><td>{{ criteria.sources | join(', ') | upper }}</td></tr>
+        <tr><td>Maks. wyników</td><td>{{ criteria.max_results | default('—') }}</td></tr>
+      </table>
+      {% if pipeline_rules %}
+      <br><span class="pill">&#9658; Reguły pipeline</span>
+      <table class="kv-table">
+        {% for rule in pipeline_rules %}
+        <tr><td>Reguła {{ loop.index }}</td><td>{{ rule }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- SECTION 2: LOT DATA -->
+  <div class="section">
+    <div class="section-head">&#128203; Dane lota (surowe)</div>
+    <div class="section-body">
+      <table class="data-table">
+        <thead><tr><th>Pole</th><th>Wartość</th></tr></thead>
+        <tbody>
+          {% for field in lot_raw_fields %}
+          <tr><td>{{ field.key }}</td><td><code>{{ field.value }}</code></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SECTION 3: SCORING BREAKDOWN -->
+  <div class="section">
+    <div class="section-head">&#128200; Breakdown scoringu AI</div>
+    <div class="section-body">
+      <table class="score-table">
+        <thead><tr><th style="width:25%">Kryterium</th><th style="width:12%">Delta</th><th>Uzasadnienie</th></tr></thead>
+        <tbody>
+          {% for criterion in scoring_criteria %}
+          <tr>
+            <td>{{ criterion.name }}</td>
+            <td class="{% if criterion.delta > 0 %}delta-pos{% elif criterion.delta < 0 %}delta-neg{% else %}delta-neu{% endif %}">
+              {% if criterion.delta > 0 %}+{% endif %}{{ criterion.delta }}
+            </td>
+            <td>{{ criterion.justification }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">WYNIK KOŃCOWY</td>
+            <td><strong>{{ score }} / 10</strong> &nbsp;&mdash;&nbsp; {{ recommendation }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- SECTION 4: IMPORT COST -->
+  <div class="section">
+    <div class="section-head">&#128181; Kalkulacja kosztów importu do PL</div>
+    <div class="section-body">
+      <table class="cost-table">
+        <thead>
+          <tr>
+            <th style="width:45%">Pozycja</th>
+            <th>Optymistyczny</th>
+            <th>Pesymistyczny</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in cost_rows %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td class="cost-opt">{{ row.optimistic }}</td>
+            <td class="cost-pes">{{ row.pessimistic }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>ŁĄCZNIE (USD)</td>
+            <td>{{ cost_total_optimistic_usd }}</td>
+            <td>{{ cost_total_pessimistic_usd }}</td>
+          </tr>
+          <tr>
+            <td>ŁĄCZNIE (PLN @ {{ usd_pln_rate | default('4.00') }})</td>
+            <td>{{ cost_total_optimistic_pln }}</td>
+            <td>{{ cost_total_pessimistic_pln }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- SECTION 5: RED FLAGS -->
+  {% if red_flags %}
+  <div class="section">
+    <div class="section-head">&#127964; Red flags</div>
+    <div class="section-body">
+      <div class="flag-list">
+        {% for flag in red_flags %}
+        <div class="flag {{ flag.level }}">
+          <div class="flag-header">
+            <div class="flag-title">{{ flag.title }}</div>
+            <span class="level-badge badge-{{ flag.level }}">{{ flag.level | upper }}</span>
+          </div>
+          <div class="flag-body">{{ flag.description }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- SECTION 6: RAW API FIELDS -->
+  {% if raw_api_fields %}
+  <div class="section">
+    <div class="section-head">&#128268; Surowe pola API aukcji</div>
+    <div class="section-body">
+      <table class="data-table">
+        <thead><tr><th>Klucz</th><th>Wartość</th></tr></thead>
+        <tbody>
+          {% for field in raw_api_fields %}
+          <tr><td><code>{{ field.key }}</code></td><td><code>{{ field.value }}</code></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- SECTION 7: BID STRATEGY -->
+  <div class="section">
+    <div class="section-head">&#127919; Strategia licytacji</div>
+    <div class="section-body">
+      <table class="btbl">
+        <tbody>
+          <tr><td class="bk">Okno aukcji</td><td class="bv">{{ auction_date | default('—') }}</td></tr>
+          <tr><td class="bk">Max bid sugerowany</td><td class="bv">{{ bid_max_suggested | default('—') }}</td></tr>
+          <tr><td class="bk">Próg opłacalności</td><td class="bv">{{ bid_breakeven | default('—') }}</td></tr>
+          {% if bid_acv_warning %}
+          <tr><td class="bk">ACV vs budżet</td><td class="bv wrn">{{ bid_acv_warning }}</td></tr>
+          {% endif %}
+          {% if bid_reserve_note %}
+          <tr><td class="bk">Reserve</td><td class="bv wrn">{{ bid_reserve_note }}</td></tr>
+          {% endif %}
+          {% if bid_last_ask_note %}
+          <tr><td class="bk">Last ask</td><td class="bv wrn">{{ bid_last_ask_note }}</td></tr>
+          {% endif %}
+          <tr><td class="bk">Rekomendacja</td><td class="bv"><strong>{{ bid_recommendation }}</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SECTION 8: CHECKLIST -->
+  {% if checklist_items %}
+  <div class="section">
+    <div class="section-head">&#9745; Lista kontrolna brokera</div>
+    <div class="section-body">
+      <table class="ctbl">
+        <thead><tr><th>#</th><th>Działanie</th><th>Priorytet</th><th>&#10003;</th></tr></thead>
+        <tbody>
+          {% for item in checklist_items %}
+          <tr>
+            <td class="cnum">{{ loop.index }}</td>
+            <td>{{ item.action }}</td>
+            <td style="text-align:center"><span class="cprio {{ item.prio_css }}">{{ item.prio_label }}</span></td>
+            <td class="ccheck">&#9744;</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- SECTION 9: STRATEGIC NOTES -->
+  <div class="section">
+    <div class="section-head">&#128221; Notatki strategiczne (copywriting / sprzeda&#380;)</div>
+    <div class="section-body">
+      <span class="pill amber">&#9658; Notatki strategiczne</span>
+      <table class="notes-tbl">
+        <tbody>
+          <tr><td class="nk">Tryb oferty</td><td class="nv">{{ notes.offer_mode | default('—') }}</td></tr>
+          <tr><td class="nk">Główny trigger</td><td class="nv">{{ notes.main_trigger | default('—') }}</td></tr>
+          {% if notes.headline_a %}
+          <tr><td class="nk">Wariant nagłówka A</td><td class="nv">{{ notes.headline_a }} <em>(Scarcity/FOMO)</em></td></tr>
+          {% endif %}
+          {% if notes.headline_b %}
+          <tr><td class="nk">Wariant nagłówka B</td><td class="nv">{{ notes.headline_b }} <em>(Aspiracja / status)</em></td></tr>
+          {% endif %}
+          {% if notes.headline_c %}
+          <tr><td class="nk">Wariant nagłówka C</td><td class="nv">{{ notes.headline_c }} <em>(Racjonalna kalkulacja)</em></td></tr>
+          {% endif %}
+          <tr><td class="nk">Ryzyka komunikacyjne</td><td class="nv">{{ notes.communication_risks | default('—') }}</td></tr>
+          <tr><td class="nk">Follow-up 48h</td><td class="nv">{{ notes.followup_48h | default('—') }}</td></tr>
+          {% if notes.short_whatsapp %}
+          <tr><td class="nk">Wariant Short (WhatsApp)</td><td class="nv">{{ notes.short_whatsapp }}</td></tr>
+          {% endif %}
+          {% if notes.damaging_admission %}
+          <tr><td class="nk">Damaging admission</td><td class="nv">{{ notes.damaging_admission }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="conf-bar">Dokument POUFNY &mdash; przeznaczony wy&#322;&#261;cznie do u&#380;ytku wewn&#281;trznego brokera. Nie udost&#281;pnia&#263; klientowi.</div>
+
+  <div class="footer">
+    &copy; {{ generated_at[:4] | default('2026') }} Pipeline aukcyjny v1.0 &nbsp;&middot;&nbsp;
+    generated_at: {{ generated_at }} &nbsp;&middot;&nbsp;
+    Lot #{{ lot_id }} {{ source | upper }} {{ location_city }}{{ ', ' if location_city and location_state }}{{ location_state }} &nbsp;&middot;&nbsp;
+    VIN {{ vin | default('—') }} &nbsp;&middot;&nbsp;
+    BROKER INTERNAL
+  </div>
+
+</div>
+</body>
+</html>
