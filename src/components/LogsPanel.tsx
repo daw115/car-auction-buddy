@@ -363,3 +363,45 @@ function downloadLogs(rows: LogRow[], format: "json" | "csv", scope: string) {
     triggerDownload(`logs-${scope}-${ts}.csv`, toCsv(rows), "text/csv");
   }
 }
+
+function RecordChip({
+  recordId,
+  title,
+  active,
+  onOpen,
+}: {
+  recordId: string;
+  title: string | null;
+  active: boolean;
+  onOpen?: (id: string) => void;
+}) {
+  const label = title?.trim() || `${recordId.slice(0, 8)}`;
+  const baseCls =
+    "inline-flex items-center gap-1 rounded border px-1.5 py-0 text-[10px] max-w-[180px] truncate";
+  const stateCls = active
+    ? "border-primary/40 bg-primary/10 text-primary"
+    : "border-border bg-background hover:bg-accent hover:text-accent-foreground";
+
+  if (!onOpen) {
+    return (
+      <span className={`${baseCls} ${stateCls}`} title={`Rekord ${recordId}`}>
+        <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(recordId);
+      }}
+      className={`${baseCls} ${stateCls}`}
+      title={`Otwórz rekord ${recordId}`}
+    >
+      <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
