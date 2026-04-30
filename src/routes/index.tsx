@@ -130,6 +130,11 @@ type ScrapeJobState = {
   elapsedMs: number;
   errorMessage?: string;
   errorStep?: string;
+  step?: string;
+  phase?: string;
+  message?: string;
+  current?: number;
+  total?: number;
 };
 
 function formatDuration(ms: number): string {
@@ -173,7 +178,14 @@ function ScraperProgress({
 
   const statusLabel: Record<string, string> = {
     queued: "W kolejce",
-    running: "Pobieranie ofert...",
+    starting: "Uruchamianie",
+    initializing: "Inicjalizacja",
+    running: "Pobieranie ofert",
+    scraping: "Scrapowanie listy",
+    scraping_list: "Scrapowanie listy",
+    scraping_details: "Pobieranie szczegółów ofert",
+    enriching: "Wzbogacanie danych",
+    parsing: "Parsowanie wyników",
     done: "Zakończono",
     completed: "Zakończono",
     finished: "Zakończono",
@@ -181,6 +193,23 @@ function ScraperProgress({
     error: "Błąd",
     cancelled: "Anulowano",
   };
+
+  const phaseLabel: Record<string, string> = {
+    list: "Lista wyników",
+    details: "Szczegóły ofert",
+    enrich: "Wzbogacanie",
+    parse: "Parsowanie",
+    save: "Zapis",
+  };
+
+  // Compose a human-readable subtitle from phase / step / message / counter.
+  const subtitleParts: string[] = [];
+  if (job.phase) subtitleParts.push(phaseLabel[job.phase] ?? job.phase);
+  if (job.step && job.step !== job.phase) subtitleParts.push(job.step);
+  if (typeof job.current === "number" && typeof job.total === "number" && job.total > 0) {
+    subtitleParts.push(`${job.current} z ${job.total}`);
+  }
+  const subtitle = job.message?.trim() || subtitleParts.join(" · ");
 
   const variant = isFailed
     ? "bg-destructive/10 border-destructive/30"
@@ -246,6 +275,11 @@ function ScraperProgress({
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
+      {!isFinal && subtitle && (
+        <div className="text-[11px] text-muted-foreground leading-snug">
+          {subtitle}
+        </div>
+      )}
       {isFailed && job.errorMessage && (
         <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
           <div className="font-medium text-destructive mb-0.5">
@@ -591,7 +625,17 @@ function Panel() {
           );
           return;
         }
-        let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
+        let p: {
+          status: string;
+          listings?: CarLot[];
+          error?: string;
+          progress?: number;
+          step?: string;
+          phase?: string;
+          message?: string;
+          current?: number;
+          total?: number;
+        };
         try {
           p = (await fnPollScraper({ data: { jobId, cacheKey, criteria } })) as typeof p;
         } catch (e) {
@@ -604,6 +648,11 @@ function Panel() {
                 ...s,
                 status: p.status,
                 progress: p.progress,
+                step: p.step,
+                phase: p.phase,
+                message: p.message,
+                current: p.current,
+                total: p.total,
                 elapsedMs: Date.now() - s.startedAt,
               }
             : s,

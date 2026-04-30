@@ -864,6 +864,11 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     listings?: CarLot[];
     error?: string;
     progress?: number;
+    step?: string;
+    message?: string;
+    current?: number;
+    total?: number;
+    phase?: string;
   }> => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -888,15 +893,36 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       listings?: CarLot[];
       error?: string;
       progress?: number;
+      step?: string;
+      message?: string;
+      current?: number;
+      total?: number;
+      phase?: string;
     };
 
     const status = j.status ?? "unknown";
     const DONE_STATUSES = ["done", "completed", "finished", "success", "complete"];
 
-    await log.info("poll", `Job ${data.jobId} — status: ${status}`, {
+    // Compose human-readable suffix for log message.
+    const parts: string[] = [`status: ${status}`];
+    if (j.phase) parts.push(`faza: ${j.phase}`);
+    if (j.step) parts.push(`krok: ${j.step}`);
+    if (typeof j.current === "number" && typeof j.total === "number") {
+      parts.push(`${j.current}/${j.total}`);
+    }
+    if (typeof j.progress === "number") {
+      parts.push(`${Math.round(j.progress * 100)}%`);
+    }
+
+    await log.info("poll", `Job ${data.jobId} — ${parts.join(" · ")}`, {
       job_id: data.jobId,
       status,
       progress: j.progress,
+      step: j.step,
+      phase: j.phase,
+      current: j.current,
+      total: j.total,
+      message: j.message,
     });
 
     if (DONE_STATUSES.includes(status)) {
@@ -937,6 +963,11 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       listings: j.listings,
       error: j.error,
       progress: typeof j.progress === "number" ? j.progress : undefined,
+      step: j.step,
+      message: j.message,
+      current: typeof j.current === "number" ? j.current : undefined,
+      total: typeof j.total === "number" ? j.total : undefined,
+      phase: j.phase,
     };
   });
 

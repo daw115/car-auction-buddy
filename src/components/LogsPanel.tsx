@@ -338,6 +338,7 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="break-words leading-snug">{row.message}</div>
+                  <ProgressLine details={row.details} />
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
                     <span>{new Date(row.created_at).toLocaleTimeString("pl-PL")}</span>
                     {typeof row.duration_ms === "number" && <span>· {row.duration_ms} ms</span>}
@@ -369,6 +370,46 @@ function scopeLabel(clientId: string | null, recordId?: string | null): string {
   if (recordId) return `record-${recordId.slice(0, 8)}`;
   if (clientId) return `client-${clientId.slice(0, 8)}`;
   return "all";
+}
+
+function ProgressLine({ details }: { details: Record<string, unknown> | null }) {
+  if (!details) return null;
+  const progress = typeof details.progress === "number" ? details.progress : null;
+  const current = typeof details.current === "number" ? details.current : null;
+  const total = typeof details.total === "number" ? details.total : null;
+  const phase = typeof details.phase === "string" ? details.phase : null;
+  const step = typeof details.step === "string" ? details.step : null;
+
+  if (progress === null && current === null && !phase && !step) return null;
+
+  const pct =
+    progress !== null
+      ? Math.min(100, Math.max(0, Math.round(progress * 100)))
+      : current !== null && total && total > 0
+        ? Math.min(100, Math.max(0, Math.round((current / total) * 100)))
+        : null;
+
+  const parts: string[] = [];
+  if (phase) parts.push(phase);
+  if (step && step !== phase) parts.push(step);
+  if (current !== null && total !== null) parts.push(`${current}/${total}`);
+  if (pct !== null) parts.push(`${pct}%`);
+
+  return (
+    <div className="mt-1 space-y-0.5">
+      {pct !== null && (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full bg-primary transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {parts.length > 0 && (
+        <div className="text-[10px] text-muted-foreground">{parts.join(" · ")}</div>
+      )}
+    </div>
+  );
 }
 
 function csvEscape(value: unknown): string {
