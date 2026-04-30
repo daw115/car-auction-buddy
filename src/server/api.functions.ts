@@ -641,34 +641,51 @@ function buildMockListings(criteria: ClientCriteria): CarLot[] {
   const model = criteria.model || "A5";
   const year = criteria.year_from || 2018;
   const budget = criteria.budget_usd || 15000;
-  const base = (i: number, src: "copart" | "iaai", state: string, dmg: string, bid: number, odo: number) => ({
-    source: src,
-    lot_id: `${src.toUpperCase()}-${100000 + i}`,
-    url: `https://example.${src}.com/lot/${100000 + i}`,
-    title: `${year + (i % 4)} ${make} ${model}`,
-    make,
-    model,
-    year: year + (i % 4),
-    odometer_mi: odo,
-    vin: `WAU${(1000000000 + i).toString().padStart(14, "0")}`,
-    primary_damage: dmg,
-    secondary_damage: i % 3 === 0 ? "REAR END" : null,
-    location_state: state,
-    location_city: state === "NJ" ? "Newark" : state === "CA" ? "Adelanto" : "Houston",
-    seller: i % 2 === 0 ? "INSURANCE COMPANY" : "DEALER",
-    title_status: "CLEAN",
-    current_bid_usd: bid,
-    buy_now_usd: bid + 1500,
-    auction_date: new Date(Date.now() + (24 + i * 6) * 3600 * 1000).toISOString(),
-    images: [`https://picsum.photos/seed/lot${i}/640/480`],
-  });
-  return [
-    base(1, "copart", "NJ", "FRONT END", Math.round(budget * 0.55), 62000),
-    base(2, "iaai", "CA", "ALL OVER", Math.round(budget * 0.7), 85000),
-    base(3, "copart", "TX", "MINOR DENT/SCRATCHES", Math.round(budget * 0.4), 41000),
-    base(4, "iaai", "NY", "REAR END", Math.round(budget * 0.6), 73000),
-    base(5, "copart", "FL", "HAIL", Math.round(budget * 0.5), 28000),
+  const wantCount = Math.min(Math.max(criteria.max_results ?? 12, 1), 50);
+
+  const damages = [
+    "FRONT END", "REAR END", "ALL OVER", "MINOR DENT/SCRATCHES",
+    "HAIL", "SIDE", "UNDERCARRIAGE", "ROLLOVER", "MECHANICAL", "NORMAL WEAR",
   ];
+  const states = ["NJ", "CA", "TX", "NY", "FL", "GA", "IL", "PA", "OH", "AZ"];
+  const cities: Record<string, string> = {
+    NJ: "Newark", CA: "Adelanto", TX: "Houston", NY: "Long Island",
+    FL: "Miami", GA: "Atlanta", IL: "Chicago", PA: "Philadelphia",
+    OH: "Columbus", AZ: "Phoenix",
+  };
+  const sources: Array<"copart" | "iaai"> = ["copart", "iaai"];
+  const titleStatuses = ["CLEAN", "SALVAGE", "REBUILT"];
+
+  const out: CarLot[] = [];
+  for (let i = 1; i <= wantCount; i++) {
+    const src = sources[i % 2];
+    const state = states[i % states.length];
+    const dmg = damages[i % damages.length];
+    const bidFactor = 0.35 + ((i * 37) % 50) / 100; // 0.35–0.85
+    const bid = Math.round(budget * bidFactor);
+    const odo = 20000 + ((i * 9173) % 130000);
+    out.push({
+      source: src,
+      lot_id: `${src.toUpperCase()}-${100000 + i}`,
+      url: `https://example.${src}.com/lot/${100000 + i}`,
+      make,
+      model,
+      year: year + (i % 6),
+      odometer_mi: odo,
+      vin: `WAU${(1000000000 + i).toString().padStart(14, "0")}`,
+      damage_primary: dmg,
+      damage_secondary: i % 3 === 0 ? "REAR END" : null,
+      location_state: state,
+      location_city: cities[state] ?? "Unknown",
+      seller_type: i % 2 === 0 ? "INSURANCE COMPANY" : "DEALER",
+      title_type: titleStatuses[i % titleStatuses.length],
+      current_bid_usd: bid,
+      buy_now_price_usd: bid + 1500,
+      auction_date: new Date(Date.now() + (24 + i * 6) * 3600 * 1000).toISOString(),
+      images: [`https://picsum.photos/seed/lot${i}/640/480`],
+    });
+  }
+  return out;
 }
 
 // ---------- Lot reports (broker + klient) — port generatora z Pythona ----------
