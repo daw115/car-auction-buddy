@@ -706,7 +706,28 @@ function DevLogsGate() {
     );
   }
 
-  return <DevLogsPage />;
+  const remainingMs = expiresAt ? Math.max(0, expiresAt - now) : 0;
+  const remainingMin = Math.floor(remainingMs / 60000);
+  const remainingSec = Math.floor((remainingMs % 60000) / 1000);
+
+  return (
+    <>
+      {expiresAt ? (
+        <div className="sticky top-0 z-30 flex items-center justify-end gap-3 border-b border-border/50 bg-background/80 px-4 py-1 text-[11px] text-muted-foreground backdrop-blur">
+          <span>
+            Sesja Dev Logs wygasa za{" "}
+            <span className="font-mono text-foreground">
+              {remainingMin}:{String(remainingSec).padStart(2, "0")}
+            </span>
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={logout}>
+            Wyloguj
+          </Button>
+        </div>
+      ) : null}
+      <DevLogsPage />
+    </>
+  );
 }
 
 export const Route = createFileRoute("/dev/logs")({
