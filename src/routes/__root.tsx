@@ -30,14 +30,15 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "USA Car Finder — panel operatora" },
+      {
+        name: "description",
+        content:
+          "Panel operacyjny do wyszukiwania aut z aukcji Copart i IAAI, analiza AI i raporty dla klientów.",
+      },
+      { property: "og:title", content: "USA Car Finder — panel operatora" },
+      { property: "og:description", content: "Wyszukiwanie aut, analiza AI, raporty klientów." },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
@@ -59,6 +60,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <Toaster richColors position="top-right" />
         <Scripts />
       </body>
     </html>
