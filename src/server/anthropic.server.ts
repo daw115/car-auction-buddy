@@ -75,13 +75,67 @@ export async function callAnthropic(opts: {
 
 export function parseAnalysisJson(raw: string): unknown {
   let s = raw.trim();
-  if (s.includes("```")) {
-    const parts = s.split("```");
-    if (parts.length >= 2) {
-      s = parts[1];
-      if (s.startsWith("json")) s = s.slice(4);
+
+  // strip markdown code fences
+  s = s.replace(/```json\s*/gi, "").replace(/```\s*$/g, "").replace(/```/g, "").trim();
+
+  // find JSON boundaries
+  const start = s.search(/[\[{]/);
+  if (start === -1) throw new Error("Brak JSON-a w odpowiedzi AI");
+  const opener = s[start];
+  const closer = opener === "[" ? "]" : "}";
+  const lastClose = s.lastIndexOf(closer);
+  s = lastClose > start ? s.slice(start, lastClose + 1) : s.slice(start);
+
+  const tryParse = (text: string): unknown => JSON.parse(text);
+
+  // 1) raw
+  try { return tryParse(s); } catch {}
+
+  // 2) clean trailing commas + control chars
+  let cleaned = s
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*\]/g, "]")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  try { return tryParse(cleaned); } catch {}
+
+  // 3) repair truncation: walk chars tracking string state + bracket stack,
+  //    drop incomplete trailing element, then close all open brackets.
+  const stack: string[] = [];
+  let inStr = false;
+  let escape = false;
+  let lastSafeEnd = -1; // index AFTER a fully-closed top-level child element
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === "{" || ch === "[") stack.push(ch);
+    else if (ch === "}" || ch === "]") {
+      stack.pop();
+      // mark a safe cut point right after a balanced child of root array
+      if (stack.length === 1 && cleaned[0] === "[") lastSafeEnd = i + 1;
     }
   }
-  s = s.trim().replace(/```$/, "").trim();
-  return JSON.parse(s);
+
+  if (stack.length > 0) {
+    let repaired: string;
+    if (cleaned[0] === "[" && lastSafeEnd > 0) {
+      // cut to last complete element and close root array
+      repaired = cleaned.slice(0, lastSafeEnd).replace(/,\s*$/, "") + "]";
+    } else {
+      // close remaining brackets in reverse
+      const closers = stack
+        .slice()
+        .reverse()
+        .map((c) => (c === "{" ? "}" : "]"))
+        .join("");
+      repaired = cleaned.replace(/,\s*$/, "") + closers;
+    }
+    try { return tryParse(repaired); } catch {}
+  }
+
+  // last resort — surface original error
+  return tryParse(cleaned);
 }
