@@ -732,6 +732,8 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       recordId: data.recordId ?? null,
     });
 
+
+    // Mock mode short-circuit
     const { data: cfg } = await supabaseAdmin
       .from("app_config")
       .select("use_mock_data")
@@ -746,6 +748,28 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       return { mode: "sync", listings, source: "mock" };
     }
 
+    // Cache lookup BEFORE hitting scraper.
+    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria);
+    const cached = await readScrapeCache(cacheKey);
+    if (cached) {
+      await log.info(
+        "cache_hit",
+        `Cache hit: ${cached.listings.length} lotów (zapisane: ${cached.created_at})`,
+        {
+          cache_key: cacheKey,
+          listings_count: cached.listings.length,
+          cached_at: cached.created_at,
+        },
+      );
+      return {
+        mode: "sync",
+        listings: cached.listings,
+        source: `cache:${cached.source}`,
+        cache_hit: true,
+        cache_key: cacheKey,
+      };
+    }
+
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl) {
@@ -756,6 +780,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     await log.info("start", "Start wyszukiwania (job)", {
       endpoint: `${baseUrl}/api/search`,
       criteria_make: data.criteria.make,
+      cache_key: cacheKey,
     });
 
     const res = await fetch(`${baseUrl}/api/search`, {
@@ -779,14 +804,37 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       | CarLot[];
 
     if (Array.isArray(json)) {
-      return { mode: "sync", listings: json, source: baseUrl };
+      await writeScrapeCache({
+        cacheKey,
+        criteria: data.criteria,
+        configSnapshot,
+        listings: json,
+        source: baseUrl,
+      });
+      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey };
     }
     if (json.job_id) {
-      await log.info("queued", `Job ${json.job_id} w kolejce`, { job_id: json.job_id });
-      return { mode: "job", job_id: json.job_id, source: baseUrl };
+      await log.info("queued", `Job ${json.job_id} w kolejce`, {
+        job_id: json.job_id,
+        cache_key: cacheKey,
+      });
+      return { mode: "job", job_id: json.job_id, source: baseUrl, cache_key: cacheKey };
     }
     if (json.listings) {
-      return { mode: "sync", listings: json.listings, source: baseUrl };
+      await writeScrapeCache({
+        cacheKey,
+        criteria: data.criteria,
+        configSnapshot,
+        listings: json.listings,
+        source: baseUrl,
+      });
+      return {
+        mode: "sync",
+        listings: json.listings,
+        source: baseUrl,
+        cache_hit: false,
+        cache_key: cacheKey,
+      };
     }
     throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
   });
