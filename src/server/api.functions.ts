@@ -453,6 +453,98 @@ export const renderReport = createServerFn({ method: "POST" })
 
 // ---------- Scraper bridge (optional) ----------
 
+// Cache helpers ---------------------------------
+const SCRAPE_CACHE_TTL_SECONDS = (() => {
+  const raw = process.env.SCRAPE_CACHE_TTL_SECONDS;
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 3600; // default 1h
+})();
+
+// Build a stable cache key from criteria + config fields that affect scrape output.
+async function buildScrapeCacheKey(
+  criteria: ClientCriteria,
+): Promise<{ key: string; configSnapshot: Record<string, unknown> }> {
+  const { data: cfg } = await supabaseAdmin
+    .from("app_config")
+    .select(
+      "max_auction_window_hours, min_auction_window_hours, filter_seller_insurance_only, open_all_prefiltered_details, collect_all_prefiltered_results",
+    )
+    .eq("id", 1)
+    .maybeSingle();
+
+  const configSnapshot = {
+    max_auction_window_hours: cfg?.max_auction_window_hours ?? null,
+    min_auction_window_hours: cfg?.min_auction_window_hours ?? null,
+    filter_seller_insurance_only: cfg?.filter_seller_insurance_only ?? null,
+    open_all_prefiltered_details: cfg?.open_all_prefiltered_details ?? null,
+    collect_all_prefiltered_results: cfg?.collect_all_prefiltered_results ?? null,
+  };
+
+  // Normalize criteria: lower-case strings, sort arrays, drop undefined.
+  const norm = {
+    make: (criteria.make ?? "").trim().toLowerCase(),
+    model: (criteria.model ?? "").trim().toLowerCase() || null,
+    year_from: criteria.year_from ?? null,
+    year_to: criteria.year_to ?? null,
+    budget_usd: criteria.budget_usd ?? null,
+    max_odometer_mi: criteria.max_odometer_mi ?? null,
+    excluded_damage_types: [...(criteria.excluded_damage_types ?? [])]
+      .map((s) => s.toLowerCase())
+      .sort(),
+    max_results: criteria.max_results ?? null,
+    sources: [...(criteria.sources ?? [])].map((s) => s.toLowerCase()).sort(),
+  };
+
+  const payload = JSON.stringify({ criteria: norm, config: configSnapshot });
+  // Use Web Crypto (Workers + Node 20) to hash without importing node:crypto.
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  const hex = Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return { key: hex, configSnapshot };
+}
+
+async function readScrapeCache(
+  cacheKey: string,
+): Promise<{ listings: CarLot[]; source: string; created_at: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("scrape_cache")
+    .select("listings, source, created_at, expires_at")
+    .eq("cache_key", cacheKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    listings: (data.listings as CarLot[]) ?? [],
+    source: (data.source as string) ?? "cache",
+    created_at: data.created_at as string,
+  };
+}
+
+async function writeScrapeCache(args: {
+  cacheKey: string;
+  criteria: ClientCriteria;
+  configSnapshot: Record<string, unknown>;
+  listings: CarLot[];
+  source: string;
+}): Promise<void> {
+  const expiresAt = new Date(Date.now() + SCRAPE_CACHE_TTL_SECONDS * 1000).toISOString();
+  await supabaseAdmin.from("scrape_cache").upsert(
+    {
+      cache_key: args.cacheKey,
+      criteria: args.criteria as unknown as Record<string, unknown>,
+      config_snapshot: args.configSnapshot,
+      listings: args.listings as unknown as Record<string, unknown>,
+      listings_count: args.listings.length,
+      source: args.source,
+      created_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    },
+    { onConflict: "cache_key" },
+  );
+}
+
+
 export const runScraperSearch = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
