@@ -803,8 +803,18 @@ function Panel() {
                         ))}
                       </div>
                     )}
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      Naprawa: ${a.analysis.estimated_repair_usd ?? "—"} · Łącznie: ${a.analysis.estimated_total_cost_usd ?? "—"}
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        Naprawa: ${a.analysis.estimated_repair_usd ?? "—"} · Łącznie: ${a.analysis.estimated_total_cost_usd ?? "—"}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => watchLot(a)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" /> Obserwuj
+                      </Button>
                     </div>
                   </div>
                 ))}
