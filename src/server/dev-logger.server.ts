@@ -1,4 +1,4 @@
-// Pretty colored console logger for the server (dev-friendly).
+import { publishLog } from "./log-stream.server";
 // Uses ANSI escape codes — works in Vite dev terminal and Worker logs.
 // In production (NODE_ENV=production) colors and verbose request logs are suppressed
 // unless DEBUG_SERVER=1 is set.
@@ -64,6 +64,7 @@ export function devLog(
   } else {
     fn(line);
   }
+  publishLog({ level, scope, message, extra: extra ?? null });
 }
 
 function statusColor(status: number): string {
@@ -110,4 +111,10 @@ export function logHttp(opts: {
   console.log(
     `${time} ${tag} ${C.bold}${scope}${C.reset} ${m} ${s} ${opts.path} ${C.dim}·${C.reset} ${fmtDuration(opts.durationMs)}`,
   );
+  publishLog({
+    level: "http",
+    scope,
+    message: `${opts.method} ${opts.path} → ${opts.status}`,
+    extra: { status: opts.status, durationMs: Math.round(opts.durationMs * 10) / 10 },
+  });
 }
