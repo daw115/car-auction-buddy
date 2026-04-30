@@ -407,6 +407,124 @@ ${rows}
   );
 }
 
+function DevLogsGate() {
+  const [status, setStatus] = useState<"checking" | "locked" | "ok" | "unavailable">("checking");
+  const [unavailableReason, setUnavailableReason] = useState<string>("");
+  const [token, setToken] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const check = async () => {
+    try {
+      const res = await fetch("/api/dev/auth", { credentials: "same-origin" });
+      if (res.status === 403 || res.status === 503) {
+        const body = (await res.json().catch(() => ({}))) as { reason?: string };
+        setUnavailableReason(body.reason ?? `HTTP ${res.status}`);
+        setStatus("unavailable");
+        return;
+      }
+      const body = (await res.json()) as { authenticated: boolean };
+      setStatus(body.authenticated ? "ok" : "locked");
+    } catch {
+      setStatus("locked");
+    }
+  };
+
+  useEffect(() => {
+    void check();
+  }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/dev/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ token }),
+      });
+      if (res.ok) {
+        toast.success("Zalogowano");
+        setToken("");
+        setStatus("ok");
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { reason?: string };
+        toast.error(body.reason ?? "Nieprawidłowe hasło");
+      }
+    } catch {
+      toast.error("Błąd połączenia");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (status === "checking") {
+    return (
+      <div className="min-h-screen bg-background p-6 text-sm text-muted-foreground">
+        Sprawdzanie dostępu…
+      </div>
+    );
+  }
+
+  if (status === "unavailable") {
+    return (
+      <div className="min-h-screen bg-background p-4 md:p-6">
+        <div className="mx-auto max-w-md">
+          <Card className="p-6 space-y-3">
+            <h1 className="text-lg font-semibold text-foreground">Dev Logs niedostępne</h1>
+            <p className="text-sm text-muted-foreground">{unavailableReason}</p>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/">
+                <ArrowLeft className="h-4 w-4 mr-1" /> Wróć
+              </Link>
+            </Button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "locked") {
+    return (
+      <div className="min-h-screen bg-background p-4 md:p-6">
+        <div className="mx-auto max-w-md">
+          <Card className="p-6 space-y-4">
+            <div>
+              <h1 className="text-lg font-semibold text-foreground">Dev Logs — logowanie</h1>
+              <p className="text-xs text-muted-foreground mt-1">
+                Wprowadź hasło dostępu (DEV_LOGS_TOKEN).
+              </p>
+            </div>
+            <form onSubmit={submit} className="space-y-3">
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="Hasło"
+                autoFocus
+              />
+              <div className="flex items-center justify-between">
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/">
+                    <ArrowLeft className="h-4 w-4 mr-1" /> Anuluj
+                  </Link>
+                </Button>
+                <Button type="submit" size="sm" disabled={submitting || !token}>
+                  {submitting ? "Logowanie…" : "Zaloguj"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return <DevLogsPage />;
+}
+
 export const Route = createFileRoute("/dev/logs")({
-  component: DevLogsPage,
+  component: DevLogsGate,
 });
+

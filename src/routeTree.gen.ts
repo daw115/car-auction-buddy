@@ -20,6 +20,7 @@ import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
+import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
 import { Route as ApiDevLogsStreamRouteImport } from './routes/api/dev/logs/stream'
 
@@ -78,6 +79,11 @@ const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
   path: '/api/reports/pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDevAuthRoute = ApiDevAuthRouteImport.update({
+  id: '/api/dev/auth',
+  path: '/api/dev/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksCleanupLogsRoute =
   ApiPublicHooksCleanupLogsRouteImport.update({
     id: '/api/public/hooks/cleanup-logs',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
+  '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
+  '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
+  '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
+    | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
+    | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
@@ -179,6 +190,7 @@ export interface FileRouteTypes {
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
+    | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
@@ -195,6 +207,7 @@ export interface RootRouteChildren {
   ApiRecordsRoute: typeof ApiRecordsRoute
   ApiVersionRoute: typeof ApiVersionRoute
   DevLogsRoute: typeof DevLogsRoute
+  ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiDevLogsStreamRoute: typeof ApiDevLogsStreamRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
@@ -279,6 +292,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiReportsPdfRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/dev/auth': {
+      id: '/api/dev/auth'
+      path: '/api/dev/auth'
+      fullPath: '/api/dev/auth'
+      preLoaderRoute: typeof ApiDevAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/cleanup-logs': {
       id: '/api/public/hooks/cleanup-logs'
       path: '/api/public/hooks/cleanup-logs'
@@ -307,6 +327,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRecordsRoute: ApiRecordsRoute,
   ApiVersionRoute: ApiVersionRoute,
   DevLogsRoute: DevLogsRoute,
+  ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiDevLogsStreamRoute: ApiDevLogsStreamRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
