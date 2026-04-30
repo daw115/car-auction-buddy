@@ -625,7 +625,17 @@ function Panel() {
           );
           return;
         }
-        let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
+        let p: {
+          status: string;
+          listings?: CarLot[];
+          error?: string;
+          progress?: number;
+          step?: string;
+          phase?: string;
+          message?: string;
+          current?: number;
+          total?: number;
+        };
         try {
           p = (await fnPollScraper({ data: { jobId, cacheKey, criteria } })) as typeof p;
         } catch (e) {
@@ -638,6 +648,11 @@ function Panel() {
                 ...s,
                 status: p.status,
                 progress: p.progress,
+                step: p.step,
+                phase: p.phase,
+                message: p.message,
+                current: p.current,
+                total: p.total,
                 elapsedMs: Date.now() - s.startedAt,
               }
             : s,
