@@ -130,6 +130,11 @@ type ScrapeJobState = {
   elapsedMs: number;
   errorMessage?: string;
   errorStep?: string;
+  step?: string;
+  phase?: string;
+  message?: string;
+  current?: number;
+  total?: number;
 };
 
 function formatDuration(ms: number): string {
