@@ -453,6 +453,98 @@ export const renderReport = createServerFn({ method: "POST" })
 
 // ---------- Scraper bridge (optional) ----------
 
+// Cache helpers ---------------------------------
+const SCRAPE_CACHE_TTL_SECONDS = (() => {
+  const raw = process.env.SCRAPE_CACHE_TTL_SECONDS;
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 3600; // default 1h
+})();
+
+// Build a stable cache key from criteria + config fields that affect scrape output.
+async function buildScrapeCacheKey(
+  criteria: ClientCriteria,
+): Promise<{ key: string; configSnapshot: Record<string, unknown> }> {
+  const { data: cfg } = await supabaseAdmin
+    .from("app_config")
+    .select(
+      "max_auction_window_hours, min_auction_window_hours, filter_seller_insurance_only, open_all_prefiltered_details, collect_all_prefiltered_results",
+    )
+    .eq("id", 1)
+    .maybeSingle();
+
+  const configSnapshot = {
+    max_auction_window_hours: cfg?.max_auction_window_hours ?? null,
+    min_auction_window_hours: cfg?.min_auction_window_hours ?? null,
+    filter_seller_insurance_only: cfg?.filter_seller_insurance_only ?? null,
+    open_all_prefiltered_details: cfg?.open_all_prefiltered_details ?? null,
+    collect_all_prefiltered_results: cfg?.collect_all_prefiltered_results ?? null,
+  };
+
+  // Normalize criteria: lower-case strings, sort arrays, drop undefined.
+  const norm = {
+    make: (criteria.make ?? "").trim().toLowerCase(),
+    model: (criteria.model ?? "").trim().toLowerCase() || null,
+    year_from: criteria.year_from ?? null,
+    year_to: criteria.year_to ?? null,
+    budget_usd: criteria.budget_usd ?? null,
+    max_odometer_mi: criteria.max_odometer_mi ?? null,
+    excluded_damage_types: [...(criteria.excluded_damage_types ?? [])]
+      .map((s) => s.toLowerCase())
+      .sort(),
+    max_results: criteria.max_results ?? null,
+    sources: [...(criteria.sources ?? [])].map((s) => s.toLowerCase()).sort(),
+  };
+
+  const payload = JSON.stringify({ criteria: norm, config: configSnapshot });
+  // Use Web Crypto (Workers + Node 20) to hash without importing node:crypto.
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  const hex = Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return { key: hex, configSnapshot };
+}
+
+async function readScrapeCache(
+  cacheKey: string,
+): Promise<{ listings: CarLot[]; source: string; created_at: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("scrape_cache")
+    .select("listings, source, created_at, expires_at")
+    .eq("cache_key", cacheKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    listings: (data.listings as CarLot[]) ?? [],
+    source: (data.source as string) ?? "cache",
+    created_at: data.created_at as string,
+  };
+}
+
+async function writeScrapeCache(args: {
+  cacheKey: string;
+  criteria: ClientCriteria;
+  configSnapshot: Record<string, unknown>;
+  listings: CarLot[];
+  source: string;
+}): Promise<void> {
+  const expiresAt = new Date(Date.now() + SCRAPE_CACHE_TTL_SECONDS * 1000).toISOString();
+  await (supabaseAdmin.from("scrape_cache") as any).upsert(
+    {
+      cache_key: args.cacheKey,
+      criteria: args.criteria,
+      config_snapshot: args.configSnapshot,
+      listings: args.listings,
+      listings_count: args.listings.length,
+      source: args.source,
+      created_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    },
+    { onConflict: "cache_key" },
+  );
+}
+
+
 export const runScraperSearch = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
@@ -631,8 +723,8 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     }).parse,
   )
   .handler(async ({ data }): Promise<
-    | { mode: "sync"; listings: CarLot[]; source: string }
-    | { mode: "job"; job_id: string; source: string }
+    | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+    | { mode: "job"; job_id: string; source: string; cache_key: string }
   > => {
     const log = makeLogger({
       operation: "scrape",
@@ -640,6 +732,8 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       recordId: data.recordId ?? null,
     });
 
+
+    // Mock mode short-circuit
     const { data: cfg } = await supabaseAdmin
       .from("app_config")
       .select("use_mock_data")
@@ -654,6 +748,28 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       return { mode: "sync", listings, source: "mock" };
     }
 
+    // Cache lookup BEFORE hitting scraper.
+    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria);
+    const cached = await readScrapeCache(cacheKey);
+    if (cached) {
+      await log.info(
+        "cache_hit",
+        `Cache hit: ${cached.listings.length} lotów (zapisane: ${cached.created_at})`,
+        {
+          cache_key: cacheKey,
+          listings_count: cached.listings.length,
+          cached_at: cached.created_at,
+        },
+      );
+      return {
+        mode: "sync",
+        listings: cached.listings,
+        source: `cache:${cached.source}`,
+        cache_hit: true,
+        cache_key: cacheKey,
+      };
+    }
+
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl) {
@@ -664,6 +780,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     await log.info("start", "Start wyszukiwania (job)", {
       endpoint: `${baseUrl}/api/search`,
       criteria_make: data.criteria.make,
+      cache_key: cacheKey,
     });
 
     const res = await fetch(`${baseUrl}/api/search`, {
@@ -687,21 +804,50 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       | CarLot[];
 
     if (Array.isArray(json)) {
-      return { mode: "sync", listings: json, source: baseUrl };
+      await writeScrapeCache({
+        cacheKey,
+        criteria: data.criteria,
+        configSnapshot,
+        listings: json,
+        source: baseUrl,
+      });
+      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey };
     }
     if (json.job_id) {
-      await log.info("queued", `Job ${json.job_id} w kolejce`, { job_id: json.job_id });
-      return { mode: "job", job_id: json.job_id, source: baseUrl };
+      await log.info("queued", `Job ${json.job_id} w kolejce`, {
+        job_id: json.job_id,
+        cache_key: cacheKey,
+      });
+      return { mode: "job", job_id: json.job_id, source: baseUrl, cache_key: cacheKey };
     }
     if (json.listings) {
-      return { mode: "sync", listings: json.listings, source: baseUrl };
+      await writeScrapeCache({
+        cacheKey,
+        criteria: data.criteria,
+        configSnapshot,
+        listings: json.listings,
+        source: baseUrl,
+      });
+      return {
+        mode: "sync",
+        listings: json.listings,
+        source: baseUrl,
+        cache_hit: false,
+        cache_key: cacheKey,
+      };
     }
     throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
   });
 
 // Poll scraper job status (called by UI every 4s).
 export const pollScraperJob = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
+  .inputValidator(
+    z.object({
+      jobId: z.string().min(1),
+      cacheKey: z.string().min(1).optional(),
+      criteria: criteriaSchema.optional(),
+    }).parse,
+  )
   .handler(async ({ data }): Promise<{
     status: string;
     listings?: CarLot[];
@@ -725,8 +871,32 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       error?: string;
       progress?: number;
     };
+
+    const status = j.status ?? "unknown";
+
+    // Persist to cache when the job finishes successfully.
+    if (
+      ["done", "completed", "finished"].includes(status) &&
+      Array.isArray(j.listings) &&
+      data.cacheKey &&
+      data.criteria
+    ) {
+      try {
+        const { configSnapshot } = await buildScrapeCacheKey(data.criteria);
+        await writeScrapeCache({
+          cacheKey: data.cacheKey,
+          criteria: data.criteria,
+          configSnapshot,
+          listings: j.listings,
+          source: baseUrl,
+        });
+      } catch {
+        // Cache write failures should not break the user-visible flow.
+      }
+    }
+
     return {
-      status: j.status ?? "unknown",
+      status,
       listings: j.listings,
       error: j.error,
       progress: typeof j.progress === "number" ? j.progress : undefined,
@@ -734,6 +904,28 @@ export const pollScraperJob = createServerFn({ method: "POST" })
   });
 
 // Cancel a running scraper job.
+// Clear scrape cache. Pass cacheKey to drop a single entry, or omit to wipe all.
+export const clearScrapeCache = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      cacheKey: z.string().min(1).optional(),
+      onlyExpired: z.boolean().optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    let q = supabaseAdmin.from("scrape_cache").delete();
+    if (data.cacheKey) {
+      q = q.eq("cache_key", data.cacheKey);
+    } else if (data.onlyExpired) {
+      q = q.lt("expires_at", new Date().toISOString());
+    } else {
+      q = q.not("id", "is", null);
+    }
+    const { error, count } = await q;
+    if (error) throw new Error(error.message);
+    return { ok: true, deleted: count ?? null };
+  });
+
 export const cancelScraperJob = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({

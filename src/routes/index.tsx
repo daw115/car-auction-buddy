@@ -18,6 +18,7 @@ import {
   startScraperSearch,
   pollScraperJob,
   cancelScraperJob,
+  clearScrapeCache,
   getJobLogs,
   runLotReports,
 } from "@/server/api.functions";
@@ -257,6 +258,17 @@ function Panel() {
   const fnPollScraper = useServerFn(pollScraperJob);
   const fnCancelScraper = useServerFn(cancelScraperJob);
   const fnGetJobLogs = useServerFn(getJobLogs);
+  const fnClearCache = useServerFn(clearScrapeCache);
+
+  async function clearCacheAll() {
+    if (!confirm("Wyczyścić cały cache wyników wyszukiwań?")) return;
+    try {
+      await fnClearCache({ data: {} });
+      toast.success("Cache wyczyszczony");
+    } catch (e) {
+      toast.error(`Błąd: ${(e as Error).message}`);
+    }
+  }
   const fnRunLotReports = useServerFn(runLotReports);
   const fnAddWatch = useServerFn(addToWatchlist);
 
@@ -497,19 +509,26 @@ function Panel() {
       const start = (await fnStartScraper({
         data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
       })) as
-        | { mode: "sync"; listings: CarLot[]; source: string }
-        | { mode: "job"; job_id: string; source: string };
+        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+        | { mode: "job"; job_id: string; source: string; cache_key: string };
 
       if (start.mode === "sync") {
         setListings(start.listings);
         setListingsRaw(JSON.stringify(start.listings, null, 2));
         setScrapeJob({ status: "done", startedAt, elapsedMs: Date.now() - startedAt, progress: 1 });
-        toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        if (start.cache_hit) {
+          toast.success(
+            `Z cache: ${start.listings.length} lotów (bez nowego scrape)`,
+          );
+        } else {
+          toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        }
         return;
       }
 
       // Poll loop
       const jobId = start.job_id;
+      const cacheKey = start.cache_key;
       setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
       const deadline = Date.now() + 5 * 60 * 1000;
       let listingsResult: CarLot[] = [];
@@ -529,7 +548,7 @@ function Panel() {
         }
         let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
         try {
-          p = (await fnPollScraper({ data: { jobId } })) as typeof p;
+          p = (await fnPollScraper({ data: { jobId, cacheKey, criteria } })) as typeof p;
         } catch (e) {
           // transient — keep polling
           continue;
@@ -1013,6 +1032,15 @@ function Panel() {
                     <Search className="h-4 w-4" />
                   )}
                   Wyszukaj online
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={clearCacheAll}
+                  title="Wyczyść cache wyników (wymusi nowy scrape)"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Wyczyść cache
                 </Button>
               </div>
             </div>
