@@ -123,6 +123,8 @@ type ScrapeJobState = {
   startedAt: number;
   progress?: number;
   elapsedMs: number;
+  errorMessage?: string;
+  errorStep?: string;
 };
 
 function formatDuration(ms: number): string {
