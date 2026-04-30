@@ -5,7 +5,7 @@ import { listLogs, clearLogs } from "@/server/api.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download } from "lucide-react";
+import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download, ExternalLink } from "lucide-react";
 
 type LogRow = {
   id: string;
@@ -20,9 +20,13 @@ type LogRow = {
   duration_ms: number | null;
 };
 
+type RecordSummary = { id: string; title: string | null };
+
 type Props = {
   clientId: string | null;
   recordId?: string | null;
+  records?: RecordSummary[];
+  onOpenRecord?: (id: string) => void;
 };
 
 const LEVEL_STYLES: Record<string, string> = {
