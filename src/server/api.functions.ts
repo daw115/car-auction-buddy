@@ -197,14 +197,22 @@ export const testAnthropic = createServerFn({ method: "POST" })
           error: `Anthropic HTTP ${res.status}: ${body.slice(0, 300)}`,
         };
       }
-      const json: { content?: Array<{ type: string; text?: string }>; usage?: unknown } = await res.json();
+      const json: {
+        content?: Array<{ type: string; text?: string }>;
+        usage?: { input_tokens?: number; output_tokens?: number };
+        model?: string;
+      } = await res.json();
       const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("");
       return {
         ok: true,
         configured: true,
-        model,
+        model: json.model ?? model,
         baseUrl,
         sample: text.slice(0, 80),
+        usage: {
+          input_tokens: json.usage?.input_tokens ?? 0,
+          output_tokens: json.usage?.output_tokens ?? 0,
+        },
       };
     } catch (e) {
       return {
