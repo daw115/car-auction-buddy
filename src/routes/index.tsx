@@ -274,6 +274,33 @@ function Panel() {
     return () => clearInterval(t);
   }, [scrapeJob?.status, scrapeJob?.startedAt]);
 
+  // Cancellation flag for the current scrape loop
+  const cancelRequestedRef = useRef(false);
+
+  async function cancelScrape() {
+    if (!scrapeJob?.jobId) {
+      // Local-only cancel (sync mode or no job yet)
+      cancelRequestedRef.current = true;
+      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
+      toast.message("Anulowano lokalnie");
+      return;
+    }
+    cancelRequestedRef.current = true;
+    try {
+      await fnCancelScraper({
+        data: {
+          jobId: scrapeJob.jobId,
+          clientId: activeClientId ?? undefined,
+          recordId: activeRecordId ?? undefined,
+        },
+      });
+      setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
+      toast.success("Wyszukiwanie anulowane");
+    } catch (e) {
+      toast.error(`Błąd anulowania: ${(e as Error).message}`);
+    }
+  }
+
   // new-client form
   const [newName, setNewName] = useState("");
   const [newContact, setNewContact] = useState("");
