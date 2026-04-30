@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { listLogs, clearLogs } from "@/server/api.functions";
+import { listLogs, clearLogs, getLogRetention, cleanupLogs } from "@/server/api.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +60,9 @@ function toIsoEnd(localDate: string): string | undefined {
 export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) {
   const fnList = useServerFn(listLogs);
   const fnClear = useServerFn(clearLogs);
+  const fnRetention = useServerFn(getLogRetention);
+  const fnCleanup = useServerFn(cleanupLogs);
+  const [retention, setRetention] = useState<{ days: number; source: string } | null>(null);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "scrape" | "ai_analysis">("all");
@@ -100,11 +103,34 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
     return () => clearInterval(t);
   }, [refresh]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = (await fnRetention()) as { days: number; source: string };
+        setRetention({ days: r.days, source: r.source });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [fnRetention]);
+
   const handleClear = async () => {
     if (!confirm(clientId ? "Wyczyścić logi tego klienta?" : "Wyczyścić wszystkie logi?")) return;
     try {
       await fnClear({ data: { clientId: clientId ?? undefined } });
       toast.success("Logi wyczyszczone");
+      await refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const handleCleanup = async () => {
+    const days = retention?.days ?? 30;
+    if (!confirm(`Usunąć logi starsze niż ${days} dni?`)) return;
+    try {
+      const r = (await fnCleanup()) as { deleted: number; retention_days: number };
+      toast.success(`Usunięto ${r.deleted} logów starszych niż ${r.retention_days} dni`);
       await refresh();
     } catch (e) {
       toast.error((e as Error).message);
@@ -152,11 +178,25 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
             <Download className="h-3.5 w-3.5" />
             <span className="ml-1 text-[10px]">CSV</span>
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCleanup}
+            title={`Usuń logi starsze niż ${retention?.days ?? 30} dni`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="ml-1 text-[10px]">{retention?.days ?? 30}d</span>
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleClear} title="Wyczyść logi">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
+      {retention && (
+        <div className="mb-2 text-[10px] text-muted-foreground">
+          Retencja logów: {retention.days} dni ({retention.source === "env" ? "z LOG_RETENTION_DAYS" : "domyślna"}). Auto-czyszczenie codziennie.
+        </div>
+      )}
 
       <div className="mb-2 flex gap-1">
         {(["all", "scrape", "ai_analysis"] as const).map((f) => (

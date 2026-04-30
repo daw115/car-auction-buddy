@@ -571,3 +571,31 @@ export const clearLogs = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+const DEFAULT_LOG_RETENTION_DAYS = 30;
+
+function getLogRetentionDays(): number {
+  const raw = process.env.LOG_RETENTION_DAYS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LOG_RETENTION_DAYS;
+  return Math.min(parsed, 3650);
+}
+
+export const getLogRetention = createServerFn({ method: "GET" }).handler(async () => {
+  return {
+    days: getLogRetentionDays(),
+    default: DEFAULT_LOG_RETENTION_DAYS,
+    source: process.env.LOG_RETENTION_DAYS ? "env" : "default",
+  };
+});
+
+export const cleanupLogs = createServerFn({ method: "POST" }).handler(async () => {
+  const days = getLogRetentionDays();
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const { error, count } = await supabaseAdmin
+    .from("operation_logs")
+    .delete({ count: "exact" })
+    .lt("created_at", cutoff);
+  if (error) throw new Error(error.message);
+  return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
+});

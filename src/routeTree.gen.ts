@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
+import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -40,6 +41,12 @@ const ApiConfigRoute = ApiConfigRouteImport.update({
   path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksCleanupLogsRoute =
+  ApiPublicHooksCleanupLogsRouteImport.update({
+    id: '/api/public/hooks/cleanup-logs',
+    path: '/api/public/hooks/cleanup-logs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +54,7 @@ export interface FileRoutesByFullPath {
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
+  '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +62,7 @@ export interface FileRoutesByTo {
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
+  '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,12 +71,25 @@ export interface FileRoutesById {
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
+  '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/api/config' | '/api/health' | '/api/records'
+  fullPaths:
+    | '/'
+    | '/settings'
+    | '/api/config'
+    | '/api/health'
+    | '/api/records'
+    | '/api/public/hooks/cleanup-logs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/api/config' | '/api/health' | '/api/records'
+  to:
+    | '/'
+    | '/settings'
+    | '/api/config'
+    | '/api/health'
+    | '/api/records'
+    | '/api/public/hooks/cleanup-logs'
   id:
     | '__root__'
     | '/'
@@ -75,6 +97,7 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/health'
     | '/api/records'
+    | '/api/public/hooks/cleanup-logs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -83,6 +106,7 @@ export interface RootRouteChildren {
   ApiConfigRoute: typeof ApiConfigRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiRecordsRoute: typeof ApiRecordsRoute
+  ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -122,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/cleanup-logs': {
+      id: '/api/public/hooks/cleanup-logs'
+      path: '/api/public/hooks/cleanup-logs'
+      fullPath: '/api/public/hooks/cleanup-logs'
+      preLoaderRoute: typeof ApiPublicHooksCleanupLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -131,6 +162,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConfigRoute: ApiConfigRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiRecordsRoute: ApiRecordsRoute,
+  ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
