@@ -115,6 +115,79 @@ function recommendationBadge(r: string) {
   return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
 }
 
+type ScrapeJobState = {
+  status: string;
+  jobId?: string;
+  startedAt: number;
+  progress?: number;
+  elapsedMs: number;
+};
+
+function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+}
+
+function ScraperProgress({ job }: { job: ScrapeJobState }) {
+  // Heuristic ETA: assume ~90s typical scrape if backend doesn't report progress.
+  const ASSUMED_TOTAL_MS = 90_000;
+  const isDone = job.status === "done";
+  const isFailed = job.status === "failed";
+  const pct =
+    typeof job.progress === "number"
+      ? Math.min(100, Math.max(0, Math.round(job.progress * 100)))
+      : isDone
+        ? 100
+        : Math.min(95, Math.round((job.elapsedMs / ASSUMED_TOTAL_MS) * 100));
+
+  const etaMs =
+    isDone || isFailed
+      ? 0
+      : typeof job.progress === "number" && job.progress > 0
+        ? Math.max(0, job.elapsedMs / job.progress - job.elapsedMs)
+        : Math.max(0, ASSUMED_TOTAL_MS - job.elapsedMs);
+
+  const statusLabel: Record<string, string> = {
+    queued: "W kolejce",
+    running: "Pobieranie ofert...",
+    done: "Zakończono",
+    completed: "Zakończono",
+    finished: "Zakończono",
+    failed: "Błąd",
+    error: "Błąd",
+  };
+
+  const variant = isFailed
+    ? "bg-destructive/10 border-destructive/30"
+    : isDone
+      ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
+      : "bg-muted border-border";
+
+  return (
+    <div className={`rounded-md border px-3 py-2 ${variant}`}>
+      <div className="flex items-center justify-between text-xs mb-1.5">
+        <div className="flex items-center gap-2">
+          {!isDone && !isFailed && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          <span className="font-medium">
+            {statusLabel[job.status] ?? job.status}
+          </span>
+          {job.jobId && (
+            <span className="font-mono text-muted-foreground">#{job.jobId.slice(0, 8)}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <span>Czas: {formatDuration(job.elapsedMs)}</span>
+          {!isDone && !isFailed && <span>ETA: ~{formatDuration(etaMs)}</span>}
+          <span className="font-medium text-foreground">{pct}%</span>
+        </div>
+      </div>
+      <Progress value={pct} className="h-1.5" />
+    </div>
+  );
+}
+
 function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
