@@ -841,7 +841,12 @@ function Panel() {
               ))}
             </div>
           </Card>
-          <LogsPanel clientId={activeClientId} recordId={activeRecordId} />
+          <LogsPanel
+            clientId={activeClientId}
+            recordId={activeRecordId}
+            records={records}
+            onOpenRecord={(id) => void openRecord(id)}
+          />
         </aside>
       </main>
     </div>
