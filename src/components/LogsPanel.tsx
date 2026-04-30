@@ -103,11 +103,34 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
     return () => clearInterval(t);
   }, [refresh]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = (await fnRetention()) as { days: number; source: string };
+        setRetention({ days: r.days, source: r.source });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [fnRetention]);
+
   const handleClear = async () => {
     if (!confirm(clientId ? "Wyczyścić logi tego klienta?" : "Wyczyścić wszystkie logi?")) return;
     try {
       await fnClear({ data: { clientId: clientId ?? undefined } });
       toast.success("Logi wyczyszczone");
+      await refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const handleCleanup = async () => {
+    const days = retention?.days ?? 30;
+    if (!confirm(`Usunąć logi starsze niż ${days} dni?`)) return;
+    try {
+      const r = (await fnCleanup()) as { deleted: number; retention_days: number };
+      toast.success(`Usunięto ${r.deleted} logów starszych niż ${r.retention_days} dni`);
       await refresh();
     } catch (e) {
       toast.error((e as Error).message);
