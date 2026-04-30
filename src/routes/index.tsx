@@ -519,8 +519,11 @@ function Panel() {
       setListingsRaw(JSON.stringify(listingsResult, null, 2));
       toast.success(`Scraper zwrócił ${listingsResult.length} lotów`);
     } catch (e) {
-      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
-      toast.error((e as Error).message);
+      const msg = (e as Error).message;
+      setScrapeJob((s) =>
+        s ? { ...s, status: "failed", errorMessage: s.errorMessage ?? msg } : s,
+      );
+      toast.error(msg);
     } finally {
       setBusy(null);
     }
