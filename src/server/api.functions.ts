@@ -631,3 +631,40 @@ export const cleanupLogs = createServerFn({ method: "POST" }).handler(async () =
   if (error) throw new Error(error.message);
   return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
 });
+
+// ---------- Mock listings (demo / E2E test) ----------
+
+function buildMockListings(criteria: ClientCriteria): CarLot[] {
+  const make = criteria.make || "Audi";
+  const model = criteria.model || "A5";
+  const year = criteria.year_from || 2018;
+  const budget = criteria.budget_usd || 15000;
+  const base = (i: number, src: "copart" | "iaai", state: string, dmg: string, bid: number, odo: number) => ({
+    source: src,
+    lot_id: `${src.toUpperCase()}-${100000 + i}`,
+    url: `https://example.${src}.com/lot/${100000 + i}`,
+    title: `${year + (i % 4)} ${make} ${model}`,
+    make,
+    model,
+    year: year + (i % 4),
+    odometer_mi: odo,
+    vin: `WAU${(1000000000 + i).toString().padStart(14, "0")}`,
+    primary_damage: dmg,
+    secondary_damage: i % 3 === 0 ? "REAR END" : null,
+    location_state: state,
+    location_city: state === "NJ" ? "Newark" : state === "CA" ? "Adelanto" : "Houston",
+    seller: i % 2 === 0 ? "INSURANCE COMPANY" : "DEALER",
+    title_status: "CLEAN",
+    current_bid_usd: bid,
+    buy_now_usd: bid + 1500,
+    auction_date: new Date(Date.now() + (24 + i * 6) * 3600 * 1000).toISOString(),
+    images: [`https://picsum.photos/seed/lot${i}/640/480`],
+  });
+  return [
+    base(1, "copart", "NJ", "FRONT END", Math.round(budget * 0.55), 62000),
+    base(2, "iaai", "CA", "ALL OVER", Math.round(budget * 0.7), 85000),
+    base(3, "copart", "TX", "MINOR DENT/SCRATCHES", Math.round(budget * 0.4), 41000),
+    base(4, "iaai", "NY", "REAR END", Math.round(budget * 0.6), 73000),
+    base(5, "copart", "FL", "HAIL", Math.round(budget * 0.5), 28000),
+  ];
+}
