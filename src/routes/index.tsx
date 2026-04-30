@@ -52,6 +52,7 @@ import {
   Download,
   Save,
   AlertCircle,
+  X,
   CheckCircle2,
   Calculator,
   BarChart3,
