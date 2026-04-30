@@ -296,6 +296,20 @@ ${rows}
                 {paused ? <Play className="mr-1 h-3.5 w-3.5" /> : <Pause className="mr-1 h-3.5 w-3.5" />}
                 {paused ? `Wznów${pendingRef.current.length ? ` (${pendingRef.current.length})` : ""}` : "Pauza"}
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                className="h-8"
+                title={sortDir === "asc" ? "Najnowsze na dole — kliknij aby odwrócić" : "Najnowsze na górze — kliknij aby odwrócić"}
+              >
+                {sortDir === "asc" ? (
+                  <ArrowDownNarrowWide className="mr-1 h-3.5 w-3.5" />
+                ) : (
+                  <ArrowUpNarrowWide className="mr-1 h-3.5 w-3.5" />
+                )}
+                {sortDir === "asc" ? "Rosnąco" : "Malejąco"}
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8">
