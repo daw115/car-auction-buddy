@@ -466,13 +466,31 @@ export const runScraperSearch = createServerFn({ method: "POST" })
       recordId: data.recordId ?? null,
     });
     const startedAt = Date.now();
+
+    // Mock data fallback — controlled via app_config.use_mock_data.
+    const { data: cfg } = await supabaseAdmin
+      .from("app_config")
+      .select("use_mock_data")
+      .eq("id", 1)
+      .maybeSingle();
+    if (cfg?.use_mock_data) {
+      const listings = buildMockListings(data.criteria);
+      await log.info(
+        "done",
+        `Mock: zwrócono ${listings.length} przykładowych lotów`,
+        { listings_count: listings.length, source: "mock" },
+        Date.now() - startedAt,
+      );
+      return { listings, source: "mock" };
+    }
+
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl) {
       await log.error("config", "Brak SCRAPER_BASE_URL w sekretach");
       throw new Error(
-        "SCRAPER_BASE_URL nie jest ustawiony. Ustaw sekrety SCRAPER_BASE_URL i SCRAPER_API_TOKEN, " +
-          "albo użyj wklejania ręcznego JSON z wynikami scrapera.",
+        "SCRAPER_BASE_URL nie jest ustawiony. Włącz tryb demo (mock data) w konfiguracji " +
+          "albo ustaw sekrety SCRAPER_BASE_URL i SCRAPER_API_TOKEN.",
       );
     }
 
