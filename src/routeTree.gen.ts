@@ -22,7 +22,6 @@ import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
-import { Route as ApiDevLogsStreamRouteImport } from './routes/api/dev/logs/stream'
 
 const WatchlistRoute = WatchlistRouteImport.update({
   id: '/watchlist',
@@ -90,11 +89,6 @@ const ApiPublicHooksCleanupLogsRoute =
     path: '/api/public/hooks/cleanup-logs',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiDevLogsStreamRoute = ApiDevLogsStreamRouteImport.update({
-  id: '/api/dev/logs/stream',
-  path: '/api/dev/logs/stream',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -109,7 +103,6 @@ export interface FileRoutesByFullPath {
   '/dev/logs': typeof DevLogsRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
-  '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesByTo {
@@ -125,7 +118,6 @@ export interface FileRoutesByTo {
   '/dev/logs': typeof DevLogsRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
-  '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesById {
@@ -142,7 +134,6 @@ export interface FileRoutesById {
   '/dev/logs': typeof DevLogsRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
-  '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRouteTypes {
@@ -160,7 +151,6 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/api/dev/auth'
     | '/api/reports/pdf'
-    | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -176,7 +166,6 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/api/dev/auth'
     | '/api/reports/pdf'
-    | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
   id:
     | '__root__'
@@ -192,7 +181,6 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/api/dev/auth'
     | '/api/reports/pdf'
-    | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
   fileRoutesById: FileRoutesById
 }
@@ -209,7 +197,6 @@ export interface RootRouteChildren {
   DevLogsRoute: typeof DevLogsRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
-  ApiDevLogsStreamRoute: typeof ApiDevLogsStreamRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
 
@@ -306,13 +293,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksCleanupLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/dev/logs/stream': {
-      id: '/api/dev/logs/stream'
-      path: '/api/dev/logs/stream'
-      fullPath: '/api/dev/logs/stream'
-      preLoaderRoute: typeof ApiDevLogsStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -329,9 +309,17 @@ const rootRouteChildren: RootRouteChildren = {
   DevLogsRoute: DevLogsRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
-  ApiDevLogsStreamRoute: ApiDevLogsStreamRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
