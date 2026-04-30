@@ -215,7 +215,7 @@ ${rows}
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return entries.filter((e) => {
+    const list = entries.filter((e) => {
       if (!enabled[e.level]) return false;
       if (!q) return true;
       return (
@@ -224,7 +224,10 @@ ${rows}
         (e.extra ? JSON.stringify(e.extra).toLowerCase().includes(q) : false)
       );
     });
-  }, [entries, filter, enabled]);
+    return sortDir === "asc" ? list : [...list].reverse();
+  }, [entries, filter, enabled, sortDir]);
+
+  const lastId = entries.length > 0 ? entries[entries.length - 1].id : null;
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
