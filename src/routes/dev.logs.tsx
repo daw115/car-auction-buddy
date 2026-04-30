@@ -278,6 +278,18 @@ ${rows}
                 {paused ? <Play className="mr-1 h-3.5 w-3.5" /> : <Pause className="mr-1 h-3.5 w-3.5" />}
                 {paused ? `Wznów${pendingRef.current.length ? ` (${pendingRef.current.length})` : ""}` : "Pauza"}
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8">
+                    <Download className="mr-1 h-3.5 w-3.5" />
+                    Eksport
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={exportFilteredJson}>Pobierz JSON</DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportFilteredHtml}>Pobierz HTML</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="sm"
