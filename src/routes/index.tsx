@@ -15,6 +15,8 @@ import {
   runAnalysis,
   renderReport,
   runScraperSearch,
+  startScraperSearch,
+  pollScraperJob,
   runLotReports,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
