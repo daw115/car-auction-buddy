@@ -104,6 +104,26 @@ export function LogsPanel({ clientId, recordId }: Props) {
           <Button variant="ghost" size="sm" onClick={() => void refresh()} title="Odśwież">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => downloadLogs(rows, "json", scopeLabel(clientId, recordId))}
+            disabled={rows.length === 0}
+            title="Pobierz JSON"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span className="ml-1 text-[10px]">JSON</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => downloadLogs(rows, "csv", scopeLabel(clientId, recordId))}
+            disabled={rows.length === 0}
+            title="Pobierz CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span className="ml-1 text-[10px]">CSV</span>
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleClear} title="Wyczyść logi">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
