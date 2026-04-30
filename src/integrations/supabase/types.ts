@@ -184,6 +184,118 @@ export type Database = {
           },
         ]
       }
+      watchlist: {
+        Row: {
+          active: boolean
+          buy_now_usd: number | null
+          category: string | null
+          client_id: string | null
+          created_at: string
+          current_bid_usd: number | null
+          id: string
+          lot_id: string | null
+          make: string | null
+          model: string | null
+          notes: string | null
+          score: number | null
+          snapshot: Json
+          source: string | null
+          title: string | null
+          updated_at: string
+          url: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          active?: boolean
+          buy_now_usd?: number | null
+          category?: string | null
+          client_id?: string | null
+          created_at?: string
+          current_bid_usd?: number | null
+          id?: string
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          notes?: string | null
+          score?: number | null
+          snapshot?: Json
+          source?: string | null
+          title?: string | null
+          updated_at?: string
+          url?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          active?: boolean
+          buy_now_usd?: number | null
+          category?: string | null
+          client_id?: string | null
+          created_at?: string
+          current_bid_usd?: number | null
+          id?: string
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          notes?: string | null
+          score?: number | null
+          snapshot?: Json
+          source?: string | null
+          title?: string | null
+          updated_at?: string
+          url?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watchlist_history: {
+        Row: {
+          current_bid_usd: number | null
+          id: string
+          payload: Json | null
+          recorded_at: string
+          score: number | null
+          status: string | null
+          watchlist_id: string
+        }
+        Insert: {
+          current_bid_usd?: number | null
+          id?: string
+          payload?: Json | null
+          recorded_at?: string
+          score?: number | null
+          status?: string | null
+          watchlist_id: string
+        }
+        Update: {
+          current_bid_usd?: number | null
+          id?: string
+          payload?: Json | null
+          recorded_at?: string
+          score?: number | null
+          status?: string | null
+          watchlist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_history_watchlist_id_fkey"
+            columns: ["watchlist_id"]
+            isOneToOne: false
+            referencedRelation: "watchlist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
