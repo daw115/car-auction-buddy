@@ -352,7 +352,7 @@ function Panel() {
   async function openRecord(id: string) {
     setBusy("load");
     try {
-      const row = (await fnLoadRecord({ data: { id } })) as {
+      const row = (await fnLoadRecord({ data: { id } })) as unknown as {
         id: string;
         client_id: string | null;
         criteria: ClientCriteria;
