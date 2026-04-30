@@ -753,7 +753,7 @@ export const cancelScraperJob = createServerFn({ method: "POST" })
     if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
 
     // Try DELETE /api/jobs/{id} first; fall back to POST /api/jobs/{id}/cancel.
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
     let res = await fetch(`${baseUrl}/api/jobs/${data.jobId}`, {
       method: "DELETE",
       headers,
