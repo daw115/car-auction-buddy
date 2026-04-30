@@ -261,7 +261,7 @@ def _parse_analysis_json(raw: str) -> list[dict]:
     raise ValueError("AI nie zwróciło listy analiz")
 
 
-def _call_anthropic_messages(model: str, system: str, user_prompt: str) -> str:
+def _call_anthropic_messages(model: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("Brak ANTHROPIC_API_KEY")
@@ -270,8 +270,14 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str) -> str:
     timeout = int(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "120"))
     payload = {
         "model": model,
-        "max_tokens": 8192,
-        "system": system,
+        "max_tokens": max_tokens,
+        "system": [
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         "messages": [{"role": "user", "content": user_prompt}],
     }
     request = urllib.request.Request(
@@ -280,6 +286,7 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str) -> str:
         headers={
             "x-api-key": api_key,
             "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
             "content-type": "application/json",
         },
         method="POST",
@@ -560,125 +567,38 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
 def _analyze_lots_with_claude(lots: List[CarLot], criteria: ClientCriteria, top_n: int = 5) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
     model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
-    lots_data = []
-    for lot in lots:
-        lots_data.append({
-            "lot_id": lot.lot_id,
-            "source": lot.source,
-            "year": lot.year,
-            "make": lot.make,
-            "model": lot.model,
-            "odometer_mi": lot.odometer_mi,
-            "odometer_km": lot.odometer_km,
-            "damage_primary": lot.damage_primary,
-            "damage_secondary": lot.damage_secondary,
-            "title_type": lot.title_type,
-            "current_bid_usd": lot.current_bid_usd,
-            "seller_reserve_usd": lot.seller_reserve_usd,
-            "seller_type": lot.seller_type,
-            "location_state": lot.location_state,
-            "airbags_deployed": lot.airbags_deployed,
-            "keys": lot.keys,
-            "enriched_by_extension": lot.enriched_by_extension,
-        })
+    lots_data = _lot_payloads(lots)
+    user_prompt = _analysis_user_prompt(lots_data, criteria)
+    max_tokens = max(1500, len(lots_data) * 400)
+    max_tokens = int(os.getenv("ANTHROPIC_MAX_TOKENS", str(min(max_tokens, 8192))))
+    print(f"[AI] Analizuję {len(lots)} lotów przez Claude API ({model}, max_tokens={max_tokens})...")
 
-    user_prompt = f"""
-Kryteria klienta:
-- Marka/model: {criteria.make} {criteria.model or '(dowolny)'}
-- Rocznik: {criteria.year_from or 'dowolny'}–{criteria.year_to or 'dowolny'}
-- Budżet maksymalny: {criteria.budget_usd} USD (łącznie z transportem i naprawą)
-- Maksymalny przebieg: {criteria.max_odometer_mi or 'bez limitu'} mil
-- Wykluczone typy uszkodzeń: {', '.join(criteria.excluded_damage_types)}
-
-Oceń poniższe {len(lots_data)} lotów:
-
-{json.dumps(lots_data, ensure_ascii=False, indent=2)}
-
-Dla każdego lota zwróć obiekt JSON z polami:
-- lot_id (string, dokładnie jak w danych wejściowych)
-- score (liczba 0.0–10.0, im wyższa tym lepszy lot dla klienta)
-  WAŻNE: Dodaj +1.5 do score dla stanów wschodnich (NY,NJ,PA,CT,MA,RI,VT,NH,ME,MD,DE,VA,NC,SC,GA,FL)
-  WAŻNE: Odejmij -1.0 od score dla stanów zachodnich (CA,OR,WA,NV,AZ,UT,CO,NM)
-- recommendation (string: dokładnie "POLECAM", "RYZYKO" lub "ODRZUĆ")
-- red_flags (array of strings — lista problemów, może być pusta [])
-- estimated_repair_usd (int lub null — szacowany koszt naprawy)
-- estimated_total_cost_usd (int — suma: current_bid + estimated_repair + transport (zależny od lokalizacji) + 500 inne)
-- client_description_pl (string — 3-5 zdań po polsku dla klienta, SZCZEGÓŁOWO opisz:
-  * Dlaczego wybrałeś ten lot
-  * Wszystkie dane techniczne (VIN, przebieg, rok, uszkodzenia)
-  * Lokalizacja i koszt transportu
-  * Analiza ceny i kosztów
-  * Całkowity koszt z rozbiciem)
-- ai_notes (string — SZCZEGÓŁOWE uwagi techniczne dla brokera po polsku:
-  * Analiza lokalizacji (stan, koszt transportu, czas)
-  * Analiza uszkodzeń i szacunek naprawy
-  * Analiza ceny (bid, rezerwa, typ sprzedawcy)
-  * Wszystkie ryzyka i czerwone flagi
-  * Uzasadnienie rekomendacji)
-"""
-
-    print(f"[AI] Analizuję {len(lots)} lotów przez Claude API...")
-
-    raw = _call_anthropic_messages(model=model, system=SYSTEM_PROMPT, user_prompt=user_prompt).strip()
-
-    if "```" in raw:
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip().rstrip("```").strip()
+    raw = _call_anthropic_messages(model=model, system=SYSTEM_PROMPT, user_prompt=user_prompt, max_tokens=max_tokens).strip()
 
     try:
-        analyses_data = json.loads(raw)
-    except json.JSONDecodeError as e:
+        analyses_data = _parse_analysis_json(raw)
+    except (json.JSONDecodeError, ValueError) as e:
         print(f"[AI] Błąd parsowania JSON: {e}")
         print(f"[AI] Surowa odpowiedź (pierwsze 500 znaków): {raw[:500]}")
-        # Zapisz pełną odpowiedź do debugowania
         with open("/tmp/ai_response_error.txt", "w") as f:
             f.write(raw)
         print("[AI] Pełna odpowiedź zapisana do /tmp/ai_response_error.txt")
 
-        # Retry z prostszym promptem - mniej lotów
-        print("[AI] Retry z mniejszą liczbą lotów...")
         if len(lots) > 10:
+            print("[AI] Retry z mniejszą liczbą lotów...")
             lots = lots[:10]
-            lots_data = lots_data[:10]
+            lots_data = _lot_payloads(lots)
+            user_prompt = _analysis_user_prompt(lots_data, criteria)
+            retry_max_tokens = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))
             print(f"[AI] Ograniczam do {len(lots)} lotów")
-
-            # Ponów request
             raw = _call_anthropic_messages(
                 model=model,
                 system=SYSTEM_PROMPT,
-                user_prompt=user_prompt.replace(str(len(lots_data)), "10"),
+                user_prompt=user_prompt,
+                max_tokens=retry_max_tokens,
             ).strip()
-            if "```" in raw:
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            raw = raw.strip().rstrip("```").strip()
             analyses_data = _parse_analysis_json(raw)
         else:
             raise Exception(f"AI zwróciło niepoprawny JSON: {e}")
-    else:
-        analyses_data = _parse_analysis_json(raw)
 
-    lots_by_id = {lot.lot_id: lot for lot in lots}
-    results = []
-
-    for ad in analyses_data:
-        lot_id = ad.get("lot_id")
-        if not lot_id or lot_id not in lots_by_id:
-            continue
-
-        analysis = AIAnalysis(
-            lot_id=lot_id,
-            score=float(ad.get("score", 0)),
-            recommendation=ad.get("recommendation", "RYZYKO"),
-            red_flags=ad.get("red_flags", []),
-            estimated_repair_usd=ad.get("estimated_repair_usd"),
-            estimated_total_cost_usd=ad.get("estimated_total_cost_usd"),
-            client_description_pl=ad.get("client_description_pl", ""),
-            ai_notes=ad.get("ai_notes"),
-        )
-        results.append(AnalyzedLot(lot=lots_by_id[lot_id], analysis=analysis))
-
-    return _rank_results(results, top_n)
+    return _results_from_analysis_data(analyses_data, lots, top_n)
