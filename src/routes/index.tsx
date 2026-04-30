@@ -48,6 +48,7 @@ import {
   Save,
   AlertCircle,
   CheckCircle2,
+  Calculator,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -459,6 +460,12 @@ function Panel() {
           <div className="flex items-center gap-2">
             <EnvStatus env={env} />
             <Link
+              to="/calculator"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              <Calculator className="h-3.5 w-3.5" /> Kalkulator + VIN
+            </Link>
+            <Link
               to="/settings"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
             >
@@ -849,6 +856,24 @@ function Panel() {
                   downloadFile("report.md", md, "text/markdown");
                 }}
               />
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!activeRecordId || !analysis}
+                onClick={() => window.open(`/api/reports/pdf?recordId=${activeRecordId}&mode=broker`, "_blank")}
+                title={!activeRecordId ? "Najpierw zapisz rekord" : ""}
+              >
+                <Download className="h-3.5 w-3.5" /> PDF brokera
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!activeRecordId || !analysis}
+                onClick={() => window.open(`/api/reports/pdf?recordId=${activeRecordId}&mode=client`, "_blank")}
+                title={!activeRecordId ? "Najpierw zapisz rekord" : ""}
+              >
+                <Download className="h-3.5 w-3.5" /> PDF klienta (TOP3+2)
+              </Button>
             </div>
           </Card>
         </section>
