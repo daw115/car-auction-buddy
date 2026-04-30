@@ -76,6 +76,90 @@ function DevLogsPage() {
     }
   };
 
+  const downloadFile = (filename: string, content: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportFilteredJson = () => {
+    if (filtered.length === 0) {
+      toast.error("Brak wpisów do eksportu");
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadFile(
+      `dev-logs-${stamp}.json`,
+      JSON.stringify({ exportedAt: new Date().toISOString(), count: filtered.length, entries: filtered }, null, 2),
+      "application/json",
+    );
+    toast.success(`Wyeksportowano ${filtered.length} wpisów (JSON)`);
+  };
+
+  const exportFilteredHtml = () => {
+    if (filtered.length === 0) {
+      toast.error("Brak wpisów do eksportu");
+      return;
+    }
+    const esc = (s: string) =>
+      s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+    const levelColor: Record<LogEntry["level"], string> = {
+      info: "#22d3ee",
+      warn: "#facc15",
+      error: "#f87171",
+      debug: "#e879f9",
+      http: "#60a5fa",
+    };
+    const rows = filtered
+      .map((e) => {
+        const extra = e.extra ? `<pre class="extra">${esc(JSON.stringify(e.extra, null, 2))}</pre>` : "";
+        return `<tr>
+  <td class="ts">${esc(new Date(e.ts).toLocaleString())}</td>
+  <td><span class="level" style="background:${levelColor[e.level]}22;color:${levelColor[e.level]};border-color:${levelColor[e.level]}55">${e.level.toUpperCase()}</span></td>
+  <td class="scope">${esc(e.scope)}</td>
+  <td class="msg">${esc(e.message)}${extra}</td>
+</tr>`;
+      })
+      .join("\n");
+    const html = `<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"/>
+<title>Dev Logs Export — ${new Date().toISOString()}</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; background:#0b0f17; color:#e5e7eb; margin:0; padding:24px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .meta { color:#9ca3af; font-size:12px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
+  th, td { text-align:left; vertical-align:top; padding:6px 8px; border-bottom:1px solid #1f2937; }
+  th { color:#9ca3af; font-weight:600; position:sticky; top:0; background:#0b0f17; }
+  td.ts { white-space:nowrap; color:#9ca3af; }
+  td.scope { white-space:nowrap; font-weight:600; color:#f3f4f6; }
+  td.msg { color:#e5e7eb; word-break:break-word; }
+  .level { display:inline-block; padding:1px 6px; border-radius:4px; border:1px solid; font-size:10px; }
+  .extra { margin:6px 0 0; padding:8px; background:#111827; border:1px solid #1f2937; border-radius:6px; white-space:pre-wrap; word-break:break-all; color:#cbd5e1; font-size:11px; }
+  tr:hover td { background:#111827; }
+</style></head>
+<body>
+  <h1>Dev Logs Export</h1>
+  <div class="meta">${esc(new Date().toISOString())} · ${filtered.length} wpisów · filtr: ${esc(filter || "—")} · poziomy: ${LEVELS.filter((l) => enabled[l]).join(", ")}</div>
+  <table>
+    <thead><tr><th>Czas</th><th>Poziom</th><th>Scope</th><th>Wiadomość</th></tr></thead>
+    <tbody>
+${rows}
+    </tbody>
+  </table>
+</body></html>`;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadFile(`dev-logs-${stamp}.html`, html, "text/html");
+    toast.success(`Wyeksportowano ${filtered.length} wpisów (HTML)`);
+  };
+
   useEffect(() => {
     pausedRef.current = paused;
     if (!paused && pendingRef.current.length > 0) {
