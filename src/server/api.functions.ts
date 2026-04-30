@@ -230,28 +230,28 @@ export const testAnthropic = createServerFn({ method: "POST" })
 
 type LotForPrompt = {
   lot_id: string;
-  source: string | null;
-  url?: string | null;
-  vin?: string | null;
-  year: number | null;
-  make: string | null;
-  model: string | null;
-  trim?: string | null;
-  odometer_mi: number | null;
-  odometer_km: number | null;
-  damage_primary: string | null;
-  damage_secondary?: string | null;
-  title_type: string | null;
-  current_bid_usd: number | null;
-  buy_now_price_usd?: number | null;
-  seller_reserve_usd: number | null;
-  seller_type: string | null;
-  location_state: string | null;
-  location_city?: string | null;
-  auction_date?: string | null;
-  airbags_deployed: boolean | null;
-  keys: boolean | null;
-  enriched_by_extension?: boolean | null;
+  source: string | null | undefined;
+  url: string | null;
+  vin: string | null;
+  year: number | null | undefined;
+  make: string | null | undefined;
+  model: string | null | undefined;
+  trim: string | null;
+  odometer_mi: number | null | undefined;
+  odometer_km: number | null | undefined;
+  damage_primary: string | null | undefined;
+  damage_secondary: string | null;
+  title_type: string | null | undefined;
+  current_bid_usd: number | null | undefined;
+  buy_now_price_usd: number | null;
+  seller_reserve_usd: number | null | undefined;
+  seller_type: string | null | undefined;
+  location_state: string | null | undefined;
+  location_city: string | null;
+  auction_date: string | null;
+  airbags_deployed: boolean | null | undefined;
+  keys: boolean | null | undefined;
+  enriched_by_extension: boolean | null | undefined;
 };
 
 function lotsToPromptShape(lots: CarLot[]): LotForPrompt[] {
