@@ -663,8 +663,14 @@ function Panel() {
               <Field label="Budżet USD *">
                 <Input
                   type="number"
-                  value={criteria.budget_usd}
-                  onChange={(e) => setCriteria({ ...criteria, budget_usd: +e.target.value || 0 })}
+                  min={1}
+                  value={criteria.budget_usd || ""}
+                  onChange={(e) => setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : 0 })}
+                  onBlur={(e) => {
+                    if (!e.target.value || +e.target.value < 1) {
+                      setCriteria((c) => ({ ...c, budget_usd: 15000 }));
+                    }
+                  }}
                 />
               </Field>
               <Field label="Max przebieg (mil)">
