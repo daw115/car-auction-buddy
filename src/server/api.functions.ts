@@ -228,8 +228,34 @@ export const testAnthropic = createServerFn({ method: "POST" })
 
 // ---------- AI analysis ----------
 
-function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
-  const lotsData = lots.map((lot) => ({
+type LotForPrompt = {
+  lot_id: string;
+  source: string | null;
+  url?: string | null;
+  vin?: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  trim?: string | null;
+  odometer_mi: number | null;
+  odometer_km: number | null;
+  damage_primary: string | null;
+  damage_secondary?: string | null;
+  title_type: string | null;
+  current_bid_usd: number | null;
+  buy_now_price_usd?: number | null;
+  seller_reserve_usd: number | null;
+  seller_type: string | null;
+  location_state: string | null;
+  location_city?: string | null;
+  auction_date?: string | null;
+  airbags_deployed: boolean | null;
+  keys: boolean | null;
+  enriched_by_extension?: boolean | null;
+};
+
+function lotsToPromptShape(lots: CarLot[]): LotForPrompt[] {
+  return lots.map((lot) => ({
     lot_id: lot.lot_id,
     source: lot.source,
     url: lot.url ?? null,
@@ -254,6 +280,9 @@ function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
     keys: lot.keys,
     enriched_by_extension: lot.enriched_by_extension,
   }));
+}
+
+function buildUserPromptFromShape(criteria: ClientCriteria, lotsData: LotForPrompt[]): string {
   const excluded =
     criteria.excluded_damage_types && criteria.excluded_damage_types.length > 0
       ? criteria.excluded_damage_types.join(", ")
@@ -284,6 +313,89 @@ Dla każdego lota zwróć obiekt JSON z polami:
 
 Zwróć WYŁĄCZNIE poprawny JSON array. Bez żadnego tekstu przed ani po.
 `.trim();
+}
+
+function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
+  return buildUserPromptFromShape(criteria, lotsToPromptShape(lots));
+}
+
+// Approximate token count. Anthropic/OpenAI tokenizers average ~3.5–4 chars per
+// token for mixed PL/EN + JSON. We use 3.5 conservatively (over-estimates rather
+// than under).
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+// Strip optional fields to shrink JSON when the prompt is too large.
+function compactLots(lots: LotForPrompt[]): LotForPrompt[] {
+  return lots.map((l) => ({
+    ...l,
+    url: null,
+    vin: null,
+    trim: null,
+    location_city: null,
+    damage_secondary: null,
+    auction_date: null,
+    enriched_by_extension: null,
+  }));
+}
+
+/**
+ * Iteratively shrink the prompt until input tokens + reserved output budget fit
+ * within a safe context window. Strategy:
+ *   1) build full prompt
+ *   2) if too big — drop verbose optional fields
+ *   3) if still too big — drop lots from the end (input is already sorted by
+ *      relevance from the scraper) until we fit
+ *
+ * Returns the final prompt + the lot ids actually included so the caller can
+ * match Anthropic's response back to the original CarLot objects.
+ */
+function buildPromptWithinBudget(
+  criteria: ClientCriteria,
+  lots: CarLot[],
+  reservedOutputTokens: number,
+  // Conservative budget. Claude 3.5/4 has 200k context; leave headroom for
+  // system prompt + cache + safety margin.
+  contextBudgetTokens = 180_000,
+): {
+  prompt: string;
+  includedLotIds: string[];
+  trimmed: { droppedFields: boolean; droppedLots: number; finalCount: number };
+} {
+  const fullShape = lotsToPromptShape(lots);
+  const inputBudget = Math.max(1000, contextBudgetTokens - reservedOutputTokens);
+
+  let shape = fullShape;
+  let prompt = buildUserPromptFromShape(criteria, shape);
+  let droppedFields = false;
+  let droppedLots = 0;
+
+  if (estimateTokens(prompt) <= inputBudget) {
+    return {
+      prompt,
+      includedLotIds: shape.map((l) => l.lot_id),
+      trimmed: { droppedFields: false, droppedLots: 0, finalCount: shape.length },
+    };
+  }
+
+  // Step 2: drop optional fields.
+  shape = compactLots(shape);
+  droppedFields = true;
+  prompt = buildUserPromptFromShape(criteria, shape);
+
+  // Step 3: drop tail lots until under budget. Keep at least 1.
+  while (estimateTokens(prompt) > inputBudget && shape.length > 1) {
+    shape = shape.slice(0, -1);
+    droppedLots += 1;
+    prompt = buildUserPromptFromShape(criteria, shape);
+  }
+
+  return {
+    prompt,
+    includedLotIds: shape.map((l) => l.lot_id),
+    trimmed: { droppedFields, droppedLots, finalCount: shape.length },
+  };
 }
 
 const criteriaSchema = z.object({
