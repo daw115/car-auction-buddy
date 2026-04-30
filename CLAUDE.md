@@ -223,7 +223,8 @@ Claude Code MUSI po zakończeniu zadania (gdy build/typecheck przechodzi):
 - Jeśli `git push` odrzucony (non-fast-forward) → `git pull --rebase` → rozwiąż konflikty → push ponownie.
 - Nie używaj `git push --force` na `main`.
 
-Gotowy template komendy: [`.claude/commands/commit-and-push.md`](.claude/commands/commit-and-push.md).
+**Przed każdym commitem** uruchom checklistę: [`.claude/commands/preflight-checks.md`](.claude/commands/preflight-checks.md) (`/preflight-checks`).
+Gotowy template commita: [`.claude/commands/commit-and-push.md`](.claude/commands/commit-and-push.md) (`/commit-and-push`).
 
 ---
 
