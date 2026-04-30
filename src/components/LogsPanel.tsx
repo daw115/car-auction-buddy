@@ -272,9 +272,17 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="break-words leading-snug">{row.message}</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    {new Date(row.created_at).toLocaleTimeString("pl-PL")}
-                    {typeof row.duration_ms === "number" ? ` · ${row.duration_ms} ms` : ""}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                    <span>{new Date(row.created_at).toLocaleTimeString("pl-PL")}</span>
+                    {typeof row.duration_ms === "number" && <span>· {row.duration_ms} ms</span>}
+                    {row.record_id && (
+                      <RecordChip
+                        recordId={row.record_id}
+                        title={records?.find((r) => r.id === row.record_id)?.title ?? null}
+                        active={row.record_id === recordId}
+                        onOpen={onOpenRecord}
+                      />
+                    )}
                   </div>
                 </div>
               </button>
