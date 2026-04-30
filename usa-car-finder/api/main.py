@@ -646,6 +646,40 @@ async def generate_offer_email_html_report(request: ApproveReportRequest):
     )
 
 
+@app.post("/report/client-html")
+async def generate_client_html_report(request: ApproveReportRequest):
+    """Generuje raport HTML dla klienta (storytelling, bez surowych cen) dla pierwszego zatwierdzonego lota."""
+    from report.html_reports import render_client_report
+    from fastapi.responses import HTMLResponse
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu - wszystkie zostały usunięte")
+
+    html = render_client_report(lots_for_report[0], criteria=request.criteria)
+    return HTMLResponse(content=html)
+
+
+@app.post("/report/broker-html")
+async def generate_broker_html_report(request: ApproveReportRequest):
+    """Generuje wewnętrzny raport brokera (pełne dane, koszty, strategia bid) dla pierwszego zatwierdzonego lota."""
+    from report.html_reports import render_broker_report
+    from fastapi.responses import HTMLResponse
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu - wszystkie zostały usunięte")
+
+    html = render_broker_report(
+        lots_for_report[0],
+        criteria=request.criteria,
+        lots_scanned=len(request.approved_lots),
+    )
+    return HTMLResponse(content=html)
+
+
 @app.get("/health")
 async def health():
     return {

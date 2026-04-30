@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ make }} {{ model }} {{ year }} — Raport dla Klienta</title>
+<style>
+  :root {
+    --navy: #0a2540;
+    --blue: #1a56a0;
+    --accent: #f0a500;
+    --ok: #1a7a4a;
+    --ok-bg: #e8f5ee;
+    --amber: #b45309;
+    --amber-bg: #fef3c7;
+    --red: #b91c1c;
+    --red-bg: #fee2e2;
+    --text: #1a1a2e;
+    --muted: #6b7280;
+    --border: #d1d5db;
+    --bg: #f8f9fc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  .page { max-width: 800px; margin: 0 auto; background: #fff; }
+
+  /* HERO */
+  .hero { background: var(--navy); color: #fff; padding: 36px 40px 28px; position: relative; }
+  .hero-eyebrow { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
+  .hero-title { font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .hero-engine { font-size: 15px; color: #cbd5e1; margin-top: 6px; }
+  .hero-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: .5px; }
+  .pill-blue { background: rgba(26,86,160,.35); color: #93c5fd; border: 1px solid rgba(147,197,253,.3); }
+  .pill-amber { background: rgba(240,165,0,.2); color: #f0a500; border: 1px solid rgba(240,165,0,.3); }
+  .pill-ok { background: rgba(26,122,74,.25); color: #6ee7b7; border: 1px solid rgba(110,231,183,.3); }
+
+  /* PHOTO */
+  .photo-wrap { background: #0d1f35; text-align: center; }
+  .photo-wrap img { max-width: 100%; max-height: 360px; object-fit: cover; width: 100%; display: block; }
+  .photo-placeholder { background: #1e3a5f; color: #4a6fa5; padding: 80px 40px; text-align: center; font-size: 13px; }
+
+  /* STATS BAR */
+  .stats-bar { display: flex; border-bottom: 2px solid var(--accent); background: var(--navy); }
+  .stat { flex: 1; padding: 16px 12px; text-align: center; border-right: 1px solid rgba(255,255,255,.08); }
+  .stat:last-child { border-right: none; }
+  .stat-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }
+  .stat-value { font-size: 18px; font-weight: 700; color: #fff; }
+  .stat-unit { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  /* BODY */
+  .body { padding: 36px 40px; }
+
+  /* HEADLINE */
+  .headline-block { margin-bottom: 32px; border-left: 4px solid var(--accent); padding-left: 18px; }
+  .headline-text { font-size: 22px; font-weight: 700; color: var(--navy); line-height: 1.3; }
+  .subhead-text { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+  /* STORY */
+  .story { margin-bottom: 32px; }
+  .story h2 { font-size: 15px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .story p { color: #374151; line-height: 1.75; margin-bottom: 12px; }
+
+  /* SPEC TABLE */
+  .spec-section { margin-bottom: 32px; }
+  .spec-section h2 { font-size: 15px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .spec-table { width: 100%; border-collapse: collapse; }
+  .spec-table tr:nth-child(odd) { background: #f8fafc; }
+  .spec-table td { padding: 10px 12px; vertical-align: top; }
+  .spec-table td:first-child { font-weight: 600; color: var(--navy); width: 38%; font-size: 13px; }
+  .spec-table td:last-child { color: #374151; font-size: 13px; }
+  .spec-arrow { color: var(--accent); margin: 0 6px; }
+
+  /* DAMAGE */
+  .damage-section { margin-bottom: 32px; }
+  .damage-section h2 { font-size: 15px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .damage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .flag { padding: 14px 16px; border-radius: 8px; border-left: 4px solid; }
+  .flag.amber { background: var(--amber-bg); border-color: var(--amber); }
+  .flag.green { background: var(--ok-bg); border-color: var(--ok); }
+  .flag-icon { font-size: 18px; margin-bottom: 6px; }
+  .flag-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .flag.amber .flag-title { color: var(--amber); }
+  .flag.green .flag-title { color: var(--ok); }
+  .flag-body { font-size: 12px; color: #374151; line-height: 1.5; }
+
+  /* TIMELINE */
+  .timeline-section { margin-bottom: 32px; }
+  .timeline-section h2 { font-size: 15px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl-step { display: flex; gap: 16px; align-items: flex-start; }
+  .tl-left { display: flex; flex-direction: column; align-items: center; width: 52px; flex-shrink: 0; }
+  .tl-dot { width: 36px; height: 36px; border-radius: 50%; background: var(--navy); color: var(--accent); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1; }
+  .tl-line { width: 2px; flex: 1; background: var(--border); min-height: 24px; }
+  .tl-step:last-child .tl-line { display: none; }
+  .tl-content { padding-bottom: 20px; }
+  .tl-day { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+  .tl-label { font-size: 14px; font-weight: 600; color: var(--navy); margin: 2px 0; }
+  .tl-desc { font-size: 12px; color: var(--muted); }
+
+  /* DOCS */
+  .docs-section { margin-bottom: 32px; background: #f0f4f8; border-radius: 10px; padding: 20px 24px; }
+  .docs-section h2 { font-size: 15px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+  .docs-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .docs-list li { font-size: 13px; color: #1f2937; display: flex; align-items: center; gap: 8px; }
+  .docs-list li::before { content: "✓"; color: var(--ok); font-weight: 700; flex-shrink: 0; }
+
+  /* CTA */
+  .cta-block { background: linear-gradient(135deg, var(--navy) 0%, #1a3a6b 100%); border-radius: 12px; padding: 32px; text-align: center; margin-bottom: 32px; }
+  .cta-headline { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 10px; }
+  .cta-body { font-size: 14px; color: #94a3b8; margin-bottom: 20px; line-height: 1.6; }
+  .cta-deadline { background: rgba(240,165,0,.15); border: 1px solid rgba(240,165,0,.4); border-radius: 6px; padding: 10px 16px; display: inline-block; font-size: 13px; color: var(--accent); font-weight: 600; margin-bottom: 20px; }
+  .cta-scarcity { font-size: 12px; color: #64748b; margin-top: 12px; font-style: italic; }
+
+  /* FOOTER */
+  .footer { background: var(--navy); color: #475569; text-align: center; padding: 18px; font-size: 11px; letter-spacing: .5px; }
+  .footer strong { color: #94a3b8; }
+
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-eyebrow">Oferta importu z aukcji USA</div>
+    <div class="hero-title">{{ make }} {{ model }}{% if trim %} {{ trim }}{% endif %} {{ year }}</div>
+    <div class="hero-engine">{{ engine_str }}{% if hp %} &middot; {{ hp }} KM{% endif %}{% if drive %} &middot; {{ drive }}{% endif %}</div>
+    <div class="hero-pills">
+      {% for pill in pills %}
+      <span class="pill pill-{{ pill.style | default('blue') }}">{{ pill.text }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- PHOTO -->
+  <div class="photo-wrap">
+    {% if photo_url %}
+    <img src="{{ photo_url }}" alt="{{ make }} {{ model }} {{ year }}">
+    {% else %}
+    <div class="photo-placeholder">Zdjęcia dostępne po kontakcie</div>
+    {% endif %}
+  </div>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-label">Rocznik</div>
+      <div class="stat-value">{{ year }}</div>
+    </div>
+    {% if hp %}
+    <div class="stat">
+      <div class="stat-label">Moc</div>
+      <div class="stat-value">{{ hp }}</div>
+      <div class="stat-unit">KM</div>
+    </div>
+    {% endif %}
+    {% if drive %}
+    <div class="stat">
+      <div class="stat-label">Napęd</div>
+      <div class="stat-value">{{ drive }}</div>
+    </div>
+    {% endif %}
+    {% if location_state %}
+    <div class="stat">
+      <div class="stat-label">Lokalizacja</div>
+      <div class="stat-value">{{ location_state }}</div>
+    </div>
+    {% endif %}
+    {% if auction_date %}
+    <div class="stat">
+      <div class="stat-label">Aukcja</div>
+      <div class="stat-value">{{ auction_date }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- HEADLINE / HOOK -->
+    <div class="headline-block">
+      <div class="headline-text">{{ headline_text }}</div>
+      {% if subhead_text %}
+      <div class="subhead-text">{{ subhead_text }}</div>
+      {% endif %}
+    </div>
+
+    <!-- STORY -->
+    <div class="story">
+      <h2>Historia pojazdu</h2>
+      {% for para in story_paragraphs %}
+      <p>{{ para }}</p>
+      {% endfor %}
+    </div>
+
+    <!-- SPEC TABLE -->
+    <div class="spec-section">
+      <h2>Specyfikacja &mdash; co to oznacza dla Pana/Pani</h2>
+      <table class="spec-table">
+        {% for row in spec_rows %}
+        <tr>
+          <td>{{ row.feature }}</td>
+          <td><span class="spec-arrow">&rarr;</span>{{ row.benefit }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <!-- DAMAGE -->
+    <div class="damage-section">
+      <h2>Transparentna analiza stanu technicznego</h2>
+      <div class="damage-grid">
+        <div class="flag amber">
+          <div class="flag-icon">&#9888;</div>
+          <div class="flag-title">Co jest uszkodzone</div>
+          <div class="flag-body">{{ damage_what }}</div>
+        </div>
+        <div class="flag amber">
+          <div class="flag-icon">&#128295;</div>
+          <div class="flag-title">Zakres naprawy</div>
+          <div class="flag-body">{{ damage_repair }}</div>
+        </div>
+        {% for ok_item in damage_ok_items %}
+        <div class="flag green">
+          <div class="flag-icon">&#10003;</div>
+          <div class="flag-title">{{ ok_item.title }}</div>
+          <div class="flag-body">{{ ok_item.body }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- TIMELINE -->
+    <div class="timeline-section">
+      <h2>Harmonogram &mdash; od aukcji do Pana/Pani garażu</h2>
+      <div class="timeline">
+        {% for step in timeline_steps %}
+        <div class="tl-step">
+          <div class="tl-left">
+            <div class="tl-dot">{{ step.day }}</div>
+            <div class="tl-line"></div>
+          </div>
+          <div class="tl-content">
+            <div class="tl-day">{{ step.day_label }}</div>
+            <div class="tl-label">{{ step.label }}</div>
+            {% if step.desc %}
+            <div class="tl-desc">{{ step.desc }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- DOCS -->
+    <div class="docs-section">
+      <h2>Dokumentacja, którą Pan/Pani otrzyma</h2>
+      <ul class="docs-list">
+        {% for doc in docs_list %}
+        <li>{{ doc }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-block">
+      <div class="cta-headline">{{ cta_headline }}</div>
+      <div class="cta-body">{{ cta_body }}</div>
+      {% if auction_deadline %}
+      <div class="cta-deadline">&#9200; Aukcja kończy się: {{ auction_deadline }}</div>
+      {% endif %}
+      {% if scarcity_note %}
+      <div class="cta-scarcity">{{ scarcity_note }}</div>
+      {% endif %}
+    </div>
+
+  </div><!-- /body -->
+
+  <div class="footer">
+    <strong>{{ make }} {{ model }} {{ year }}</strong> &nbsp;&middot;&nbsp;
+    VIN: {{ vin | default('—') }} &nbsp;&middot;&nbsp;
+    Lot #{{ lot_id | default('—') }} &nbsp;&middot;&nbsp;
+    Dokument wygenerowany {{ generated_at }}
+  </div>
+
+</div>
+</body>
+</html>
