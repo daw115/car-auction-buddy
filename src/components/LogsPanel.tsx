@@ -57,7 +57,7 @@ function toIsoEnd(localDate: string): string | undefined {
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
-export function LogsPanel({ clientId, recordId }: Props) {
+export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) {
   const fnList = useServerFn(listLogs);
   const fnClear = useServerFn(clearLogs);
   const [rows, setRows] = useState<LogRow[]>([]);
