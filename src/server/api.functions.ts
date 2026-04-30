@@ -285,7 +285,7 @@ const criteriaSchema = z.object({
   model: z.string().max(80).nullable().optional(),
   year_from: z.number().int().min(1900).max(2100).nullable().optional(),
   year_to: z.number().int().min(1900).max(2100).nullable().optional(),
-  budget_usd: z.number().min(1).max(1_000_000),
+  budget_usd: z.number().min(0).max(1_000_000).transform((v) => v || 15000),
   max_odometer_mi: z.number().int().min(0).max(1_000_000).nullable().optional(),
   excluded_damage_types: z.array(z.string().max(40)).max(20).optional(),
   max_results: z.number().int().min(1).max(100).optional(),
