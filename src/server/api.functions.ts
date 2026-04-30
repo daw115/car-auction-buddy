@@ -621,6 +621,118 @@ export const runScraperSearch = createServerFn({ method: "POST" })
     return { listings, source: baseUrl };
   });
 
+// Start scraper job — returns job_id immediately (or listings if backend is sync/mock).
+export const startScraperSearch = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      criteria: criteriaSchema,
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
+    }).parse,
+  )
+  .handler(async ({ data }): Promise<
+    | { mode: "sync"; listings: CarLot[]; source: string }
+    | { mode: "job"; job_id: string; source: string }
+  > => {
+    const log = makeLogger({
+      operation: "scrape",
+      clientId: data.clientId ?? null,
+      recordId: data.recordId ?? null,
+    });
+
+    const { data: cfg } = await supabaseAdmin
+      .from("app_config")
+      .select("use_mock_data")
+      .eq("id", 1)
+      .maybeSingle();
+    if (cfg?.use_mock_data) {
+      const listings = buildMockListings(data.criteria);
+      await log.info("done", `Mock: zwrócono ${listings.length} lotów`, {
+        listings_count: listings.length,
+        source: "mock",
+      });
+      return { mode: "sync", listings, source: "mock" };
+    }
+
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl) {
+      await log.error("config", "Brak SCRAPER_BASE_URL");
+      throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
+    }
+
+    await log.info("start", "Start wyszukiwania (job)", {
+      endpoint: `${baseUrl}/api/search`,
+      criteria_make: data.criteria.make,
+    });
+
+    const res = await fetch(`${baseUrl}/api/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ criteria: data.criteria }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      await log.error("http_error", `HTTP ${res.status}`, {
+        status: res.status,
+        body_preview: body.slice(0, 300),
+      });
+      throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
+    }
+    const json = (await res.json()) as
+      | { job_id?: string; status?: string; listings?: CarLot[] }
+      | CarLot[];
+
+    if (Array.isArray(json)) {
+      return { mode: "sync", listings: json, source: baseUrl };
+    }
+    if (json.job_id) {
+      await log.info("queued", `Job ${json.job_id} w kolejce`, { job_id: json.job_id });
+      return { mode: "job", job_id: json.job_id, source: baseUrl };
+    }
+    if (json.listings) {
+      return { mode: "sync", listings: json.listings, source: baseUrl };
+    }
+    throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
+  });
+
+// Poll scraper job status (called by UI every 4s).
+export const pollScraperJob = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
+  .handler(async ({ data }): Promise<{
+    status: string;
+    listings?: CarLot[];
+    error?: string;
+    progress?: number;
+  }> => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
+
+    const res = await fetch(`${baseUrl}/api/jobs/${data.jobId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Poll HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const j = (await res.json()) as {
+      status?: string;
+      listings?: CarLot[];
+      error?: string;
+      progress?: number;
+    };
+    return {
+      status: j.status ?? "unknown",
+      listings: j.listings,
+      error: j.error,
+      progress: typeof j.progress === "number" ? j.progress : undefined,
+    };
+  });
+
 // ---------- Operation logs ----------
 
 export const listLogs = createServerFn({ method: "GET" })
