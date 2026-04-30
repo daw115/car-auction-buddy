@@ -74,6 +74,60 @@ export type Database = {
         }
         Relationships: []
       }
+      operation_logs: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          details: Json | null
+          duration_ms: number | null
+          id: string
+          level: string
+          message: string
+          operation: string
+          record_id: string | null
+          step: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          id?: string
+          level?: string
+          message: string
+          operation: string
+          record_id?: string | null
+          step?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          id?: string
+          level?: string
+          message?: string
+          operation?: string
+          record_id?: string | null
+          step?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operation_logs_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       records: {
         Row: {
           ai_input: Json | null
