@@ -18,6 +18,7 @@ import {
   startScraperSearch,
   pollScraperJob,
   cancelScraperJob,
+  clearScrapeCache,
   getJobLogs,
   runLotReports,
 } from "@/server/api.functions";
