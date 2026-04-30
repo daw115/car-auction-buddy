@@ -48,6 +48,7 @@ import {
   Save,
   AlertCircle,
   CheckCircle2,
+  Calculator,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -458,6 +459,12 @@ function Panel() {
           </div>
           <div className="flex items-center gap-2">
             <EnvStatus env={env} />
+            <Link
+              to="/calculator"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              <Calculator className="h-3.5 w-3.5" /> Kalkulator + VIN
+            </Link>
             <Link
               to="/settings"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
