@@ -39,9 +39,36 @@ function DevLogsPage() {
     http: true,
   });
   const [connected, setConnected] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const pausedRef = useRef(paused);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<LogEntry[]>([]);
+
+  const toggleExpanded = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const copyExtra = async (entry: LogEntry) => {
+    try {
+      const payload = JSON.stringify(
+        { ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
+        null,
+        2,
+      );
+      await navigator.clipboard.writeText(payload);
+      setCopiedId(entry.id);
+      toast.success("Skopiowano JSON wpisu");
+      setTimeout(() => setCopiedId((c) => (c === entry.id ? null : c)), 1200);
+    } catch {
+      toast.error("Nie udało się skopiować");
+    }
+  };
 
   useEffect(() => {
     pausedRef.current = paused;
