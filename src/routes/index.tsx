@@ -497,10 +497,19 @@ function Panel() {
           break;
         }
         if (["error", "failed"].includes(p.status)) {
+          const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
-            s ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt } : s,
+            s
+              ? {
+                  ...s,
+                  status: "failed",
+                  elapsedMs: Date.now() - s.startedAt,
+                  errorMessage: errMsg,
+                  errorStep: p.status,
+                }
+              : s,
           );
-          throw new Error(p.error ?? "Job failed");
+          throw new Error(errMsg);
         }
       }
       if (!["done", "completed", "finished"].includes(scrapeJob?.status ?? "")) {
