@@ -5,7 +5,13 @@ import { listLogs, clearLogs, getLogRetention, cleanupLogs } from "@/server/api.
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download, ExternalLink } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download, ExternalLink, Eraser } from "lucide-react";
 import { JsonDetails } from "@/components/JsonDetails";
 
 type LogRow = {
@@ -148,54 +154,73 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
 
   return (
     <Card className="mt-3 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <ScrollText className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <ScrollText className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <h2 className="truncate text-sm font-semibold">
             Status & logi {clientId ? "klienta" : "(globalne)"}
           </h2>
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => void refresh()} title="Odśwież">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => void refresh()}
+            title="Odśwież"
+            aria-label="Odśwież"
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                disabled={rows.length === 0}
+                title="Pobierz logi"
+                aria-label="Pobierz logi"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => downloadLogs(rows, "json", scopeLabel(clientId, recordId))}>
+                Pobierz JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadLogs(rows, "csv", scopeLabel(clientId, recordId))}>
+                Pobierz CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="ghost"
-            size="sm"
-            onClick={() => downloadLogs(rows, "json", scopeLabel(clientId, recordId))}
-            disabled={rows.length === 0}
-            title="Pobierz JSON"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="ml-1 text-[10px]">JSON</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => downloadLogs(rows, "csv", scopeLabel(clientId, recordId))}
-            disabled={rows.length === 0}
-            title="Pobierz CSV"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="ml-1 text-[10px]">CSV</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-7 w-7"
             onClick={handleCleanup}
             title={`Usuń logi starsze niż ${retention?.days ?? 30} dni`}
+            aria-label="Usuń stare logi"
           >
-            <Trash2 className="h-3.5 w-3.5" />
-            <span className="ml-1 text-[10px]">{retention?.days ?? 30}d</span>
+            <Eraser className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleClear} title="Wyczyść logi">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            onClick={handleClear}
+            title="Wyczyść wszystkie logi"
+            aria-label="Wyczyść logi"
+          >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
       {retention && (
         <div className="mb-2 text-[10px] text-muted-foreground">
-          Retencja logów: {retention.days} dni ({retention.source === "env" ? "z LOG_RETENTION_DAYS" : "domyślna"}). Auto-czyszczenie codziennie.
+          Retencja: {retention.days} dni{retention.source === "env" ? " (env)" : ""} · auto-czyszczenie codziennie
         </div>
       )}
 
