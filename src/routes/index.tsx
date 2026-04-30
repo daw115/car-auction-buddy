@@ -290,7 +290,31 @@ function Panel() {
     }
   }
   const fnRunLotReports = useServerFn(runLotReports);
+  const fnGetReportBundle = useServerFn(getReportBundle);
   const fnAddWatch = useServerFn(addToWatchlist);
+
+  async function downloadReportBundle(recordId: string) {
+    try {
+      const r = (await fnGetReportBundle({ data: { recordId } })) as {
+        filename: string;
+        base64: string;
+        size: number;
+      };
+      const bin = atob(r.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = r.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Pobrano ${r.filename} (${(r.size / 1024).toFixed(1)} KB)`);
+    } catch (e) {
+      toast.error(`Pobranie raportu nie powiodło się: ${(e as Error).message}`);
+    }
+  }
+
 
   const watchLot = async (a: AnalyzedLot) => {
     try {
