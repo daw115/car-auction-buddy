@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, Trash2, ChevronRight, ScrollText, AlertCircle, AlertTriangle, Info, Bug, Download, ExternalLink } from "lucide-react";
+import { JsonDetails } from "@/components/JsonDetails";
 
 type LogRow = {
   id: string;
