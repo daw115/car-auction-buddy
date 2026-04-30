@@ -15,6 +15,8 @@ import {
   runAnalysis,
   renderReport,
   runScraperSearch,
+  startScraperSearch,
+  pollScraperJob,
   runLotReports,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
@@ -27,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
 import {
   Sheet,
@@ -112,6 +115,79 @@ function recommendationBadge(r: string) {
   return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
 }
 
+type ScrapeJobState = {
+  status: string;
+  jobId?: string;
+  startedAt: number;
+  progress?: number;
+  elapsedMs: number;
+};
+
+function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+}
+
+function ScraperProgress({ job }: { job: ScrapeJobState }) {
+  // Heuristic ETA: assume ~90s typical scrape if backend doesn't report progress.
+  const ASSUMED_TOTAL_MS = 90_000;
+  const isDone = job.status === "done";
+  const isFailed = job.status === "failed";
+  const pct =
+    typeof job.progress === "number"
+      ? Math.min(100, Math.max(0, Math.round(job.progress * 100)))
+      : isDone
+        ? 100
+        : Math.min(95, Math.round((job.elapsedMs / ASSUMED_TOTAL_MS) * 100));
+
+  const etaMs =
+    isDone || isFailed
+      ? 0
+      : typeof job.progress === "number" && job.progress > 0
+        ? Math.max(0, job.elapsedMs / job.progress - job.elapsedMs)
+        : Math.max(0, ASSUMED_TOTAL_MS - job.elapsedMs);
+
+  const statusLabel: Record<string, string> = {
+    queued: "W kolejce",
+    running: "Pobieranie ofert...",
+    done: "Zakończono",
+    completed: "Zakończono",
+    finished: "Zakończono",
+    failed: "Błąd",
+    error: "Błąd",
+  };
+
+  const variant = isFailed
+    ? "bg-destructive/10 border-destructive/30"
+    : isDone
+      ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
+      : "bg-muted border-border";
+
+  return (
+    <div className={`rounded-md border px-3 py-2 ${variant}`}>
+      <div className="flex items-center justify-between text-xs mb-1.5">
+        <div className="flex items-center gap-2">
+          {!isDone && !isFailed && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          <span className="font-medium">
+            {statusLabel[job.status] ?? job.status}
+          </span>
+          {job.jobId && (
+            <span className="font-mono text-muted-foreground">#{job.jobId.slice(0, 8)}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <span>Czas: {formatDuration(job.elapsedMs)}</span>
+          {!isDone && !isFailed && <span>ETA: ~{formatDuration(etaMs)}</span>}
+          <span className="font-medium text-foreground">{pct}%</span>
+        </div>
+      </div>
+      <Progress value={pct} className="h-1.5" />
+    </div>
+  );
+}
+
 function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
@@ -126,6 +202,8 @@ function Panel() {
   const fnRunAnalysis = useServerFn(runAnalysis);
   const fnRenderReport = useServerFn(renderReport);
   const fnRunScraper = useServerFn(runScraperSearch);
+  const fnStartScraper = useServerFn(startScraperSearch);
+  const fnPollScraper = useServerFn(pollScraperJob);
   const fnRunLotReports = useServerFn(runLotReports);
   const fnAddWatch = useServerFn(addToWatchlist);
 
@@ -175,6 +253,24 @@ function Panel() {
   const [mailHtml, setMailHtml] = useState<string>("");
 
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Scraper job progress
+  const [scrapeJob, setScrapeJob] = useState<{
+    status: string; // queued | running | done | failed
+    jobId?: string;
+    startedAt: number;
+    progress?: number; // 0..1 if backend reports
+    elapsedMs: number;
+  } | null>(null);
+
+  // Tick elapsed every 1s while job is active
+  useEffect(() => {
+    if (!scrapeJob || scrapeJob.status === "done" || scrapeJob.status === "failed") return;
+    const t = setInterval(() => {
+      setScrapeJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [scrapeJob?.status, scrapeJob?.startedAt]);
 
   // new-client form
   const [newName, setNewName] = useState("");
@@ -290,14 +386,69 @@ function Panel() {
       return;
     }
     setBusy("scraper");
+    const startedAt = Date.now();
+    setScrapeJob({ status: "queued", startedAt, elapsedMs: 0 });
     try {
-      const r = (await fnRunScraper({
+      const start = (await fnStartScraper({
         data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
-      })) as { listings: CarLot[] };
-      setListings(r.listings);
-      setListingsRaw(JSON.stringify(r.listings, null, 2));
-      toast.success(`Scraper zwrócił ${r.listings.length} lotów`);
+      })) as
+        | { mode: "sync"; listings: CarLot[]; source: string }
+        | { mode: "job"; job_id: string; source: string };
+
+      if (start.mode === "sync") {
+        setListings(start.listings);
+        setListingsRaw(JSON.stringify(start.listings, null, 2));
+        setScrapeJob({ status: "done", startedAt, elapsedMs: Date.now() - startedAt, progress: 1 });
+        toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        return;
+      }
+
+      // Poll loop
+      const jobId = start.job_id;
+      setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
+      const deadline = Date.now() + 5 * 60 * 1000;
+      let listingsResult: CarLot[] = [];
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
+        try {
+          p = (await fnPollScraper({ data: { jobId } })) as typeof p;
+        } catch (e) {
+          // transient — keep polling
+          continue;
+        }
+        setScrapeJob((s) =>
+          s
+            ? {
+                ...s,
+                status: p.status,
+                progress: p.progress,
+                elapsedMs: Date.now() - s.startedAt,
+              }
+            : s,
+        );
+        if (["done", "completed", "finished"].includes(p.status)) {
+          listingsResult = Array.isArray(p.listings) ? p.listings : [];
+          setScrapeJob((s) =>
+            s ? { ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          break;
+        }
+        if (["error", "failed"].includes(p.status)) {
+          setScrapeJob((s) =>
+            s ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          throw new Error(p.error ?? "Job failed");
+        }
+      }
+      if (!["done", "completed", "finished"].includes(scrapeJob?.status ?? "")) {
+        // either set above, or timeout
+      }
+      setListings(listingsResult);
+      setListingsRaw(JSON.stringify(listingsResult, null, 2));
+      toast.success(`Scraper zwrócił ${listingsResult.length} lotów`);
     } catch (e) {
+      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
       toast.error((e as Error).message);
     } finally {
       setBusy(null);
@@ -736,6 +887,7 @@ function Panel() {
                 </Button>
               </div>
             </div>
+            {scrapeJob && <ScraperProgress job={scrapeJob} />}
             <Textarea
               className="font-mono text-xs"
               rows={6}
