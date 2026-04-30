@@ -1,5 +1,8 @@
 import os
+import asyncio
 import json
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -8,15 +11,36 @@ os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from parser.models import ClientCriteria, AnalyzedLot, SearchResponse
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+)
 
-app = FastAPI(title="USA Car Finder", version="1.0.0")
+from parser.models import ClientCriteria, AnalyzedLot, SearchResponse
+from api import jobs as jobs_store
+
+logger = logging.getLogger("api.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    try:
+        from scraper.browser_context import close_shared_extension_context
+
+        await close_shared_extension_context()
+        logger.info("[lifespan] Shared extension context closed")
+    except Exception:
+        logger.exception("[lifespan] Failed to close shared extension context")
+
+
+app = FastAPI(title="USA Car Finder", version="1.0.0", lifespan=lifespan)
 
 HTML_CACHE_DIR = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache"))
 USE_EXTENSIONS = os.getenv("USE_EXTENSIONS", "false").lower() == "true"
@@ -171,14 +195,20 @@ async def download_artifact(filename: str):
     )
 
 
-@app.post("/search", response_model=SearchResponse)
-async def search_cars(request: SearchRequest):
+async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> SearchResponse:
     criteria = request.criteria
+    progress_cb = jobs_store.progress_callback(job)
 
     if request.demo or USE_MOCK_DATA:
         from scraper.mock_data import get_mock_lots
 
+        progress_cb("scrape", {"source": "mock"})
+        # Knob testowy: pozwala anulować mock job mid-flight (cancel propaguje na await).
+        mock_delay = float(os.getenv("MOCK_PROGRESS_DELAY_S", "0"))
+        if mock_delay > 0:
+            await asyncio.sleep(mock_delay)
         all_lots = get_mock_lots(criteria)
+        progress_cb("scrape", {"source": "mock", "count": len(all_lots), "_status": "done"})
     else:
         from scraper.automated_scraper import AutomatedScraper
 
@@ -187,39 +217,54 @@ async def search_cars(request: SearchRequest):
             criteria,
             auction_window_hours=request.auction_max_hours,
             min_auction_window_hours=request.auction_min_hours,
+            progress_cb=progress_cb,
         )
 
+    notice_extra: list[str] = []
     if not all_lots:
-        raise HTTPException(status_code=404, detail="Brak wyników — sprawdź kryteria lub logi scrapera")
+        notice_extra.append("Brak wyników z aukcji — zwracam pustą odpowiedź.")
+        progress_cb("ai_analyze", {"_status": "skipped", "reason": "no_lots"})
+        top_recommendations: list = []
+        ranked_results: list = []
+        ai_input_file = ai_prompt_file = analysis_file = client_report_file = None
+    else:
+        ai_input_file, ai_prompt_file, slug = write_ai_artifacts(
+            criteria=criteria,
+            lots=all_lots,
+            auction_min_hours=request.auction_min_hours,
+            auction_max_hours=request.auction_max_hours,
+        )
 
-    ai_input_file, ai_prompt_file, slug = write_ai_artifacts(
-        criteria=criteria,
-        lots=all_lots,
-        auction_min_hours=request.auction_min_hours,
-        auction_max_hours=request.auction_max_hours,
-    )
+        progress_cb("ai_analyze", {"lots": len(all_lots)})
+        try:
+            from ai.analyzer import analyze_lots
 
-    from ai.analyzer import analyze_lots
+            top_recommendations, ranked_results = analyze_lots(
+                all_lots,
+                criteria,
+                top_n=5,
+                force_local=request.demo,
+            )
+            progress_cb("ai_analyze", {"_status": "done", "ranked": len(ranked_results)})
+        except Exception as exc:
+            logger.exception("AI analysis failed; falling back to heuristic ordering")
+            progress_cb("ai_analyze", {"_status": "error", "reason": str(exc)})
+            notice_extra.append(f"AI niedostępne ({exc.__class__.__name__}); ranking heurystyczny.")
+            top_recommendations, ranked_results = _heuristic_rank(all_lots)
 
-    top_recommendations, ranked_results = analyze_lots(
-        all_lots,
-        criteria,
-        top_n=5,
-        force_local=request.demo,
-    )
+        from report.client_artifacts import write_client_artifacts
+
+        analysis_file, client_report_file = write_client_artifacts(
+            criteria=criteria,
+            top_recommendations=top_recommendations,
+            ranked_results=ranked_results,
+            output_dir=SEARCH_ARTIFACT_DIR,
+            slug=slug,
+        )
+
     top_recommendations = top_recommendations[:5]
     remaining_results = [r for r in ranked_results if not r.is_top_recommendation][:5]
     all_results = top_recommendations + remaining_results
-
-    from report.client_artifacts import write_client_artifacts
-
-    analysis_file, client_report_file = write_client_artifacts(
-        criteria=criteria,
-        top_recommendations=top_recommendations,
-        ranked_results=ranked_results,
-        output_dir=SEARCH_ARTIFACT_DIR,
-        slug=slug,
-    )
 
     artifact_urls = {
         "ai_input": artifact_url(ai_input_file),
@@ -227,6 +272,10 @@ async def search_cars(request: SearchRequest):
         "analysis_json": artifact_url(analysis_file),
         "client_report": artifact_url(client_report_file),
     }
+
+    notice = analysis_notice(force_local=request.demo)
+    if notice_extra:
+        notice = (notice + " | " if notice else "") + " ".join(notice_extra)
 
     response_payload = SearchResponse(
         top_recommendations=top_recommendations,
@@ -236,32 +285,133 @@ async def search_cars(request: SearchRequest):
         analysis_file=analysis_file,
         client_report_file=client_report_file,
         artifact_urls={key: value for key, value in artifact_urls.items() if value},
-        analysis_notice=analysis_notice(force_local=request.demo),
+        analysis_notice=notice,
         collected_count=len(all_lots),
     )
 
-    from api.client_database import init_db, save_search_record, upsert_client
+    try:
+        from api.client_database import init_db, save_search_record, upsert_client
 
-    init_db()
-    client_payload = request.client.model_dump(mode="json") if request.client else None
-    client_id = upsert_client(client_payload)
-    response_dict = response_payload.model_dump(mode="json")
-    request_dict = request.model_dump(mode="json")
-    record_id = save_search_record(
-        client_id=client_id,
-        title=search_title(criteria),
-        criteria=criteria.model_dump(mode="json"),
-        request_data=request_dict,
-        response_data=response_dict,
-        artifact_urls=response_payload.artifact_urls,
-        collected_count=response_payload.collected_count,
-        analysis_notice=response_payload.analysis_notice,
-        notes=(client_payload or {}).get("notes") if client_payload else None,
-    )
-    response_payload.record_id = record_id
-    response_payload.client_id = client_id
+        init_db()
+        client_payload = request.client.model_dump(mode="json") if request.client else None
+        client_id = upsert_client(client_payload)
+        response_dict = response_payload.model_dump(mode="json")
+        request_dict = request.model_dump(mode="json")
+        record_id = save_search_record(
+            client_id=client_id,
+            title=search_title(criteria),
+            criteria=criteria.model_dump(mode="json"),
+            request_data=request_dict,
+            response_data=response_dict,
+            artifact_urls=response_payload.artifact_urls,
+            collected_count=response_payload.collected_count,
+            analysis_notice=response_payload.analysis_notice,
+            notes=(client_payload or {}).get("notes") if client_payload else None,
+        )
+        response_payload.record_id = record_id
+        response_payload.client_id = client_id
+    except Exception:
+        logger.exception("Persisting search record failed")
 
     return response_payload
+
+
+def _heuristic_rank(lots):
+    """Fallback ranking gdy AI padło — używa istniejącego sortowania damage+auction."""
+    from scraper.automated_scraper import AutomatedScraper
+    from parser.models import AIAnalysis, AnalyzedLot
+
+    sorted_lots = sorted(lots, key=AutomatedScraper._damage_then_auction_sort_key)
+    ranked: list[AnalyzedLot] = []
+    for idx, lot in enumerate(sorted_lots):
+        analysis = AIAnalysis(
+            lot_id=lot.lot_id,
+            score=max(0.0, 7.0 - idx * 0.2),
+            recommendation="POLECAM" if idx < 5 else "RYZYKO",
+            red_flags=["Ranking heurystyczny — AI niedostępne"],
+            estimated_repair_usd=None,
+            estimated_total_cost_usd=None,
+            client_description_pl="Automatyczne uszeregowanie po typie szkody i dacie aukcji.",
+            ai_notes="heuristic_fallback",
+        )
+        ranked.append(
+            AnalyzedLot(
+                lot=lot,
+                analysis=analysis,
+                is_top_recommendation=idx < 5,
+                included_in_report=idx < 5,
+            )
+        )
+    top = [r for r in ranked if r.is_top_recommendation]
+    return top, ranked
+
+
+async def _run_job(request: SearchRequest, job: jobs_store.Job) -> None:
+    try:
+        await jobs_store.mark_running(job)
+        response = await _execute_search(request, job)
+        await jobs_store.mark_done(job, response.model_dump(mode="json"))
+    except asyncio.CancelledError:
+        logger.info("Search job %s cancelled", job.id)
+        await jobs_store.mark_cancelled(job)
+        # nie podnosimy dalej — task ma się skończyć cicho
+    except Exception as exc:
+        logger.exception("Search job %s failed", job.id)
+        await jobs_store.mark_error(job, f"{exc.__class__.__name__}: {exc}")
+
+
+@app.post("/search", status_code=202)
+async def search_cars(request: SearchRequest):
+    job = jobs_store.create_job()
+    job.task = asyncio.create_task(_run_job(request, job))
+    return {
+        "job_id": job.id,
+        "status_url": f"/search/jobs/{job.id}",
+        "stream_url": f"/search/stream/{job.id}",
+        "cancel_url": f"/search/jobs/{job.id}",
+    }
+
+
+@app.get("/search/jobs/{job_id}")
+async def get_search_job(job_id: str):
+    job = jobs_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zadania")
+    return job.to_dict()
+
+
+@app.delete("/search/jobs/{job_id}")
+async def cancel_search_job(job_id: str):
+    job = jobs_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zadania")
+    requested = jobs_store.request_cancel(job)
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "cancel_requested": requested,
+    }
+
+
+@app.get("/search/stream/{job_id}")
+async def stream_search_job(job_id: str):
+    job = jobs_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zadania")
+
+    async def event_source():
+        async for event in jobs_store.stream_events(job):
+            event_type = event.get("type", "message")
+            if event_type == "__end__":
+                yield "event: end\ndata: {}\n\n"
+                break
+            yield f"event: {event_type}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/records")

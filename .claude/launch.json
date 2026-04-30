@@ -6,6 +6,18 @@
       "runtimeExecutable": "/Users/dawidslabicki/Documents/Claude/carsmillionaire/start_autoscout.sh",
       "runtimeArgs": [],
       "port": 8000
+    },
+    {
+      "name": "autoscout-mock",
+      "runtimeExecutable": "./usa-car-finder/venv/bin/python3",
+      "runtimeArgs": ["-m", "uvicorn", "--app-dir", "./usa-car-finder", "api.main:app", "--host", "127.0.0.1", "--port", "8001"],
+      "port": 8001,
+      "env": {
+        "USE_MOCK_DATA": "true",
+        "AI_ANALYSIS_MODE": "local",
+        "MOCK_PROGRESS_DELAY_S": "6",
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   ]
 }

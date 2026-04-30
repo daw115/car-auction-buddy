@@ -962,6 +962,7 @@
             </label>
             <div class="button-row">
               <button class="btn btn-secondary" type="button" id="clearResultsBtn">Wyczyść wyniki</button>
+              <button class="btn btn-secondary" type="button" id="cancelSearchBtn" hidden>Anuluj</button>
               <button class="btn" type="submit" id="searchBtn">Szukaj i analizuj</button>
             </div>
           </div>
@@ -1105,7 +1106,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function cacheElements() {
   [
-    "searchForm", "searchBtn", "clearResultsBtn", "statusPanel", "resultsArea",
+    "searchForm", "searchBtn", "clearResultsBtn", "cancelSearchBtn", "statusPanel", "resultsArea",
     "summaryBar", "topResults", "allResults", "generateReportBtn", "approvalStatus",
     "generateOfferEmailBtn", "reportSubtitle", "modePill", "aiPill", "extensionsPill", "artifactPanel",
     "clientName", "clientEmail", "clientPhone", "clientNotes", "recordSearchInput", "refreshRecordsBtn", "recordList",
@@ -1127,6 +1128,17 @@ function bindEvents() {
     app.elements.resultsArea.hidden = true;
     setStatus("statusPanel", "", "");
     renderRecordListState();
+  });
+
+  app.elements.cancelSearchBtn.addEventListener("click", async () => {
+    const jobId = window.currentJobId;
+    if (!jobId) return;
+    app.elements.cancelSearchBtn.disabled = true;
+    try {
+      await fetch(`/search/jobs/${jobId}`, { method: "DELETE" });
+    } catch (err) {
+      // Stream i tak złapie status="cancelled" lub timeout — ignoruj.
+    }
   });
 
   app.elements.generateReportBtn.addEventListener("click", approveAndGeneratePdf);
@@ -1291,6 +1303,114 @@ function formatRecordDate(value) {
   });
 }
 
+const PHASE_LABELS = {
+  scrape: "Pobieram dane (mock)",
+  copart: "Copart — scrape",
+  iaai: "IAAI — scrape",
+  filter: "Filtrowanie wyników",
+  enrich: "Wzbogacanie z rozszerzeń",
+  ai_analyze: "Analiza AI",
+};
+
+function describePhase(phase) {
+  const label = PHASE_LABELS[phase.name] || phase.name;
+  const info = phase.info || {};
+  const parts = [];
+  if (info.attempt) parts.push(`próba ${info.attempt}`);
+  if (info.count !== undefined) parts.push(`${info.count} lotów`);
+  if (info.input !== undefined) parts.push(`wejście ${info.input}`);
+  if (info.output !== undefined) parts.push(`wyjście ${info.output}`);
+  if (info.enriched !== undefined) parts.push(`wzbogaconych ${info.enriched}`);
+  if (info.lots !== undefined) parts.push(`${info.lots} lotów`);
+  if (info.reason) parts.push(info.reason);
+  if (info.error) parts.push(info.error);
+  let suffix = "";
+  if (phase.status === "blocked") suffix = " — zablokowane (CAPTCHA/Cloudflare)";
+  else if (phase.status === "error") suffix = " — błąd";
+  else if (phase.status === "skipped") suffix = " — pominięto";
+  else if (phase.status === "done") suffix = " — gotowe";
+  return parts.length ? `${label} (${parts.join(", ")})${suffix}` : `${label}${suffix}`;
+}
+
+async function pollJobUntilDone(jobId, onPhase) {
+  // Fallback gdy SSE nie działa: poll co 2s. Zwraca finalny payload result.
+  while (true) {
+    const res = await fetch(`/search/jobs/${jobId}`);
+    if (!res.ok) throw new Error(await responseError(res));
+    const data = await res.json();
+    (data.phases || []).forEach(onPhase);
+    if (data.status === "done") return data.result;
+    if (data.status === "error") throw new Error(data.error || "Błąd zadania");
+    if (data.status === "cancelled") throw new SearchCancelled();
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+class SearchCancelled extends Error {
+  constructor() { super("Wyszukiwanie anulowane"); this.name = "SearchCancelled"; }
+}
+
+function streamJob(jobId, onPhase) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let source;
+    try {
+      source = new EventSource(`/search/stream/${jobId}`);
+    } catch (err) {
+      // Brak EventSource — przejdź na polling.
+      pollJobUntilDone(jobId, onPhase).then(resolve, reject);
+      return;
+    }
+
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      try { source.close(); } catch (_) {}
+      fn();
+    };
+
+    source.addEventListener("phase", (evt) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        if (payload.phase) onPhase(payload.phase);
+      } catch (_) {}
+    });
+
+    source.addEventListener("status", (evt) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        if (payload.status === "error") {
+          finish(() => reject(new Error(payload.error || "Błąd zadania")));
+        } else if (payload.status === "cancelled") {
+          finish(() => reject(new SearchCancelled()));
+        }
+      } catch (_) {}
+    });
+
+    source.addEventListener("end", async () => {
+      try {
+        const res = await fetch(`/search/jobs/${jobId}`);
+        if (!res.ok) throw new Error(await responseError(res));
+        const data = await res.json();
+        if (data.status === "error") {
+          finish(() => reject(new Error(data.error || "Błąd zadania")));
+        } else if (data.status === "cancelled") {
+          finish(() => reject(new SearchCancelled()));
+        } else {
+          finish(() => resolve(data.result));
+        }
+      } catch (err) {
+        finish(() => reject(err));
+      }
+    });
+
+    source.onerror = () => {
+      // Spróbuj polling, jeśli stream padł.
+      finish(() => pollJobUntilDone(jobId, onPhase).then(resolve, reject));
+    };
+  });
+}
+
 async function runSearch() {
   const requestData = readSearchRequest();
   if (!requestData.ok) {
@@ -1300,6 +1420,8 @@ async function runSearch() {
 
   const demo = document.getElementById("demoMode").checked;
   app.elements.searchBtn.disabled = true;
+  app.elements.cancelSearchBtn.hidden = false;
+  app.elements.cancelSearchBtn.disabled = false;
   app.elements.resultsArea.hidden = true;
   setStatus(
     "statusPanel",
@@ -1308,36 +1430,67 @@ async function runSearch() {
     demo ? "Lokalny scoring bez wywołania zewnętrznego API." : "Operacja może potrwać kilka minut."
   );
 
+  const seenPhases = new Map();
+  const onPhase = (phase) => {
+    seenPhases.set(phase.name, phase);
+    const detail = Array.from(seenPhases.values()).map(describePhase).join(" · ");
+    const isError = phase.status === "error" || phase.status === "blocked";
+    setStatus(
+      "statusPanel",
+      isError ? "error" : "loading",
+      describePhase(phase),
+      detail
+    );
+  };
+
   try {
     const response = await fetch("/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-	      body: JSON.stringify({
-	        criteria: requestData.criteria,
-	        demo,
-	        auction_min_hours: requestData.auctionMinHours,
-	        auction_max_hours: requestData.auctionMaxHours,
-	        client: requestData.client,
-	      }),
+      body: JSON.stringify({
+        criteria: requestData.criteria,
+        demo,
+        auction_min_hours: requestData.auctionMinHours,
+        auction_max_hours: requestData.auctionMaxHours,
+        client: requestData.client,
+      }),
     });
 
     if (!response.ok) {
       throw new Error(await responseError(response));
     }
 
-	    window.searchData = await response.json();
-	    window.lastSearchRequest = requestData;
-	    window.currentRecordId = window.searchData.record_id || null;
-	    renderApprovalScreen(window.searchData);
-	    loadRecords();
+    const enqueued = await response.json();
+    if (!enqueued.job_id) {
+      throw new Error("Backend nie zwrócił job_id");
+    }
+    window.currentJobId = enqueued.job_id;
+
+    const result = await streamJob(enqueued.job_id, onPhase);
+    if (!result) {
+      throw new Error("Brak wyniku z zadania");
+    }
+
+    window.searchData = result;
+    window.lastSearchRequest = requestData;
+    window.currentRecordId = result.record_id || null;
+    renderApprovalScreen(result);
+    loadRecords();
     const count = getAllUniqueLots().length;
-    const collected = window.searchData.collected_count || count;
-    const notice = window.searchData.analysis_notice ? ` ${window.searchData.analysis_notice}.` : "";
+    const collected = result.collected_count || count;
+    const notice = result.analysis_notice ? ` ${result.analysis_notice}.` : "";
     setStatus("statusPanel", "ok", "Gotowe", `Zebrano ${collected} lotów, pokazuję ${count}.${notice}`);
   } catch (error) {
-    setStatus("statusPanel", "error", "Nie udało się zakończyć wyszukiwania", error.message);
+    if (error instanceof SearchCancelled) {
+      setStatus("statusPanel", "", "Wyszukiwanie anulowane", "Job zatrzymany na żądanie.");
+    } else {
+      setStatus("statusPanel", "error", "Nie udało się zakończyć wyszukiwania", error.message);
+    }
   } finally {
     app.elements.searchBtn.disabled = false;
+    app.elements.cancelSearchBtn.hidden = true;
+    app.elements.cancelSearchBtn.disabled = false;
+    window.currentJobId = null;
   }
 }
 

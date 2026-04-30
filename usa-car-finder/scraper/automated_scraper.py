@@ -4,9 +4,10 @@ Integruje istniejące scrapery Copart i IAAI z wzbogacaniem danych z botów.
 """
 import os
 import asyncio
+import logging
 import re
 import math
-from typing import List, Optional
+from typing import Callable, List, Optional
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dotenv import load_dotenv
@@ -24,6 +25,23 @@ from scraper.iaai import IAAIScraper
 from parser.copart_parser import parse_copart_html
 from parser.iaai_parser import parse_iaai_html
 from scraper.extension_enricher import ExtensionEnricher
+
+logger = logging.getLogger("scraper.automated")
+
+ProgressCb = Optional[Callable[[str, dict], None]]
+
+
+def _emit(progress_cb: ProgressCb, phase: str, info: Optional[dict] = None) -> None:
+    if progress_cb is None:
+        return
+    try:
+        progress_cb(phase, info or {})
+    except Exception:
+        logger.debug("progress callback failed", exc_info=True)
+
+
+class _SourceBlocked(Exception):
+    """Sygnał że źródło zostało zablokowane (Cloudflare/captcha)."""
 
 
 class AutomatedScraper:
@@ -44,6 +62,7 @@ class AutomatedScraper:
         criteria: ClientCriteria,
         auction_window_hours: Optional[int] = None,
         min_auction_window_hours: Optional[int] = None,
+        progress_cb: ProgressCb = None,
     ) -> List[CarLot]:
         """
         Automatyczne wyszukiwanie aut na podstawie kryteriów.
@@ -52,6 +71,7 @@ class AutomatedScraper:
             criteria: Parametry wyszukiwania
             auction_window_hours: Górna granica okna aukcji w godzinach (np. 120 = 5 dni).
             min_auction_window_hours: Dolna granica okna aukcji (np. 12h).
+            progress_cb: opcjonalny callback (phase_name, info_dict) do streamingu postępu.
 
         Returns:
             Lista znalezionych lotów z wzbogaconymi danymi
@@ -77,63 +97,45 @@ class AutomatedScraper:
 
         # 1. Scraping Copart
         if "copart" in criteria.sources:
-            print(f"[AutoScraper] Scrapuję Copart dla {criteria.make} {criteria.model or ''}...")
-            try:
-                scraper = CopartScraper()
-                saved_files = await scraper.scrape(
-                    source_criteria(len(selected_sources)),
-                    min_auction_window_hours=min_window_hours,
-                    auction_window_hours=max_window_hours,
-                    insurance_only=self.filter_insurance_only,
-                )
-                copart_lots = []
-                for path, lot_url in saved_files:
-                    lot = parse_copart_html(Path(path))
-                    if lot is None:
-                        continue
-                    lot.url = lot_url
-                    lot.lot_id = self._extract_lot_id_from_url(lot_url) or lot.lot_id
-                    self._apply_listing_metadata(lot, scraper.last_listing_metadata.get(lot_url))
-                    copart_lots.append(lot)
-                all_lots.extend(copart_lots)
-                print(f"[AutoScraper] Znaleziono {len(copart_lots)} lotów na Copart")
-            except Exception as e:
-                print(f"[AutoScraper] Błąd Copart: {e}")
+            logger.info("Scrapuję Copart dla %s %s", criteria.make, criteria.model or "")
+            _emit(progress_cb, "copart", {"make": criteria.make, "model": criteria.model or ""})
+            copart_lots = await self._run_source(
+                source_name="copart",
+                scraper_factory=CopartScraper,
+                parse_fn=parse_copart_html,
+                criteria=source_criteria(len(selected_sources)),
+                min_window_hours=min_window_hours,
+                max_window_hours=max_window_hours,
+                progress_cb=progress_cb,
+            )
+            all_lots.extend(copart_lots)
 
         # 2. Scraping IAAI
         if "copart" in selected_sources:
             selected_sources.remove("copart")
         if "iaai" in criteria.sources:
-            print(f"[AutoScraper] Scrapuję IAAI dla {criteria.make} {criteria.model or ''}...")
-            try:
-                scraper = IAAIScraper()
-                saved_files = await scraper.scrape(
-                    source_criteria(len(selected_sources)),
-                    min_auction_window_hours=min_window_hours,
-                    auction_window_hours=max_window_hours,
-                    insurance_only=self.filter_insurance_only,
-                )
-                iaai_lots = []
-                for path, lot_url in saved_files:
-                    lot = parse_iaai_html(Path(path))
-                    if lot is None:
-                        continue
-                    lot.url = lot_url
-                    lot.lot_id = self._extract_lot_id_from_url(lot_url) or lot.lot_id
-                    self._apply_listing_metadata(lot, scraper.last_listing_metadata.get(lot_url))
-                    iaai_lots.append(lot)
-                all_lots.extend(iaai_lots)
-                print(f"[AutoScraper] Znaleziono {len(iaai_lots)} lotów na IAAI")
-            except Exception as e:
-                print(f"[AutoScraper] Błąd IAAI: {e}")
+            logger.info("Scrapuję IAAI dla %s %s", criteria.make, criteria.model or "")
+            _emit(progress_cb, "iaai", {"make": criteria.make, "model": criteria.model or ""})
+            iaai_lots = await self._run_source(
+                source_name="iaai",
+                scraper_factory=IAAIScraper,
+                parse_fn=parse_iaai_html,
+                criteria=source_criteria(len(selected_sources)),
+                min_window_hours=min_window_hours,
+                max_window_hours=max_window_hours,
+                progress_cb=progress_cb,
+            )
+            all_lots.extend(iaai_lots)
 
-        # 3. Filtrowanie po kryteriach klienta
+        # 3. Filtrowanie po kryteriach klienta (+ safety-net na excluded_damage_types)
+        _emit(progress_cb, "filter", {"input": len(all_lots)})
         before_criteria_filter = len(all_lots)
         all_lots = self._filter_by_client_criteria(all_lots, criteria)
         if before_criteria_filter != len(all_lots):
-            print(
-                f"[AutoScraper] Filtr make/model/rok/przebieg: "
-                f"{before_criteria_filter} → {len(all_lots)} lotów"
+            logger.info(
+                "Filtr make/model/rok/przebieg/szkody: %d → %d lotów",
+                before_criteria_filter,
+                len(all_lots),
             )
 
         # 4. Filtrowanie po dacie aukcji
@@ -144,9 +146,12 @@ class AutomatedScraper:
                 min_hours=min_window_hours,
                 max_hours=max_window_hours,
             )
-            print(
-                f"[AutoScraper] Filtr czasowy {min_window_hours}h–{max_window_hours}h: "
-                f"{before_filter} → {len(time_filtered_lots)} lotów"
+            logger.info(
+                "Filtr czasowy %dh–%dh: %d → %d lotów",
+                min_window_hours,
+                max_window_hours,
+                before_filter,
+                len(time_filtered_lots),
             )
 
             all_lots = time_filtered_lots
@@ -158,12 +163,19 @@ class AutomatedScraper:
                 and not self.filter_insurance_only
             ):
                 all_lots = all_lots[:criteria.max_results]
-                print(f"[AutoScraper] Ograniczam do {len(all_lots)} lotów wg kryterium max_results")
+                logger.info("Ograniczam do %d lotów wg kryterium max_results", len(all_lots))
+
+        _emit(progress_cb, "filter", {"output": len(all_lots), "_status": "done"})
 
         # 5. Wzbogacanie danymi z botów (jeśli włączone)
         if self.use_extensions and all_lots:
-            print(f"[AutoScraper] Wzbogacam dane z AuctionGate i AutoHelperBot...")
+            logger.info("Wzbogacam dane z AuctionGate i AutoHelperBot...")
+            _emit(progress_cb, "enrich", {"input": len(all_lots)})
             all_lots = await self._enrich_with_extensions(all_lots)
+            enriched_count = sum(1 for lot in all_lots if lot.enriched_by_extension)
+            _emit(progress_cb, "enrich", {"enriched": enriched_count, "_status": "done"})
+        else:
+            _emit(progress_cb, "enrich", {"_status": "skipped"})
 
         # 6. Opcjonalne filtrowanie po seller_type (tylko ubezpieczyciele)
         if self.filter_insurance_only:
@@ -171,9 +183,12 @@ class AutomatedScraper:
             unknown_seller_count = sum(1 for lot in all_lots if lot.seller_type is None)
             confirmed_non_insurance = sum(1 for lot in all_lots if lot.seller_type == "dealer")
             all_lots = [lot for lot in all_lots if lot.seller_type in ("insurance", None)]
-            print(
-                f"[AutoScraper] Filtr seller_type: {before_seller_filter} → {len(all_lots)} lotów "
-                f"(odrzucono {confirmed_non_insurance} dealer, zachowano {unknown_seller_count} unknown)"
+            logger.info(
+                "Filtr seller_type: %d → %d lotów (odrzucono %d dealer, zachowano %d unknown)",
+                before_seller_filter,
+                len(all_lots),
+                confirmed_non_insurance,
+                unknown_seller_count,
             )
 
         all_lots.sort(key=self._damage_then_auction_sort_key)
@@ -184,10 +199,99 @@ class AutomatedScraper:
             and not self.collect_all_prefiltered_results
         ):
             all_lots = all_lots[:criteria.max_results]
-            print(f"[AutoScraper] Ograniczam finalnie do {len(all_lots)} lotów wg kryterium max_results")
+            logger.info("Ograniczam finalnie do %d lotów wg kryterium max_results", len(all_lots))
 
-        print(f"[AutoScraper] Łącznie znaleziono {len(all_lots)} lotów")
+        logger.info("Łącznie znaleziono %d lotów", len(all_lots))
         return all_lots
+
+    async def _run_source(
+        self,
+        *,
+        source_name: str,
+        scraper_factory,
+        parse_fn,
+        criteria: ClientCriteria,
+        min_window_hours: int,
+        max_window_hours: Optional[int],
+        progress_cb: ProgressCb,
+    ) -> List[CarLot]:
+        """Wykonuje pojedyncze źródło z retry, captcha-detect i częściowymi wynikami."""
+        from playwright.async_api import TimeoutError as PWTimeout
+
+        max_attempts = max(1, int(os.getenv("SCRAPER_RETRY_ATTEMPTS", "2")))
+        backoff_s = float(os.getenv("SCRAPER_RETRY_BACKOFF_S", "5"))
+        last_exc: Optional[Exception] = None
+
+        for attempt in range(1, max_attempts + 1):
+            scraper = scraper_factory()
+            try:
+                saved_files = await scraper.scrape(
+                    criteria,
+                    min_auction_window_hours=min_window_hours,
+                    auction_window_hours=max_window_hours,
+                    insurance_only=self.filter_insurance_only,
+                )
+                lots: List[CarLot] = []
+                for path, lot_url in saved_files:
+                    lot = parse_fn(Path(path))
+                    if lot is None:
+                        continue
+                    lot.url = lot_url
+                    lot.lot_id = self._extract_lot_id_from_url(lot_url) or lot.lot_id
+                    self._apply_listing_metadata(lot, scraper.last_listing_metadata.get(lot_url))
+                    lots.append(lot)
+                logger.info("Znaleziono %d lotów na %s (próba %d)", len(lots), source_name.upper(), attempt)
+                _emit(
+                    progress_cb,
+                    source_name,
+                    {"count": len(lots), "attempt": attempt, "_status": "done"},
+                )
+                return lots
+            except _SourceBlocked as exc:
+                logger.warning("%s: zablokowane przez antybota (%s)", source_name.upper(), exc)
+                _emit(
+                    progress_cb,
+                    source_name,
+                    {"reason": str(exc), "_status": "blocked"},
+                )
+                return []
+            except (PWTimeout, ConnectionError, TimeoutError) as exc:
+                last_exc = exc
+                logger.warning(
+                    "%s próba %d/%d: błąd transient (%s); retry za %.1fs",
+                    source_name.upper(),
+                    attempt,
+                    max_attempts,
+                    exc,
+                    backoff_s,
+                )
+                _emit(
+                    progress_cb,
+                    source_name,
+                    {"attempt": attempt, "error": str(exc), "_status": "running"},
+                )
+                if attempt < max_attempts:
+                    await asyncio.sleep(backoff_s)
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc).lower()
+                if any(token in msg for token in ("captcha", "security check", "cloudflare", "blocked")):
+                    logger.warning("%s: wykryto antybota w komunikacie błędu: %s", source_name.upper(), exc)
+                    _emit(
+                        progress_cb,
+                        source_name,
+                        {"reason": str(exc), "_status": "blocked"},
+                    )
+                    return []
+                logger.exception("%s: nieobsłużony błąd scrapera", source_name.upper())
+                break
+
+        _emit(
+            progress_cb,
+            source_name,
+            {"error": str(last_exc) if last_exc else "unknown", "_status": "error"},
+        )
+        return []
 
     def _filter_by_auction_date(self, lots: List[CarLot], min_hours: int, max_hours: int) -> List[CarLot]:
         """
@@ -339,6 +443,7 @@ class AutomatedScraper:
         filtered: List[CarLot] = []
         make_query = self._normalize_text(criteria.make)
         model_query = self._normalize_text(criteria.model)
+        excluded_damages = criteria.excluded_damage_types or []
 
         for lot in lots:
             lot_make = self._normalize_text(lot.make)
@@ -356,6 +461,23 @@ class AutomatedScraper:
                 continue
             if criteria.max_odometer_mi and lot.odometer_mi and lot.odometer_mi > criteria.max_odometer_mi:
                 continue
+
+            # Safety-net: szkody mogą się ujawnić dopiero w detalach (damage_primary/secondary),
+            # nawet jeśli listing był czysty. Reuse istniejącego matchera z BaseScraper.
+            if excluded_damages:
+                damage_text = BaseScraper.damage_text_from_values(
+                    lot.damage_primary,
+                    lot.damage_secondary,
+                    (lot.raw_data or {}).get("listing_damage_text"),
+                )
+                if BaseScraper.damage_has_excluded_type(damage_text, excluded_damages):
+                    logger.info(
+                        "Lot %s odrzucony post-detail (%s): %s",
+                        lot.lot_id,
+                        ",".join(excluded_damages),
+                        damage_text,
+                    )
+                    continue
 
             filtered.append(lot)
 
