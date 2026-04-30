@@ -327,9 +327,9 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
                 </div>
               </button>
               {isOpen && hasDetails && (
-                <pre className="max-h-48 overflow-auto border-t border-border/50 bg-muted/30 px-2 py-1.5 text-[10px] leading-tight">
-                  {JSON.stringify(row.details, null, 2)}
-                </pre>
+                <div className="max-h-96 overflow-auto">
+                  <JsonDetails data={row.details} />
+                </div>
               )}
             </div>
           );
