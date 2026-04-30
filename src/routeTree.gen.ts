@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
+import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -47,6 +48,11 @@ const ApiConfigRoute = ApiConfigRouteImport.update({
   path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
+  id: '/api/reports/pdf',
+  path: '/api/reports/pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksCleanupLogsRoute =
   ApiPublicHooksCleanupLogsRouteImport.update({
     id: '/api/public/hooks/cleanup-logs',
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
+  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesByTo {
@@ -70,6 +77,7 @@ export interface FileRoutesByTo {
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
+  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesById {
@@ -80,6 +88,7 @@ export interface FileRoutesById {
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
+  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRouteTypes {
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/health'
     | '/api/records'
+    | '/api/reports/pdf'
     | '/api/public/hooks/cleanup-logs'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/health'
     | '/api/records'
+    | '/api/reports/pdf'
     | '/api/public/hooks/cleanup-logs'
   id:
     | '__root__'
@@ -109,6 +120,7 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/health'
     | '/api/records'
+    | '/api/reports/pdf'
     | '/api/public/hooks/cleanup-logs'
   fileRoutesById: FileRoutesById
 }
@@ -119,6 +131,7 @@ export interface RootRouteChildren {
   ApiConfigRoute: typeof ApiConfigRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiRecordsRoute: typeof ApiRecordsRoute
+  ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
 
@@ -166,6 +179,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/reports/pdf': {
+      id: '/api/reports/pdf'
+      path: '/api/reports/pdf'
+      fullPath: '/api/reports/pdf'
+      preLoaderRoute: typeof ApiReportsPdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/cleanup-logs': {
       id: '/api/public/hooks/cleanup-logs'
       path: '/api/public/hooks/cleanup-logs'
@@ -183,8 +203,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConfigRoute: ApiConfigRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiRecordsRoute: ApiRecordsRoute,
+  ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
