@@ -39,23 +39,47 @@ function levelIcon(level: string) {
   return <Info className="h-3 w-3" />;
 }
 
+type LevelFilter = "info" | "warn" | "error";
+const ALL_LEVELS: LevelFilter[] = ["info", "warn", "error"];
+
+function toIsoStart(localDate: string): string | undefined {
+  if (!localDate) return undefined;
+  const d = new Date(`${localDate}T00:00:00`);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+function toIsoEnd(localDate: string): string | undefined {
+  if (!localDate) return undefined;
+  const d = new Date(`${localDate}T23:59:59.999`);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
 export function LogsPanel({ clientId, recordId }: Props) {
   const fnList = useServerFn(listLogs);
   const fnClear = useServerFn(clearLogs);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "scrape" | "ai_analysis">("all");
+  const [levels, setLevels] = useState<Set<LevelFilter>>(new Set(ALL_LEVELS));
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      const selectedLevels = Array.from(levels);
       const r = (await fnList({
         data: {
           clientId: clientId ?? undefined,
           recordId: recordId ?? undefined,
           operation: filter === "all" ? undefined : filter,
-          limit: 100,
+          levels:
+            selectedLevels.length > 0 && selectedLevels.length < ALL_LEVELS.length
+              ? selectedLevels
+              : undefined,
+          from: toIsoStart(dateFrom),
+          to: toIsoEnd(dateTo),
+          limit: 200,
         },
       })) as LogRow[];
       setRows(r);
@@ -64,7 +88,7 @@ export function LogsPanel({ clientId, recordId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [fnList, clientId, recordId, filter]);
+  }, [fnList, clientId, recordId, filter, levels, dateFrom, dateTo]);
 
   useEffect(() => {
     void refresh();
