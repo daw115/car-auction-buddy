@@ -331,11 +331,17 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      raw = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt });
+      const result = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt });
+      raw = result.text;
       await log.info(
         "anthropic_response",
-        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków)`,
-        { response_chars: raw.length },
+        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów)`,
+        {
+          response_chars: raw.length,
+          model: result.model,
+          stop_reason: result.stop_reason,
+          usage: result.usage,
+        },
         Date.now() - startedAt,
       );
     } catch (err) {
