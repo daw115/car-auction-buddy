@@ -1016,7 +1016,13 @@ function Panel() {
                 </Button>
               </div>
             </div>
-            {scrapeJob && <ScraperProgress job={scrapeJob} onCancel={cancelScrape} />}
+            {scrapeJob && (
+              <ScraperProgress
+                job={scrapeJob}
+                onCancel={cancelScrape}
+                onDownloadLogs={downloadJobLogs}
+              />
+            )}
             <Textarea
               className="font-mono text-xs"
               rows={6}
