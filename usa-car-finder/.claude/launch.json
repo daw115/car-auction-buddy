@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "autoscout",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "source venv/bin/activate && USE_MOCK_DATA=true AI_ANALYSIS_MODE=local uvicorn api.main:app --host 127.0.0.1 --port 8000"],
+      "port": 8000
+    }
+  ]
+}

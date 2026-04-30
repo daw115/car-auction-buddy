@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "autoscout",
+      "runtimeExecutable": "/Users/dawidslabicki/Documents/Claude/carsmillionaire/start_autoscout.sh",
+      "runtimeArgs": [],
+      "port": 8000
+    }
+  ]
+}

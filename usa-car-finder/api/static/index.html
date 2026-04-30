@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoScout US</title>
+<style>
+  :root {
+    --bg: #f4f5f2;
+    --surface: #ffffff;
+    --surface-soft: #f8f8f5;
+    --line: #d9ddd4;
+    --line-strong: #b7c0b0;
+    --text: #161915;
+    --muted: #687064;
+    --accent: #2457d6;
+    --accent-dark: #183d95;
+    --good: #1d7d4d;
+    --good-bg: #e6f4ed;
+    --warn: #9b6a13;
+    --warn-bg: #fff1d6;
+    --bad: #a33b39;
+    --bad-bg: #f8e5e4;
+    --shadow: 0 18px 50px rgba(27, 35, 25, 0.08);
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  a:hover { text-decoration: underline; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 68px;
+    padding: 14px 28px;
+    background: rgba(244, 245, 242, 0.92);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(16px);
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 760;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .brand span {
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .system-pills {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .shell {
+    width: min(1480px, calc(100% - 40px));
+    margin: 24px auto 56px;
+  }
+
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(390px, 0.75fr);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 720;
+    letter-spacing: 0;
+  }
+
+  .panel-subtitle {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .panel-body {
+    padding: 20px;
+  }
+
+  .search-form {
+    display: grid;
+    gap: 18px;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .field label,
+  .field-label {
+    display: block;
+    margin: 0 0 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 680;
+  }
+
+  input, select, textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 11px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  }
+
+  textarea {
+    min-height: 74px;
+    resize: vertical;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(36, 87, 214, 0.14);
+  }
+
+  .client-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    padding-bottom: 4px;
+  }
+
+  .field-wide {
+    grid-column: span 2;
+  }
+
+  .source-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .check-tile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 9px 11px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: var(--surface-soft);
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .check-tile input {
+    width: 16px;
+    min-height: 16px;
+    accent-color: var(--accent);
+  }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 2px;
+  }
+
+  .button-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 9px 14px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 720;
+    cursor: pointer;
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+  }
+
+  .btn:hover {
+    background: var(--accent-dark);
+    text-decoration: none;
+  }
+
+  .btn:active { transform: translateY(1px); }
+
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .btn-secondary {
+    background: #fff;
+    color: var(--text);
+    border-color: var(--line-strong);
+  }
+
+  .btn-secondary:hover {
+    background: var(--surface-soft);
+    color: var(--text);
+  }
+
+  .btn-danger {
+    background: #fff;
+    color: var(--bad);
+    border-color: #e0b7b4;
+  }
+
+  .btn-danger:hover {
+    background: var(--bad-bg);
+    color: var(--bad);
+  }
+
+  .btn-small {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .demo-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .demo-toggle input {
+    width: 16px;
+    min-height: 16px;
+    accent-color: var(--accent);
+  }
+
+  .status-panel {
+    display: none;
+    margin-top: 16px;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-soft);
+    color: var(--muted);
+  }
+
+  .status-panel.visible { display: block; }
+  .status-panel strong { display: block; color: var(--text); margin-bottom: 2px; }
+  .status-panel.ok { border-color: #bddbc9; background: var(--good-bg); }
+  .status-panel.error { border-color: #e0b7b4; background: var(--bad-bg); }
+  .status-panel.loading { border-color: #c2d0f5; background: #eef3ff; }
+
+  .records-panel {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+
+  .records-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+  }
+
+  .record-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+    max-height: 310px;
+    overflow: auto;
+  }
+
+  .record-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 11px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-soft);
+  }
+
+  .record-item.active {
+    border-color: #9fb5ef;
+    background: #eef3ff;
+  }
+
+  .record-title {
+    margin: 0;
+    font-weight: 740;
+  }
+
+  .record-meta {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .record-empty {
+    padding: 12px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 6px;
+    color: var(--muted);
+    background: var(--surface-soft);
+    font-size: 13px;
+  }
+
+  .calculator-panel {
+    position: sticky;
+    top: 88px;
+  }
+
+  .calc-help {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .calc-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  .calc-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 18px 0;
+  }
+
+  .calc-kpis div {
+    min-height: 86px;
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-soft);
+  }
+
+  .calc-kpis strong {
+    display: block;
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1.15;
+  }
+
+  .calc-kpis span {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .calc-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .calc-panel {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .calc-panel h3 {
+    margin: 0;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-soft);
+    font-size: 13px;
+  }
+
+  .calc-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid #eceee9;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .calc-row:first-of-type { border-top: 0; }
+  .calc-row strong { color: var(--text); text-align: right; }
+  .calc-row.strong { background: #f2f6ff; color: var(--text); }
+
+  .results-area {
+    margin-top: 18px;
+  }
+
+  .results-area[hidden] { display: none; }
+
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .summary-item {
+    min-height: 82px;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  .summary-item strong {
+    display: block;
+    font-size: 23px;
+    line-height: 1.1;
+  }
+
+  .summary-item span {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .artifact-panel {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  .artifact-panel.visible { display: flex; }
+
+  .artifact-panel strong {
+    margin-right: 4px;
+    font-size: 13px;
+  }
+
+  .artifact-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 6px 9px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: var(--surface-soft);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .artifact-link:hover {
+    background: #fff;
+    text-decoration: none;
+  }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 24px 0 12px;
+  }
+
+  .results-header h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  .results-header span {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .lot-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .lot-card {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 16px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: 0 10px 30px rgba(27, 35, 25, 0.05);
+  }
+
+  .lot-card.top {
+    border-color: #9ecab2;
+    box-shadow: 0 14px 38px rgba(29, 125, 77, 0.10);
+  }
+
+  .lot-card.removed {
+    opacity: 0.55;
+  }
+
+  .lot-image-wrap {
+    position: relative;
+    min-height: 142px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #e8ebe4;
+  }
+
+  .lot-image {
+    width: 100%;
+    height: 100%;
+    min-height: 142px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .lot-no-image {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    min-height: 142px;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 12px;
+  }
+
+  .lot-source {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    padding: 4px 7px;
+    border-radius: 4px;
+    background: rgba(22, 25, 21, 0.76);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 750;
+  }
+
+  .lot-main {
+    min-width: 0;
+  }
+
+  .lot-topline {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .lot-title {
+    margin: 0;
+    font-size: 19px;
+    line-height: 1.2;
+    font-weight: 760;
+  }
+
+  .lot-subtitle {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .score-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .score {
+    font-size: 24px;
+    font-weight: 790;
+    line-height: 1;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 780;
+    white-space: nowrap;
+  }
+
+  .badge.POLECAM { background: var(--good-bg); color: var(--good); }
+  .badge.RYZYKO { background: var(--warn-bg); color: var(--warn); }
+  .badge.ODRZUĆ { background: var(--bad-bg); color: var(--bad); }
+  .badge.top-label { background: #edf7f1; color: var(--good); border: 1px solid #bddbc9; }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+  }
+
+  .meta-item {
+    min-height: 52px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-soft);
+    overflow: hidden;
+  }
+
+  .meta-item span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 720;
+  }
+
+  .meta-item strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .flag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 12px;
+  }
+
+  .flag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    font-size: 12px;
+    font-weight: 680;
+  }
+
+  .description {
+    margin: 0;
+    color: #2d332b;
+    font-size: 14px;
+  }
+
+  .lot-costs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 13px;
+  }
+
+  .cost-chip {
+    padding: 9px 10px;
+    border-radius: 6px;
+    background: #eef3ff;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .cost-chip strong {
+    display: block;
+    color: var(--text);
+    font-size: 15px;
+  }
+
+  .notes {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .lot-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding-top: 13px;
+    border-top: 1px solid var(--line);
+  }
+
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .recommend-select {
+    width: auto;
+    min-width: 132px;
+    min-height: 34px;
+    padding: 6px 9px;
+    font-size: 13px;
+  }
+
+  .empty-state {
+    padding: 32px 20px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--surface-soft);
+    color: var(--muted);
+    text-align: center;
+  }
+
+  @media (max-width: 1180px) {
+    .workspace {
+      grid-template-columns: 1fr;
+    }
+
+    .calculator-panel {
+      position: static;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .topbar {
+      position: static;
+      align-items: flex-start;
+      flex-direction: column;
+      padding: 16px;
+    }
+
+    .brand {
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .brand span {
+      white-space: normal;
+    }
+
+    .shell {
+      width: calc(100% - 24px);
+      margin-top: 14px;
+    }
+
+    .client-grid,
+    .form-grid,
+    .calc-kpis,
+    .calc-grid,
+    .summary-bar,
+    .meta-grid,
+    .lot-costs {
+      grid-template-columns: 1fr;
+    }
+
+    .lot-card {
+      grid-template-columns: 1fr;
+    }
+
+    .lot-topline {
+      flex-direction: column;
+    }
+
+    .score-block {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .field-wide {
+      grid-column: span 1;
+    }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <h1>AutoScout US</h1>
+    <span>Panel importu aut z aukcji Copart i IAAI</span>
+  </div>
+  <div class="system-pills" aria-live="polite">
+    <span class="pill" id="modePill">Dane: sprawdzam</span>
+    <span class="pill" id="aiPill">AI: sprawdzam</span>
+    <span class="pill" id="extensionsPill">Rozszerzenia: sprawdzam</span>
+  </div>
+</header>
+
+<main class="shell">
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Wyszukiwanie</h2>
+          <p class="panel-subtitle">Kryteria klienta i zakres aukcji</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <form class="search-form" id="searchForm" novalidate>
+          <div class="client-grid">
+            <div class="field">
+              <label for="clientName">Klient</label>
+              <input id="clientName" type="text" autocomplete="name" placeholder="Imię / firma">
+            </div>
+            <div class="field">
+              <label for="clientEmail">Email</label>
+              <input id="clientEmail" type="email" autocomplete="email" placeholder="klient@example.com">
+            </div>
+            <div class="field">
+              <label for="clientPhone">Telefon</label>
+              <input id="clientPhone" type="text" autocomplete="tel" placeholder="+48...">
+            </div>
+            <div class="field field-wide">
+              <label for="clientNotes">Notatka</label>
+              <textarea id="clientNotes" rows="2" placeholder="Źródło zapytania, preferencje, ustalenia"></textarea>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="make">Marka *</label>
+              <input id="make" type="text" autocomplete="off" value="Toyota" required>
+            </div>
+            <div class="field">
+              <label for="model">Model</label>
+              <input id="model" type="text" autocomplete="off" value="Camry">
+            </div>
+            <div class="field">
+              <label for="budget">Budżet max (USD) *</label>
+              <input id="budget" type="number" min="1" step="100" value="12000" required>
+            </div>
+            <div class="field">
+              <label for="year_from">Rocznik od</label>
+              <input id="year_from" type="number" min="1970" max="2035" value="2015">
+            </div>
+            <div class="field">
+              <label for="year_to">Rocznik do</label>
+              <input id="year_to" type="number" min="1970" max="2035" value="2020">
+            </div>
+            <div class="field">
+              <label for="max_odometer">Max przebieg (mil)</label>
+              <input id="max_odometer" type="number" min="1" step="1000" value="100000">
+            </div>
+            <div class="field">
+              <label for="max_results">Max wyników</label>
+              <input id="max_results" type="number" min="1" max="100" value="10">
+            </div>
+            <div class="field">
+              <label for="auction_min_hours">Aukcje od teraz (h)</label>
+              <input id="auction_min_hours" type="number" min="0" step="1" value="12">
+            </div>
+            <div class="field">
+              <label for="auction_max_hours">Aukcje do (h)</label>
+              <input id="auction_max_hours" type="number" min="1" step="1" value="120">
+            </div>
+            <div class="field">
+              <span class="field-label">Źródła aukcji</span>
+              <div class="source-grid">
+                <label class="check-tile">
+                  <input type="checkbox" name="source" value="copart" checked>
+                  <span>Copart</span>
+                </label>
+                <label class="check-tile">
+                  <input type="checkbox" name="source" value="iaai" checked>
+                  <span>IAAI</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <label class="demo-toggle">
+              <input id="demoMode" type="checkbox">
+              <span>Tryb demo</span>
+            </label>
+            <div class="button-row">
+              <button class="btn btn-secondary" type="button" id="clearResultsBtn">Wyczyść wyniki</button>
+              <button class="btn" type="submit" id="searchBtn">Szukaj i analizuj</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="status-panel" id="statusPanel" role="status" aria-live="polite"></div>
+
+        <div class="records-panel">
+          <div class="records-toolbar">
+            <div class="field">
+              <label for="recordSearchInput">Baza klientów i zapytań</label>
+              <input id="recordSearchInput" type="search" placeholder="Szukaj po kliencie, emailu, aucie lub telefonie">
+            </div>
+            <button class="btn btn-secondary btn-small" type="button" id="refreshRecordsBtn">Odśwież</button>
+          </div>
+          <div class="record-list" id="recordList"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel calculator-panel" id="calculatorCard">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Kalkulator</h2>
+          <p class="panel-subtitle">Import, podatki, prowizje i towing</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="calcBid">Kwota licytacji (USD)</label>
+            <input id="calcBid" type="number" value="15000">
+          </div>
+          <div class="field">
+            <label for="calcState">Stan</label>
+            <select id="calcState"></select>
+          </div>
+          <div class="field">
+            <label for="calcLocation">Lokalizacja aukcji</label>
+            <select id="calcLocation"></select>
+          </div>
+          <div class="field">
+            <label for="calcAdditional">Koszty dodatkowe (USD)</label>
+            <input id="calcAdditional" type="number" value="300">
+          </div>
+          <div class="field">
+            <label for="calcTowing">Towing (USD)</label>
+            <input id="calcTowing" type="number" value="1000">
+          </div>
+          <div class="field">
+            <label for="calcLoading">Załadunki (USD)</label>
+            <input id="calcLoading" type="number" value="560">
+          </div>
+          <div class="field">
+            <label for="calcFreight">Fracht (USD)</label>
+            <input id="calcFreight" type="number" value="1050">
+          </div>
+          <div class="field">
+            <label for="calcUsdRate">Kurs USD/PLN</label>
+            <input id="calcUsdRate" type="number" step="0.01" value="4">
+          </div>
+          <div class="field">
+            <label for="calcExcise">Akcyza</label>
+            <select id="calcExcise">
+              <option value="0.031" selected>3,1%</option>
+              <option value="0.186">18,6%</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="calcTopup">Dokładka do prowizji (PLN)</label>
+            <input id="calcTopup" type="number" value="0">
+          </div>
+        </div>
+        <div class="calc-actions">
+          <button class="btn btn-small" type="button" onclick="calculateAndRenderImportCosts()">Przelicz</button>
+          <button class="btn btn-secondary btn-small" type="button" onclick="resetCalculatorDefaults()">Reset</button>
+        </div>
+        <div id="calcResults"></div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="results-area" id="resultsArea" hidden>
+    <div class="summary-bar" id="summaryBar"></div>
+    <div class="artifact-panel" id="artifactPanel"></div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Zatwierdzanie raportu</h2>
+          <p class="panel-subtitle" id="reportSubtitle">Wybierz auta, które mają trafić do raportów</p>
+        </div>
+        <div class="button-row">
+          <button class="btn btn-secondary" type="button" id="generateOfferEmailBtn">Mail HTML</button>
+          <button class="btn" type="button" id="generateReportBtn">PDF techniczny</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="status-panel" id="approvalStatus" role="status" aria-live="polite"></div>
+
+        <div class="results-header">
+          <div>
+            <h2>TOP 5</h2>
+            <span>Najwyżej ocenione propozycje</span>
+          </div>
+        </div>
+        <div class="lot-list" id="topResults"></div>
+
+        <div class="results-header">
+          <div>
+            <h2>Inne propozycje</h2>
+            <span>Dodatkowe auta z tego wyszukiwania</span>
+          </div>
+        </div>
+        <div class="lot-list" id="allResults"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/calculator-data.js"></script>
+<script src="/static/calculator.js"></script>
+<script>
+window.searchData = null;
+window.lastSearchRequest = null;
+window.currentRecordId = null;
+let recordSearchTimer = null;
+
+const app = {
+  config: null,
+  records: [],
+  elements: {},
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  cacheElements();
+  bindEvents();
+  fetchConfig();
+  loadRecords();
+});
+
+function cacheElements() {
+  [
+    "searchForm", "searchBtn", "clearResultsBtn", "statusPanel", "resultsArea",
+    "summaryBar", "topResults", "allResults", "generateReportBtn", "approvalStatus",
+    "generateOfferEmailBtn", "reportSubtitle", "modePill", "aiPill", "extensionsPill", "artifactPanel",
+    "clientName", "clientEmail", "clientPhone", "clientNotes", "recordSearchInput", "refreshRecordsBtn", "recordList",
+  ].forEach((id) => {
+    app.elements[id] = document.getElementById(id);
+  });
+}
+
+function bindEvents() {
+  app.elements.searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runSearch();
+  });
+
+  app.elements.clearResultsBtn.addEventListener("click", () => {
+    window.searchData = null;
+    window.lastSearchRequest = null;
+    window.currentRecordId = null;
+    app.elements.resultsArea.hidden = true;
+    setStatus("statusPanel", "", "");
+    renderRecordListState();
+  });
+
+  app.elements.generateReportBtn.addEventListener("click", approveAndGeneratePdf);
+  app.elements.generateOfferEmailBtn.addEventListener("click", approveAndGenerateOfferEmail);
+  app.elements.refreshRecordsBtn.addEventListener("click", () => loadRecords());
+  app.elements.recordSearchInput.addEventListener("input", () => {
+    clearTimeout(recordSearchTimer);
+    recordSearchTimer = setTimeout(() => loadRecords(), 250);
+  });
+  app.elements.recordList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-record-id]");
+    if (!button) return;
+    openRecord(button.dataset.recordId);
+  });
+
+  app.elements.resultsArea.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-action]");
+    if (!button) return;
+    const lotId = button.dataset.lotId;
+    if (button.dataset.action === "toggle") toggleLotInReport(lotId);
+    if (button.dataset.action === "calculator" && window.fillCalculatorFromLot) window.fillCalculatorFromLot(lotId);
+  });
+
+  app.elements.resultsArea.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-action='recommendation']")) return;
+    changeRecommendation(event.target.dataset.lotId, event.target.value);
+  });
+}
+
+async function fetchConfig() {
+  try {
+    const response = await fetch("/config");
+    app.config = response.ok ? await response.json() : null;
+  } catch {
+    app.config = null;
+  }
+
+  if (!app.config) {
+    app.elements.modePill.textContent = "Dane: nieznane";
+    app.elements.aiPill.textContent = "AI: nieznane";
+    app.elements.extensionsPill.textContent = "Rozszerzenia: nieznane";
+    return;
+  }
+
+  app.elements.modePill.textContent = `Dane: ${app.config.use_mock_data ? "mock" : "live"}`;
+  const aiReady = app.config.has_openai_key || app.config.has_anthropic_key;
+  app.elements.aiPill.textContent = `AI: ${app.config.ai_analysis_mode}${aiReady ? "" : " / lokalnie"}`;
+  app.elements.extensionsPill.textContent = `Rozszerzenia: ${app.config.use_extensions ? "włączone" : "wyłączone"}`;
+}
+
+async function loadRecords() {
+  const query = app.elements.recordSearchInput ? app.elements.recordSearchInput.value.trim() : "";
+  const url = query ? `/records?query=${encodeURIComponent(query)}&limit=60` : "/records?limit=60";
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(await responseError(response));
+    const data = await response.json();
+    app.records = data.records || [];
+    renderRecordListState();
+  } catch (error) {
+    app.elements.recordList.innerHTML = `<div class="record-empty">Nie udało się pobrać bazy: ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function renderRecordListState() {
+  if (!app.elements.recordList) return;
+  if (!app.records.length) {
+    app.elements.recordList.innerHTML = `<div class="record-empty">Brak zapisanych rekordów.</div>`;
+    return;
+  }
+
+  app.elements.recordList.innerHTML = app.records.map((record) => {
+    const client = record.client || {};
+    const clientLabel = [client.name, client.email, client.phone].filter(Boolean).join(" · ") || "Klient bez danych";
+    const meta = [
+      formatRecordDate(record.created_at),
+      `${record.collected_count || 0} lotów`,
+      record.analysis_notice || "",
+    ].filter(Boolean).join(" · ");
+    return `
+      <div class="record-item ${Number(record.id) === Number(window.currentRecordId) ? "active" : ""}">
+        <div>
+          <p class="record-title">${escapeHtml(record.title || `Rekord #${record.id}`)}</p>
+          <div class="record-meta">${escapeHtml(clientLabel)}${meta ? ` · ${escapeHtml(meta)}` : ""}</div>
+        </div>
+        <button class="btn btn-secondary btn-small" type="button" data-record-id="${escapeAttr(record.id)}">Otwórz</button>
+      </div>
+    `;
+  }).join("");
+}
+
+async function openRecord(recordId) {
+  setStatus("statusPanel", "loading", "Wczytuję rekord", `Rekord #${recordId}`);
+  try {
+    const response = await fetch(`/records/${encodeURIComponent(recordId)}`);
+    if (!response.ok) throw new Error(await responseError(response));
+    const record = await response.json();
+
+    const restoredResponse = record.response || {};
+    restoredResponse.record_id = record.id;
+    restoredResponse.client_id = record.client ? record.client.id : null;
+    window.searchData = restoredResponse;
+    window.lastSearchRequest = {
+      ok: true,
+      criteria: record.request?.criteria || record.criteria,
+      client: record.request?.client || record.client || {},
+      auctionMinHours: record.request?.auction_min_hours ?? null,
+      auctionMaxHours: record.request?.auction_max_hours ?? null,
+    };
+    window.currentRecordId = record.id;
+    fillSearchFormFromRecord(record);
+    renderApprovalScreen(window.searchData);
+    renderRecordListState();
+    setStatus("statusPanel", "ok", "Rekord wczytany", `${record.title || `Rekord #${record.id}`} jest gotowy do dalszej pracy.`);
+  } catch (error) {
+    setStatus("statusPanel", "error", "Nie udało się wczytać rekordu", error.message);
+  }
+}
+
+function fillSearchFormFromRecord(record) {
+  const request = record.request || {};
+  const criteria = request.criteria || record.criteria || {};
+  const client = request.client || record.client || {};
+
+  setInputValue("make", criteria.make || "");
+  setInputValue("model", criteria.model || "");
+  setInputValue("budget", criteria.budget_usd || "");
+  setInputValue("year_from", criteria.year_from || "");
+  setInputValue("year_to", criteria.year_to || "");
+  setInputValue("max_odometer", criteria.max_odometer_mi || "");
+  setInputValue("max_results", criteria.max_results || "");
+  setInputValue("auction_min_hours", request.auction_min_hours ?? "");
+  setInputValue("auction_max_hours", request.auction_max_hours ?? "");
+  setInputValue("clientName", client.name || "");
+  setInputValue("clientEmail", client.email || "");
+  setInputValue("clientPhone", client.phone || "");
+  setInputValue("clientNotes", client.notes || "");
+  document.getElementById("demoMode").checked = Boolean(request.demo);
+
+  const sources = new Set(criteria.sources || []);
+  document.querySelectorAll("input[name='source']").forEach((input) => {
+    input.checked = sources.size ? sources.has(input.value) : true;
+  });
+}
+
+function setInputValue(id, value) {
+  const element = document.getElementById(id);
+  if (element) element.value = value ?? "";
+}
+
+function formatRecordDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("pl-PL", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function runSearch() {
+  const requestData = readSearchRequest();
+  if (!requestData.ok) {
+    setStatus("statusPanel", "error", "Błąd walidacji", requestData.error);
+    return;
+  }
+
+  const demo = document.getElementById("demoMode").checked;
+  app.elements.searchBtn.disabled = true;
+  app.elements.resultsArea.hidden = true;
+  setStatus(
+    "statusPanel",
+    "loading",
+    demo ? "Analizuję dane demo" : "Scrapuję aukcje i analizuję wyniki",
+    demo ? "Lokalny scoring bez wywołania zewnętrznego API." : "Operacja może potrwać kilka minut."
+  );
+
+  try {
+    const response = await fetch("/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+	      body: JSON.stringify({
+	        criteria: requestData.criteria,
+	        demo,
+	        auction_min_hours: requestData.auctionMinHours,
+	        auction_max_hours: requestData.auctionMaxHours,
+	        client: requestData.client,
+	      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await responseError(response));
+    }
+
+	    window.searchData = await response.json();
+	    window.lastSearchRequest = requestData;
+	    window.currentRecordId = window.searchData.record_id || null;
+	    renderApprovalScreen(window.searchData);
+	    loadRecords();
+    const count = getAllUniqueLots().length;
+    const collected = window.searchData.collected_count || count;
+    const notice = window.searchData.analysis_notice ? ` ${window.searchData.analysis_notice}.` : "";
+    setStatus("statusPanel", "ok", "Gotowe", `Zebrano ${collected} lotów, pokazuję ${count}.${notice}`);
+  } catch (error) {
+    setStatus("statusPanel", "error", "Nie udało się zakończyć wyszukiwania", error.message);
+  } finally {
+    app.elements.searchBtn.disabled = false;
+  }
+}
+
+function readSearchRequest() {
+  const make = document.getElementById("make").value.trim();
+  const model = document.getElementById("model").value.trim();
+  const budget = numberInput("budget");
+  const yearFrom = integerInput("year_from");
+  const yearTo = integerInput("year_to");
+  const maxOdometer = integerInput("max_odometer");
+	  const maxResults = integerInput("max_results") || 10;
+	  const auctionMinHours = integerInput("auction_min_hours");
+	  const auctionMaxHours = integerInput("auction_max_hours");
+	  const sources = [...document.querySelectorAll("input[name='source']:checked")].map((item) => item.value);
+	  const client = {
+	    name: app.elements.clientName.value.trim() || null,
+	    email: app.elements.clientEmail.value.trim() || null,
+	    phone: app.elements.clientPhone.value.trim() || null,
+	    notes: app.elements.clientNotes.value.trim() || null,
+	  };
+
+  if (!make) return { ok: false, error: "Podaj markę." };
+  if (!budget || budget <= 0) return { ok: false, error: "Podaj budżet większy od zera." };
+  if (yearFrom && yearTo && yearFrom > yearTo) return { ok: false, error: "Rocznik od nie może być większy niż rocznik do." };
+  if (maxOdometer !== null && maxOdometer <= 0) return { ok: false, error: "Przebieg musi być większy od zera." };
+  if (auctionMinHours !== null && auctionMinHours < 0) return { ok: false, error: "Minimalne okno aukcji nie może być ujemne." };
+  if (auctionMaxHours !== null && auctionMaxHours <= 0) return { ok: false, error: "Maksymalne okno aukcji musi być większe od zera." };
+  if (auctionMinHours !== null && auctionMaxHours !== null && auctionMinHours > auctionMaxHours) {
+    return { ok: false, error: "Aukcje od teraz nie mogą być dalej niż aukcje do." };
+  }
+  if (!sources.length) return { ok: false, error: "Wybierz przynajmniej jedno źródło aukcji." };
+
+  return {
+    ok: true,
+    criteria: {
+      make,
+      model: model || null,
+      year_from: yearFrom,
+      year_to: yearTo,
+      budget_usd: budget,
+      max_odometer_mi: maxOdometer,
+      max_results: maxResults,
+      sources,
+      excluded_damage_types: ["Flood", "Fire"],
+	    },
+	    client,
+	    auctionMinHours,
+    auctionMaxHours,
+  };
+}
+
+function renderApprovalScreen(data) {
+  app.elements.resultsArea.hidden = false;
+  const top = data.top_recommendations || [];
+  const others = (data.all_results || []).filter((item) => !item.is_top_recommendation);
+
+  app.elements.summaryBar.innerHTML = renderSummary();
+  renderArtifactPanel(data);
+  app.elements.reportSubtitle.textContent = `${includedLots().length} aut zaznaczonych do raportu`;
+  app.elements.topResults.innerHTML = top.length
+    ? top.map((item) => renderLotCard(item, true)).join("")
+    : `<div class="empty-state">Brak ofert TOP dla tych kryteriów.</div>`;
+  app.elements.allResults.innerHTML = others.length
+    ? others.map((item) => renderLotCard(item, false)).join("")
+    : `<div class="empty-state">Brak dodatkowych propozycji.</div>`;
+}
+
+function renderArtifactPanel(data) {
+  const urls = data.artifact_urls || {};
+  const items = [
+    ["client_report", "Raport klienta"],
+    ["analysis_json", "Ranking JSON"],
+    ["ai_input", "Dane AI"],
+    ["ai_prompt", "Prompt AI"],
+  ].filter(([key]) => urls[key]);
+
+  if (!items.length) {
+    app.elements.artifactPanel.className = "artifact-panel";
+    app.elements.artifactPanel.innerHTML = "";
+    return;
+  }
+
+  app.elements.artifactPanel.className = "artifact-panel visible";
+  app.elements.artifactPanel.innerHTML = [
+    "<strong>Pliki</strong>",
+    ...items.map(([key, label]) => (
+      `<a class="artifact-link" href="${escapeAttr(urls[key])}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`
+    )),
+  ].join("");
+}
+
+function renderSummary() {
+  const lots = getAllUniqueLots();
+  const recommended = lots.filter((item) => item.analysis.recommendation === "POLECAM").length;
+  const risk = lots.filter((item) => item.analysis.recommendation === "RYZYKO").length;
+  const rejected = lots.filter((item) => item.analysis.recommendation === "ODRZUĆ").length;
+  const included = includedLots().length;
+
+  return [
+    summaryItem(lots.length, "Przeanalizowane loty"),
+    summaryItem(recommended, "POLECAM"),
+    summaryItem(risk + rejected, "Ryzyko / odrzucone"),
+    summaryItem(included, "W raporcie"),
+  ].join("");
+}
+
+function summaryItem(value, label) {
+  return `<div class="summary-item"><strong>${escapeHtml(String(value))}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+function renderLotCard(item, isTop) {
+  const lot = item.lot;
+  const ai = item.analysis;
+  const lotId = String(lot.lot_id);
+  const included = item.included_in_report !== false;
+  const image = Array.isArray(lot.images) && lot.images[0]
+    ? `<img class="lot-image" src="${escapeAttr(lot.images[0])}" alt="${escapeAttr(vehicleTitle(lot))}" onerror="this.closest('.lot-image-wrap').innerHTML='<div class=&quot;lot-no-image&quot;>Brak zdjęcia</div>'">`
+    : `<div class="lot-no-image">Brak zdjęcia</div>`;
+  const flags = (ai.red_flags || []).map((flag) => `<span class="flag">${escapeHtml(flag)}</span>`).join("");
+  const estimate = window.estimateLotTotalPln ? window.estimateLotTotalPln(lot) : null;
+
+  return `
+    <article class="lot-card ${isTop ? "top" : ""} ${included ? "" : "removed"}" data-lot-id="${escapeAttr(lotId)}">
+      <div class="lot-image-wrap">
+        ${image}
+        <span class="lot-source">${escapeHtml((lot.source || "").toUpperCase())}</span>
+      </div>
+      <div class="lot-main">
+        <div class="lot-topline">
+          <div>
+            <h3 class="lot-title">${escapeHtml(vehicleTitle(lot))}</h3>
+            <div class="lot-subtitle">
+              Lot ${escapeHtml(lotId)}${lot.trim ? ` · ${escapeHtml(lot.trim)}` : ""}${isTop ? ` · <span class="badge top-label">TOP</span>` : ""}
+            </div>
+          </div>
+          <div class="score-block">
+            <span class="score">${formatScore(ai.score)}</span>
+            <span class="badge ${escapeAttr(ai.recommendation)}" id="badge-${escapeAttr(lotId)}">${escapeHtml(ai.recommendation)}</span>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          ${metaItem("Przebieg", `${formatNumber(lot.odometer_mi)} mi / ${formatNumber(lot.odometer_km)} km`)}
+          ${metaItem("Uszkodzenie", lot.damage_primary || "—")}
+          ${metaItem("Tytuł", lot.title_type || "—")}
+          ${metaItem("Oferta", moneyUsd(lot.current_bid_usd))}
+          ${metaItem("Rezerwa", lot.seller_reserve_usd ? moneyUsd(lot.seller_reserve_usd) : "—")}
+          ${metaItem("Sprzedawca", lot.seller_type || "—")}
+          ${metaItem("Lokalizacja", [lot.location_city, lot.location_state].filter(Boolean).join(", ") || "—")}
+          ${metaItem("Poduszki / klucze", `${lot.airbags_deployed ? "Odpalone" : "OK"} / ${lot.keys === false ? "brak" : "tak"}`)}
+        </div>
+
+        ${flags ? `<div class="flag-row">${flags}</div>` : ""}
+        <p class="description">${escapeHtml(ai.client_description_pl || "Brak opisu analizy.")}</p>
+
+        <div class="lot-costs">
+          <div class="cost-chip"><strong>${moneyUsd(ai.estimated_repair_usd)}</strong><span>Naprawa</span></div>
+          <div class="cost-chip"><strong>${moneyUsd(ai.estimated_total_cost_usd)}</strong><span>Łącznie USD</span></div>
+          <div class="cost-chip"><strong>${estimate ? formatPln(estimate.privateTotalPln) : "—"}</strong><span>Os. prywatna 3,1%</span></div>
+        </div>
+
+        ${estimate ? `<p class="notes">Firma brutto: ${formatPln(estimate.companyGrossPln)} · towing: ${moneyUsd(estimate.towingUsd)}</p>` : ""}
+        ${ai.ai_notes ? `<p class="notes">${escapeHtml(ai.ai_notes)}</p>` : ""}
+
+        <div class="lot-controls">
+          <div class="control-group">
+            <select class="recommend-select" data-action="recommendation" data-lot-id="${escapeAttr(lotId)}">
+              ${recommendationOption("POLECAM", ai.recommendation)}
+              ${recommendationOption("RYZYKO", ai.recommendation)}
+              ${recommendationOption("ODRZUĆ", ai.recommendation)}
+            </select>
+            <button class="btn ${included ? "btn-danger" : "btn-secondary"} btn-small" type="button" data-action="toggle" data-lot-id="${escapeAttr(lotId)}">
+              ${included ? "Usuń z raportu" : "Dodaj do raportu"}
+            </button>
+            <button class="btn btn-secondary btn-small" type="button" data-action="calculator" data-lot-id="${escapeAttr(lotId)}">Przelicz</button>
+          </div>
+          <a class="btn btn-secondary btn-small" href="${escapeAttr(lot.url || "#")}" target="_blank" rel="noopener">Aukcja</a>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function metaItem(label, value) {
+  return `<div class="meta-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value ?? "—"))}</strong></div>`;
+}
+
+function recommendationOption(value, current) {
+  return `<option value="${escapeAttr(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`;
+}
+
+function changeRecommendation(lotId, newRecommendation) {
+  const item = findLotById(lotId);
+  if (!item) return;
+  item.analysis.recommendation = newRecommendation;
+  renderApprovalScreen(window.searchData);
+}
+
+function toggleLotInReport(lotId) {
+  const item = findLotById(lotId);
+  if (!item) return;
+  item.included_in_report = item.included_in_report === false;
+  renderApprovalScreen(window.searchData);
+}
+
+async function approveAndGeneratePdf() {
+  return approveAndDownloadReport({
+    endpoint: "/report",
+    button: app.elements.generateReportBtn,
+    loadingTitle: "Generuję PDF",
+    loadingDetail: "Raport techniczny zostanie zapisany i pobrany po zakończeniu.",
+    filename: `raport_aut_usa_${new Date().toISOString().slice(0, 10)}.pdf`,
+    successDetail: "PDF został wygenerowany.",
+  });
+}
+
+async function approveAndGenerateOfferEmail() {
+  return approveAndDownloadReport({
+    endpoint: "/report/offer-email-html",
+    button: app.elements.generateOfferEmailBtn,
+    loadingTitle: "Generuję mail HTML",
+    loadingDetail: "Mail ofertowy zostanie zapisany i pobrany po zakończeniu.",
+    filename: `mail_oferta_aut_usa_${new Date().toISOString().slice(0, 10)}.html`,
+    successDetail: "Mail HTML został wygenerowany.",
+  });
+}
+
+async function approveAndDownloadReport({ endpoint, button, loadingTitle, loadingDetail, filename, successDetail }) {
+  if (!window.searchData) {
+    setStatus("approvalStatus", "error", "Brak danych", "Najpierw wykonaj wyszukiwanie.");
+    return;
+  }
+
+  const lots = getAllUniqueLots();
+  if (!lots.some((item) => item.included_in_report !== false)) {
+    setStatus("approvalStatus", "error", "Brak aut w raporcie", "Dodaj przynajmniej jeden lot.");
+    return;
+  }
+
+  button.disabled = true;
+  setStatus("approvalStatus", "loading", loadingTitle, loadingDetail);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+	      body: JSON.stringify({
+	        approved_lots: lots,
+	        criteria: window.lastSearchRequest ? window.lastSearchRequest.criteria : null,
+	        client_name: app.elements.clientName.value.trim() || null,
+	        client_email: app.elements.clientEmail.value.trim() || null,
+	      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await responseError(response));
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus("approvalStatus", "ok", "Raport gotowy", successDetail);
+  } catch (error) {
+    setStatus("approvalStatus", "error", "Nie udało się wygenerować raportu", error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function findLotById(lotId) {
+  return getAllUniqueLots().find((item) => String(item.lot.lot_id) === String(lotId));
+}
+
+function getAllUniqueLots() {
+  if (!window.searchData) return [];
+  const map = new Map();
+  [...(window.searchData.all_results || []), ...(window.searchData.top_recommendations || [])].forEach((item) => {
+    map.set(String(item.lot.lot_id), item);
+  });
+  return [...map.values()];
+}
+
+function includedLots() {
+  return getAllUniqueLots().filter((item) => item.included_in_report !== false);
+}
+
+function setStatus(elementId, type, title, detail = "") {
+  const element = app.elements[elementId] || document.getElementById(elementId);
+  if (!element) return;
+  if (!type) {
+    element.className = "status-panel";
+    element.innerHTML = "";
+    return;
+  }
+  element.className = `status-panel visible ${type}`;
+  element.innerHTML = `<strong>${escapeHtml(title)}</strong>${detail ? `<span>${escapeHtml(detail)}</span>` : ""}`;
+}
+
+async function responseError(response) {
+  const text = await response.text();
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data.detail)) return data.detail.map((item) => item.msg || item.type).join("; ");
+    return data.detail || response.statusText;
+  } catch {
+    return text || response.statusText;
+  }
+}
+
+function vehicleTitle(lot) {
+  return [lot.year || "?", lot.make || "", lot.model || ""].join(" ").replace(/\s+/g, " ").trim();
+}
+
+function numberInput(id) {
+  const value = document.getElementById(id).value;
+  if (value === "") return null;
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number) ? number : null;
+}
+
+function integerInput(id) {
+  const number = numberInput(id);
+  return number === null ? null : Math.trunc(number);
+}
+
+function formatNumber(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toLocaleString("pl-PL") : "—";
+}
+
+function moneyUsd(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  const number = Number(value);
+  return Number.isFinite(number) ? `$${Math.round(number).toLocaleString("en-US")}` : "—";
+}
+
+function formatPln(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  const number = Number(value);
+  return Number.isFinite(number) ? `${Math.round(number).toLocaleString("pl-PL")} PLN` : "—";
+}
+
+function formatScore(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(1)}/10` : "—";
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+</script>
+</body>
+</html>

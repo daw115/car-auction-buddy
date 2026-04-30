@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #222; margin: 20mm; }
+  h1 { font-size: 18pt; color: #1a3a5c; border-bottom: 2px solid #1a3a5c; padding-bottom: 6px; }
+  h2 { font-size: 13pt; color: #1a3a5c; margin-top: 24px; }
+  .lot { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 24px;
+         padding: 14px 18px; page-break-inside: avoid; }
+  .lot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .badge { padding: 4px 12px; border-radius: 4px; font-weight: bold; font-size: 10pt; }
+  .POLECAM { background: #d4edda; color: #155724; }
+  .RYZYKO  { background: #fff3cd; color: #856404; }
+  .ODRZUĆ  { background: #f8d7da; color: #721c24; }
+  .score   { font-size: 20pt; font-weight: bold; color: #1a3a5c; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 10px 0; }
+  .info-item { font-size: 9pt; }
+  .info-item strong { display: block; color: #555; font-size: 8pt; text-transform: uppercase; }
+  .description { font-style: italic; color: #333; margin: 10px 0; padding: 8px 12px;
+                 background: #f7f9fc; border-left: 3px solid #1a3a5c; }
+  .flags { margin: 8px 0; }
+  .flag { display: inline-block; background: #ffeeba; color: #856404; border-radius: 3px;
+          padding: 2px 8px; font-size: 8pt; margin: 2px; }
+  .costs { background: #f0f4f8; padding: 8px 12px; border-radius: 4px; font-size: 10pt; }
+  .costs span { font-weight: bold; color: #1a3a5c; }
+  .lot-image { width: 180px; height: 120px; object-fit: cover; border-radius: 4px; margin-right: 14px; }
+  .summary { background: #1a3a5c; color: white; padding: 12px 18px; border-radius: 6px; margin-bottom: 24px; }
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .summary-item { text-align: center; }
+  .summary-item .num { font-size: 24pt; font-weight: bold; }
+  .summary-item .lbl { font-size: 9pt; opacity: 0.8; }
+  @media print { .lot { border-color: #999; } }
+</style>
+</head>
+<body>
+
+<h1>Raport wyszukiwania aut z USA</h1>
+<p>Wygenerowano: {{ generated_at }} | Łączna liczba przeanalizowanych lotów: {{ total_lots }}</p>
+
+<div class="summary">
+  <div class="summary-grid">
+    <div class="summary-item">
+      <div class="num" style="color:#7dffb3">{{ polecam_count }}</div>
+      <div class="lbl">POLECAM</div>
+    </div>
+    <div class="summary-item">
+      <div class="num" style="color:#ffe08a">{{ ryzyko_count }}</div>
+      <div class="lbl">RYZYKO</div>
+    </div>
+    <div class="summary-item">
+      <div class="num" style="color:#ff8a8a">{{ odrzuc_count }}</div>
+      <div class="lbl">ODRZUĆ</div>
+    </div>
+  </div>
+</div>
+
+{% for item in lots %}
+<div class="lot">
+  <div class="lot-header">
+    <div>
+      <strong style="font-size:13pt">
+        {{ item.lot.year or '?' }} {{ item.lot.make or '' }} {{ item.lot.model or '' }}
+      </strong>
+      <span style="color:#666; font-size:9pt; margin-left:8px">
+        {{ item.lot.source | upper }} | Lot: {{ item.lot.lot_id }}
+      </span>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px">
+      <span class="score">{{ "%.1f"|format(item.analysis.score) }}/10</span>
+      <span class="badge {{ item.analysis.recommendation }}">{{ item.analysis.recommendation }}</span>
+    </div>
+  </div>
+
+  {% if item.lot.images %}
+  <img src="{{ item.lot.images[0] }}" class="lot-image" alt="Zdjęcie pojazdu">
+  {% endif %}
+
+  <div class="info-grid">
+    <div class="info-item"><strong>Przebieg</strong>
+      {{ item.lot.odometer_mi | default('—') }} mi / {{ item.lot.odometer_km | default('—') }} km
+    </div>
+    <div class="info-item"><strong>Uszkodzenie główne</strong>
+      {{ item.lot.damage_primary | default('—') }}
+    </div>
+    <div class="info-item"><strong>Tytuł</strong>
+      {{ item.lot.title_type | default('—') }}
+    </div>
+    <div class="info-item"><strong>Aktualna oferta</strong>
+      ${{ item.lot.current_bid_usd | default('—') }}
+    </div>
+    <div class="info-item"><strong>Cena rezerwowa</strong>
+      {% if item.lot.seller_reserve_usd %}${{ item.lot.seller_reserve_usd }}{% else %}nieznana{% endif %}
+    </div>
+    <div class="info-item"><strong>Sprzedawca</strong>
+      {{ item.lot.seller_type | default('nieznany') }}
+    </div>
+    <div class="info-item"><strong>Lokalizacja</strong>
+      {{ item.lot.location_city | default('') }}{{ ', ' if item.lot.location_state else '' }}{{ item.lot.location_state | default('') }}
+    </div>
+    <div class="info-item"><strong>Klucze</strong>
+      {{ 'Tak' if item.lot.keys else ('Nie' if item.lot.keys == False else '—') }}
+    </div>
+    <div class="info-item"><strong>Poduszki</strong>
+      {{ 'ODPALONE' if item.lot.airbags_deployed else 'OK' }}
+    </div>
+  </div>
+
+  {% if item.analysis.red_flags %}
+  <div class="flags">
+    {% for flag in item.analysis.red_flags %}
+    <span class="flag">⚠ {{ flag }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="description">{{ item.analysis.client_description_pl }}</div>
+
+  <div class="costs">
+    Szacowany koszt naprawy: <span>${{ item.analysis.estimated_repair_usd | default('—') }}</span>
+    &nbsp;|&nbsp;
+    Łączny koszt (bid + naprawa + transport): <span>${{ item.analysis.estimated_total_cost_usd | default('—') }}</span>
+  </div>
+
+  {% if item.analysis.ai_notes %}
+  <p style="font-size:9pt; color:#555; margin-top:8px"><em>Uwagi: {{ item.analysis.ai_notes }}</em></p>
+  {% endif %}
+
+  <p style="font-size:8pt; color:#888; margin-top:6px">
+    <a href="{{ item.lot.url }}">{{ item.lot.url }}</a>
+    {% if item.lot.enriched_by_extension %} | ✓ Wzbogacono przez rozszerzenie{% endif %}
+  </p>
+</div>
+{% endfor %}
+
+</body>
+</html>

@@ -1,0 +1,50 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python / Node dependencies
+venv/
+.venv/
+node_modules/
+*.log
+
+# Browser profiles and local automation state
+playwright_profiles/
+**/playwright_profiles/
+**/data/chrome_profile*/
+**/data/chromium_profile*/
+**/data/test_chromium_profile*/
+**/storage_state*.json
+copart.json
+iaai.json
+
+# Scraper/runtime artifacts
+**/data/html_cache/
+**/data/client_searches/
+**/data/reports/
+**/data/*.db
+**/data/*.sqlite
+**/data/*.sqlite3
+**/data/*.log
+
+# Local tool config
+.claude/settings.local.json
+.playwright-mcp/
+
+# Unpacked third-party browser extensions
+chrome_extensions/
+**/extensions/auctiongate/
+**/extensions/autohelperbot/
+**/extensions/*.crx
+
+# Local duplicate copies created during manual experiments
+* 2.py
+* 2.html
+* 2.md
