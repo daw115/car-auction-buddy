@@ -57,7 +57,7 @@ export const Route = createFileRoute("/api/dev/auth")({
         if (token !== expected) {
           return Response.json({ ok: false, reason: "Invalid token" }, { status: 401 });
         }
-        return new Response(JSON.stringify({ ok: true }), {
+        return new Response(JSON.stringify({ ok: true, ttlSeconds: getCookieTtlSeconds() }), {
           status: 200,
           headers: {
             "Content-Type": "application/json",
