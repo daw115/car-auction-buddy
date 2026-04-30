@@ -138,9 +138,11 @@ function formatDuration(ms: number): string {
 function ScraperProgress({
   job,
   onCancel,
+  onDownloadLogs,
 }: {
   job: ScrapeJobState;
   onCancel?: () => void;
+  onDownloadLogs?: (jobId: string) => void;
 }) {
   const ASSUMED_TOTAL_MS = 90_000;
   const isDone = job.status === "done";
@@ -181,10 +183,11 @@ function ScraperProgress({
         : "bg-muted border-border";
 
   return (
-    <div className={`rounded-md border px-3 py-2 ${variant}`}>
-      <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
+    <div className={`rounded-md border px-3 py-2 space-y-2 ${variant}`}>
+      <div className="flex items-center justify-between text-xs gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {!isFinal && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+          {isFailed && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
           <span className="font-medium truncate">
             {statusLabel[job.status] ?? job.status}
           </span>
@@ -207,9 +210,31 @@ function ScraperProgress({
               Anuluj
             </Button>
           )}
+          {job.jobId && onDownloadLogs && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-xs"
+              onClick={() => onDownloadLogs(job.jobId!)}
+              title="Pobierz logi tego job_id (lokalne + scraper) jako JSON"
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Pobierz logi
+            </Button>
+          )}
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
+      {isFailed && job.errorMessage && (
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
+          <div className="font-medium text-destructive mb-0.5">
+            Szczegóły błędu{job.errorStep ? ` (${job.errorStep})` : ""}:
+          </div>
+          <div className="font-mono text-foreground break-words whitespace-pre-wrap">
+            {job.errorMessage}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
