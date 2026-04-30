@@ -407,102 +407,50 @@ ${rows}
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   Brak wpisów. Wykonaj jakąś akcję w aplikacji…
                 </div>
-              ) : (
-                filtered.map((e) => {
-                  const isOpen = expanded.has(e.id);
-                  const hasExtra = !!e.extra && Object.keys(e.extra).length > 0;
+              ) : groupByScope ? (
+                grouped.map((g) => {
+                  const isCollapsed = collapsedScopes.has(g.scope);
                   return (
-                    <div
-                      key={e.id}
-                      className="border-b border-border/50 hover:bg-muted/30"
-                    >
-                      <div className="flex items-start gap-2 px-2 py-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(e.id)}
-                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-                          aria-label={isOpen ? "Zwiń" : "Rozwiń"}
-                        >
-                          <ChevronRight
-                            className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyResumeLink(e.id)}
-                          title={`#${e.id} — kliknij, aby skopiować link wznawiający strumień od tego ID`}
-                          className="shrink-0 inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-1 py-0 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-border"
-                        >
-                          {copiedLinkId === e.id ? (
-                            <Check className="h-2.5 w-2.5" />
-                          ) : (
-                            <Link2 className="h-2.5 w-2.5" />
-                          )}
-                          #{e.id}
-                        </button>
-                        <span className="shrink-0 text-muted-foreground">
-                          {new Date(e.ts).toLocaleTimeString()}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}
-                        >
-                          {e.level}
+                    <div key={g.scope} className="mb-2 rounded-md border border-border/60 bg-muted/10">
+                      <button
+                        type="button"
+                        onClick={() => toggleScope(g.scope)}
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted/30"
+                      >
+                        <ChevronRight
+                          className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                        />
+                        <span className="font-semibold text-foreground">{g.scope}</span>
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-muted-foreground">
+                          {g.entries.length}
                         </Badge>
-                        <span className="shrink-0 font-semibold text-foreground">{e.scope}</span>
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(e.id)}
-                          className="break-all text-left text-foreground/90 hover:underline"
-                        >
-                          {e.message}
-                        </button>
-                        {hasExtra && !isOpen ? (
-                          <span className="ml-auto shrink-0 max-w-[40%] truncate text-muted-foreground">
-                            {JSON.stringify(e.extra)}
-                          </span>
-                        ) : null}
-                      </div>
-                      {isOpen ? (
-                        <div className="ml-6 mr-2 mb-2 rounded-md border border-border/60 bg-muted/40">
-                          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1">
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {hasExtra ? "extra (JSON)" : "szczegóły"}
-                            </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-[11px]"
-                              onClick={() => copyExtra(e)}
-                            >
-                              {copiedId === e.id ? (
-                                <>
-                                  <Check className="mr-1 h-3 w-3" />
-                                  Skopiowano
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="mr-1 h-3 w-3" />
-                                  Kopiuj JSON
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 text-[11px] leading-relaxed text-foreground/90">
-                            {hasExtra
-                              ? JSON.stringify(e.extra, null, 2)
-                              : JSON.stringify(
-                                  { id: e.id, ts: e.ts, level: e.level, scope: e.scope, message: e.message },
-                                  null,
-                                  2,
-                                )}
-                          </pre>
+                        <div className="flex items-center gap-1">
+                          {LEVELS.map((lvl) =>
+                            g.counts[lvl] ? (
+                              <span
+                                key={lvl}
+                                className={`rounded border px-1 py-0 text-[10px] uppercase ${LEVEL_STYLES[lvl]}`}
+                                title={`${g.counts[lvl]} × ${lvl}`}
+                              >
+                                {lvl}:{g.counts[lvl]}
+                              </span>
+                            ) : null,
+                          )}
                         </div>
-                      ) : null}
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                          ostatni: {new Date(g.lastTs).toLocaleTimeString()}
+                        </span>
+                      </button>
+                      {isCollapsed ? null : (
+                        <div className="border-t border-border/60">
+                          {g.entries.map((e) => renderEntry(e))}
+                        </div>
+                      )}
                     </div>
                   );
                 })
+              ) : (
+                filtered.map((e) => renderEntry(e))
               )}
             </div>
           </ScrollArea>
