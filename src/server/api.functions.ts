@@ -529,12 +529,12 @@ async function writeScrapeCache(args: {
   source: string;
 }): Promise<void> {
   const expiresAt = new Date(Date.now() + SCRAPE_CACHE_TTL_SECONDS * 1000).toISOString();
-  await supabaseAdmin.from("scrape_cache").upsert(
+  await (supabaseAdmin.from("scrape_cache") as any).upsert(
     {
       cache_key: args.cacheKey,
-      criteria: args.criteria as unknown as Record<string, unknown>,
+      criteria: args.criteria,
       config_snapshot: args.configSnapshot,
-      listings: args.listings as unknown as Record<string, unknown>,
+      listings: args.listings,
       listings_count: args.listings.length,
       source: args.source,
       created_at: new Date().toISOString(),
