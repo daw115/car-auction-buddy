@@ -37,8 +37,14 @@ export const Route = createRootRoute({
           "Panel operacyjny do wyszukiwania aut z aukcji Copart i IAAI, analiza AI i raporty dla klientów.",
       },
       { property: "og:title", content: "USA Car Finder — panel operatora" },
-      { property: "og:description", content: "Wyszukiwanie aut, analiza AI, raporty klientów." },
+      { property: "og:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
       { property: "og:type", content: "website" },
+      { name: "twitter:title", content: "USA Car Finder — panel operatora" },
+      { name: "description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
+      { name: "twitter:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       {
