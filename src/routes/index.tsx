@@ -536,7 +536,7 @@ function Panel() {
         }
         let p: { status: string; listings?: CarLot[]; error?: string; progress?: number };
         try {
-          p = (await fnPollScraper({ data: { jobId } })) as typeof p;
+          p = (await fnPollScraper({ data: { jobId, cacheKey, criteria } })) as typeof p;
         } catch (e) {
           // transient — keep polling
           continue;
