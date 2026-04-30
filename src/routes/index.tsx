@@ -645,6 +645,19 @@ function Panel() {
       setAiPrompt(r.ai_prompt);
       setAnalysis(r.analysis);
       toast.success(`Analiza gotowa (${r.analysis.length} lotów)`);
+
+      // Auto-generuj pakiet raportu (HTML + mail) — żeby był dostępny do pobrania w historii.
+      if (r.analysis.length > 0) {
+        try {
+          const rep = (await fnRenderReport({
+            data: { clientName: activeClient?.name ?? "Klient", analyzed: r.analysis },
+          })) as { report_html: string; mail_html: string };
+          setReportHtml(rep.report_html);
+          setMailHtml(rep.mail_html);
+        } catch (err) {
+          console.warn("Auto-render raportu nie powiódł się:", err);
+        }
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
