@@ -1033,6 +1033,15 @@ function Panel() {
                   )}
                   Wyszukaj online
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={clearCacheAll}
+                  title="Wyczyść cache wyników (wymusi nowy scrape)"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Wyczyść cache
+                </Button>
               </div>
             </div>
             {scrapeJob && (
