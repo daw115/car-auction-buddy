@@ -157,6 +157,64 @@ export const updateConfig = createServerFn({ method: "POST" })
     return row;
   });
 
+// ---------- Anthropic connection test ----------
+
+export const testAnthropic = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ model: z.string().max(100).optional() }).parse)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false,
+        configured: false,
+        error: "Brak ANTHROPIC_API_KEY w sekretach Lovable Cloud. Dodaj sekret i spróbuj ponownie.",
+      };
+    }
+    const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "");
+    const model = data.model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+    try {
+      const res = await fetch(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "ping" }],
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return {
+          ok: false,
+          configured: true,
+          status: res.status,
+          model,
+          error: `Anthropic HTTP ${res.status}: ${body.slice(0, 300)}`,
+        };
+      }
+      const json: { content?: Array<{ type: string; text?: string }>; usage?: unknown } = await res.json();
+      const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("");
+      return {
+        ok: true,
+        configured: true,
+        model,
+        baseUrl,
+        sample: text.slice(0, 80),
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        configured: true,
+        model,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
 // ---------- AI analysis ----------
 
 function buildUserPrompt(criteria: ClientCriteria, lots: CarLot[]): string {
