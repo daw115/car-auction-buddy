@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
 import { callAnthropic, parseAnalysisJson } from "./anthropic.server";
 import { renderReportHtml, renderMailHtml } from "./report";
+import { makeLogger } from "./logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 
 // ---------- Clients ----------
