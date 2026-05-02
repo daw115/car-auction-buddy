@@ -729,6 +729,9 @@ function Panel() {
   const SCRAPE_JOB_STORAGE_KEY = "car-finder:active-scrape-job";
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
+  // Pending resume state — set on mount if localStorage has an active job
+  const [pendingResume, setPendingResume] = useState<{ jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number } | null>(null);
+
   function persistScrapeJob(jobId: string, cacheKey: string, criteria: ClientCriteria) {
     try {
       localStorage.setItem(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({ jobId, cacheKey, criteria, startedAt: Date.now() }));
@@ -856,23 +859,35 @@ function Panel() {
   // Cancellation flag for the current scrape loop
   const cancelRequestedRef = useRef(false);
 
-  // Restore active scrape job from localStorage on mount
+  // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SCRAPE_JOB_STORAGE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw) as { jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number };
       if (!saved.jobId) { clearPersistedScrapeJob(); return; }
-      // Resume polling by restoring context + UI state
-      scrapeContextRef.current = { jobId: saved.jobId, cacheKey: saved.cacheKey, criteria: saved.criteria };
-      setScrapeJob({ status: "running", jobId: saved.jobId, startedAt: saved.startedAt, elapsedMs: Date.now() - saved.startedAt });
-      setCriteria((c) => ({ ...c, ...saved.criteria }));
-      setBusy("scraper");
-      cancelRequestedRef.current = false;
-      toast.info("Wznowiono śledzenie aktywnego joba scrapera");
+      // Don't auto-resume — let the user decide via the "Wznów" button
+      setPendingResume(saved);
     } catch { clearPersistedScrapeJob(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function resumeScrapeJob() {
+    if (!pendingResume) return;
+    const saved = pendingResume;
+    setPendingResume(null);
+    scrapeContextRef.current = { jobId: saved.jobId, cacheKey: saved.cacheKey, criteria: saved.criteria };
+    setScrapeJob({ status: "running", jobId: saved.jobId, startedAt: saved.startedAt, elapsedMs: Date.now() - saved.startedAt });
+    setCriteria((c) => ({ ...c, ...saved.criteria }));
+    setBusy("scraper");
+    cancelRequestedRef.current = false;
+    toast.info("Wznowiono śledzenie aktywnego joba scrapera");
+  }
+
+  function dismissResume() {
+    setPendingResume(null);
+    clearPersistedScrapeJob();
+  }
 
   async function cancelScrape() {
     if (!scrapeJob?.jobId) {
@@ -1752,6 +1767,24 @@ function Panel() {
                 </Button>
               </div>
             </div>
+            {pendingResume && !scrapeJob && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <RefreshCw className="h-3.5 w-3.5 text-primary" />
+                  <span>Wykryto aktywny job scrapera <span className="font-mono text-muted-foreground">#{pendingResume.jobId.slice(0, 8)}</span> sprzed przeładowania strony.</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={dismissResume}>
+                    <X className="h-3 w-3 mr-1" />
+                    Odrzuć
+                  </Button>
+                  <Button size="sm" className="h-6 px-2 text-xs" onClick={resumeScrapeJob}>
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Wznów
+                  </Button>
+                </div>
+              </div>
+            )}
             {scrapeJob && (
               <ScraperProgress
                 job={scrapeJob}
