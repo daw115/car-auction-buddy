@@ -334,6 +334,23 @@ function ScraperProgress({
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
+      {/* Phase pipeline badges */}
+      {(() => {
+        const scraperPhases = ["queued", "running", "scraping_list", "scraping_details", "enriching", "parsing", "done"];
+        const currentPhaseKey = job.status;
+        const currentIdx = scraperPhases.indexOf(currentPhaseKey);
+        // Only show pipeline when not in a terminal error/cancelled state
+        if (!isFailed && !isCancelled) {
+          return (
+            <div className="flex flex-wrap items-center gap-1">
+              {scraperPhases.map((p, i) => (
+                <PhaseBadge key={p} phase={statusLabel[p] ?? p} active={i === currentIdx || (isDone && p === "done")} />
+              ))}
+            </div>
+          );
+        }
+        return null;
+      })()}
       {!isFinal && subtitle && (
         <div className="text-[11px] text-muted-foreground leading-snug">
           {subtitle}
