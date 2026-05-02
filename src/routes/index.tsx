@@ -304,7 +304,67 @@ function ScraperProgress({
   );
 }
 
-function Panel() {
+function AnalysisProgress({ job }: { job: AnalysisJobState }) {
+  const isFinal = job.phase === "done" || job.phase === "failed";
+
+  const phaseLabels: Record<AnalysisPhase, string> = {
+    queued: "W kolejce",
+    analyzing: "Analiza AI w toku",
+    rendering: "Generowanie raportu HTML",
+    saving: "Zapis artefaktów do bazy",
+    done: "Zakończono",
+    failed: "Błąd",
+  };
+
+  const phaseProgress: Record<AnalysisPhase, number> = {
+    queued: 5,
+    analyzing: 40,
+    rendering: 75,
+    saving: 90,
+    done: 100,
+    failed: 0,
+  };
+
+  const pct = phaseProgress[job.phase] ?? 0;
+
+  const variant = job.phase === "failed"
+    ? "bg-destructive/10 border-destructive/30"
+    : job.phase === "done"
+      ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
+      : "bg-muted border-border";
+
+  return (
+    <div className={`rounded-md border px-3 py-2 space-y-2 ${variant}`}>
+      <div className="flex items-center justify-between text-xs gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {!isFinal && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+          {job.phase === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
+          {job.phase === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)] shrink-0" />}
+          <span className="font-medium truncate">
+            {phaseLabels[job.phase]}
+          </span>
+          {job.lotsCount != null && (
+            <span className="text-muted-foreground">({job.lotsCount} lotów)</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground shrink-0">
+          <span>Czas: {formatDuration(job.elapsedMs)}</span>
+          {!isFinal && <span className="font-medium text-foreground">{pct}%</span>}
+        </div>
+      </div>
+      <Progress value={pct} className="h-1.5" />
+      {job.phase === "failed" && job.errorMessage && (
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
+          <div className="font-medium text-destructive mb-0.5">Szczegóły błędu:</div>
+          <div className="font-mono text-foreground break-words whitespace-pre-wrap">
+            {job.errorMessage}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
   const fnCreateClient = useServerFn(createClient);
