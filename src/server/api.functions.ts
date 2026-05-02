@@ -181,6 +181,7 @@ export const updateConfig = createServerFn({ method: "POST" })
     z.object({
       use_mock_data: z.boolean().optional(),
       ai_analysis_mode: z.enum(["anthropic", "gemini", "auto"]).optional(),
+      ai_fallback_mode: z.enum(["error_only", "race_both"]).optional(),
       filter_seller_insurance_only: z.boolean().optional(),
       min_auction_window_hours: z.number().int().min(0).max(720).optional(),
       max_auction_window_hours: z.number().int().min(0).max(720).optional(),
