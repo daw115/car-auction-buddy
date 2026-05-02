@@ -53,7 +53,7 @@ export const listRecords = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     let q = supabaseAdmin
       .from("records")
-      .select("id, client_id, title, status, created_at, updated_at, analysis_status, analysis_started_at, analysis_completed_at, artifacts_meta")
+      .select("id, client_id, title, status, created_at, updated_at, analysis_status, analysis_started_at, analysis_completed_at, artifacts_meta, analysis_error")
       .order("created_at", { ascending: false })
       .limit(200);
     if (data.clientId) q = q.eq("client_id", data.clientId);
