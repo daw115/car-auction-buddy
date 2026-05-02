@@ -250,6 +250,8 @@ Zasady:
 - Oceń każdy lot z danych wejściowych.
 - Używaj dokładnie tych lot_id, które są w danych.
 - Uwzględnij lokalizację, koszty transportu, uszkodzenia, przebieg, tytuł, cenę, rezerwę i seller_type.
+- score: liczba w zakresie 0.0–10.0 (NIE używaj wartości ujemnych ani powyżej 10).
+- Limit znaków: client_description_pl maksymalnie 280 znaków, ai_notes maksymalnie 450 znaków.
 - Nie dodawaj tekstu poza JSON.
 """
 
@@ -348,9 +350,15 @@ def _results_from_analysis_data(
         if not lot_id or lot_id not in lots_by_id:
             continue
 
+        raw_score = ad.get("score", 0)
+        try:
+            score_clamped = max(0.0, min(10.0, float(raw_score)))
+        except (TypeError, ValueError):
+            score_clamped = 0.0
+
         analysis = AIAnalysis(
             lot_id=lot_id,
-            score=float(ad.get("score", 0)),
+            score=score_clamped,
             recommendation=ad.get("recommendation", "RYZYKO"),
             red_flags=ad.get("red_flags", []),
             estimated_repair_usd=ad.get("estimated_repair_usd"),
@@ -679,16 +687,18 @@ def _analyze_lots_with_gemini(
         print(f"[AI] Surowa odpowiedź (pierwsze 500 znaków): {raw[:500]}")
         with open("/tmp/ai_response_error.txt", "w") as f:
             f.write(raw)
-        if len(lots) > 10:
-            print("[AI] Retry z mniejszą liczbą lotów (10)...")
-            lots = lots[:10]
+        # Truncate / parse error → retry z połową lotów (model 8k tokens cap dla flash)
+        if len(lots) > 1:
+            shrunk = max(1, len(lots) // 2)
+            print(f"[AI] Retry z {shrunk} lotami (z {len(lots)})...")
+            lots = lots[:shrunk]
             lots_data = _lot_payloads(lots)
             user_prompt = _analysis_user_prompt(lots_data, criteria)
             raw = _call_gemini(
                 model=model,
                 system=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
-                max_tokens=int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "4096")),
+                max_tokens=max_tokens,
             ).strip()
             analyses_data = _parse_analysis_json(raw)
         else:
