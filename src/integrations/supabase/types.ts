@@ -142,9 +142,13 @@ export type Database = {
           created_at: string
           criteria: Json
           id: string
+          last_error_at: string | null
           listings: Json
           mail_html: string | null
+          max_retries: number
+          next_retry_at: string | null
           report_html: string | null
+          retry_count: number
           status: string
           title: string | null
           updated_at: string
@@ -162,9 +166,13 @@ export type Database = {
           created_at?: string
           criteria?: Json
           id?: string
+          last_error_at?: string | null
           listings?: Json
           mail_html?: string | null
+          max_retries?: number
+          next_retry_at?: string | null
           report_html?: string | null
+          retry_count?: number
           status?: string
           title?: string | null
           updated_at?: string
@@ -182,9 +190,13 @@ export type Database = {
           created_at?: string
           criteria?: Json
           id?: string
+          last_error_at?: string | null
           listings?: Json
           mail_html?: string | null
+          max_retries?: number
+          next_retry_at?: string | null
           report_html?: string | null
+          retry_count?: number
           status?: string
           title?: string | null
           updated_at?: string
