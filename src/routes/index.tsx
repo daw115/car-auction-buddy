@@ -365,6 +365,7 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
   );
 }
 
+function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
   const fnCreateClient = useServerFn(createClient);
