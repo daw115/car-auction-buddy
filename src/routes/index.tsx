@@ -1234,7 +1234,10 @@ function Panel() {
       setScrapeJob((s) =>
         s ? { ...s, status: "failed", errorMessage: s.errorMessage ?? msg } : s,
       );
-      toast.error(msg);
+      toast.error(humanizeError(msg), {
+        description: isScraper404(msg) ? "Sprawdź panel błędu poniżej — znajdziesz tam instrukcję naprawy." : undefined,
+        duration: isScraper404(msg) ? 8000 : 4000,
+      });
       setBusy(null);
     }
   }
