@@ -1254,6 +1254,18 @@ function Panel() {
     if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
     currentRetryRef.current = 0;
     await openRecord(recordId);
+    // Log retry event with preserved criteria
+    try {
+      await fnLogRetryEvent({
+        data: {
+          recordId,
+          clientId: activeClientId ?? undefined,
+          criteria: criteria as unknown as Record<string, unknown>,
+          retryCount: 0,
+          source: "manual" as const,
+        },
+      });
+    } catch { /* best-effort logging */ }
     setTimeout(() => {
       runAi();
     }, 100);
