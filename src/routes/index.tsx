@@ -663,7 +663,7 @@ function Panel() {
 
   async function downloadRecordArtifact(
     recordId: string,
-    field: "report_html" | "ai_input" | "ai_prompt",
+    field: "report_html" | "ai_input" | "ai_prompt" | "analysis",
   ) {
     try {
       const row = (await fnLoadRecord({ data: { id: recordId } })) as Record<string, unknown>;
@@ -676,6 +676,7 @@ function Panel() {
         report_html: { name: `report-${recordId.slice(0, 8)}.html`, mime: "text/html" },
         ai_input: { name: `ai-input-${recordId.slice(0, 8)}.json`, mime: "application/json" },
         ai_prompt: { name: `ai-prompt-${recordId.slice(0, 8)}.txt`, mime: "text/plain" },
+        analysis: { name: `analysis-${recordId.slice(0, 8)}.json`, mime: "application/json" },
       };
       const { name, mime } = filenameMap[field];
       const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
