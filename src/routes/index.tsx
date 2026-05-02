@@ -137,6 +137,16 @@ type ScrapeJobState = {
   total?: number;
 };
 
+type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed";
+
+type AnalysisJobState = {
+  phase: AnalysisPhase;
+  startedAt: number;
+  elapsedMs: number;
+  lotsCount?: number;
+  errorMessage?: string;
+};
+
 function formatDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(s / 60);
