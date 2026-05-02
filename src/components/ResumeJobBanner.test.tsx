@@ -23,6 +23,7 @@ const defaults = () => ({
 });
 
 describe("ResumeJobBanner", () => {
+  afterEach(cleanup);
   // ---- visibility ----
   it("renders nothing when no pending resume and no errors", () => {
     const { container } = render(
