@@ -917,8 +917,13 @@ function Panel() {
 
   // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
-    const saved = readPersistedScrapeJob();
-    if (saved) setPendingResume(saved as typeof pendingResume);
+    const { job, validationErrors } = readPersistedScrapeJob();
+    if (validationErrors.length > 0) {
+      setResumeValidationErrors(validationErrors);
+      toast.error("Zapisane kryteria scrapera są nieprawidłowe — dane wyczyszczone.");
+    } else if (job) {
+      setPendingResume(job);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
