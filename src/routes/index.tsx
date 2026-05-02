@@ -1517,6 +1517,7 @@ function Panel() {
         analysis: AnalyzedLot[] | null;
         report_html: string | null;
         mail_html: string | null;
+        artifacts_meta: ArtifactsMeta | null;
       };
       setActiveRecordId(row.id);
       if (row.client_id) setActiveClientId(row.client_id);
