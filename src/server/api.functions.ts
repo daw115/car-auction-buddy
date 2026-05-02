@@ -680,6 +680,7 @@ export const runAnalysis = createServerFn({ method: "POST" })
       ai_input: { criteria, listings },
       ai_prompt: userPrompt,
       analysis: analyzed,
+      ai_meta: aiMeta,
     };
   });
 
