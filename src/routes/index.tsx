@@ -137,6 +137,16 @@ type ScrapeJobState = {
   total?: number;
 };
 
+type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed";
+
+type AnalysisJobState = {
+  phase: AnalysisPhase;
+  startedAt: number;
+  elapsedMs: number;
+  lotsCount?: number;
+  errorMessage?: string;
+};
+
 function formatDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(s / 60);
@@ -294,6 +304,67 @@ function ScraperProgress({
   );
 }
 
+function AnalysisProgress({ job }: { job: AnalysisJobState }) {
+  const isFinal = job.phase === "done" || job.phase === "failed";
+
+  const phaseLabels: Record<AnalysisPhase, string> = {
+    queued: "W kolejce",
+    analyzing: "Analiza AI w toku",
+    rendering: "Generowanie raportu HTML",
+    saving: "Zapis artefaktów do bazy",
+    done: "Zakończono",
+    failed: "Błąd",
+  };
+
+  const phaseProgress: Record<AnalysisPhase, number> = {
+    queued: 5,
+    analyzing: 40,
+    rendering: 75,
+    saving: 90,
+    done: 100,
+    failed: 0,
+  };
+
+  const pct = phaseProgress[job.phase] ?? 0;
+
+  const variant = job.phase === "failed"
+    ? "bg-destructive/10 border-destructive/30"
+    : job.phase === "done"
+      ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
+      : "bg-muted border-border";
+
+  return (
+    <div className={`rounded-md border px-3 py-2 space-y-2 ${variant}`}>
+      <div className="flex items-center justify-between text-xs gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {!isFinal && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+          {job.phase === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
+          {job.phase === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)] shrink-0" />}
+          <span className="font-medium truncate">
+            {phaseLabels[job.phase]}
+          </span>
+          {job.lotsCount != null && (
+            <span className="text-muted-foreground">({job.lotsCount} lotów)</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground shrink-0">
+          <span>Czas: {formatDuration(job.elapsedMs)}</span>
+          {!isFinal && <span className="font-medium text-foreground">{pct}%</span>}
+        </div>
+      </div>
+      <Progress value={pct} className="h-1.5" />
+      {job.phase === "failed" && job.errorMessage && (
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
+          <div className="font-medium text-destructive mb-0.5">Szczegóły błędu:</div>
+          <div className="font-mono text-foreground break-words whitespace-pre-wrap">
+            {job.errorMessage}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
@@ -399,6 +470,18 @@ function Panel() {
 
   // Scraper job progress
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
+
+  // AI analysis progress
+  const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
+
+  // Tick elapsed every 1s while analysis is active
+  useEffect(() => {
+    if (!analysisJob || analysisJob.phase === "done" || analysisJob.phase === "failed") return;
+    const t = setInterval(() => {
+      setAnalysisJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [analysisJob?.phase, analysisJob?.startedAt]);
 
   // Tick elapsed every 1s while job is active
   useEffect(() => {
@@ -707,7 +790,10 @@ function Panel() {
       return;
     }
     setBusy("ai");
+    const startedAt = Date.now();
+    setAnalysisJob({ phase: "queued", startedAt, elapsedMs: 0, lotsCount: listings.length });
     try {
+      setAnalysisJob((s) => s ? { ...s, phase: "analyzing", elapsedMs: Date.now() - startedAt } : s);
       const r = (await fnRunAnalysis({
         data: { criteria, listings, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
       })) as {
@@ -718,12 +804,12 @@ function Panel() {
       setAiInput(r.ai_input);
       setAiPrompt(r.ai_prompt);
       setAnalysis(r.analysis);
-      toast.success(`Analiza gotowa (${r.analysis.length} lotów)`);
 
-      // Auto-generuj raport HTML + mail i zapisz artefakty do bazy
+      // Auto-generuj raport HTML + mail
       let generatedReportHtml = "";
       let generatedMailHtml = "";
       if (r.analysis.length > 0) {
+        setAnalysisJob((s) => s ? { ...s, phase: "rendering", elapsedMs: Date.now() - startedAt } : s);
         try {
           const rep = (await fnRenderReport({
             data: { clientName: activeClient?.name ?? "Klient", analyzed: r.analysis },
@@ -739,6 +825,7 @@ function Panel() {
 
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
+        setAnalysisJob((s) => s ? { ...s, phase: "saving", elapsedMs: Date.now() - startedAt } : s);
         try {
           const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
           const row = (await fnSaveRecord({
@@ -758,14 +845,18 @@ function Panel() {
           })) as { id: string };
           setActiveRecordId(row.id);
           await refreshRecords(activeClient.id);
-          toast.success("Raport i artefakty zapisane automatycznie");
         } catch (err) {
           console.warn("Auto-zapis rekordu nie powiódł się:", err);
           toast.error("Analiza gotowa, ale automatyczny zapis nie powiódł się. Zapisz ręcznie.");
         }
       }
+
+      setAnalysisJob((s) => s ? { ...s, phase: "done", elapsedMs: Date.now() - startedAt } : s);
+      toast.success(`Analiza zakończona: ${r.analysis.length} lotów przeanalizowanych`);
     } catch (e) {
-      toast.error((e as Error).message);
+      const msg = (e as Error).message;
+      setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
+      toast.error(msg);
     } finally {
       setBusy(null);
     }
@@ -907,6 +998,7 @@ function Panel() {
     setAiPrompt("");
     setReportHtml("");
     setMailHtml("");
+    setAnalysisJob(null);
   }
 
   // ---- render
@@ -1255,6 +1347,7 @@ function Panel() {
                 </span>
               )}
             </div>
+            {analysisJob && <AnalysisProgress job={analysisJob} />}
           </Card>
 
           {analysis && analysis.length > 0 && (
