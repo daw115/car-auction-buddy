@@ -2125,7 +2125,12 @@ function Panel() {
                           </p>
                         )}
                         {r.retry_count >= r.max_retries && (
-                          <p className="text-[10px] font-medium">Wyczerpano limit prób</p>
+                          <div className="text-[10px] font-medium space-y-0.5">
+                            <p>🚫 Wyczerpano limit {r.max_retries} prób — ponowienie zablokowane</p>
+                            {r.analysis_error && (
+                              <p className="font-normal text-muted-foreground">Powód: {humanizeError(r.analysis_error)}</p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
