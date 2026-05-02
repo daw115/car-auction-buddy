@@ -690,7 +690,9 @@ function Panel() {
           recordId: activeRecordId ?? undefined,
         },
       });
+      scrapeContextRef.current = null;
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
+      setBusy(null);
       toast.success("Wyszukiwanie anulowane");
     } catch (e) {
       toast.error(`Błąd anulowania: ${(e as Error).message}`);
