@@ -1,7 +1,9 @@
 import json
 import os
+import time
 import urllib.error
 import urllib.request
+import anthropic
 from typing import Optional, Tuple, List
 from parser.models import CarLot, ClientCriteria, AIAnalysis, AnalyzedLot
 from dotenv import load_dotenv
@@ -266,47 +268,49 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str, max_toke
     if not api_key:
         raise RuntimeError("Brak ANTHROPIC_API_KEY")
 
-    base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
     timeout = int(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "120"))
-    payload = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "system": [
-            {
-                "type": "text",
-                "text": system,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        "messages": [{"role": "user", "content": user_prompt}],
-    }
-    request = urllib.request.Request(
-        f"{base_url}/v1/messages",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "prompt-caching-2024-07-31",
-            "content-type": "application/json",
-        },
-        method="POST",
-    )
+    max_retries = int(os.getenv("ANTHROPIC_MAX_RETRIES", "4"))
 
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            response_data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Anthropic HTTP {exc.code}: {_sanitize_error_text(error_body[:500])}") from exc
+    client = anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=0)
 
-    chunks = [
-        str(item["text"])
-        for item in response_data.get("content", []) or []
-        if item.get("type") == "text" and item.get("text")
-    ]
-    if not chunks:
-        raise RuntimeError("Anthropic response has no text content")
-    return "".join(chunks)
+    last_exc: Exception = RuntimeError("Anthropic: brak odpowiedzi")
+    for attempt in range(max_retries):
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=[
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[{"role": "user", "content": user_prompt}],
+                thinking={"type": "adaptive"},
+                betas=["prompt-caching-2024-07-31"],
+            )
+            chunks = [block.text for block in response.content if block.type == "text"]
+            if not chunks:
+                raise RuntimeError("Anthropic response has no text content")
+            return "".join(chunks)
+        except anthropic.APIStatusError as exc:
+            if exc.status_code in (429, 500, 502, 503, 520, 521, 522, 524) and attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 60)
+                print(f"[AI] Anthropic HTTP {exc.status_code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                last_exc = RuntimeError(f"Anthropic HTTP {exc.status_code}: {_sanitize_error_text(str(exc)[:500])}")
+                continue
+            raise RuntimeError(f"Anthropic HTTP {exc.status_code}: {_sanitize_error_text(str(exc)[:500])}") from exc
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 60)
+                print(f"[AI] Anthropic error: {exc}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                continue
+            raise
+    raise last_exc
 
 
 def _results_from_analysis_data(
@@ -565,7 +569,7 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
 
 
 def _analyze_lots_with_claude(lots: List[CarLot], criteria: ClientCriteria, top_n: int = 5) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
-    model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    model = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-7")
 
     lots_data = _lot_payloads(lots)
     user_prompt = _analysis_user_prompt(lots_data, criteria)
