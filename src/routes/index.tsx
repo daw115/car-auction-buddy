@@ -87,6 +87,7 @@ type RecordSummary = {
   analysis_started_at: string | null;
   analysis_completed_at: string | null;
   artifacts_meta: ArtifactsMeta | null;
+  analysis_error: string | null;
 };
 type ConfigEnv = {
   ANTHROPIC_API_KEY: boolean;
