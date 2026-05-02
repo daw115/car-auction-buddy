@@ -8,6 +8,7 @@ import { makeLogger } from "./logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 import { LOT_SYSTEM_PROMPT } from "./prompts/lot-prompt";
 import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "./lot-report";
+import { validateArtifactsMeta } from "./validate-artifacts-meta";
 
 // ---------- Clients ----------
 
