@@ -1526,6 +1526,7 @@ function Panel() {
       setAiInput(row.ai_input);
       setAiPrompt(row.ai_prompt ?? "");
       setAnalysis(row.analysis);
+      setAiMeta((row.artifacts_meta as ArtifactsMeta | null)?.ai_meta ?? null);
       setReportHtml(row.report_html ?? "");
       setMailHtml(row.mail_html ?? "");
       toast.success("Rekord wczytany");
