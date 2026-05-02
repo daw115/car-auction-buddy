@@ -1751,6 +1751,16 @@ function Panel() {
                         >
                           <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
+                        {r.analysis_status === "failed" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
+                            title="Ponów analizę AI"
+                            className="disabled:opacity-30 disabled:cursor-not-allowed"
+                            disabled={busy !== null}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); void removeRecord(r.id); }}
                           title="Usuń"
