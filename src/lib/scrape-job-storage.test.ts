@@ -163,5 +163,17 @@ describe("scrape-job-storage", () => {
       // After resume the entry stays in localStorage (cleared on job completion)
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
     });
+
+    it("persist → read → clear simulates not_found cleanup", () => {
+      persistScrapeJob("expired-job", "ck-old", { seller: "copart" });
+      const found = readPersistedScrapeJob();
+      expect(found).not.toBeNull();
+      expect(found!.jobId).toBe("expired-job");
+
+      // Simulate: poll returned not_found → cleanup
+      clearPersistedScrapeJob();
+      expect(readPersistedScrapeJob()).toBeNull();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
   });
 });
