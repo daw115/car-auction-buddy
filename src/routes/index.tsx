@@ -420,6 +420,30 @@ function Panel() {
     }
   }
 
+  async function downloadRecordArtifact(
+    recordId: string,
+    field: "report_html" | "ai_input" | "ai_prompt",
+  ) {
+    try {
+      const row = (await fnLoadRecord({ data: { id: recordId } })) as Record<string, unknown>;
+      const value = row[field];
+      if (!value) {
+        toast.error("Ten artefakt nie jest jeszcze dostępny dla tego rekordu.");
+        return;
+      }
+      const filenameMap: Record<string, { name: string; mime: string }> = {
+        report_html: { name: `report-${recordId.slice(0, 8)}.html`, mime: "text/html" },
+        ai_input: { name: `ai-input-${recordId.slice(0, 8)}.json`, mime: "application/json" },
+        ai_prompt: { name: `ai-prompt-${recordId.slice(0, 8)}.txt`, mime: "text/plain" },
+      };
+      const { name, mime } = filenameMap[field];
+      const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      downloadFile(name, content, mime);
+      toast.success(`Pobrano ${name}`);
+    } catch (e) {
+      toast.error(`Pobranie nie powiodło się: ${(e as Error).message}`);
+    }
+  }
 
   const watchLot = async (a: AnalyzedLot) => {
     try {
