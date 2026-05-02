@@ -746,7 +746,8 @@ function Panel() {
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
   // Pending resume state — set on mount if localStorage has an active job
-  const [pendingResume, setPendingResume] = useState<{ jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number } | null>(null);
+  const [pendingResume, setPendingResume] = useState<ValidatedScrapeJob | null>(null);
+  const [resumeValidationErrors, setResumeValidationErrors] = useState<string[]>([]);
 
   // AI analysis progress
   const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
