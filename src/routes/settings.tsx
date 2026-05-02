@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, CheckCircle2, XCircle, Loader2, KeyRound,
-  ShieldCheck, Zap, Shield, Gauge,
+  ShieldCheck, Zap, Shield, Gauge, AlertTriangle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
@@ -182,6 +182,9 @@ function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* Validation Warnings */}
+        {env && config && <ConfigValidationWarnings env={env} config={config} />}
 
         {/* Fallback Strategy Card */}
         {bothKeysConfigured && config && (
@@ -433,6 +436,65 @@ function SettingsPage() {
           </ul>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function ConfigValidationWarnings({ env, config }: { env: EnvFlags; config: ConfigRow }) {
+  const warnings: { message: string; hint: string }[] = [];
+
+  const mode = config.ai_analysis_mode;
+  const hasAnthropic = env.ANTHROPIC_API_KEY;
+  const hasGemini = env.GEMINI_API_KEY;
+
+  if (!hasAnthropic && !hasGemini) {
+    warnings.push({
+      message: "Brak kluczy API — analiza AI nie będzie działać.",
+      hint: "Dodaj co najmniej jeden sekret: ANTHROPIC_API_KEY lub GEMINI_API_KEY.",
+    });
+  } else if (mode === "anthropic" && !hasAnthropic) {
+    warnings.push({
+      message: 'Wybrany dostawca "Anthropic", ale brak klucza ANTHROPIC_API_KEY.',
+      hint: 'Dodaj sekret ANTHROPIC_API_KEY lub zmień tryb na "Gemini" albo "Auto".',
+    });
+  } else if (mode === "gemini" && !hasGemini) {
+    warnings.push({
+      message: 'Wybrany dostawca "Gemini", ale brak klucza GEMINI_API_KEY.',
+      hint: 'Dodaj sekret GEMINI_API_KEY lub zmień tryb na "Anthropic" albo "Auto".',
+    });
+  }
+
+  if (config.ai_fallback_mode === "race_both" && (!hasAnthropic || !hasGemini)) {
+    warnings.push({
+      message: 'Strategia "Zawsze próbuj obu" wymaga obu kluczy API.',
+      hint: 'Dodaj brakujący klucz lub zmień strategię na "Fallback tylko przy błędach".',
+    });
+  }
+
+  if (mode === "auto" && !hasAnthropic && !hasGemini) {
+    // already covered above
+  } else if (mode === "auto" && hasAnthropic && !hasGemini) {
+    // fine, auto will pick anthropic
+  } else if (mode === "auto" && !hasAnthropic && hasGemini) {
+    // fine, auto will pick gemini
+  }
+
+  if (warnings.length === 0) return null;
+
+  return (
+    <div className="mb-6 space-y-3">
+      {warnings.map((w, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4"
+        >
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-700 dark:text-amber-400">{w.message}</p>
+            <p className="mt-1 text-muted-foreground">{w.hint}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
