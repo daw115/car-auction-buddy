@@ -586,7 +586,7 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens });
+      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens, dbPreference });
       raw = result.text;
       await log.info(
         "ai_response",
