@@ -806,6 +806,7 @@ function Panel() {
         },
       });
       scrapeContextRef.current = null;
+      clearPersistedScrapeJob();
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
       await persistCancelledStatus();
