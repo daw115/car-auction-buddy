@@ -401,7 +401,7 @@ function ScraperProgress({
 }
 
 function AnalysisProgress({ job }: { job: AnalysisJobState }) {
-  const isFinal = job.phase === "done" || job.phase === "failed";
+  const isFinal = job.phase === "done" || job.phase === "failed" || job.phase === "cancelled";
 
   const analysisPhases: AnalysisPhase[] = ["queued", "analyzing", "rendering", "saving", "done"];
   const phaseLabels: Record<AnalysisPhase, string> = {
@@ -411,6 +411,7 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
     saving: "Zapis do bazy",
     done: "Zakończono",
     failed: "Błąd",
+    cancelled: "Anulowano",
   };
 
   const phaseProgress: Record<AnalysisPhase, number> = {
@@ -420,6 +421,7 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
     saving: 90,
     done: 100,
     failed: 0,
+    cancelled: 0,
   };
 
   const pct = phaseProgress[job.phase] ?? 0;
