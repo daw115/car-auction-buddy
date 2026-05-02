@@ -1844,6 +1844,7 @@ function Panel() {
                 const analysisStatusLabel: Record<string, { text: string; color: string }> = {
                   done: { text: "Gotowe", color: "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]" },
                   failed: { text: "Błąd", color: "bg-destructive/15 text-destructive" },
+                  cancelled: { text: "Anulowano", color: "bg-muted text-muted-foreground" },
                   analyzing: { text: "Analizuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
                   rendering: { text: "Renderuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
                   saving: { text: "Zapisuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
