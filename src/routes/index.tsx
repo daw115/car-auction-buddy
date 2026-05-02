@@ -373,11 +373,12 @@ function ScraperProgress({
 function AnalysisProgress({ job }: { job: AnalysisJobState }) {
   const isFinal = job.phase === "done" || job.phase === "failed";
 
+  const analysisPhases: AnalysisPhase[] = ["queued", "analyzing", "rendering", "saving", "done"];
   const phaseLabels: Record<AnalysisPhase, string> = {
     queued: "W kolejce",
-    analyzing: "Analiza AI w toku",
-    rendering: "Generowanie raportu HTML",
-    saving: "Zapis artefaktów do bazy",
+    analyzing: "Analiza AI",
+    rendering: "Raport HTML",
+    saving: "Zapis do bazy",
     done: "Zakończono",
     failed: "Błąd",
   };
@@ -419,6 +420,15 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
+      {/* Phase pipeline badges */}
+      <div className="flex flex-wrap items-center gap-1">
+        {(job.phase === "failed"
+          ? [job.phase as AnalysisPhase]
+          : analysisPhases
+        ).map((p) => (
+          <PhaseBadge key={p} phase={phaseLabels[p] ?? p} active={p === job.phase} />
+        ))}
+      </div>
       {job.phase === "failed" && job.errorMessage && (
         <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
           <div className="font-medium text-destructive mb-0.5">Szczegóły błędu:</div>
