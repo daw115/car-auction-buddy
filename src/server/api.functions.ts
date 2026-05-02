@@ -1502,7 +1502,7 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
 
     let raw: string;
     try {
-      const result = await callAnthropic({
+      const result = await callAI({
         system: LOT_SYSTEM_PROMPT,
         userPrompt,
         maxTokens: 16384,
@@ -1510,14 +1510,14 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
       raw = result.text;
       await log.info(
         "ai_response",
-        `AI: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
-        { response_chars: raw.length, model: result.model, usage: result.usage },
+        `AI [${result.provider}${result.usedFallback ? " fallback" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
+        { response_chars: raw.length, model: result.model, provider: result.provider, usage: result.usage },
         Date.now() - startedAt,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await log.error("ai_call", `Błąd Anthropic: ${msg}`);
-      throw new Error(`Anthropic API: ${msg}`);
+      await log.error("ai_call", `Błąd AI: ${msg}`);
+      throw new Error(`AI API: ${msg}`);
     }
 
     let parsed: unknown;
