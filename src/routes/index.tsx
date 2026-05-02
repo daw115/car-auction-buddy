@@ -636,8 +636,19 @@ function Panel() {
   const maxRetriesRef = useRef(3);
   const autoRetryTimerRef = useRef<number | null>(null);
 
-  // Scraper job progress
+  // Scraper job progress — with localStorage persistence for page reload recovery
+  const SCRAPE_JOB_STORAGE_KEY = "car-finder:active-scrape-job";
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
+
+  function persistScrapeJob(jobId: string, cacheKey: string, criteria: ClientCriteria) {
+    try {
+      localStorage.setItem(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({ jobId, cacheKey, criteria, startedAt: Date.now() }));
+    } catch { /* quota exceeded etc. */ }
+  }
+
+  function clearPersistedScrapeJob() {
+    try { localStorage.removeItem(SCRAPE_JOB_STORAGE_KEY); } catch { /* noop */ }
+  }
 
   // AI analysis progress
   const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
