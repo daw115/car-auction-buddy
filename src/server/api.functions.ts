@@ -772,7 +772,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
     }
 
     await log.info("start", "Rozpoczęto wyszukiwanie online", {
-      endpoint: `${baseUrl}/api/search`,
+      endpoint: `${baseUrl}/search`,
       auth: token ? "bearer" : "none",
       criteria_make: data.criteria.make,
       criteria_model: data.criteria.model ?? null,
@@ -781,7 +781,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 
     let res: Response;
     try {
-      res = await fetch(`${baseUrl}/api/search`, {
+      res = await fetch(`${baseUrl}/search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -792,7 +792,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await log.error("network", `Błąd sieciowy: ${msg}`, {
-        endpoint: `${baseUrl}/api/search`,
+        endpoint: `${baseUrl}/search`,
         error: msg,
       });
       throw new Error(`Scraper network error: ${msg}`);
@@ -961,12 +961,12 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     }
 
     await log.info("start", "Start wyszukiwania (job)", {
-      endpoint: `${baseUrl}/api/search`,
+      endpoint: `${baseUrl}/search`,
       criteria_make: data.criteria.make,
       cache_key: cacheKey,
     });
 
-    const res = await fetch(`${baseUrl}/api/search`, {
+    const res = await fetch(`${baseUrl}/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
