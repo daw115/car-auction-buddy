@@ -810,6 +810,33 @@ function Panel() {
           current?: number;
           total?: number;
         };
+        // Phase labels for toast notifications
+        const PHASE_TOAST_LABELS: Record<string, string> = {
+          queued: "Job w kolejce…",
+          running: "Scraper pracuje…",
+          scraping_list: "Pobieranie listy aukcji…",
+          scraping_details: "Pobieranie szczegółów lotów…",
+          enriching: "Wzbogacanie danych…",
+          parsing: "Parsowanie wyników…",
+        };
+
+        // Notify on phase transitions (for resumed jobs or any active polling)
+        const currentPhase = p.phase ?? p.status;
+        if (wasResumedRef.current && currentPhase && currentPhase !== lastNotifiedPhaseRef.current) {
+          const label = PHASE_TOAST_LABELS[currentPhase];
+          if (label) {
+            const progressSuffix = typeof p.current === "number" && typeof p.total === "number"
+              ? ` (${p.current}/${p.total})`
+              : typeof p.progress === "number"
+                ? ` (${Math.round(p.progress * 100)}%)`
+                : "";
+            toast.info(`${label}${progressSuffix}`);
+          } else if (lastNotifiedPhaseRef.current === null) {
+            // First successful poll after resume — confirm connection
+            toast.info("Połączono z jobem scrapera — śledzę postęp…");
+          }
+          lastNotifiedPhaseRef.current = currentPhase;
+        }
 
         const DONE = ["done", "completed", "finished", "success", "complete"];
         if (DONE.includes(p.status) || (typeof p.progress === "number" && p.progress >= 1.0)) {
@@ -819,10 +846,12 @@ function Panel() {
           );
           setListings(result);
           setListingsRaw(JSON.stringify(result, null, 2));
-          toast.success(`Scraper zwrócił ${result.length} lotów`);
+          toast.success(`Scraper zakończył pracę — zwrócono ${result.length} lotów`);
           setBusy(null);
-           scrapeContextRef.current = null;
-           clearPersistedScrapeJob();
+          scrapeContextRef.current = null;
+          clearPersistedScrapeJob();
+          wasResumedRef.current = false;
+          lastNotifiedPhaseRef.current = null;
         } else if (p.status === "not_found") {
           const errMsg = p.error ?? "Job nie istnieje na serwerze scrapera.";
           setScrapeJob((s) =>
@@ -834,6 +863,8 @@ function Panel() {
           setBusy(null);
           scrapeContextRef.current = null;
           clearPersistedScrapeJob();
+          wasResumedRef.current = false;
+          lastNotifiedPhaseRef.current = null;
         } else if (["error", "failed"].includes(p.status)) {
           const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
@@ -843,8 +874,10 @@ function Panel() {
           );
           toast.error(errMsg);
           setBusy(null);
-           scrapeContextRef.current = null;
-           clearPersistedScrapeJob();
+          scrapeContextRef.current = null;
+          clearPersistedScrapeJob();
+          wasResumedRef.current = false;
+          lastNotifiedPhaseRef.current = null;
         } else {
           setScrapeJob((s) =>
             s
