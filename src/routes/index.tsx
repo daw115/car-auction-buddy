@@ -4,6 +4,7 @@ import {
   clearPersistedScrapeJob,
   readPersistedScrapeJob,
   SCRAPE_JOB_STORAGE_KEY,
+  type ValidatedScrapeJob,
 } from "@/lib/scrape-job-storage";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -745,7 +746,8 @@ function Panel() {
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
   // Pending resume state — set on mount if localStorage has an active job
-  const [pendingResume, setPendingResume] = useState<{ jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number } | null>(null);
+  const [pendingResume, setPendingResume] = useState<ValidatedScrapeJob | null>(null);
+  const [resumeValidationErrors, setResumeValidationErrors] = useState<string[]>([]);
 
   // AI analysis progress
   const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
@@ -915,8 +917,13 @@ function Panel() {
 
   // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
-    const saved = readPersistedScrapeJob();
-    if (saved) setPendingResume(saved as typeof pendingResume);
+    const { job, validationErrors } = readPersistedScrapeJob();
+    if (validationErrors.length > 0) {
+      setResumeValidationErrors(validationErrors);
+      toast.error("Zapisane kryteria scrapera są nieprawidłowe — dane wyczyszczone.");
+    } else if (job) {
+      setPendingResume(job);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1832,21 +1839,44 @@ function Panel() {
                 </Button>
               </div>
             </div>
-            {pendingResume && !scrapeJob && (
-              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs">
-                  <RefreshCw className="h-3.5 w-3.5 text-primary" />
-                  <span>Wykryto aktywny job scrapera <span className="font-mono text-muted-foreground">#{pendingResume.jobId.slice(0, 8)}</span> sprzed przeładowania strony.</span>
+            {resumeValidationErrors.length > 0 && !pendingResume && !scrapeJob && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs space-y-1">
+                <div className="flex items-center gap-2 font-medium text-destructive">
+                  <X className="h-3.5 w-3.5" />
+                  Zapisane kryteria scrapera były nieprawidłowe — dane wyczyszczone.
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={dismissResume}>
-                    <X className="h-3 w-3 mr-1" />
-                    Odrzuć
-                  </Button>
-                  <Button size="sm" className="h-6 px-2 text-xs" onClick={resumeScrapeJob}>
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                    Wznów
-                  </Button>
+                <ul className="list-disc pl-5 text-muted-foreground">
+                  {resumeValidationErrors.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+                <Button size="sm" variant="ghost" className="h-5 px-1 text-xs" onClick={() => setResumeValidationErrors([])}>
+                  Zamknij
+                </Button>
+              </div>
+            )}
+            {pendingResume && !scrapeJob && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs">
+                    <RefreshCw className="h-3.5 w-3.5 text-primary" />
+                    <span>Wykryto aktywny job scrapera <span className="font-mono text-muted-foreground">#{pendingResume.jobId.slice(0, 8)}</span> sprzed przeładowania strony.</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={dismissResume}>
+                      <X className="h-3 w-3 mr-1" />
+                      Odrzuć
+                    </Button>
+                    <Button size="sm" className="h-6 px-2 text-xs" onClick={resumeScrapeJob}>
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Wznów
+                    </Button>
+                  </div>
+                </div>
+                <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 pl-5">
+                  <span>Marka: <strong>{pendingResume.criteria.make}</strong></span>
+                  {pendingResume.criteria.model && <span>Model: <strong>{pendingResume.criteria.model}</strong></span>}
+                  <span>Budżet: <strong>${pendingResume.criteria.budget_usd.toLocaleString()}</strong></span>
+                  {pendingResume.criteria.year_from && <span>Od: <strong>{pendingResume.criteria.year_from}</strong></span>}
+                  {pendingResume.criteria.year_to && <span>Do: <strong>{pendingResume.criteria.year_to}</strong></span>}
                 </div>
               </div>
             )}
