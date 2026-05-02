@@ -1022,6 +1022,7 @@ function Panel() {
               analysis_started_at: analysisStartedIso,
               analysis_completed_at: now,
               artifacts_meta: artifactsMeta,
+              analysis_error: null,
             },
           })) as { id: string };
           setActiveRecordId(row.id);
