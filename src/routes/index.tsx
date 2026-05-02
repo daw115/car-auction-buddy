@@ -165,6 +165,44 @@ function formatDuration(ms: number): string {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
+// Shared color map for phase/step badges — used by ScraperProgress, AnalysisProgress and LogsPanel
+const PHASE_BADGE_COLORS: Record<string, string> = {
+  // scraper phases
+  queued:            "bg-muted text-muted-foreground",
+  starting:          "bg-[oklch(0.92_0.06_250)] text-[oklch(0.35_0.12_250)]",
+  initializing:      "bg-[oklch(0.92_0.06_250)] text-[oklch(0.35_0.12_250)]",
+  running:           "bg-[oklch(0.90_0.08_250)] text-[oklch(0.30_0.14_250)]",
+  scraping:          "bg-[oklch(0.90_0.08_280)] text-[oklch(0.30_0.14_280)]",
+  scraping_list:     "bg-[oklch(0.90_0.08_280)] text-[oklch(0.30_0.14_280)]",
+  scraping_details:  "bg-[oklch(0.88_0.10_280)] text-[oklch(0.28_0.16_280)]",
+  enriching:         "bg-[oklch(0.90_0.08_60)] text-[oklch(0.32_0.12_60)]",
+  parsing:           "bg-[oklch(0.90_0.08_200)] text-[oklch(0.32_0.12_200)]",
+  // analysis phases
+  analyzing:         "bg-[oklch(0.88_0.10_280)] text-[oklch(0.28_0.16_280)]",
+  rendering:         "bg-[oklch(0.90_0.08_60)] text-[oklch(0.32_0.12_60)]",
+  saving:            "bg-[oklch(0.90_0.08_200)] text-[oklch(0.32_0.12_200)]",
+  // terminal
+  done:              "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  completed:         "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  finished:          "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  failed:            "bg-destructive/15 text-destructive",
+  error:             "bg-destructive/15 text-destructive",
+  cancelled:         "bg-muted text-muted-foreground",
+};
+
+function PhaseBadge({ phase, active }: { phase: string; active: boolean }) {
+  const color = PHASE_BADGE_COLORS[phase] ?? "bg-muted text-muted-foreground";
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] ${color} ${
+        active ? "font-bold ring-1 ring-current/30" : "font-normal opacity-70"
+      }`}
+    >
+      {phase}
+    </span>
+  );
+}
+
 function ScraperProgress({
   job,
   onCancel,
