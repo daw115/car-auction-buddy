@@ -183,6 +183,9 @@ function SettingsPage() {
           </div>
         )}
 
+        {/* Validation Warnings */}
+        {env && config && <ConfigValidationWarnings env={env} config={config} />}
+
         {/* Fallback Strategy Card */}
         {bothKeysConfigured && config && (
           <Card className="mb-6 p-6">
