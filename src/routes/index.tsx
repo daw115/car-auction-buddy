@@ -1263,10 +1263,12 @@ function Panel() {
         ai_input: unknown;
         ai_prompt: string;
         analysis: AnalyzedLot[];
+        ai_meta?: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
       };
       setAiInput(r.ai_input);
       setAiPrompt(r.ai_prompt);
       setAnalysis(r.analysis);
+      setAiMeta(r.ai_meta ?? null);
 
       // Auto-generuj raport HTML + mail
       let generatedReportHtml = "";
