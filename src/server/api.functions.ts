@@ -522,14 +522,16 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      const result = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt, maxTokens });
+      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens });
       raw = result.text;
       await log.info(
-        "anthropic_response",
-        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów)`,
+        "ai_response",
+        `Odpowiedź AI [${result.provider}${result.usedFallback ? " (fallback)" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
         {
           response_chars: raw.length,
           model: result.model,
+          provider: result.provider,
+          used_fallback: result.usedFallback,
           stop_reason: result.stop_reason,
           usage: result.usage,
         },
@@ -537,11 +539,11 @@ export const runAnalysis = createServerFn({ method: "POST" })
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await log.error("anthropic_call", `Błąd wywołania Anthropic: ${msg}`, {
+      await log.error("ai_call", `Błąd AI: ${msg}`, {
         error: msg,
         prompt_chars: userPrompt.length,
       });
-      throw new Error(`Anthropic API: ${msg}`);
+      throw new Error(`AI API: ${msg}`);
     }
 
     let parsed: unknown;
