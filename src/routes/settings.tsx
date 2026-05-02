@@ -80,9 +80,10 @@ function SettingsPage() {
       .then((res) => {
         if (!mounted) return;
         setEnv(res.env as EnvFlags);
+        const cfg = res.config as Record<string, unknown>;
         setConfig({
-          ai_analysis_mode: (res.config as Record<string, string>)?.ai_analysis_mode ?? "auto",
-          ai_fallback_mode: (res.config as Record<string, string>)?.ai_fallback_mode ?? "error_only",
+          ai_analysis_mode: (cfg?.ai_analysis_mode as string) ?? "auto",
+          ai_fallback_mode: (cfg?.ai_fallback_mode as string) ?? "error_only",
         });
       })
       .catch((e) => toast.error(`Nie udało się pobrać konfiguracji: ${e.message}`))
