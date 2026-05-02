@@ -530,6 +530,7 @@ export const runAnalysis = createServerFn({ method: "POST" })
     ai_input: { criteria: ClientCriteria; listings: CarLot[] };
     ai_prompt: string;
     analysis: AnalyzedLot[];
+    ai_meta?: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
   }> => {
     const log = makeLogger({
       operation: "ai_analysis",
