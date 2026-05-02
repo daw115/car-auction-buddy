@@ -154,7 +154,7 @@ type ScrapeJobState = {
   total?: number;
 };
 
-type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed";
+type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed" | "cancelled";
 
 type AnalysisJobState = {
   phase: AnalysisPhase;
@@ -401,7 +401,7 @@ function ScraperProgress({
 }
 
 function AnalysisProgress({ job }: { job: AnalysisJobState }) {
-  const isFinal = job.phase === "done" || job.phase === "failed";
+  const isFinal = job.phase === "done" || job.phase === "failed" || job.phase === "cancelled";
 
   const analysisPhases: AnalysisPhase[] = ["queued", "analyzing", "rendering", "saving", "done"];
   const phaseLabels: Record<AnalysisPhase, string> = {
@@ -411,6 +411,7 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
     saving: "Zapis do bazy",
     done: "Zakończono",
     failed: "Błąd",
+    cancelled: "Anulowano",
   };
 
   const phaseProgress: Record<AnalysisPhase, number> = {
@@ -420,15 +421,18 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
     saving: 90,
     done: 100,
     failed: 0,
+    cancelled: 0,
   };
 
   const pct = phaseProgress[job.phase] ?? 0;
 
   const variant = job.phase === "failed"
     ? "bg-destructive/10 border-destructive/30"
-    : job.phase === "done"
-      ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
-      : "bg-muted border-border";
+    : job.phase === "cancelled"
+      ? "bg-muted border-border"
+      : job.phase === "done"
+        ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
+        : "bg-muted border-border";
 
   return (
     <div className={`rounded-md border px-3 py-2 space-y-2 ${variant}`}>
@@ -436,6 +440,7 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
         <div className="flex items-center gap-2 min-w-0">
           {!isFinal && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
           {job.phase === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
+          {job.phase === "cancelled" && <X className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
           {job.phase === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)] shrink-0" />}
           <span className="font-medium truncate">
             {phaseLabels[job.phase]}
@@ -750,11 +755,11 @@ function Panel() {
 
   async function cancelScrape() {
     if (!scrapeJob?.jobId) {
-      // Local-only cancel (sync mode or no job yet)
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
+      await persistCancelledStatus();
       toast.message("Anulowano lokalnie");
       return;
     }
@@ -770,10 +775,36 @@ function Panel() {
       scrapeContextRef.current = null;
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
+      await persistCancelledStatus();
       toast.success("Wyszukiwanie anulowane");
     } catch (e) {
       toast.error(`Błąd anulowania: ${(e as Error).message}`);
     }
+  }
+
+  async function persistCancelledStatus() {
+    if (!activeClient && !activeRecordId) return;
+    try {
+      const now = new Date().toISOString();
+      const row = (await fnSaveRecord({
+        data: {
+          id: activeRecordId ?? undefined,
+          client_id: activeClient?.id ?? activeClientId ?? undefined,
+          title: `${criteria.make} ${criteria.model || ""}`.trim(),
+          status: "draft",
+          criteria,
+          listings,
+          analysis_status: "cancelled",
+          analysis_completed_at: now,
+          analysis_error: "Anulowano przez użytkownika",
+          retry_count: 0,
+          next_retry_at: null,
+          last_error_at: now,
+        },
+      })) as unknown as { id: string };
+      if (!activeRecordId) setActiveRecordId(row.id);
+      if (activeClient) await refreshRecords(activeClient.id);
+    } catch { /* best-effort */ }
   }
 
   async function downloadJobLogs(jobId: string, format: "json" | "csv" = "json") {
@@ -1813,6 +1844,7 @@ function Panel() {
                 const analysisStatusLabel: Record<string, { text: string; color: string }> = {
                   done: { text: "Gotowe", color: "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]" },
                   failed: { text: "Błąd", color: "bg-destructive/15 text-destructive" },
+                  cancelled: { text: "Anulowano", color: "bg-muted text-muted-foreground" },
                   analyzing: { text: "Analizuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
                   rendering: { text: "Renderuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
                   saving: { text: "Zapisuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
@@ -1875,7 +1907,7 @@ function Panel() {
                         >
                           <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
-                        {r.analysis_status === "failed" && (
+                        {(r.analysis_status === "failed" || r.analysis_status === "cancelled") && (
                           <button
                             onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
                             title="Ponów analizę AI"
@@ -1950,6 +1982,19 @@ function Panel() {
                         )}
                         {r.retry_count >= r.max_retries && (
                           <p className="text-[10px] font-medium">Wyczerpano limit prób</p>
+                        )}
+                      </div>
+                    )}
+                    {r.analysis_status === "cancelled" && (
+                      <div className="rounded bg-muted border border-border px-2 py-1 text-[11px] text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1 font-medium">
+                          <X className="h-3 w-3 shrink-0" />
+                          Anulowano przez użytkownika
+                        </div>
+                        {r.analysis_completed_at && (
+                          <p className="text-[10px]">
+                            {new Date(r.analysis_completed_at).toLocaleString("pl-PL")}
+                          </p>
                         )}
                       </div>
                     )}
