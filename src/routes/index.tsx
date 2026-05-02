@@ -88,6 +88,10 @@ type RecordSummary = {
   analysis_completed_at: string | null;
   artifacts_meta: ArtifactsMeta | null;
   analysis_error: string | null;
+  retry_count: number;
+  max_retries: number;
+  next_retry_at: string | null;
+  last_error_at: string | null;
 };
 type ConfigEnv = {
   ANTHROPIC_API_KEY: boolean;
