@@ -1989,7 +1989,13 @@ function Panel() {
                   saving: { text: "Zapisuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
                   queued: { text: "W kolejce", color: "bg-muted text-muted-foreground" },
                 };
-                const aStatus = r.analysis_status ? analysisStatusLabel[r.analysis_status] : null;
+                // Show "retrying" when this record is actively being re-analyzed
+                const isRetrying = activeRecordId === r.id && busy === "ai" && (r.analysis_status === "failed" || r.analysis_status === "cancelled");
+                const aStatus = isRetrying
+                  ? { text: "Ponawianie…", color: "bg-[oklch(0.92_0.08_60)] text-[oklch(0.35_0.12_60)]", spinning: true }
+                  : r.analysis_status
+                    ? analysisStatusLabel[r.analysis_status] ? { ...analysisStatusLabel[r.analysis_status], spinning: false } : null
+                    : null;
 
                 return (
                   <div
