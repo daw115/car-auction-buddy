@@ -1037,6 +1037,28 @@ function Panel() {
     } catch (e) {
       const msg = (e as Error).message;
       setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
+      // Persist error to DB if we have a record
+      if (activeRecordId || activeClient) {
+        try {
+          await fnSaveRecord({
+            data: {
+              id: activeRecordId ?? undefined,
+              client_id: activeClient?.id ?? activeClientId ?? undefined,
+              title: `${criteria.make} ${criteria.model || ""}`.trim(),
+              status: "draft",
+              criteria,
+              listings,
+              analysis_status: "failed",
+              analysis_started_at: new Date(startedAt).toISOString(),
+              analysis_completed_at: new Date().toISOString(),
+              analysis_error: msg,
+            },
+          });
+          if (activeClient) await refreshRecords(activeClient.id);
+        } catch {
+          // best-effort
+        }
+      }
       toast.error(msg);
     } finally {
       setBusy(null);
