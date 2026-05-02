@@ -88,6 +88,10 @@ type RecordSummary = {
   analysis_completed_at: string | null;
   artifacts_meta: ArtifactsMeta | null;
   analysis_error: string | null;
+  retry_count: number;
+  max_retries: number;
+  next_retry_at: string | null;
+  last_error_at: string | null;
 };
 type ConfigEnv = {
   ANTHROPIC_API_KEY: boolean;
@@ -593,6 +597,11 @@ function Panel() {
 
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Retry state for analysis
+  const currentRetryRef = useRef(0);
+  const maxRetriesRef = useRef(3);
+  const autoRetryTimerRef = useRef<number | null>(null);
+
   // Scraper job progress
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
@@ -1023,6 +1032,9 @@ function Panel() {
               analysis_completed_at: now,
               artifacts_meta: artifactsMeta,
               analysis_error: null,
+              retry_count: 0,
+              next_retry_at: null,
+              last_error_at: null,
             },
           })) as { id: string };
           setActiveRecordId(row.id);
@@ -1033,15 +1045,27 @@ function Panel() {
         }
       }
 
+      // Reset retry state on success
+      currentRetryRef.current = 0;
+      if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
       setAnalysisJob((s) => s ? { ...s, phase: "done", elapsedMs: Date.now() - startedAt } : s);
       toast.success(`Analiza zakończona: ${r.analysis.length} lotów przeanalizowanych`);
     } catch (e) {
       const msg = (e as Error).message;
       setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
-      // Persist error to DB if we have a record
+
+      // Persist error + compute retry backoff
+      const currentRetry = currentRetryRef.current;
+      const maxRetries = maxRetriesRef.current;
+      const newRetryCount = currentRetry + 1;
+      const canRetry = newRetryCount < maxRetries;
+      // Exponential backoff: 10s, 30s, 90s, 270s...
+      const backoffMs = canRetry ? Math.min(10_000 * Math.pow(3, currentRetry), 300_000) : null;
+      const nextRetryAt = canRetry && backoffMs ? new Date(Date.now() + backoffMs).toISOString() : null;
+
       if (activeRecordId || activeClient) {
         try {
-          await fnSaveRecord({
+          const savedRow = (await fnSaveRecord({
             data: {
               id: activeRecordId ?? undefined,
               client_id: activeClient?.id ?? activeClientId ?? undefined,
@@ -1053,14 +1077,30 @@ function Panel() {
               analysis_started_at: new Date(startedAt).toISOString(),
               analysis_completed_at: new Date().toISOString(),
               analysis_error: msg,
+              retry_count: newRetryCount,
+              max_retries: maxRetries,
+              next_retry_at: nextRetryAt,
+              last_error_at: new Date().toISOString(),
             },
-          });
+          })) as { id: string };
+          if (!activeRecordId) setActiveRecordId(savedRow.id);
           if (activeClient) await refreshRecords(activeClient.id);
         } catch {
           // best-effort
         }
       }
-      toast.error(msg);
+
+      if (canRetry && backoffMs) {
+        const delaySec = Math.round(backoffMs / 1000);
+        toast.error(`${msg} — ponowna próba za ${delaySec}s (${newRetryCount}/${maxRetries})`);
+        // Schedule auto-retry
+        autoRetryTimerRef.current = window.setTimeout(() => {
+          currentRetryRef.current = newRetryCount;
+          runAi();
+        }, backoffMs);
+      } else {
+        toast.error(canRetry ? msg : `${msg} — wyczerpano limit ${maxRetries} prób`);
+      }
     } finally {
       setBusy(null);
     }
@@ -1181,9 +1221,10 @@ function Panel() {
   }
 
   async function retryAnalysis(recordId: string) {
+    // Cancel any pending auto-retry
+    if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
+    currentRetryRef.current = 0;
     await openRecord(recordId);
-    // openRecord sets listings/criteria — runAi will use them
-    // We need to wait for state to settle, so we use a microtask
     setTimeout(() => {
       runAi();
     }, 100);
@@ -1828,13 +1869,29 @@ function Panel() {
                         )}
                       </div>
                     )}
-                    {r.analysis_status === "failed" && r.analysis_error && (
-                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive">
-                        <div className="flex items-center gap-1 font-medium mb-0.5">
+                    {r.analysis_status === "failed" && (
+                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive space-y-1">
+                        <div className="flex items-center gap-1 font-medium">
                           <AlertCircle className="h-3 w-3 shrink-0" />
                           Błąd analizy
+                          {r.retry_count > 0 && (
+                            <span className="text-muted-foreground font-normal ml-1">
+                              (próba {r.retry_count}/{r.max_retries})
+                            </span>
+                          )}
                         </div>
-                        <p className="line-clamp-3 break-all">{r.analysis_error}</p>
+                        {r.analysis_error && (
+                          <p className="line-clamp-3 break-all">{r.analysis_error}</p>
+                        )}
+                        {r.next_retry_at && new Date(r.next_retry_at) > new Date() && (
+                          <p className="text-[10px] text-muted-foreground">
+                            <RefreshCw className="h-2.5 w-2.5 inline mr-0.5" />
+                            Następna próba: {new Date(r.next_retry_at).toLocaleTimeString("pl-PL")}
+                          </p>
+                        )}
+                        {r.retry_count >= r.max_retries && (
+                          <p className="text-[10px] font-medium">Wyczerpano limit prób</p>
+                        )}
                       </div>
                     )}
                   </div>

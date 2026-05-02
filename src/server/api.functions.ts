@@ -53,7 +53,7 @@ export const listRecords = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     let q = supabaseAdmin
       .from("records")
-      .select("id, client_id, title, status, created_at, updated_at, analysis_status, analysis_started_at, analysis_completed_at, artifacts_meta, analysis_error")
+      .select("id, client_id, title, status, created_at, updated_at, analysis_status, analysis_started_at, analysis_completed_at, artifacts_meta, analysis_error, retry_count, max_retries, next_retry_at, last_error_at")
       .order("created_at", { ascending: false })
       .limit(200);
     if (data.clientId) q = q.eq("client_id", data.clientId);
@@ -91,6 +91,10 @@ const recordPayloadSchema = z.object({
   analysis_completed_at: z.string().optional().nullable(),
   artifacts_meta: z.any().optional().nullable(),
   analysis_error: z.string().max(5000).optional().nullable(),
+  retry_count: z.number().int().min(0).optional(),
+  max_retries: z.number().int().min(0).max(10).optional(),
+  next_retry_at: z.string().optional().nullable(),
+  last_error_at: z.string().optional().nullable(),
 });
 
 export const saveRecord = createServerFn({ method: "POST" })
