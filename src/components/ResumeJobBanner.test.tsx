@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
-import { ResumeJobBanner } from "./ResumeJobBanner";
+import { ResumeJobBanner, formatElapsed } from "./ResumeJobBanner";
 import type { ValidatedScrapeJob } from "@/lib/scrape-job-storage";
 
 function makeJob(overrides?: Partial<ValidatedScrapeJob>): ValidatedScrapeJob {
