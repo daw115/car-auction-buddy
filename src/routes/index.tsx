@@ -597,6 +597,11 @@ function Panel() {
 
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Retry state for analysis
+  const currentRetryRef = useRef(0);
+  const maxRetriesRef = useRef(3);
+  const autoRetryTimerRef = useRef<number | null>(null);
+
   // Scraper job progress
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
