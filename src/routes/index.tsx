@@ -319,16 +319,28 @@ function ScraperProgress({
             </Button>
           )}
           {job.jobId && onDownloadLogs && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 px-2 text-xs"
-              onClick={() => onDownloadLogs(job.jobId!)}
-              title="Pobierz logi tego job_id (lokalne + scraper) jako JSON"
-            >
-              <Download className="h-3 w-3 mr-1" />
-              Pobierz logi
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => onDownloadLogs(job.jobId!, "json")}
+                title="Pobierz logi jako JSON"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                JSON
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => onDownloadLogs(job.jobId!, "csv")}
+                title="Pobierz logi jako CSV"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                CSV
+              </Button>
+            </>
           )}
           {isFinal && onRerun && (
             <Button
