@@ -264,6 +264,29 @@ describe("scrape-job-storage", () => {
       expect(readPersistedScrapeJob().job).toBeNull();
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
+
+    it("dismiss clears localStorage completely — key no longer exists", () => {
+      persistScrapeJob("j-dismiss", "ck-d", { make: "Hyundai", budget_usd: 11000 });
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
+
+      // Simulate dismiss: clear + verify no residual data
+      clearPersistedScrapeJob();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+      expect(store.size).toBe(0);
+
+      // Subsequent read returns clean state
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors).toEqual([]);
+    });
+
+    it("dismiss after multiple persists only removes latest entry", () => {
+      persistScrapeJob("j-a", "c-a", validCriteria());
+      persistScrapeJob("j-b", "c-b", validCriteria()); // overwrites
+
+      clearPersistedScrapeJob();
+      expect(readPersistedScrapeJob().job).toBeNull();
+    });
   });
 
   // ---- localStorage error resilience ----
