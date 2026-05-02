@@ -62,6 +62,7 @@ function ResumeFlowHarness({
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [jobResult, setJobResult] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const wasResumedRef = useRef(false);
 
   // On mount: detect job in localStorage (mirrors index.tsx useEffect)
