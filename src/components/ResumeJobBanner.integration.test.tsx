@@ -84,10 +84,11 @@ function ResumeFlowHarness({
         clearPersistedScrapeJob();
         setJobResult("done");
       },
-      failJob: () => {
+      failJob: (msg?: string) => {
         setBusy(null);
         clearPersistedScrapeJob();
         setJobResult("failed");
+        setErrorMessage(msg ?? "Scraper job failed");
       },
       cancelJob: () => {
         setBusy(null);
