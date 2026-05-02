@@ -636,8 +636,19 @@ function Panel() {
   const maxRetriesRef = useRef(3);
   const autoRetryTimerRef = useRef<number | null>(null);
 
-  // Scraper job progress
+  // Scraper job progress — with localStorage persistence for page reload recovery
+  const SCRAPE_JOB_STORAGE_KEY = "car-finder:active-scrape-job";
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
+
+  function persistScrapeJob(jobId: string, cacheKey: string, criteria: ClientCriteria) {
+    try {
+      localStorage.setItem(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({ jobId, cacheKey, criteria, startedAt: Date.now() }));
+    } catch { /* quota exceeded etc. */ }
+  }
+
+  function clearPersistedScrapeJob() {
+    try { localStorage.removeItem(SCRAPE_JOB_STORAGE_KEY); } catch { /* noop */ }
+  }
 
   // AI analysis progress
   const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
@@ -681,6 +692,7 @@ function Panel() {
           s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 5 min", elapsedMs: Date.now() - s.startedAt } : s,
         );
         scrapeContextRef.current = null;
+        clearPersistedScrapeJob();
         setBusy(null);
         toast.error("Timeout scrapera (5 min)");
         return;
@@ -712,7 +724,8 @@ function Panel() {
           setListingsRaw(JSON.stringify(result, null, 2));
           toast.success(`Scraper zwrócił ${result.length} lotów`);
           setBusy(null);
-          scrapeContextRef.current = null;
+           scrapeContextRef.current = null;
+           clearPersistedScrapeJob();
         } else if (["error", "failed"].includes(p.status)) {
           const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
@@ -722,7 +735,8 @@ function Panel() {
           );
           toast.error(errMsg);
           setBusy(null);
-          scrapeContextRef.current = null;
+           scrapeContextRef.current = null;
+           clearPersistedScrapeJob();
         } else {
           setScrapeJob((s) =>
             s
@@ -753,10 +767,29 @@ function Panel() {
   // Cancellation flag for the current scrape loop
   const cancelRequestedRef = useRef(false);
 
+  // Restore active scrape job from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SCRAPE_JOB_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number };
+      if (!saved.jobId) { clearPersistedScrapeJob(); return; }
+      // Resume polling by restoring context + UI state
+      scrapeContextRef.current = { jobId: saved.jobId, cacheKey: saved.cacheKey, criteria: saved.criteria };
+      setScrapeJob({ status: "running", jobId: saved.jobId, startedAt: saved.startedAt, elapsedMs: Date.now() - saved.startedAt });
+      setCriteria((c) => ({ ...c, ...saved.criteria }));
+      setBusy("scraper");
+      cancelRequestedRef.current = false;
+      toast.info("Wznowiono śledzenie aktywnego joba scrapera");
+    } catch { clearPersistedScrapeJob(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function cancelScrape() {
     if (!scrapeJob?.jobId) {
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
+      clearPersistedScrapeJob();
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
       await persistCancelledStatus();
@@ -773,6 +806,7 @@ function Panel() {
         },
       });
       scrapeContextRef.current = null;
+      clearPersistedScrapeJob();
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
       await persistCancelledStatus();
@@ -995,6 +1029,7 @@ function Panel() {
       const jobId = start.job_id;
       const cacheKey = start.cache_key;
       scrapeContextRef.current = { jobId, cacheKey, criteria: { ...criteria } };
+      persistScrapeJob(jobId, cacheKey, criteria);
       setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
       // setBusy stays "scraper" — cleared by the poller on terminal state
     } catch (e) {
