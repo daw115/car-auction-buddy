@@ -2047,14 +2047,19 @@ function Panel() {
                           <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
                         {(r.analysis_status === "failed" || r.analysis_status === "cancelled") && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
-                            title="Ponów analizę AI"
-                            className="disabled:opacity-30 disabled:cursor-not-allowed"
-                            disabled={busy !== null}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                          </button>
+                          (() => {
+                            const limitReached = r.retry_count >= r.max_retries;
+                            return (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
+                                title={limitReached ? `Wyczerpano limit ${r.max_retries} prób` : "Ponów analizę AI"}
+                                className="disabled:opacity-30 disabled:cursor-not-allowed"
+                                disabled={busy !== null || limitReached}
+                              >
+                                <RotateCcw className={`h-3.5 w-3.5 ${limitReached ? "text-muted-foreground/40" : "text-muted-foreground hover:text-primary"}`} />
+                              </button>
+                            );
+                          })()
                         )}
                         <button
                           onClick={(e) => { e.stopPropagation(); void removeRecord(r.id); }}
