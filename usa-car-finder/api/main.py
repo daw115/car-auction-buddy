@@ -158,10 +158,16 @@ def analysis_notice(force_local: bool = False) -> str:
         if os.getenv("ANTHROPIC_API_KEY"):
             return "Claude/Anthropic"
         return "Anthropic skonfigurowany, ale brak ANTHROPIC_API_KEY; użyto scoringu lokalnego"
+    if mode == "gemini":
+        if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+            return f"Gemini {os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')}"
+        return "Gemini skonfigurowany, ale brak GEMINI_API_KEY; użyto scoringu lokalnego"
     if has_usable_openai_key():
         return f"Auto: OpenAI {os.getenv('OPENAI_MODEL', 'gpt-5.2')}"
     if os.getenv("ANTHROPIC_API_KEY"):
         return "Auto: Claude/Anthropic"
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        return f"Auto: Gemini {os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')}"
     return "Auto: brak kluczy AI; użyto scoringu lokalnego"
 
 
@@ -753,6 +759,8 @@ async def health():
         "anthropic_model": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         "has_openai_key": has_usable_openai_key(),
         "has_anthropic_key": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "has_gemini_key": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         "cache_dir": str(HTML_CACHE_DIR),
         "auction_min_hours": os.getenv("MIN_AUCTION_WINDOW_HOURS", "12"),
         "auction_max_hours": os.getenv("MAX_AUCTION_WINDOW_HOURS", "120"),
@@ -776,6 +784,8 @@ async def config():
         "anthropic_model": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         "has_openai_key": has_usable_openai_key(),
         "has_anthropic_key": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "has_gemini_key": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         "auction_min_hours": os.getenv("MIN_AUCTION_WINDOW_HOURS", "12"),
         "auction_max_hours": os.getenv("MAX_AUCTION_WINDOW_HOURS", "120"),
         "open_all_prefiltered_details": os.getenv("OPEN_ALL_PREFILTERED_DETAILS", "true"),

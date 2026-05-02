@@ -133,20 +133,42 @@ def analyze_lots(
             print(f"[AI] Claude API niedostępne ({exc}). Używam lokalnego scoringu.")
             return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if ai_mode == "gemini":
+        if not gemini_key:
+            message = "AI_ANALYSIS_MODE=gemini, ale brakuje GEMINI_API_KEY"
+            if strict_ai:
+                raise RuntimeError(message)
+            print(f"[AI] {message}. Używam lokalnego scoringu.")
+            return _analyze_lots_locally(lots, criteria, top_n=top_n)
+        try:
+            return _analyze_lots_with_gemini(lots, criteria, top_n=top_n)
+        except Exception as exc:
+            if strict_ai:
+                raise
+            print(f"[AI] Gemini API niedostępne ({exc}). Używam lokalnego scoringu.")
+            return _analyze_lots_locally(lots, criteria, top_n=top_n)
+
     if has_openai_key:
         try:
             return _analyze_lots_with_openai(lots, criteria, top_n=top_n)
         except Exception as exc:
-            print(f"[AI] OpenAI API niedostępne ({exc}). Próbuję Claude/local.")
+            print(f"[AI] OpenAI API niedostępne ({exc}). Próbuję Claude/Gemini/local.")
 
     if anthropic_key:
         try:
             return _analyze_lots_with_claude(lots, criteria, top_n=top_n)
         except Exception as exc:
-            print(f"[AI] Claude API niedostępne ({exc}). Używam lokalnego scoringu.")
+            print(f"[AI] Claude API niedostępne ({exc}). Próbuję Gemini/local.")
 
-    if not has_openai_key and not anthropic_key:
-        print("[AI] Brak OPENAI_API_KEY i ANTHROPIC_API_KEY, używam lokalnego scoringu.")
+    if gemini_key:
+        try:
+            return _analyze_lots_with_gemini(lots, criteria, top_n=top_n)
+        except Exception as exc:
+            print(f"[AI] Gemini API niedostępne ({exc}). Używam lokalnego scoringu.")
+
+    if not has_openai_key and not anthropic_key and not gemini_key:
+        print("[AI] Brak OPENAI_API_KEY, ANTHROPIC_API_KEY i GEMINI_API_KEY — używam lokalnego scoringu.")
 
     return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
@@ -566,6 +588,113 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
         results.append(AnalyzedLot(lot=lot, analysis=analysis))
 
     return _rank_results(results, top_n)
+
+
+def _call_gemini(model: str, system: str, user_prompt: str, max_tokens: int = 8192) -> str:
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak GEMINI_API_KEY")
+
+    timeout = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "120"))
+    max_retries = int(os.getenv("GEMINI_MAX_RETRIES", "4"))
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        f"?key={api_key}"
+    )
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "maxOutputTokens": max_tokens,
+            "temperature": float(os.getenv("GEMINI_TEMPERATURE", "0.4")),
+        },
+    }
+
+    last_exc: Exception = RuntimeError("Gemini: brak odpowiedzi")
+    for attempt in range(max_retries):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read().decode("utf-8")
+                response_data = json.loads(body)
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="ignore")
+            sanitized = _sanitize_error_text(error_body[:500])
+            if exc.code in (429, 500, 502, 503) and attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 60)
+                print(f"[AI] Gemini HTTP {exc.code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                last_exc = RuntimeError(f"Gemini HTTP {exc.code}: {sanitized}")
+                continue
+            raise RuntimeError(f"Gemini HTTP {exc.code}: {sanitized}") from exc
+        except urllib.error.URLError as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 60)
+                print(f"[AI] Gemini network error: {exc}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                continue
+            raise
+
+        candidates = response_data.get("candidates") or []
+        if not candidates:
+            prompt_feedback = response_data.get("promptFeedback") or {}
+            block_reason = prompt_feedback.get("blockReason")
+            raise RuntimeError(f"Gemini brak candidates (blockReason={block_reason})")
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        text_chunks = [p.get("text", "") for p in parts if p.get("text")]
+        if not text_chunks:
+            finish_reason = candidates[0].get("finishReason")
+            raise RuntimeError(f"Gemini pusta odpowiedź (finishReason={finish_reason})")
+        return "".join(text_chunks)
+
+    raise last_exc
+
+
+def _analyze_lots_with_gemini(
+    lots: List[CarLot],
+    criteria: ClientCriteria,
+    top_n: int = 5,
+) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    lots_data = _lot_payloads(lots)
+    user_prompt = _analysis_user_prompt(lots_data, criteria)
+    max_tokens = max(2000, len(lots_data) * 400)
+    max_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", str(min(max_tokens, 8192))))
+    print(f"[AI] Analizuję {len(lots)} lotów przez Gemini API ({model}, max_tokens={max_tokens})...")
+
+    raw = _call_gemini(model=model, system=SYSTEM_PROMPT, user_prompt=user_prompt, max_tokens=max_tokens).strip()
+
+    try:
+        analyses_data = _parse_analysis_json(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[AI] Błąd parsowania JSON od Gemini: {e}")
+        print(f"[AI] Surowa odpowiedź (pierwsze 500 znaków): {raw[:500]}")
+        with open("/tmp/ai_response_error.txt", "w") as f:
+            f.write(raw)
+        if len(lots) > 10:
+            print("[AI] Retry z mniejszą liczbą lotów (10)...")
+            lots = lots[:10]
+            lots_data = _lot_payloads(lots)
+            user_prompt = _analysis_user_prompt(lots_data, criteria)
+            raw = _call_gemini(
+                model=model,
+                system=SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                max_tokens=int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "4096")),
+            ).strip()
+            analyses_data = _parse_analysis_json(raw)
+        else:
+            raise
+
+    return _results_from_analysis_data(analyses_data, lots, top_n)
 
 
 def _analyze_lots_with_claude(lots: List[CarLot], criteria: ClientCriteria, top_n: int = 5) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
