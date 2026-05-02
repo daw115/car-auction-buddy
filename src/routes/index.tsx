@@ -229,8 +229,16 @@ function PhaseBadge({ phase, active }: { phase: string; active: boolean }) {
 }
 
 /** Map raw error messages to user-friendly Polish descriptions. */
+/** Check whether a raw error message looks like a scraper 404 */
+function isScraper404(raw: string): boolean {
+  const l = raw.toLowerCase();
+  return (l.includes("404") && (l.includes("scraper") || l.includes("not found")));
+}
+
 function humanizeError(raw: string): string {
   const lower = raw.toLowerCase();
+  if (isScraper404(raw))
+    return "Endpoint scrapera nie został znaleziony (HTTP 404). Serwer scrapera działa, ale żądany adres URL nie istnieje.";
   if (lower.includes("timeout") || lower.includes("timed out")) return "Przekroczono limit czasu oczekiwania na odpowiedź serwera.";
   if (lower.includes("network") || lower.includes("fetch failed") || lower.includes("econnrefused")) return "Błąd połączenia sieciowego — serwer scrapera może być niedostępny.";
   if (lower.includes("rate limit") || lower.includes("429")) return "Zbyt wiele zapytań — serwer ograniczył dostęp. Spróbuj ponownie za chwilę.";
