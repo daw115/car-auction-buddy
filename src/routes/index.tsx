@@ -1985,6 +1985,19 @@ function Panel() {
                         )}
                       </div>
                     )}
+                    {r.analysis_status === "cancelled" && (
+                      <div className="rounded bg-muted border border-border px-2 py-1 text-[11px] text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1 font-medium">
+                          <X className="h-3 w-3 shrink-0" />
+                          Anulowano przez użytkownika
+                        </div>
+                        {r.analysis_completed_at && (
+                          <p className="text-[10px]">
+                            {new Date(r.analysis_completed_at).toLocaleString("pl-PL")}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
