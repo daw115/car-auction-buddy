@@ -364,13 +364,47 @@ function ScraperProgress({
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
-      {/* Phase pipeline badges */}
+      {/* Phase pipeline badges — show last reached phase on failure */}
       {(() => {
         const scraperPhases = ["queued", "running", "scraping_list", "scraping_details", "enriching", "parsing", "done"];
         const currentPhaseKey = job.status;
         const currentIdx = scraperPhases.indexOf(currentPhaseKey);
-        // Only show pipeline when not in a terminal error/cancelled state
-        if (!isFailed && !isCancelled) {
+
+        if (isFailed) {
+          // Show pipeline with the last reached phase highlighted in red
+          const lastPhase = job.phase ?? job.step ?? job.status;
+          const lastIdx = scraperPhases.indexOf(lastPhase);
+          return (
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-1">
+                {scraperPhases.map((p, i) => {
+                  const reached = lastIdx >= 0 ? i <= lastIdx : false;
+                  const failedAt = lastIdx >= 0 && i === lastIdx;
+                  return (
+                    <span
+                      key={p}
+                      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        failedAt
+                          ? "bg-destructive/20 text-destructive ring-1 ring-destructive/30"
+                          : reached
+                            ? "bg-muted text-muted-foreground line-through"
+                            : "bg-muted/50 text-muted-foreground/50"
+                      }`}
+                    >
+                      {statusLabel[p] ?? p}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="text-[11px] text-destructive flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                Zatrzymano na etapie: <span className="font-medium">{statusLabel[lastPhase] ?? phaseLabel[lastPhase] ?? lastPhase}</span>
+              </div>
+            </div>
+          );
+        }
+
+        if (!isCancelled) {
           return (
             <div className="flex flex-wrap items-center gap-1">
               {scraperPhases.map((p, i) => (
@@ -387,13 +421,16 @@ function ScraperProgress({
         </div>
       )}
       {isFailed && job.errorMessage && (
-        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
-          <div className="font-medium text-destructive mb-0.5">
-            Szczegóły błędu{job.errorStep ? ` (${job.errorStep})` : ""}:
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs space-y-1">
+          <div className="font-medium text-destructive">
+            {humanizeError(job.errorMessage)}
           </div>
-          <div className="font-mono text-foreground break-words whitespace-pre-wrap">
-            {job.errorMessage}
-          </div>
+          {job.errorMessage !== humanizeError(job.errorMessage) && (
+            <details className="text-[11px] text-muted-foreground">
+              <summary className="cursor-pointer hover:text-foreground">Szczegóły techniczne</summary>
+              <pre className="font-mono text-foreground break-words whitespace-pre-wrap mt-1">{job.errorMessage}</pre>
+            </details>
+          )}
         </div>
       )}
     </div>
