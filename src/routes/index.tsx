@@ -577,6 +577,7 @@ function Panel() {
     }
   }
 
+  const watchLot = async (a: AnalyzedLot) => {
     try {
       await fnAddWatch({
         data: {
