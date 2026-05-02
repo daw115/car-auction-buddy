@@ -4,6 +4,7 @@ import {
   clearPersistedScrapeJob,
   readPersistedScrapeJob,
   SCRAPE_JOB_STORAGE_KEY,
+  type ValidatedScrapeJob,
 } from "@/lib/scrape-job-storage";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
