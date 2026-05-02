@@ -51,6 +51,16 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2,
   Plus,
   Trash2,
@@ -864,6 +874,9 @@ function Panel() {
 
   // Cancellation flag for the current scrape loop
   const cancelRequestedRef = useRef(false);
+  // Track whether the current job was resumed (needs confirmation before cancel)
+  const wasResumedRef = useRef(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
@@ -881,6 +894,7 @@ function Panel() {
     setCriteria((c) => ({ ...c, ...saved.criteria }));
     setBusy("scraper");
     cancelRequestedRef.current = false;
+    wasResumedRef.current = true;
     toast.info("Wznowiono śledzenie aktywnego joba scrapera");
   }
 
@@ -889,7 +903,22 @@ function Panel() {
     clearPersistedScrapeJob();
   }
 
+  /** Guard cancel with confirmation dialog when the job was resumed */
+  function requestCancelScrape() {
+    if (wasResumedRef.current) {
+      setShowCancelConfirm(true);
+    } else {
+      cancelScrape();
+    }
+  }
+
+  function confirmCancelScrape() {
+    setShowCancelConfirm(false);
+    cancelScrape();
+  }
+
   async function cancelScrape() {
+    wasResumedRef.current = false;
     if (!scrapeJob?.jobId) {
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
@@ -1788,12 +1817,28 @@ function Panel() {
             {scrapeJob && (
               <ScraperProgress
                 job={scrapeJob}
-                onCancel={cancelScrape}
+                onCancel={requestCancelScrape}
                 onDownloadLogs={downloadJobLogs}
                 onRerun={callScraper}
                 rerunDisabled={busy === "scraper"}
               />
             )}
+            <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Anulować wznowiony job?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Ten job został wznowiony po przeładowaniu strony. Anulowanie przerwie trwający proces scrapowania — tej operacji nie można cofnąć.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Nie, kontynuuj</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmCancelScrape} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Tak, anuluj
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Textarea
               className="font-mono text-xs"
               rows={6}
