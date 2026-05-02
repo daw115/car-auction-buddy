@@ -2,6 +2,17 @@ import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ValidatedScrapeJob } from "@/lib/scrape-job-storage";
 
+/** Human-readable elapsed time in Polish */
+export function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s temu`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}min temu`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}min temu` : `${h}h temu`;
+}
+
 export interface ResumeJobBannerProps {
   pendingResume: ValidatedScrapeJob | null;
   validationErrors: string[];
@@ -84,6 +95,12 @@ export function ResumeJobBanner({
             Do: <strong>{pendingResume.criteria.year_to}</strong>
           </span>
         )}
+        <span>
+          Cache: <strong data-testid="cache-key">{pendingResume.cacheKey.slice(0, 12)}</strong>
+        </span>
+        <span>
+          Start: <strong data-testid="started-ago">{formatElapsed(Date.now() - pendingResume.startedAt)}</strong>
+        </span>
       </div>
     </div>
   );

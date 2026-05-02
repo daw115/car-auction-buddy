@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
-import { ResumeJobBanner } from "./ResumeJobBanner";
+import { ResumeJobBanner, formatElapsed } from "./ResumeJobBanner";
 import type { ValidatedScrapeJob } from "@/lib/scrape-job-storage";
 
 function makeJob(overrides?: Partial<ValidatedScrapeJob>): ValidatedScrapeJob {
@@ -255,5 +255,154 @@ describe("ResumeJobBanner", () => {
       expect(cbs.onResume).not.toHaveBeenCalled();
       expect(cbs.onClearErrors).not.toHaveBeenCalled();
     });
+  });
+
+  // ---- data correctness: jobId, cacheKey, criteria, time ----
+  describe("banner displays correct data from localStorage", () => {
+    it("shows truncated jobId (first 8 chars)", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ jobId: "abcdefgh-1234-5678-9abc" })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.getByText("#abcdefgh")).toBeInTheDocument();
+      expect(screen.queryByText("abcdefgh-1234-5678-9abc")).not.toBeInTheDocument();
+    });
+
+    it("shows truncated cacheKey (first 12 chars)", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ cacheKey: "sha256-abc1234567890xyz" })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      const el = screen.getByTestId("cache-key");
+      expect(el.textContent).toBe("sha256-abc12");
+    });
+
+    it("shows full cacheKey when shorter than 12 chars", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ cacheKey: "short" })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.getByTestId("cache-key").textContent).toBe("short");
+    });
+
+    it("shows make and budget from criteria", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ criteria: { make: "Subaru", budget_usd: 18500 } })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.getByText("Subaru")).toBeInTheDocument();
+      expect(screen.getByText("$18,500")).toBeInTheDocument();
+    });
+
+    it("shows year range when year_from and year_to present", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({
+            criteria: { make: "Ford", budget_usd: 10000, year_from: 2019, year_to: 2023 },
+          })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.getByText("2019")).toBeInTheDocument();
+      expect(screen.getByText("2023")).toBeInTheDocument();
+    });
+
+    it("hides year labels when year_from/year_to are absent", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ criteria: { make: "Kia", budget_usd: 7000 } })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.queryByText("Od:")).not.toBeInTheDocument();
+      expect(screen.queryByText("Do:")).not.toBeInTheDocument();
+    });
+
+    it("shows model when present in criteria", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ criteria: { make: "Toyota", budget_usd: 15000, model: "Camry" } })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.getByText("Camry")).toBeInTheDocument();
+    });
+
+    it("hides model label when model is absent", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ criteria: { make: "Toyota", budget_usd: 15000 } })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      expect(screen.queryByText("Model:")).not.toBeInTheDocument();
+    });
+
+    it("shows elapsed time since job started", () => {
+      const twoMinAgo = Date.now() - 2 * 60 * 1000;
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ startedAt: twoMinAgo })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      const el = screen.getByTestId("started-ago");
+      expect(el.textContent).toBe("2min temu");
+    });
+
+    it("shows seconds when started less than a minute ago", () => {
+      const thirtySecAgo = Date.now() - 30 * 1000;
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ startedAt: thirtySecAgo })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      const el = screen.getByTestId("started-ago");
+      expect(el.textContent).toMatch(/^\d+s temu$/);
+    });
+
+    it("shows hours for long-running jobs", () => {
+      const ninetyMinAgo = Date.now() - 90 * 60 * 1000;
+      render(
+        <ResumeJobBanner
+          pendingResume={makeJob({ startedAt: ninetyMinAgo })}
+          validationErrors={[]}
+          {...defaults()}
+        />,
+      );
+      const el = screen.getByTestId("started-ago");
+      expect(el.textContent).toBe("1h 30min temu");
+    });
+  });
+
+  // ---- formatElapsed unit tests ----
+  describe("formatElapsed", () => {
+    it("formats 0ms as 0s", () => expect(formatElapsed(0)).toBe("0s temu"));
+    it("formats 45s", () => expect(formatElapsed(45_000)).toBe("45s temu"));
+    it("formats 60s as 1min", () => expect(formatElapsed(60_000)).toBe("1min temu"));
+    it("formats 5min", () => expect(formatElapsed(5 * 60_000)).toBe("5min temu"));
+    it("formats 1h exactly", () => expect(formatElapsed(60 * 60_000)).toBe("1h temu"));
+    it("formats 1h 15min", () => expect(formatElapsed(75 * 60_000)).toBe("1h 15min temu"));
+    it("formats 2h 0min as 2h", () => expect(formatElapsed(120 * 60_000)).toBe("2h temu"));
+    it("handles negative as 0s", () => expect(formatElapsed(-5000)).toBe("0s temu"));
   });
 });
