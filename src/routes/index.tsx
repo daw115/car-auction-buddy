@@ -583,12 +583,102 @@ function Panel() {
     return () => clearInterval(t);
   }, [analysisJob?.phase, analysisJob?.startedAt]);
 
-  // Tick elapsed every 1s while job is active
+  // Context for the background poller
+  const scrapeContextRef = useRef<{
+    jobId: string;
+    cacheKey: string;
+    criteria: ClientCriteria;
+  } | null>(null);
+
+  const TERMINAL_STATUSES = ["done", "completed", "finished", "success", "complete", "failed", "error", "cancelled"];
+
+  // Background poller: ticks elapsed + polls backend every 2s, pauses on terminal state
   useEffect(() => {
-    if (!scrapeJob || scrapeJob.status === "done" || scrapeJob.status === "failed") return;
-    const t = setInterval(() => {
+    if (!scrapeJob) return;
+    if (TERMINAL_STATUSES.includes(scrapeJob.status)) return;
+
+    const ctx = scrapeContextRef.current;
+    let polling = false;
+
+    const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+    const t = setInterval(async () => {
+      // Always tick elapsed
+      const elapsed = Date.now() - (scrapeJob?.startedAt ?? Date.now());
       setScrapeJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
-    }, 1000);
+
+      // Timeout after 5 min
+      if (elapsed > POLL_TIMEOUT_MS) {
+        setScrapeJob((s) =>
+          s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 5 min", elapsedMs: Date.now() - s.startedAt } : s,
+        );
+        scrapeContextRef.current = null;
+        setBusy(null);
+        toast.error("Timeout scrapera (5 min)");
+        return;
+      }
+
+      // Poll backend if we have a jobId and not already mid-request
+      if (!ctx?.jobId || polling || cancelRequestedRef.current) return;
+      polling = true;
+      try {
+        const p = (await fnPollScraper({ data: { jobId: ctx.jobId, cacheKey: ctx.cacheKey, criteria: ctx.criteria } })) as {
+          status: string;
+          listings?: CarLot[];
+          error?: string;
+          progress?: number;
+          step?: string;
+          phase?: string;
+          message?: string;
+          current?: number;
+          total?: number;
+        };
+
+        const DONE = ["done", "completed", "finished", "success", "complete"];
+        if (DONE.includes(p.status) || (typeof p.progress === "number" && p.progress >= 1.0)) {
+          const result = Array.isArray(p.listings) ? p.listings : [];
+          setScrapeJob((s) =>
+            s ? { ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt } : s,
+          );
+          setListings(result);
+          setListingsRaw(JSON.stringify(result, null, 2));
+          toast.success(`Scraper zwrócił ${result.length} lotów`);
+          setBusy(null);
+          scrapeContextRef.current = null;
+        } else if (["error", "failed"].includes(p.status)) {
+          const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
+          setScrapeJob((s) =>
+            s
+              ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt, errorMessage: errMsg, errorStep: p.status }
+              : s,
+          );
+          toast.error(errMsg);
+          setBusy(null);
+          scrapeContextRef.current = null;
+        } else {
+          setScrapeJob((s) =>
+            s
+              ? {
+                  ...s,
+                  status: p.status,
+                  progress: p.progress,
+                  step: p.step,
+                  phase: p.phase,
+                  message: p.message,
+                  current: p.current,
+                  total: p.total,
+                  elapsedMs: Date.now() - s.startedAt,
+                }
+              : s,
+          );
+        }
+      } catch {
+        // transient error — keep polling
+      } finally {
+        polling = false;
+      }
+    }, 2000);
+
     return () => clearInterval(t);
   }, [scrapeJob?.status, scrapeJob?.startedAt]);
 
@@ -599,7 +689,9 @@ function Panel() {
     if (!scrapeJob?.jobId) {
       // Local-only cancel (sync mode or no job yet)
       cancelRequestedRef.current = true;
-      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
+      scrapeContextRef.current = null;
+      setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
+      setBusy(null);
       toast.message("Anulowano lokalnie");
       return;
     }
@@ -612,7 +704,9 @@ function Panel() {
           recordId: activeRecordId ?? undefined,
         },
       });
+      scrapeContextRef.current = null;
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
+      setBusy(null);
       toast.success("Wyszukiwanie anulowane");
     } catch (e) {
       toast.error(`Błąd anulowania: ${(e as Error).message}`);
@@ -787,95 +881,18 @@ function Panel() {
         return;
       }
 
-      // Poll loop
+      // Async job — set context and let the background poller handle it
       const jobId = start.job_id;
       const cacheKey = start.cache_key;
+      scrapeContextRef.current = { jobId, cacheKey, criteria: { ...criteria } };
       setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
-      const deadline = Date.now() + 5 * 60 * 1000;
-      const DONE_STATUSES = ["done", "completed", "finished", "success", "complete"];
-      let listingsResult: CarLot[] = [];
-      while (Date.now() < deadline) {
-        if (cancelRequestedRef.current) {
-          setScrapeJob((s) =>
-            s ? { ...s, status: "cancelled", elapsedMs: Date.now() - s.startedAt } : s,
-          );
-          return;
-        }
-        await new Promise((r) => setTimeout(r, 4000));
-        if (cancelRequestedRef.current) {
-          setScrapeJob((s) =>
-            s ? { ...s, status: "cancelled", elapsedMs: Date.now() - s.startedAt } : s,
-          );
-          return;
-        }
-        let p: {
-          status: string;
-          listings?: CarLot[];
-          error?: string;
-          progress?: number;
-          step?: string;
-          phase?: string;
-          message?: string;
-          current?: number;
-          total?: number;
-        };
-        try {
-          p = (await fnPollScraper({ data: { jobId, cacheKey, criteria } })) as typeof p;
-        } catch (e) {
-          // transient — keep polling
-          continue;
-        }
-        setScrapeJob((s) =>
-          s
-            ? {
-                ...s,
-                status: p.status,
-                progress: p.progress,
-                step: p.step,
-                phase: p.phase,
-                message: p.message,
-                current: p.current,
-                total: p.total,
-                elapsedMs: Date.now() - s.startedAt,
-              }
-            : s,
-        );
-        if (DONE_STATUSES.includes(p.status) || (typeof p.progress === "number" && p.progress >= 1.0)) {
-          listingsResult = Array.isArray(p.listings) ? p.listings : [];
-          setScrapeJob((s) =>
-            s ? { ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt } : s,
-          );
-          break;
-        }
-        if (["error", "failed"].includes(p.status)) {
-          const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
-          setScrapeJob((s) =>
-            s
-              ? {
-                  ...s,
-                  status: "failed",
-                  elapsedMs: Date.now() - s.startedAt,
-                  errorMessage: errMsg,
-                  errorStep: p.status,
-                }
-              : s,
-          );
-          throw new Error(errMsg);
-        }
-      }
-      if (!DONE_STATUSES.includes(scrapeJob?.status ?? "")) {
-        // either set above, or timeout
-      }
-      setListings(listingsResult);
-      setListingsRaw(JSON.stringify(listingsResult, null, 2));
-      toast.success(`Scraper zwrócił ${listingsResult.length} lotów`);
+      // setBusy stays "scraper" — cleared by the poller on terminal state
     } catch (e) {
       const msg = (e as Error).message;
       setScrapeJob((s) =>
         s ? { ...s, status: "failed", errorMessage: s.errorMessage ?? msg } : s,
       );
       toast.error(msg);
-    } finally {
       setBusy(null);
     }
   }
