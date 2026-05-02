@@ -40,7 +40,7 @@ interface ResumeEvent {
 /** Ref handle exposed by the harness so tests can simulate job lifecycle events */
 interface HarnessHandle {
   completeJob: () => void;
-  failJob: () => void;
+  failJob: (errorMessage?: string) => void;
   cancelJob: () => void;
 }
 
