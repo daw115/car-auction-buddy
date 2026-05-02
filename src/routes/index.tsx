@@ -859,20 +859,15 @@ function Panel() {
   // Cancellation flag for the current scrape loop
   const cancelRequestedRef = useRef(false);
 
-  // Restore active scrape job from localStorage on mount
+  // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SCRAPE_JOB_STORAGE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw) as { jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number };
       if (!saved.jobId) { clearPersistedScrapeJob(); return; }
-      // Resume polling by restoring context + UI state
-      scrapeContextRef.current = { jobId: saved.jobId, cacheKey: saved.cacheKey, criteria: saved.criteria };
-      setScrapeJob({ status: "running", jobId: saved.jobId, startedAt: saved.startedAt, elapsedMs: Date.now() - saved.startedAt });
-      setCriteria((c) => ({ ...c, ...saved.criteria }));
-      setBusy("scraper");
-      cancelRequestedRef.current = false;
-      toast.info("Wznowiono śledzenie aktywnego joba scrapera");
+      // Don't auto-resume — let the user decide via the "Wznów" button
+      setPendingResume(saved);
     } catch { clearPersistedScrapeJob(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
