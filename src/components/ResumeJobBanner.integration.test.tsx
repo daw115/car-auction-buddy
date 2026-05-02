@@ -655,5 +655,89 @@ describe("Resume flow integration", () => {
       expect(screen.getByTestId("idle-state")).toBeInTheDocument();
     });
   });
+
+  // ---- "Zamknij" button on validation error banner ----
+  describe("Zamknij button hides error banner without affecting future resume flow", () => {
+    it("clicking Zamknij hides validation error banner from UI", async () => {
+      // Seed with invalid criteria (missing make)
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({ jobId: "j-zam", cacheKey: "c-zam", criteria: { budget_usd: 5000 }, startedAt: Date.now() }),
+      );
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // Error banner shown with Zamknij
+      expect(screen.getByText(/nieprawidłowe/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Zamknij/i })).toBeInTheDocument();
+
+      // No resume buttons
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+
+      // Click Zamknij
+      await userEvent.click(screen.getByRole("button", { name: /Zamknij/i }));
+
+      // Error banner gone
+      expect(screen.queryByText(/nieprawidłowe/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Zamknij/i })).not.toBeInTheDocument();
+
+      // App goes idle
+      expect(screen.getByTestId("idle-state")).toBeInTheDocument();
+      expect(onResume).not.toHaveBeenCalled();
+    });
+
+    it("after Zamknij + remount: no error banner reappears (localStorage was already cleared by validation)", async () => {
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({ jobId: "j-zam2", cacheKey: "c-zam2", criteria: { budget_usd: 3000 }, startedAt: Date.now() }),
+      );
+
+      const onResume = vi.fn();
+      const { unmount } = render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // Error banner visible
+      expect(screen.getByText(/nieprawidłowe/)).toBeInTheDocument();
+
+      // localStorage already cleared by readPersistedScrapeJob validation
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+
+      // Click Zamknij
+      await userEvent.click(screen.getByRole("button", { name: /Zamknij/i }));
+
+      // Remount — clean slate, no error
+      unmount();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByText(/nieprawidłowe/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Zamknij/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId("idle-state")).toBeInTheDocument();
+    });
+
+    it("Zamknij only dismisses UI — does not interfere with a valid job persisted later", async () => {
+      // First: seed invalid data → triggers error
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({ jobId: "j-zam3", cacheKey: "c-zam3", criteria: {}, startedAt: Date.now() }),
+      );
+
+      const onResume = vi.fn();
+      const { unmount } = render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.getByText(/nieprawidłowe/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: /Zamknij/i }));
+      expect(screen.getByTestId("idle-state")).toBeInTheDocument();
+      unmount();
+
+      // Now seed a VALID job
+      persistScrapeJob("j-valid-after", "ck-valid", { make: "Toyota", budget_usd: 15000 });
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // Valid banner shows with resume buttons
+      expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
+      expect(screen.getByText("Toyota")).toBeInTheDocument();
+      expect(screen.queryByText(/nieprawidłowe/)).not.toBeInTheDocument();
+    });
+  });
 });
 });
