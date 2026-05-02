@@ -37,16 +37,31 @@ interface ResumeEvent {
   criteria: Record<string, unknown>;
 }
 
+/** Ref handle exposed by the harness so tests can simulate job lifecycle events */
+interface HarnessHandle {
+  completeJob: () => void;
+  failJob: () => void;
+  cancelJob: () => void;
+}
+
 /**
  * Wrapper component that replicates the parent flow from index.tsx:
  * - On mount: reads localStorage and sets pendingResume (NO auto-resume)
  * - "Wznów" → calls onResume callback, clears pendingResume, keeps localStorage
  * - "Odrzuć" → clears pendingResume AND localStorage
+ * - completeJob/failJob/cancelJob → clears busy + localStorage (like real poller)
  */
-function ResumeFlowHarness({ onResumeTriggered }: { onResumeTriggered: (e: ResumeEvent) => void }) {
+function ResumeFlowHarness({
+  onResumeTriggered,
+  handleRef,
+}: {
+  onResumeTriggered: (e: ResumeEvent) => void;
+  handleRef?: React.MutableRefObject<HarnessHandle | null>;
+}) {
   const [pendingResume, setPendingResume] = useState<ValidatedScrapeJob | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [jobResult, setJobResult] = useState<string | null>(null);
   const wasResumedRef = useRef(false);
 
   // On mount: detect job in localStorage (mirrors index.tsx useEffect)
@@ -59,12 +74,35 @@ function ResumeFlowHarness({ onResumeTriggered }: { onResumeTriggered: (e: Resum
     }
   }, []);
 
+  // Expose lifecycle controls to tests
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      completeJob: () => {
+        setBusy(null);
+        clearPersistedScrapeJob();
+        setJobResult("done");
+      },
+      failJob: () => {
+        setBusy(null);
+        clearPersistedScrapeJob();
+        setJobResult("failed");
+      },
+      cancelJob: () => {
+        setBusy(null);
+        clearPersistedScrapeJob();
+        setJobResult("cancelled");
+      },
+    };
+  });
+
   function handleResume() {
     if (!pendingResume) return;
     const saved = pendingResume;
     setPendingResume(null);
     setBusy("scraper");
     wasResumedRef.current = true;
+    setJobResult(null);
     onResumeTriggered({
       jobId: saved.jobId,
       cacheKey: saved.cacheKey,
@@ -88,7 +126,8 @@ function ResumeFlowHarness({ onResumeTriggered }: { onResumeTriggered: (e: Resum
         onClearErrors={() => setValidationErrors([])}
       />
       {busy && <div data-testid="busy-indicator">busy: {busy}</div>}
-      {!pendingResume && !busy && !validationErrors.length && (
+      {jobResult && <div data-testid="job-result">{jobResult}</div>}
+      {!pendingResume && !busy && !validationErrors.length && !jobResult && (
         <div data-testid="idle-state">idle</div>
       )}
     </div>
