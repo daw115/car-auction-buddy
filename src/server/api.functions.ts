@@ -160,7 +160,7 @@ export const deleteRecord = createServerFn({ method: "POST" })
 export const getConfig = createServerFn({ method: "GET" }).handler(async () => {
   const { data, error } = await supabaseAdmin.from("app_config").select("*").eq("id", 1).single();
   if (error) throw new Error(error.message);
-  const provider = detectProvider();
+  const provider = detectProvider(data?.ai_analysis_mode);
   return {
     config: data,
     env: {
