@@ -349,9 +349,11 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
                 >
                   {levelIcon(row.level)} {row.level}
                 </Badge>
-                <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                <span className={`rounded px-1 text-[10px] ${
+                  STEP_COLORS[row.step ?? ""] ?? "bg-muted text-muted-foreground"
+                } ${row.step ? "font-semibold" : "font-normal"}`}>
                   {row.operation}
-                  {row.step ? `·${row.step}` : ""}
+                  {row.step ? ` · ${row.step}` : ""}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="break-words leading-snug">{row.message}</div>
