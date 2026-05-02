@@ -91,6 +91,10 @@ const recordPayloadSchema = z.object({
   analysis_completed_at: z.string().optional().nullable(),
   artifacts_meta: z.any().optional().nullable(),
   analysis_error: z.string().max(5000).optional().nullable(),
+  retry_count: z.number().int().min(0).optional(),
+  max_retries: z.number().int().min(0).max(10).optional(),
+  next_retry_at: z.string().optional().nullable(),
+  last_error_at: z.string().optional().nullable(),
 });
 
 export const saveRecord = createServerFn({ method: "POST" })
