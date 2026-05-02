@@ -1058,6 +1058,10 @@ export const pollScraperJob = createServerFn({ method: "POST" })
         http_status: res.status,
         body_preview: body.slice(0, 200),
       });
+      // Return not_found so the client can clean up localStorage
+      if (res.status === 404) {
+        return { status: "not_found", error: `Job ${data.jobId} nie istnieje na serwerze scrapera.` };
+      }
       throw new Error(`Poll HTTP ${res.status}: ${body.slice(0, 200)}`);
     }
     const j = (await res.json()) as {

@@ -756,7 +756,7 @@ function Panel() {
     criteria: ClientCriteria;
   } | null>(null);
 
-  const TERMINAL_STATUSES = ["done", "completed", "finished", "success", "complete", "failed", "error", "cancelled"];
+  const TERMINAL_STATUSES = ["done", "completed", "finished", "success", "complete", "failed", "error", "cancelled", "not_found"];
 
   // Background poller: ticks elapsed + polls backend every 2s, pauses on terminal state
   useEffect(() => {
@@ -813,6 +813,17 @@ function Panel() {
           setBusy(null);
            scrapeContextRef.current = null;
            clearPersistedScrapeJob();
+        } else if (p.status === "not_found") {
+          const errMsg = p.error ?? "Job nie istnieje na serwerze scrapera.";
+          setScrapeJob((s) =>
+            s
+              ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt, errorMessage: errMsg, errorStep: "not_found" }
+              : s,
+          );
+          toast.error("Zapisany job scrapera już nie istnieje — wyczyszczono dane lokalne.");
+          setBusy(null);
+          scrapeContextRef.current = null;
+          clearPersistedScrapeJob();
         } else if (["error", "failed"].includes(p.status)) {
           const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
