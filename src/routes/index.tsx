@@ -889,7 +889,7 @@ function Panel() {
     clearPersistedScrapeJob();
   }
 
-
+  async function cancelScrape() {
     if (!scrapeJob?.jobId) {
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
