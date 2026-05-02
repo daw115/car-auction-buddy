@@ -212,7 +212,7 @@ function ScraperProgress({
 }: {
   job: ScrapeJobState;
   onCancel?: () => void;
-  onDownloadLogs?: (jobId: string) => void;
+  onDownloadLogs?: (jobId: string, format: "json" | "csv") => void;
   onRerun?: () => void;
   rerunDisabled?: boolean;
 }) {
@@ -319,16 +319,28 @@ function ScraperProgress({
             </Button>
           )}
           {job.jobId && onDownloadLogs && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 px-2 text-xs"
-              onClick={() => onDownloadLogs(job.jobId!)}
-              title="Pobierz logi tego job_id (lokalne + scraper) jako JSON"
-            >
-              <Download className="h-3 w-3 mr-1" />
-              Pobierz logi
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => onDownloadLogs(job.jobId!, "json")}
+                title="Pobierz logi jako JSON"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                JSON
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => onDownloadLogs(job.jobId!, "csv")}
+                title="Pobierz logi jako CSV"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                CSV
+              </Button>
+            </>
           )}
           {isFinal && onRerun && (
             <Button
@@ -725,7 +737,7 @@ function Panel() {
     }
   }
 
-  async function downloadJobLogs(jobId: string) {
+  async function downloadJobLogs(jobId: string, format: "json" | "csv" = "json") {
     const t = toast.loading("Pobieranie logów...");
     try {
       const r = (await fnGetJobLogs({ data: { jobId } })) as {
@@ -742,16 +754,32 @@ function Panel() {
         local_error: string | null;
         scraper_error: string | null;
       };
-      const blob = new Blob([JSON.stringify(r, null, 2)], { type: "application/json" });
+
+      let blob: Blob;
+      let filename: string;
+
+      if (format === "csv") {
+        const header = "timestamp,level,step,source,message,details";
+        const escCsv = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
+        const rows = r.logs.map((l) =>
+          [l.created_at, l.level, l.step ?? "", l.source, escCsv(l.message), escCsv(typeof l.details === "string" ? l.details : JSON.stringify(l.details ?? ""))].join(","),
+        );
+        blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
+        filename = `scraper-job-${jobId}-logs.csv`;
+      } else {
+        blob = new Blob([JSON.stringify(r, null, 2)], { type: "application/json" });
+        filename = `scraper-job-${jobId}-logs.json`;
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `scraper-job-${jobId}-logs.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast.success(`Pobrano ${r.logs.length} wpisów logów`, { id: t });
+      toast.success(`Pobrano ${r.logs.length} wpisów logów (${format.toUpperCase()})`, { id: t });
     } catch (e) {
       toast.error(`Błąd: ${(e as Error).message}`, { id: t });
     }
