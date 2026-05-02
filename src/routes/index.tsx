@@ -2437,10 +2437,9 @@ function SettingsSheet({
                 value={draft.ai_analysis_mode}
                 onChange={(e) => setDraft({ ...draft, ai_analysis_mode: e.target.value })}
               >
-                <option value="anthropic">anthropic</option>
-                <option value="auto">auto</option>
-                <option value="openai">openai</option>
-                <option value="local">local</option>
+                <option value="anthropic">Anthropic Claude</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="auto">Auto (wykryj wg kluczy)</option>
               </select>
             </Field>
             <div className="grid grid-cols-2 gap-3">
