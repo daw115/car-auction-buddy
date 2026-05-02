@@ -998,6 +998,7 @@ function Panel() {
     setAiPrompt("");
     setReportHtml("");
     setMailHtml("");
+    setAnalysisJob(null);
   }
 
   // ---- render
