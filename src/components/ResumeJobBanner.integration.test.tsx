@@ -482,5 +482,67 @@ describe("Resume flow integration", () => {
       expect(screen.queryByTestId("busy-indicator")).not.toBeInTheDocument();
     });
   });
+
+  // ---- Rapid multi-click guard ----
+  describe("multiple rapid clicks on Wznów do not trigger duplicate resumes", () => {
+    it("only fires onResume once despite multiple fast clicks", async () => {
+      persistScrapeJob("job-multi-1", "ck-multi", { make: "Kia", budget_usd: 16000 });
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      const btn = screen.getByRole("button", { name: /Wznów/i });
+
+      // Rapid clicks
+      await userEvent.click(btn);
+      // After first click, button should be gone (pendingResume set to null)
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+
+      // onResume called exactly once
+      expect(onResume).toHaveBeenCalledTimes(1);
+      expect(onResume).toHaveBeenCalledWith(
+        expect.objectContaining({ jobId: "job-multi-1", cacheKey: "ck-multi" }),
+      );
+
+      // Busy indicator shows (only one scraper running)
+      expect(screen.getByTestId("busy-indicator")).toHaveTextContent("busy: scraper");
+    });
+
+    it("programmatic double-call to handleResume is guarded by null check", async () => {
+      persistScrapeJob("job-multi-2", "ck-multi2", { make: "Hyundai", budget_usd: 20000 });
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // First click triggers resume
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      expect(onResume).toHaveBeenCalledTimes(1);
+
+      // Button is gone — no way to click again
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Odrzuć/i })).not.toBeInTheDocument();
+    });
+
+    it("rapid click does not produce duplicate busy indicators or job results", async () => {
+      persistScrapeJob("job-multi-3", "ck-multi3", { make: "Suzuki", budget_usd: 10000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+
+      // Only one busy indicator
+      const busyElements = screen.getAllByTestId("busy-indicator");
+      expect(busyElements).toHaveLength(1);
+
+      // Complete the single job
+      act(() => handleRef.current!.completeJob());
+
+      expect(screen.queryByTestId("busy-indicator")).not.toBeInTheDocument();
+      expect(screen.getByTestId("job-result")).toHaveTextContent("done");
+      expect(onResume).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 });
