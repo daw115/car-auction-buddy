@@ -2079,7 +2079,8 @@ function Panel() {
                     {(aStatus || am) && (
                       <div className="flex flex-wrap items-center gap-1">
                         {aStatus && (
-                          <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${aStatus.color}`}>
+                          <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${aStatus.color}`}>
+                            {aStatus.spinning && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
                             {aStatus.text}
                           </span>
                         )}
