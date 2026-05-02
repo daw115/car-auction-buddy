@@ -755,7 +755,7 @@ function Panel() {
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
-  const [aiMeta, setAiMeta] = useState<{ provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } } | null>(null);
+  const [aiMeta, setAiMeta] = useState<AiMeta | null>(null);
   const [aiInput, setAiInput] = useState<unknown>(null);
   const [aiPrompt, setAiPrompt] = useState<string>("");
   const [reportHtml, setReportHtml] = useState<string>("");
