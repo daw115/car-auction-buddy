@@ -550,7 +550,33 @@ function Panel() {
     }
   }
 
-  const watchLot = async (a: AnalyzedLot) => {
+  async function downloadRecordStatusJson(recordId: string) {
+    try {
+      const row = (await fnLoadRecord({ data: { id: recordId } })) as Record<string, unknown>;
+      const statusPayload = {
+        id: row.id,
+        title: row.title,
+        status: row.status,
+        analysis_status: row.analysis_status,
+        analysis_error: row.analysis_error,
+        analysis_started_at: row.analysis_started_at,
+        analysis_completed_at: row.analysis_completed_at,
+        retry_count: row.retry_count,
+        max_retries: row.max_retries,
+        next_retry_at: row.next_retry_at,
+        last_error_at: row.last_error_at,
+        artifacts_meta: row.artifacts_meta,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+      const name = `status-${recordId.slice(0, 8)}.json`;
+      downloadFile(name, JSON.stringify(statusPayload, null, 2), "application/json");
+      toast.success(`Pobrano ${name}`);
+    } catch (e) {
+      toast.error(`Pobranie nie powiodło się: ${(e as Error).message}`);
+    }
+  }
+
     try {
       await fnAddWatch({
         data: {
