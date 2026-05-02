@@ -428,9 +428,11 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
 
   const variant = job.phase === "failed"
     ? "bg-destructive/10 border-destructive/30"
-    : job.phase === "done"
-      ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
-      : "bg-muted border-border";
+    : job.phase === "cancelled"
+      ? "bg-muted border-border"
+      : job.phase === "done"
+        ? "bg-[oklch(0.95_0.05_145)] border-[oklch(0.80_0.10_145)]"
+        : "bg-muted border-border";
 
   return (
     <div className={`rounded-md border px-3 py-2 space-y-2 ${variant}`}>
