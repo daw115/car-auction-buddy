@@ -1156,7 +1156,15 @@ function Panel() {
     }
   }
 
-  async function removeRecord(id: string) {
+  async function retryAnalysis(recordId: string) {
+    await openRecord(recordId);
+    // openRecord sets listings/criteria — runAi will use them
+    // We need to wait for state to settle, so we use a microtask
+    setTimeout(() => {
+      runAi();
+    }, 100);
+  }
+
     if (!confirm("Usunąć ten rekord?")) return;
     try {
       await fnDeleteRecord({ data: { id } });
