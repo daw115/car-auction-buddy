@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, CheckCircle2, XCircle, Loader2, KeyRound,
-  ShieldCheck, Zap, Shield, Gauge,
+  ShieldCheck, Zap, Shield, Gauge, AlertTriangle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
