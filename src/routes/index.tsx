@@ -735,7 +735,8 @@ function Panel() {
           );
           toast.error(errMsg);
           setBusy(null);
-          scrapeContextRef.current = null;
+           scrapeContextRef.current = null;
+           clearPersistedScrapeJob();
         } else {
           setScrapeJob((s) =>
             s
