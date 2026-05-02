@@ -297,4 +297,91 @@ describe("Resume flow integration", () => {
     // Banner reappears because localStorage still has the job
     expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
   });
+
+  // ---- Job lifecycle after resume ----
+  describe("job completion clears banner and localStorage", () => {
+    it("after resume → job done: banner gone, localStorage cleared, result shown", async () => {
+      persistScrapeJob("job-done-1", "ck-done", { make: "Volvo", budget_usd: 22000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      // Click Wznów
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      expect(screen.getByTestId("busy-indicator")).toHaveTextContent("busy: scraper");
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
+
+      // Simulate job completion (like poller receiving "done" status)
+      act(() => handleRef.current!.completeJob());
+
+      // Busy indicator gone
+      expect(screen.queryByTestId("busy-indicator")).not.toBeInTheDocument();
+      // Banner NOT shown (no pendingResume)
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Odrzuć/i })).not.toBeInTheDocument();
+      // localStorage cleared
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+      // Result indicator shown
+      expect(screen.getByTestId("job-result")).toHaveTextContent("done");
+    });
+
+    it("after resume → job failed: localStorage cleared, no banner", async () => {
+      persistScrapeJob("job-fail-1", "ck-fail", { make: "Fiat", budget_usd: 6000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
+
+      act(() => handleRef.current!.failJob());
+
+      expect(screen.queryByTestId("busy-indicator")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+      expect(screen.getByTestId("job-result")).toHaveTextContent("failed");
+    });
+
+    it("after resume → job cancelled: localStorage cleared, no banner", async () => {
+      persistScrapeJob("job-cancel-1", "ck-cancel", { make: "Peugeot", budget_usd: 9000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+
+      act(() => handleRef.current!.cancelJob());
+
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId("job-result")).toHaveTextContent("cancelled");
+    });
+
+    it("after job done + remount: no banner appears (localStorage is clean)", async () => {
+      persistScrapeJob("job-clean-1", "ck-clean", { make: "Lexus", budget_usd: 35000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      const { unmount } = render(
+        <ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />,
+      );
+
+      // Resume + complete
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      act(() => handleRef.current!.completeJob());
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+
+      // Remount (simulates page reload after job finished)
+      unmount();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // No banner, idle state
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId("idle-state")).toBeInTheDocument();
+      expect(onResume).toHaveBeenCalledTimes(1); // only from earlier click
+    });
+  });
 });
