@@ -158,6 +158,7 @@ type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | 
 
 type AnalysisJobState = {
   phase: AnalysisPhase;
+  lastPhase?: AnalysisPhase;
   startedAt: number;
   elapsedMs: number;
   lotsCount?: number;
