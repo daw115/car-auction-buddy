@@ -88,12 +88,14 @@ export const Route = createFileRoute("/")({
 });
 
 type ClientRow = { id: string; name: string; contact: string | null; notes: string | null; created_at: string };
+type AiMeta = { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
 type ArtifactsMeta = {
   report_html?: { size: number; generated_at: string };
   mail_html?: { size: number; generated_at: string };
   ai_input?: { size: number; generated_at: string };
   ai_prompt?: { size: number; generated_at: string };
   analysis?: { lots_count: number; generated_at: string };
+  ai_meta?: AiMeta;
 };
 type RecordSummary = {
   id: string;
