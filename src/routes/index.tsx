@@ -1418,7 +1418,22 @@ function Panel() {
   async function retryAnalysis(recordId: string) {
     // Cancel any pending auto-retry
     if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
-    currentRetryRef.current = 0;
+
+    // Load record to check retry limit before proceeding
+    const row = (await fnLoadRecord({ data: { id: recordId } })) as unknown as {
+      retry_count: number;
+      max_retries: number;
+      analysis_error?: string | null;
+    };
+
+    if (row.retry_count >= row.max_retries) {
+      toast.error(
+        `Wyczerpano limit ${row.max_retries} prób ponowienia.${row.analysis_error ? ` Ostatni błąd: ${row.analysis_error}` : ""}`,
+      );
+      return;
+    }
+
+    currentRetryRef.current = row.retry_count;
     await openRecord(recordId);
     // Log retry event with preserved criteria
     try {
@@ -1427,7 +1442,7 @@ function Panel() {
           recordId,
           clientId: activeClientId ?? undefined,
           criteria: criteria as unknown as Record<string, unknown>,
-          retryCount: 0,
+          retryCount: row.retry_count,
           source: "manual" as const,
         },
       });
