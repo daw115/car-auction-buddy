@@ -858,11 +858,30 @@ function Panel() {
         }
       }
 
+      // Build artifacts metadata
+      const now = new Date().toISOString();
+      const artifactsMeta: ArtifactsMeta = {
+        analysis: { lots_count: r.analysis.length, generated_at: now },
+      };
+      if (r.ai_input) {
+        artifactsMeta.ai_input = { size: JSON.stringify(r.ai_input).length, generated_at: now };
+      }
+      if (r.ai_prompt) {
+        artifactsMeta.ai_prompt = { size: r.ai_prompt.length, generated_at: now };
+      }
+      if (generatedReportHtml) {
+        artifactsMeta.report_html = { size: generatedReportHtml.length, generated_at: now };
+      }
+      if (generatedMailHtml) {
+        artifactsMeta.mail_html = { size: generatedMailHtml.length, generated_at: now };
+      }
+
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
         setAnalysisJob((s) => s ? { ...s, phase: "saving", elapsedMs: Date.now() - startedAt } : s);
         try {
           const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
+          const analysisStartedIso = new Date(startedAt).toISOString();
           const row = (await fnSaveRecord({
             data: {
               id: activeRecordId ?? undefined,
@@ -876,6 +895,10 @@ function Panel() {
               analysis: r.analysis,
               report_html: generatedReportHtml || null,
               mail_html: generatedMailHtml || null,
+              analysis_status: "done",
+              analysis_started_at: analysisStartedIso,
+              analysis_completed_at: now,
+              artifacts_meta: artifactsMeta,
             },
           })) as { id: string };
           setActiveRecordId(row.id);
