@@ -228,11 +228,19 @@ function ScraperProgress({
         ? 100
         : Math.min(95, Math.round((job.elapsedMs / ASSUMED_TOTAL_MS) * 100));
 
+  // Compute fractional progress from explicit progress OR current/total
+  const effectiveProgress =
+    typeof job.progress === "number" && job.progress > 0
+      ? job.progress
+      : typeof job.current === "number" && typeof job.total === "number" && job.total > 0
+        ? job.current / job.total
+        : null;
+
   const etaMs =
     isFinal
       ? 0
-      : typeof job.progress === "number" && job.progress > 0
-        ? Math.max(0, job.elapsedMs / job.progress - job.elapsedMs)
+      : effectiveProgress !== null && effectiveProgress > 0
+        ? Math.max(0, job.elapsedMs / effectiveProgress - job.elapsedMs)
         : Math.max(0, ASSUMED_TOTAL_MS - job.elapsedMs);
 
   const statusLabel: Record<string, string> = {
