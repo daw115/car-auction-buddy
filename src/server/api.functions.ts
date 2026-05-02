@@ -1549,8 +1549,9 @@ export const runLotReports = createServerFn({ method: "POST" })
     const listings = data.listings as CarLot[];
 
     // Read DB-stored AI provider preference
-    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode").eq("id", 1).single();
+    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode, ai_fallback_mode").eq("id", 1).single();
     const dbPreference = cfgRow?.ai_analysis_mode ?? null;
+    const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
 
     const userPrompt = `Kryteria klienta:
 - Marka/model: ${criteria.make} ${criteria.model || "(dowolny)"}
@@ -1576,6 +1577,7 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
         userPrompt,
         maxTokens: 16384,
         dbPreference,
+        fallbackMode,
       });
       raw = result.text;
       await log.info(
