@@ -69,6 +69,13 @@ export const Route = createFileRoute("/")({
 });
 
 type ClientRow = { id: string; name: string; contact: string | null; notes: string | null; created_at: string };
+type ArtifactsMeta = {
+  report_html?: { size: number; generated_at: string };
+  mail_html?: { size: number; generated_at: string };
+  ai_input?: { size: number; generated_at: string };
+  ai_prompt?: { size: number; generated_at: string };
+  analysis?: { lots_count: number; generated_at: string };
+};
 type RecordSummary = {
   id: string;
   client_id: string | null;
@@ -76,6 +83,10 @@ type RecordSummary = {
   status: string;
   created_at: string;
   updated_at: string;
+  analysis_status: string | null;
+  analysis_started_at: string | null;
+  analysis_completed_at: string | null;
+  artifacts_meta: ArtifactsMeta | null;
 };
 type ConfigEnv = {
   ANTHROPIC_API_KEY: boolean;
@@ -847,11 +858,30 @@ function Panel() {
         }
       }
 
+      // Build artifacts metadata
+      const now = new Date().toISOString();
+      const artifactsMeta: ArtifactsMeta = {
+        analysis: { lots_count: r.analysis.length, generated_at: now },
+      };
+      if (r.ai_input) {
+        artifactsMeta.ai_input = { size: JSON.stringify(r.ai_input).length, generated_at: now };
+      }
+      if (r.ai_prompt) {
+        artifactsMeta.ai_prompt = { size: r.ai_prompt.length, generated_at: now };
+      }
+      if (generatedReportHtml) {
+        artifactsMeta.report_html = { size: generatedReportHtml.length, generated_at: now };
+      }
+      if (generatedMailHtml) {
+        artifactsMeta.mail_html = { size: generatedMailHtml.length, generated_at: now };
+      }
+
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
         setAnalysisJob((s) => s ? { ...s, phase: "saving", elapsedMs: Date.now() - startedAt } : s);
         try {
           const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
+          const analysisStartedIso = new Date(startedAt).toISOString();
           const row = (await fnSaveRecord({
             data: {
               id: activeRecordId ?? undefined,
@@ -865,6 +895,10 @@ function Panel() {
               analysis: r.analysis,
               report_html: generatedReportHtml || null,
               mail_html: generatedMailHtml || null,
+              analysis_status: "done",
+              analysis_started_at: analysisStartedIso,
+              analysis_completed_at: now,
+              artifacts_meta: artifactsMeta,
             },
           })) as { id: string };
           setActiveRecordId(row.id);
@@ -1526,77 +1560,112 @@ function Panel() {
               {records.length === 0 && (
                 <p className="px-1 py-2 text-xs text-muted-foreground">Brak rekordów.</p>
               )}
-              {records.map((r) => (
-                <div
-                  key={r.id}
-                  className={`group flex items-start justify-between rounded-md border px-2 py-1.5 text-sm cursor-pointer ${
-                    activeRecordId === r.id ? "border-primary bg-accent" : "border-transparent hover:bg-muted"
-                  }`}
-                  onClick={() => void openRecord(r.id)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{r.title || "(bez tytułu)"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(r.created_at).toLocaleString("pl-PL")} · {r.status}
+              {records.map((r) => {
+                const am = r.artifacts_meta;
+                const analysisStatusLabel: Record<string, { text: string; color: string }> = {
+                  done: { text: "Gotowe", color: "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]" },
+                  failed: { text: "Błąd", color: "bg-destructive/15 text-destructive" },
+                  analyzing: { text: "Analizuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
+                  rendering: { text: "Renderuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
+                  saving: { text: "Zapisuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
+                  queued: { text: "W kolejce", color: "bg-muted text-muted-foreground" },
+                };
+                const aStatus = r.analysis_status ? analysisStatusLabel[r.analysis_status] : null;
+
+                return (
+                  <div
+                    key={r.id}
+                    className={`group flex flex-col gap-1 rounded-md border px-2 py-1.5 text-sm cursor-pointer ${
+                      activeRecordId === r.id ? "border-primary bg-accent" : "border-transparent hover:bg-muted"
+                    }`}
+                    onClick={() => void openRecord(r.id)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{r.title || "(bez tytułu)"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(r.created_at).toLocaleString("pl-PL")} · {r.status}
+                        </div>
+                      </div>
+                      <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "report_html"); }}
+                          title="Pobierz raport HTML"
+                          disabled={!am?.report_html}
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "ai_input"); }}
+                          title="Pobierz AI input (JSON)"
+                          disabled={!am?.ai_input}
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "ai_prompt"); }}
+                          title="Pobierz prompt AI (TXT)"
+                          disabled={!am?.ai_prompt}
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void downloadReportBundle(r.id); }}
+                          title="Pobierz pakiet raportu (ZIP)"
+                          disabled={r.status !== "analyzed"}
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void removeRecord(r.id); }}
+                          title="Usuń"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </div>
                     </div>
+                    {/* Analysis status + artifact badges */}
+                    {(aStatus || am) && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {aStatus && (
+                          <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${aStatus.color}`}>
+                            {aStatus.text}
+                          </span>
+                        )}
+                        {am?.report_html && (
+                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`HTML ${(am.report_html.size / 1024).toFixed(0)} KB`}>
+                            HTML
+                          </span>
+                        )}
+                        {am?.analysis && (
+                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`${am.analysis.lots_count} lotów`}>
+                            AI:{am.analysis.lots_count}
+                          </span>
+                        )}
+                        {am?.ai_input && (
+                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`Input ${(am.ai_input.size / 1024).toFixed(0)} KB`}>
+                            IN
+                          </span>
+                        )}
+                        {am?.ai_prompt && (
+                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`Prompt ${(am.ai_prompt.size / 1024).toFixed(0)} KB`}>
+                            PR
+                          </span>
+                        )}
+                        {am?.mail_html && (
+                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                            MAIL
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void downloadRecordArtifact(r.id, "report_html");
-                      }}
-                      title="Pobierz raport HTML"
-                      disabled={r.status !== "analyzed"}
-                      className="disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <FileText className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void downloadRecordArtifact(r.id, "ai_input");
-                      }}
-                      title="Pobierz AI input (JSON)"
-                      disabled={r.status !== "analyzed"}
-                      className="disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <BarChart3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void downloadRecordArtifact(r.id, "ai_prompt");
-                      }}
-                      title="Pobierz prompt AI (TXT)"
-                      disabled={r.status !== "analyzed"}
-                      className="disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void downloadReportBundle(r.id);
-                      }}
-                      title="Pobierz pakiet raportu (ZIP: HTML + JSON)"
-                      disabled={r.status !== "analyzed"}
-                      className="disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void removeRecord(r.id);
-                      }}
-                      title="Usuń"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
           <LogsPanel
