@@ -180,7 +180,7 @@ export const updateConfig = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       use_mock_data: z.boolean().optional(),
-      ai_analysis_mode: z.enum(["anthropic", "auto", "openai", "local"]).optional(),
+      ai_analysis_mode: z.enum(["anthropic", "gemini", "auto"]).optional(),
       filter_seller_insurance_only: z.boolean().optional(),
       min_auction_window_hours: z.number().int().min(0).max(720).optional(),
       max_auction_window_hours: z.number().int().min(0).max(720).optional(),
