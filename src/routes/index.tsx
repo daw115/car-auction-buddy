@@ -1823,6 +1823,22 @@ function Panel() {
                 rerunDisabled={busy === "scraper"}
               />
             )}
+            <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Anulować wznowiony job?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Ten job został wznowiony po przeładowaniu strony. Anulowanie przerwie trwający proces scrapowania — tej operacji nie można cofnąć.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Nie, kontynuuj</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmCancelScrape} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Tak, anuluj
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Textarea
               className="font-mono text-xs"
               rows={6}
