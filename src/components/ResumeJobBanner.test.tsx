@@ -134,4 +134,63 @@ describe("ResumeJobBanner", () => {
     expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
     expect(screen.queryByText(/nieprawidłowe/)).not.toBeInTheDocument();
   });
+
+  // ---- localStorage failures → UI stays clean ----
+  describe("behavior when localStorage errors cause null pendingResume", () => {
+    it("renders nothing when both pendingResume and validationErrors are empty (simulates getItem throw)", () => {
+      // When readPersistedScrapeJob catches a getItem error it returns { job: null, validationErrors: [] }
+      // The parent passes both as props → banner should be invisible
+      const { container } = render(
+        <ResumeJobBanner pendingResume={null} validationErrors={[]} {...defaults()} />,
+      );
+      expect(container.innerHTML).toBe("");
+    });
+
+    it("shows only error list when storage returned validation errors (simulates corrupt data)", () => {
+      render(
+        <ResumeJobBanner
+          pendingResume={null}
+          validationErrors={[
+            "make: Marka jest wymagana",
+            "budget_usd: Required",
+          ]}
+          {...defaults()}
+        />,
+      );
+
+      // Error banner visible
+      expect(screen.getByText(/nieprawidłowe/)).toBeInTheDocument();
+      expect(screen.getByText("make: Marka jest wymagana")).toBeInTheDocument();
+      expect(screen.getByText("budget_usd: Required")).toBeInTheDocument();
+
+      // Resume/dismiss buttons NOT visible
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Odrzuć/i })).not.toBeInTheDocument();
+
+      // Zamknij button IS visible
+      expect(screen.getByRole("button", { name: /Zamknij/i })).toBeInTheDocument();
+    });
+
+    it("error banner can be dismissed without side effects", async () => {
+      const cbs = defaults();
+      render(
+        <ResumeJobBanner pendingResume={null} validationErrors={["err"]} {...cbs} />,
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Zamknij/i }));
+      expect(cbs.onClearErrors).toHaveBeenCalledTimes(1);
+      // onResume and onDismiss should not have been called
+      expect(cbs.onResume).not.toHaveBeenCalled();
+      expect(cbs.onDismiss).not.toHaveBeenCalled();
+    });
+
+    it("does not crash with empty validation errors array and null resume", () => {
+      // Edge case: everything empty, no crash
+      expect(() =>
+        render(
+          <ResumeJobBanner pendingResume={null} validationErrors={[]} {...defaults()} />,
+        ),
+      ).not.toThrow();
+    });
+  });
 });
