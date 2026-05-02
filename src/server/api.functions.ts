@@ -181,6 +181,7 @@ export const updateConfig = createServerFn({ method: "POST" })
     z.object({
       use_mock_data: z.boolean().optional(),
       ai_analysis_mode: z.enum(["anthropic", "gemini", "auto"]).optional(),
+      ai_fallback_mode: z.enum(["error_only", "race_both"]).optional(),
       filter_seller_insurance_only: z.boolean().optional(),
       min_auction_window_hours: z.number().int().min(0).max(720).optional(),
       max_auction_window_hours: z.number().int().min(0).max(720).optional(),
@@ -540,8 +541,9 @@ export const runAnalysis = createServerFn({ method: "POST" })
     const listings = data.listings as CarLot[];
 
     // Read DB-stored AI provider preference
-    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode").eq("id", 1).single();
+    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode, ai_fallback_mode").eq("id", 1).single();
     const dbPreference = cfgRow?.ai_analysis_mode ?? null;
+    const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
     // Default 4096 — Anthropic responses for typical batches (≤30 lots) fit in
     // ~3-4k tokens. Cap higher only via env override. Keeps response time and
     // cost predictable, also reduces 524 timeout risk.
@@ -586,7 +588,7 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens, dbPreference });
+      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens, dbPreference, fallbackMode });
       raw = result.text;
       await log.info(
         "ai_response",
@@ -1548,8 +1550,9 @@ export const runLotReports = createServerFn({ method: "POST" })
     const listings = data.listings as CarLot[];
 
     // Read DB-stored AI provider preference
-    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode").eq("id", 1).single();
+    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode, ai_fallback_mode").eq("id", 1).single();
     const dbPreference = cfgRow?.ai_analysis_mode ?? null;
+    const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
 
     const userPrompt = `Kryteria klienta:
 - Marka/model: ${criteria.make} ${criteria.model || "(dowolny)"}
@@ -1575,6 +1578,7 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
         userPrompt,
         maxTokens: 16384,
         dbPreference,
+        fallbackMode,
       });
       raw = result.text;
       await log.info(

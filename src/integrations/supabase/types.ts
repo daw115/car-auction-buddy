@@ -17,6 +17,7 @@ export type Database = {
       app_config: {
         Row: {
           ai_analysis_mode: string
+          ai_fallback_mode: string
           collect_all_prefiltered_results: boolean
           filter_seller_insurance_only: boolean
           id: number
@@ -28,6 +29,7 @@ export type Database = {
         }
         Insert: {
           ai_analysis_mode?: string
+          ai_fallback_mode?: string
           collect_all_prefiltered_results?: boolean
           filter_seller_insurance_only?: boolean
           id?: number
@@ -39,6 +41,7 @@ export type Database = {
         }
         Update: {
           ai_analysis_mode?: string
+          ai_fallback_mode?: string
           collect_all_prefiltered_results?: boolean
           filter_seller_insurance_only?: boolean
           id?: number
