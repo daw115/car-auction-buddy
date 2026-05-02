@@ -318,7 +318,7 @@ function ScraperProgress({
               size="sm"
               variant="outline"
               className="h-6 px-2 text-xs"
-              onClick={onCancel}
+              onClick={() => { if (confirm("Czy na pewno chcesz anulować ten job?")) onCancel(); }}
             >
               <X className="h-3 w-3 mr-1" />
               Anuluj
