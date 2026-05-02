@@ -1165,6 +1165,7 @@ function Panel() {
     }, 100);
   }
 
+  async function removeRecord(id: string) {
     if (!confirm("Usunąć ten rekord?")) return;
     try {
       await fnDeleteRecord({ data: { id } });
