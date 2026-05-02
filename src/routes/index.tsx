@@ -751,6 +751,7 @@ function Panel() {
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
+  const [aiMeta, setAiMeta] = useState<{ provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } } | null>(null);
   const [aiInput, setAiInput] = useState<unknown>(null);
   const [aiPrompt, setAiPrompt] = useState<string>("");
   const [reportHtml, setReportHtml] = useState<string>("");
@@ -1262,10 +1263,12 @@ function Panel() {
         ai_input: unknown;
         ai_prompt: string;
         analysis: AnalyzedLot[];
+        ai_meta?: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
       };
       setAiInput(r.ai_input);
       setAiPrompt(r.ai_prompt);
       setAnalysis(r.analysis);
+      setAiMeta(r.ai_meta ?? null);
 
       // Auto-generuj raport HTML + mail
       let generatedReportHtml = "";
@@ -1581,6 +1584,7 @@ function Panel() {
     setListings([]);
     setListingsRaw("");
     setAnalysis(null);
+    setAiMeta(null);
     setAiInput(null);
     setAiPrompt("");
     setReportHtml("");
@@ -1962,9 +1966,29 @@ function Panel() {
 
           {analysis && analysis.length > 0 && (
             <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Wyniki analizy AI ({analysis.length})
-              </h3>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Wyniki analizy AI ({analysis.length})
+                </h3>
+                {aiMeta && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${
+                      aiMeta.provider === "gemini"
+                        ? "bg-blue-500/15 text-blue-700 dark:text-blue-400"
+                        : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                    }`}>
+                      {aiMeta.provider === "gemini" ? "Gemini" : "Anthropic"}
+                      {aiMeta.usedFallback && " (fallback)"}
+                    </span>
+                    <span className="text-muted-foreground" title={`Model: ${aiMeta.model}`}>
+                      {aiMeta.model}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {aiMeta.usage.input_tokens + aiMeta.usage.output_tokens} tok
+                    </span>
+                  </div>
+                )}
+              </div>
               <div className="space-y-3">
                 {analysis.map((a) => (
                   <div key={a.lot.lot_id} className="rounded-md border p-3">
