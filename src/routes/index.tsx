@@ -1907,7 +1907,7 @@ function Panel() {
                         >
                           <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
-                        {r.analysis_status === "failed" && (
+                        {(r.analysis_status === "failed" || r.analysis_status === "cancelled") && (
                           <button
                             onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
                             title="Ponów analizę AI"
