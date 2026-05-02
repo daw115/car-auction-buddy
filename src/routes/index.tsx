@@ -600,9 +600,23 @@ function Panel() {
     const ctx = scrapeContextRef.current;
     let polling = false;
 
+    const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
     const t = setInterval(async () => {
       // Always tick elapsed
+      const elapsed = Date.now() - (scrapeJob?.startedAt ?? Date.now());
       setScrapeJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
+
+      // Timeout after 5 min
+      if (elapsed > POLL_TIMEOUT_MS) {
+        setScrapeJob((s) =>
+          s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 5 min", elapsedMs: Date.now() - s.startedAt } : s,
+        );
+        scrapeContextRef.current = null;
+        setBusy(null);
+        toast.error("Timeout scrapera (5 min)");
+        return;
+      }
 
       // Poll backend if we have a jobId and not already mid-request
       if (!ctx?.jobId || polling || cancelRequestedRef.current) return;
