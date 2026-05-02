@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
 import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL, ANTHROPIC_MODELS } from "./anthropic.server";
 import { callAI, detectProvider } from "./ai.server";
-import { GEMINI_MODELS, DEFAULT_GEMINI_MODEL } from "./gemini.server";
+import { DEFAULT_GEMINI_MODEL } from "./gemini.server";
 import { renderReportHtml, renderMailHtml } from "./report";
 import { makeLogger } from "./logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
