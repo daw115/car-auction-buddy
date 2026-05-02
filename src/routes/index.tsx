@@ -876,6 +876,8 @@ function Panel() {
   const cancelRequestedRef = useRef(false);
   // Track whether the current job was resumed (needs confirmation before cancel)
   const wasResumedRef = useRef(false);
+  // Track last phase notified via toast (to avoid duplicate toasts)
+  const lastNotifiedPhaseRef = useRef<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // On mount: detect active scrape job in localStorage and offer resume
