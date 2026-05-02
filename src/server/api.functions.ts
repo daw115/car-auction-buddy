@@ -540,8 +540,9 @@ export const runAnalysis = createServerFn({ method: "POST" })
     const listings = data.listings as CarLot[];
 
     // Read DB-stored AI provider preference
-    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode").eq("id", 1).single();
+    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode, ai_fallback_mode").eq("id", 1).single();
     const dbPreference = cfgRow?.ai_analysis_mode ?? null;
+    const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
     // Default 4096 — Anthropic responses for typical batches (≤30 lots) fit in
     // ~3-4k tokens. Cap higher only via env override. Keeps response time and
     // cost predictable, also reduces 524 timeout risk.
