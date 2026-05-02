@@ -918,6 +918,7 @@ function Panel() {
   }
 
   async function cancelScrape() {
+    wasResumedRef.current = false;
     if (!scrapeJob?.jobId) {
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
