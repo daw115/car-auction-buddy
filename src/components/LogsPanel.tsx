@@ -409,7 +409,6 @@ function ProgressLine({ details }: { details: Record<string, unknown> | null }) 
         : null;
 
   const parts: string[] = [];
-  if (phase) parts.push(phase);
   if (step && step !== phase) parts.push(step);
   if (current !== null && total !== null) parts.push(`${current}/${total}`);
   if (pct !== null) parts.push(`${pct}%`);
@@ -424,9 +423,18 @@ function ProgressLine({ details }: { details: Record<string, unknown> | null }) 
           />
         </div>
       )}
-      {parts.length > 0 && (
-        <div className="text-[10px] text-muted-foreground">{parts.join(" · ")}</div>
-      )}
+      <div className="flex flex-wrap items-center gap-1">
+        {phase && (
+          <span className={`inline-flex items-center rounded px-1 py-0 text-[10px] font-bold ${
+            STEP_COLORS[phase] ?? "bg-muted text-muted-foreground"
+          }`}>
+            {phase}
+          </span>
+        )}
+        {parts.length > 0 && (
+          <span className="text-[10px] text-muted-foreground">{parts.join(" · ")}</span>
+        )}
+      </div>
     </div>
   );
 }
