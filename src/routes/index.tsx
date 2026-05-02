@@ -755,11 +755,11 @@ function Panel() {
 
   async function cancelScrape() {
     if (!scrapeJob?.jobId) {
-      // Local-only cancel (sync mode or no job yet)
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
+      await persistCancelledStatus();
       toast.message("Anulowano lokalnie");
       return;
     }
@@ -775,10 +775,36 @@ function Panel() {
       scrapeContextRef.current = null;
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
+      await persistCancelledStatus();
       toast.success("Wyszukiwanie anulowane");
     } catch (e) {
       toast.error(`Błąd anulowania: ${(e as Error).message}`);
     }
+  }
+
+  async function persistCancelledStatus() {
+    if (!activeClient && !activeRecordId) return;
+    try {
+      const now = new Date().toISOString();
+      const row = (await fnSaveRecord({
+        data: {
+          id: activeRecordId ?? undefined,
+          client_id: activeClient?.id ?? activeClientId ?? undefined,
+          title: `${criteria.make} ${criteria.model || ""}`.trim(),
+          status: "draft",
+          criteria,
+          listings,
+          analysis_status: "cancelled",
+          analysis_completed_at: now,
+          analysis_error: "Anulowano przez użytkownika",
+          retry_count: 0,
+          next_retry_at: null,
+          last_error_at: now,
+        },
+      })) as unknown as { id: string };
+      if (!activeRecordId) setActiveRecordId(row.id);
+      if (activeClient) await refreshRecords(activeClient.id);
+    } catch { /* best-effort */ }
   }
 
   async function downloadJobLogs(jobId: string, format: "json" | "csv" = "json") {
