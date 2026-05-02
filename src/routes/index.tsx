@@ -1122,9 +1122,20 @@ function Panel() {
       if (canRetry && backoffMs) {
         const delaySec = Math.round(backoffMs / 1000);
         toast.error(`${msg} — ponowna próba za ${delaySec}s (${newRetryCount}/${maxRetries})`);
-        // Schedule auto-retry
-        autoRetryTimerRef.current = window.setTimeout(() => {
+        // Schedule auto-retry & log
+        autoRetryTimerRef.current = window.setTimeout(async () => {
           currentRetryRef.current = newRetryCount;
+          try {
+            await fnLogRetryEvent({
+              data: {
+                recordId: activeRecordId ?? "",
+                clientId: activeClientId ?? undefined,
+                criteria: criteria as unknown as Record<string, unknown>,
+                retryCount: newRetryCount,
+                source: "auto" as const,
+              },
+            });
+          } catch { /* best-effort */ }
           runAi();
         }, backoffMs);
       } else {
