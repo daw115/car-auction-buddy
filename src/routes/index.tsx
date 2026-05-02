@@ -692,6 +692,7 @@ function Panel() {
           s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 5 min", elapsedMs: Date.now() - s.startedAt } : s,
         );
         scrapeContextRef.current = null;
+        clearPersistedScrapeJob();
         setBusy(null);
         toast.error("Timeout scrapera (5 min)");
         return;
