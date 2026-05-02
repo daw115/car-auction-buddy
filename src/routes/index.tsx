@@ -1024,6 +1024,7 @@ function Panel() {
       const jobId = start.job_id;
       const cacheKey = start.cache_key;
       scrapeContextRef.current = { jobId, cacheKey, criteria: { ...criteria } };
+      persistScrapeJob(jobId, cacheKey, criteria);
       setScrapeJob({ status: "running", jobId, startedAt, elapsedMs: 0 });
       // setBusy stays "scraper" — cleared by the poller on terminal state
     } catch (e) {
