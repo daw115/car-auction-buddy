@@ -675,7 +675,9 @@ function Panel() {
     if (!scrapeJob?.jobId) {
       // Local-only cancel (sync mode or no job yet)
       cancelRequestedRef.current = true;
-      setScrapeJob((s) => (s ? { ...s, status: "failed" } : s));
+      scrapeContextRef.current = null;
+      setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
+      setBusy(null);
       toast.message("Anulowano lokalnie");
       return;
     }
