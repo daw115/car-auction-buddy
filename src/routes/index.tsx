@@ -22,6 +22,7 @@ import {
   getJobLogs,
   runLotReports,
   getReportBundle,
+  logRetryEvent,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
@@ -489,6 +490,7 @@ function Panel() {
   const fnCancelScraper = useServerFn(cancelScraperJob);
   const fnGetJobLogs = useServerFn(getJobLogs);
   const fnClearCache = useServerFn(clearScrapeCache);
+  const fnLogRetryEvent = useServerFn(logRetryEvent);
 
   async function clearCacheAll() {
     if (!confirm("Wyczyścić cały cache wyników wyszukiwań?")) return;
@@ -1120,9 +1122,20 @@ function Panel() {
       if (canRetry && backoffMs) {
         const delaySec = Math.round(backoffMs / 1000);
         toast.error(`${msg} — ponowna próba za ${delaySec}s (${newRetryCount}/${maxRetries})`);
-        // Schedule auto-retry
-        autoRetryTimerRef.current = window.setTimeout(() => {
+        // Schedule auto-retry & log
+        autoRetryTimerRef.current = window.setTimeout(async () => {
           currentRetryRef.current = newRetryCount;
+          try {
+            await fnLogRetryEvent({
+              data: {
+                recordId: activeRecordId ?? "",
+                clientId: activeClientId ?? undefined,
+                criteria: criteria as unknown as Record<string, unknown>,
+                retryCount: newRetryCount,
+                source: "auto" as const,
+              },
+            });
+          } catch { /* best-effort */ }
           runAi();
         }, backoffMs);
       } else {
@@ -1252,6 +1265,18 @@ function Panel() {
     if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
     currentRetryRef.current = 0;
     await openRecord(recordId);
+    // Log retry event with preserved criteria
+    try {
+      await fnLogRetryEvent({
+        data: {
+          recordId,
+          clientId: activeClientId ?? undefined,
+          criteria: criteria as unknown as Record<string, unknown>,
+          retryCount: 0,
+          source: "manual" as const,
+        },
+      });
+    } catch { /* best-effort logging */ }
     setTimeout(() => {
       runAi();
     }, 100);

@@ -1703,3 +1703,29 @@ export const getReportBundle = createServerFn({ method: "POST" })
 
     return { filename, base64, size: zipped.length };
   });
+
+// ---------- Retry logging ----------
+
+export const logRetryEvent = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({
+      recordId: z.string(),
+      clientId: z.string().optional(),
+      criteria: z.record(z.unknown()),
+      retryCount: z.number(),
+      source: z.enum(["manual", "auto"]).default("manual"),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const log = makeLogger({
+      operation: "ai_analysis",
+      recordId: data.recordId,
+      clientId: data.clientId ?? null,
+    });
+    await log.info("retry_start", `Ponowne uruchomienie analizy (${data.source}), próba ${data.retryCount + 1}`, {
+      criteria: data.criteria,
+      source: data.source,
+      retry_count: data.retryCount,
+    });
+    return { ok: true };
+  });
