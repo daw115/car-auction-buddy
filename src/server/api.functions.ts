@@ -178,13 +178,13 @@ export const saveRecord = createServerFn({ method: "POST" })
     if (validation.corrected_meta) {
       const { error: patchErr } = await supabaseAdmin
         .from("records")
-        .update({ artifacts_meta: validation.corrected_meta })
-        .eq("id", row.id);
+        .update({ artifacts_meta: validation.corrected_meta as unknown as Record<string, unknown> & { [key: string]: unknown } })
+        .eq("id", row.id as string);
       if (!patchErr) {
         row.artifacts_meta = validation.corrected_meta;
       }
       if (validation.warnings.length > 0) {
-        console.warn(`[saveRecord] artifacts_meta corrected for ${row.id}:`, validation.warnings);
+        console.warn(`[saveRecord] artifacts_meta corrected for ${String(row.id)}:`, validation.warnings);
       }
     }
 
