@@ -1418,7 +1418,22 @@ function Panel() {
   async function retryAnalysis(recordId: string) {
     // Cancel any pending auto-retry
     if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
-    currentRetryRef.current = 0;
+
+    // Load record to check retry limit before proceeding
+    const row = (await fnLoadRecord({ data: { id: recordId } })) as unknown as {
+      retry_count: number;
+      max_retries: number;
+      analysis_error?: string | null;
+    };
+
+    if (row.retry_count >= row.max_retries) {
+      toast.error(
+        `Wyczerpano limit ${row.max_retries} prób ponowienia.${row.analysis_error ? ` Ostatni błąd: ${row.analysis_error}` : ""}`,
+      );
+      return;
+    }
+
+    currentRetryRef.current = row.retry_count;
     await openRecord(recordId);
     // Log retry event with preserved criteria
     try {
@@ -1427,7 +1442,7 @@ function Panel() {
           recordId,
           clientId: activeClientId ?? undefined,
           criteria: criteria as unknown as Record<string, unknown>,
-          retryCount: 0,
+          retryCount: row.retry_count,
           source: "manual" as const,
         },
       });
@@ -2032,14 +2047,19 @@ function Panel() {
                           <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
                         {(r.analysis_status === "failed" || r.analysis_status === "cancelled") && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
-                            title="Ponów analizę AI"
-                            className="disabled:opacity-30 disabled:cursor-not-allowed"
-                            disabled={busy !== null}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                          </button>
+                          (() => {
+                            const limitReached = r.retry_count >= r.max_retries;
+                            return (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
+                                title={limitReached ? `Wyczerpano limit ${r.max_retries} prób` : "Ponów analizę AI"}
+                                className="disabled:opacity-30 disabled:cursor-not-allowed"
+                                disabled={busy !== null || limitReached}
+                              >
+                                <RotateCcw className={`h-3.5 w-3.5 ${limitReached ? "text-muted-foreground/40" : "text-muted-foreground hover:text-primary"}`} />
+                              </button>
+                            );
+                          })()
                         )}
                         <button
                           onClick={(e) => { e.stopPropagation(); void removeRecord(r.id); }}
@@ -2105,7 +2125,12 @@ function Panel() {
                           </p>
                         )}
                         {r.retry_count >= r.max_retries && (
-                          <p className="text-[10px] font-medium">Wyczerpano limit prób</p>
+                          <div className="text-[10px] font-medium space-y-0.5">
+                            <p>🚫 Wyczerpano limit {r.max_retries} prób — ponowienie zablokowane</p>
+                            {r.analysis_error && (
+                              <p className="font-normal text-muted-foreground">Powód: {humanizeError(r.analysis_error)}</p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
