@@ -720,16 +720,48 @@ function Panel() {
       setAnalysis(r.analysis);
       toast.success(`Analiza gotowa (${r.analysis.length} lotów)`);
 
-      // Auto-generuj pakiet raportu (HTML + mail) — żeby był dostępny do pobrania w historii.
+      // Auto-generuj raport HTML + mail i zapisz artefakty do bazy
+      let generatedReportHtml = "";
+      let generatedMailHtml = "";
       if (r.analysis.length > 0) {
         try {
           const rep = (await fnRenderReport({
             data: { clientName: activeClient?.name ?? "Klient", analyzed: r.analysis },
           })) as { report_html: string; mail_html: string };
-          setReportHtml(rep.report_html);
-          setMailHtml(rep.mail_html);
+          generatedReportHtml = rep.report_html;
+          generatedMailHtml = rep.mail_html;
+          setReportHtml(generatedReportHtml);
+          setMailHtml(generatedMailHtml);
         } catch (err) {
           console.warn("Auto-render raportu nie powiódł się:", err);
+        }
+      }
+
+      // Auto-persist: zapisz rekord z analizą i artefaktami do DB
+      if (activeClient) {
+        try {
+          const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
+          const row = (await fnSaveRecord({
+            data: {
+              id: activeRecordId ?? undefined,
+              client_id: activeClient.id,
+              title,
+              status: "analyzed",
+              criteria,
+              listings,
+              ai_input: r.ai_input,
+              ai_prompt: r.ai_prompt || null,
+              analysis: r.analysis,
+              report_html: generatedReportHtml || null,
+              mail_html: generatedMailHtml || null,
+            },
+          })) as { id: string };
+          setActiveRecordId(row.id);
+          await refreshRecords(activeClient.id);
+          toast.success("Raport i artefakty zapisane automatycznie");
+        } catch (err) {
+          console.warn("Auto-zapis rekordu nie powiódł się:", err);
+          toast.error("Analiza gotowa, ale automatyczny zapis nie powiódł się. Zapisz ręcznie.");
         }
       }
     } catch (e) {
