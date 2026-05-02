@@ -40,7 +40,7 @@ interface ResumeEvent {
 /** Ref handle exposed by the harness so tests can simulate job lifecycle events */
 interface HarnessHandle {
   completeJob: () => void;
-  failJob: () => void;
+  failJob: (errorMessage?: string) => void;
   cancelJob: () => void;
 }
 
@@ -62,6 +62,7 @@ function ResumeFlowHarness({
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [jobResult, setJobResult] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const wasResumedRef = useRef(false);
 
   // On mount: detect job in localStorage (mirrors index.tsx useEffect)
@@ -83,10 +84,11 @@ function ResumeFlowHarness({
         clearPersistedScrapeJob();
         setJobResult("done");
       },
-      failJob: () => {
+      failJob: (msg?: string) => {
         setBusy(null);
         clearPersistedScrapeJob();
         setJobResult("failed");
+        setErrorMessage(msg ?? "Scraper job failed");
       },
       cancelJob: () => {
         setBusy(null);
@@ -126,6 +128,7 @@ function ResumeFlowHarness({
         onClearErrors={() => setValidationErrors([])}
       />
       {busy && <div data-testid="busy-indicator">busy: {busy}</div>}
+      {errorMessage && <div data-testid="error-message" role="alert">{errorMessage}</div>}
       {jobResult && <div data-testid="job-result">{jobResult}</div>}
       {!pendingResume && !busy && !validationErrors.length && !jobResult && (
         <div data-testid="idle-state">idle</div>
@@ -382,6 +385,102 @@ describe("Resume flow integration", () => {
       expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
       expect(screen.getByTestId("idle-state")).toBeInTheDocument();
       expect(onResume).toHaveBeenCalledTimes(1); // only from earlier click
+  });
+
+  // ---- Error flow after resume ----
+  describe("resume job ends with error — UI shows message, banner gone", () => {
+    it("after resume → failJob: error message shown, Wznów button gone, localStorage cleared", async () => {
+      persistScrapeJob("job-err-1", "ck-err", { make: "Renault", budget_usd: 11000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      // Resume
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      expect(screen.getByTestId("busy-indicator")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+
+      // Simulate failure with error message
+      act(() => handleRef.current!.failJob("Timeout: scraper nie odpowiedział w ciągu 60s"));
+
+      // Error message visible
+      expect(screen.getByRole("alert")).toHaveTextContent("Timeout: scraper nie odpowiedział w ciągu 60s");
+
+      // Busy indicator gone
+      expect(screen.queryByTestId("busy-indicator")).not.toBeInTheDocument();
+
+      // Wznów button gone (no banner)
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Odrzuć/i })).not.toBeInTheDocument();
+
+      // localStorage cleared
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+
+      // Result indicator
+      expect(screen.getByTestId("job-result")).toHaveTextContent("failed");
+    });
+
+    it("after resume → failJob with default message: shows generic error", async () => {
+      persistScrapeJob("job-err-2", "ck-err2", { make: "Opel", budget_usd: 7000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      act(() => handleRef.current!.failJob());
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Scraper job failed");
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("after resume → failJob + remount: no banner, no error (clean slate)", async () => {
+      persistScrapeJob("job-err-3", "ck-err3", { make: "Skoda", budget_usd: 9500 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      const { unmount } = render(
+        <ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />,
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      act(() => handleRef.current!.failJob("Connection refused"));
+
+      // Error shown
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+
+      // Remount (simulates page reload after failed job)
+      unmount();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // Clean state: no banner, no error, idle
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId("idle-state")).toBeInTheDocument();
+    });
+
+    it("error flow does not block subsequent normal operation (dismiss → idle)", async () => {
+      persistScrapeJob("job-err-4", "ck-err4", { make: "Seat", budget_usd: 13000 });
+
+      const onResume = vi.fn();
+      const handleRef = { current: null as HarnessHandle | null };
+      render(<ResumeFlowHarness onResumeTriggered={onResume} handleRef={handleRef} />);
+
+      // Resume and fail
+      await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+      act(() => handleRef.current!.failJob("API 500"));
+
+      // Error and result visible, no banner buttons
+      expect(screen.getByRole("alert")).toHaveTextContent("API 500");
+      expect(screen.getByTestId("job-result")).toHaveTextContent("failed");
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+
+      // No busy indicator lingering
+      expect(screen.queryByTestId("busy-indicator")).not.toBeInTheDocument();
     });
   });
+});
 });
