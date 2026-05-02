@@ -97,28 +97,98 @@ const recordPayloadSchema = z.object({
   last_error_at: z.string().optional().nullable(),
 });
 
+// Validate artifacts_meta consistency with actual fields after save
+function validateArtifactsMeta(row: Record<string, unknown>): {
+  valid: boolean;
+  warnings: string[];
+  corrected_meta: Record<string, unknown> | null;
+} {
+  const meta = (row.artifacts_meta ?? {}) as Record<string, unknown>;
+  const warnings: string[] = [];
+  const FIELD_MAP: Record<string, string> = {
+    report_html: "report_html",
+    mail_html: "mail_html",
+    ai_input: "ai_input",
+    ai_prompt: "ai_prompt",
+  };
+
+  let needsCorrection = false;
+  const corrected = { ...meta };
+
+  for (const [metaKey, dbField] of Object.entries(FIELD_MAP)) {
+    const fieldValue = row[dbField];
+    const hasField = fieldValue !== null && fieldValue !== undefined && fieldValue !== "";
+    const hasMeta = meta[metaKey] !== null && meta[metaKey] !== undefined;
+
+    if (hasMeta && !hasField) {
+      warnings.push(`artifacts_meta.${metaKey} present but ${dbField} is empty`);
+      corrected[metaKey] = { ...(corrected[metaKey] as Record<string, unknown> ?? {}), _missing: true };
+      needsCorrection = true;
+    } else if (hasField && !hasMeta) {
+      const size = typeof fieldValue === "string" ? fieldValue.length : JSON.stringify(fieldValue).length;
+      warnings.push(`${dbField} present but artifacts_meta.${metaKey} missing — auto-added`);
+      corrected[metaKey] = { size, generated_at: new Date().toISOString(), _auto: true };
+      needsCorrection = true;
+    }
+  }
+
+  // Check analysis lots count
+  if (Array.isArray(row.analysis) && (row.analysis as unknown[]).length > 0 && !meta.analysis) {
+    const count = (row.analysis as unknown[]).length;
+    warnings.push(`analysis has ${count} lots but artifacts_meta.analysis missing — auto-added`);
+    corrected.analysis = { lots_count: count, generated_at: new Date().toISOString(), _auto: true };
+    needsCorrection = true;
+  }
+
+  return {
+    valid: warnings.length === 0,
+    warnings,
+    corrected_meta: needsCorrection ? corrected : null,
+  };
+}
+
 export const saveRecord = createServerFn({ method: "POST" })
   .inputValidator(recordPayloadSchema.parse)
   .handler(async ({ data }) => {
     const payload = { ...data, updated_at: new Date().toISOString() };
+    let row: Record<string, unknown>;
+
     if (data.id) {
-      const { data: row, error } = await supabaseAdmin
+      const { data: r, error } = await supabaseAdmin
         .from("records")
         .update(payload)
         .eq("id", data.id)
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return row;
+      row = r as Record<string, unknown>;
+    } else {
+      const { id: _ignore, ...insertPayload } = payload;
+      const { data: r, error } = await supabaseAdmin
+        .from("records")
+        .insert(insertPayload)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      row = r as Record<string, unknown>;
     }
-    const { id: _ignore, ...insertPayload } = payload;
-    const { data: row, error } = await supabaseAdmin
-      .from("records")
-      .insert(insertPayload)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return row;
+
+    // Post-save validation: fix artifacts_meta inconsistencies
+    const validation = validateArtifactsMeta(row);
+    if (validation.corrected_meta) {
+      const { error: patchErr } = await supabaseAdmin
+        .from("records")
+        .update({ artifacts_meta: validation.corrected_meta })
+        .eq("id", row.id);
+      if (!patchErr) {
+        row.artifacts_meta = validation.corrected_meta;
+      }
+      if (validation.warnings.length > 0) {
+        console.warn(`[saveRecord] artifacts_meta corrected for ${row.id}:`, validation.warnings);
+      }
+    }
+
+    return { ...row, _artifacts_warnings: validation.warnings.length > 0 ? validation.warnings : undefined };
   });
 
 export const deleteRecord = createServerFn({ method: "POST" })
