@@ -756,7 +756,7 @@ function Panel() {
     criteria: ClientCriteria;
   } | null>(null);
 
-  const TERMINAL_STATUSES = ["done", "completed", "finished", "success", "complete", "failed", "error", "cancelled"];
+  const TERMINAL_STATUSES = ["done", "completed", "finished", "success", "complete", "failed", "error", "cancelled", "not_found"];
 
   // Background poller: ticks elapsed + polls backend every 2s, pauses on terminal state
   useEffect(() => {
