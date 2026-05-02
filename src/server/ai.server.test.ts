@@ -184,9 +184,7 @@ describe("callAI — race_both", () => {
     });
 
     expect(result.fallbackMode).toBe("race_both");
-    // Gemini should win since it resolves first
     expect(result.provider).toBe("gemini");
-    // Both should have been called
     expect(mockCallAnthropic).toHaveBeenCalledOnce();
     expect(mockCallGemini).toHaveBeenCalledOnce();
   });
@@ -214,7 +212,7 @@ describe("callAI — race_both", () => {
   });
 });
 
-// ---------- callAI — no fallback available ----------
+// ---------- callAI — single provider (no fallback) ----------
 
 describe("callAI — single provider (no fallback)", () => {
   it("throws directly when single provider fails", async () => {

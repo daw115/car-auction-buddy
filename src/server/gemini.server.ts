@@ -1,8 +1,10 @@
 // Server-only Google Gemini (AI Studio) caller.
 // Reads GEMINI_API_KEY from process.env at call time.
 // Compatible return type with callAnthropic.
+// Includes retry with exponential backoff for rate limits and timeouts.
 
 import type { AnthropicResult, AnthropicUsage } from "./anthropic.server";
+import { withRetry, checkRetryableResponse, AITimeoutError } from "./ai-retry.server";
 
 export const GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -25,6 +27,17 @@ export async function callGemini(opts: {
 
   const model = opts.model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
 
+  return withRetry(
+    () => singleGeminiCall(apiKey, model, opts),
+    { provider: "Gemini", maxRetries: 3, initialDelayMs: 2_000 },
+  );
+}
+
+async function singleGeminiCall(
+  apiKey: string,
+  model: string,
+  opts: { system: string; userPrompt: string; maxTokens?: number },
+): Promise<AnthropicResult> {
   const TIMEOUT_MS = 120_000;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -48,14 +61,18 @@ export async function callGemini(opts: {
     });
   } catch (err) {
     if ((err as { name?: string })?.name === "AbortError") {
-      throw new Error(
-        `Gemini timeout po ${Math.round(TIMEOUT_MS / 1000)}s — model nie zdążył odpowiedzieć.`,
+      throw new AITimeoutError(
+        `Gemini: Timeout po ${Math.round(TIMEOUT_MS / 1000)}s — model nie zdążył odpowiedzieć.`,
+        "Gemini",
       );
     }
     throw err;
   } finally {
     clearTimeout(timer);
   }
+
+  // Check for retryable HTTP status (429, 503, 529) before reading body
+  checkRetryableResponse(res, "Gemini");
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -77,7 +94,7 @@ export async function callGemini(opts: {
 
   const parts = data.candidates?.[0]?.content?.parts ?? [];
   const text = parts.map((p) => p.text ?? "").join("");
-  if (!text) throw new Error("Gemini response has no text content");
+  if (!text) throw new Error("Gemini: Odpowiedź nie zawiera tekstu");
 
   const usage: AnthropicUsage = {
     input_tokens: data.usageMetadata?.promptTokenCount ?? 0,

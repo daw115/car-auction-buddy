@@ -1,5 +1,8 @@
 // Server-only Anthropic Messages API caller.
 // Reads ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL from process.env at call time.
+// Includes retry with exponential backoff for rate limits and timeouts.
+
+import { withRetry, checkRetryableResponse, AITimeoutError } from "./ai-retry.server";
 
 export const ANTHROPIC_MODELS = [
   "claude-opus-4-7",
@@ -36,8 +39,19 @@ export async function callAnthropic(opts: {
   const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "");
   const model = opts.model || process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
 
+  return withRetry(
+    () => singleAnthropicCall(apiKey, baseUrl, model, opts),
+    { provider: "Anthropic", maxRetries: 3, initialDelayMs: 2_000 },
+  );
+}
+
+async function singleAnthropicCall(
+  apiKey: string,
+  baseUrl: string,
+  model: string,
+  opts: { system: string; userPrompt: string; maxTokens?: number },
+): Promise<AnthropicResult> {
   // Cloudflare Workers / proxy obcina request po ~100s i zwraca 524.
-  // Przerywamy fetch wcześniej, żeby zwrócić czytelny błąd zamiast surowego 524.
   const TIMEOUT_MS = 110_000;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -62,8 +76,9 @@ export async function callAnthropic(opts: {
     });
   } catch (err) {
     if ((err as { name?: string })?.name === "AbortError") {
-      throw new Error(
-        `Anthropic timeout po ${Math.round(TIMEOUT_MS / 1000)}s — model nie zdążył odpowiedzieć. Spróbuj ponownie lub zmniejsz prompt/max_tokens.`,
+      throw new AITimeoutError(
+        `Anthropic: Timeout po ${Math.round(TIMEOUT_MS / 1000)}s — model nie zdążył odpowiedzieć. Spróbuj ponownie lub zmniejsz prompt/max_tokens.`,
+        "Anthropic",
       );
     }
     throw err;
@@ -71,10 +86,14 @@ export async function callAnthropic(opts: {
     clearTimeout(timer);
   }
 
+  // Check for retryable HTTP status (429, 503, 529) before reading body
+  checkRetryableResponse(res, "Anthropic");
+
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Anthropic HTTP ${res.status}: ${body.slice(0, 500)}`);
   }
+
   const data: {
     content?: Array<{ type: string; text?: string }>;
     model?: string;
@@ -84,7 +103,7 @@ export async function callAnthropic(opts: {
   const chunks = (data.content ?? [])
     .filter((c) => c.type === "text" && c.text)
     .map((c) => c.text as string);
-  if (chunks.length === 0) throw new Error("Anthropic response has no text content");
+  if (chunks.length === 0) throw new Error("Anthropic: Odpowiedź nie zawiera tekstu");
   return {
     text: chunks.join(""),
     model: data.model ?? model,
