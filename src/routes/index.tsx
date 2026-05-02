@@ -1989,7 +1989,13 @@ function Panel() {
                   saving: { text: "Zapisuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
                   queued: { text: "W kolejce", color: "bg-muted text-muted-foreground" },
                 };
-                const aStatus = r.analysis_status ? analysisStatusLabel[r.analysis_status] : null;
+                // Show "retrying" when this record is actively being re-analyzed
+                const isRetrying = activeRecordId === r.id && busy === "ai" && (r.analysis_status === "failed" || r.analysis_status === "cancelled");
+                const aStatus = isRetrying
+                  ? { text: "Ponawianie…", color: "bg-[oklch(0.92_0.08_60)] text-[oklch(0.35_0.12_60)]", spinning: true }
+                  : r.analysis_status
+                    ? analysisStatusLabel[r.analysis_status] ? { ...analysisStatusLabel[r.analysis_status], spinning: false } : null
+                    : null;
 
                 return (
                   <div
@@ -2073,7 +2079,8 @@ function Panel() {
                     {(aStatus || am) && (
                       <div className="flex flex-wrap items-center gap-1">
                         {aStatus && (
-                          <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${aStatus.color}`}>
+                          <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${aStatus.color}`}>
+                            {aStatus.spinning && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
                             {aStatus.text}
                           </span>
                         )}
