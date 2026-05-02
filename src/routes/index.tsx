@@ -209,7 +209,23 @@ function PhaseBadge({ phase, active }: { phase: string; active: boolean }) {
   );
 }
 
-function ScraperProgress({
+/** Map raw error messages to user-friendly Polish descriptions. */
+function humanizeError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("timeout") || lower.includes("timed out")) return "Przekroczono limit czasu oczekiwania na odpowiedź serwera.";
+  if (lower.includes("network") || lower.includes("fetch failed") || lower.includes("econnrefused")) return "Błąd połączenia sieciowego — serwer scrapera może być niedostępny.";
+  if (lower.includes("rate limit") || lower.includes("429")) return "Zbyt wiele zapytań — serwer ograniczył dostęp. Spróbuj ponownie za chwilę.";
+  if (lower.includes("401") || lower.includes("unauthorized")) return "Brak autoryzacji — sprawdź token API scrapera.";
+  if (lower.includes("403") || lower.includes("forbidden")) return "Dostęp zabroniony — sprawdź uprawnienia.";
+  if (lower.includes("500") || lower.includes("internal server error")) return "Wewnętrzny błąd serwera scrapera.";
+  if (lower.includes("502") || lower.includes("bad gateway")) return "Błąd bramy — serwer scrapera nie odpowiada prawidłowo.";
+  if (lower.includes("503") || lower.includes("service unavailable")) return "Serwis scrapera tymczasowo niedostępny.";
+  if (lower.includes("anthropic") || lower.includes("claude")) return "Błąd usługi AI (Anthropic) — spróbuj ponownie.";
+  if (lower.includes("overloaded")) return "Serwis AI jest przeciążony — spróbuj ponownie za chwilę.";
+  if (lower.includes("no results") || lower.includes("0 lotów") || lower.includes("empty")) return "Wyszukiwanie nie zwróciło wyników. Spróbuj zmienić kryteria.";
+  return raw;
+}
+
   job,
   onCancel,
   onDownloadLogs,
