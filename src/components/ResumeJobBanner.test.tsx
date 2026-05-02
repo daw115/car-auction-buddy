@@ -193,4 +193,67 @@ describe("ResumeJobBanner", () => {
       ).not.toThrow();
     });
   });
+
+  // ---- dismiss flow: banner disappears + storage cleared ----
+  describe("dismiss flow (Odrzuć)", () => {
+    it("banner disappears after re-render with null pendingResume (simulates parent state update)", async () => {
+      const cbs = defaults();
+      const job = makeJob();
+      const { rerender, container } = render(
+        <ResumeJobBanner pendingResume={job} validationErrors={[]} {...cbs} />,
+      );
+
+      // Banner visible
+      expect(screen.getByRole("button", { name: /Odrzuć/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
+
+      // Click Odrzuć
+      await userEvent.click(screen.getByRole("button", { name: /Odrzuć/i }));
+      expect(cbs.onDismiss).toHaveBeenCalledTimes(1);
+
+      // Parent would set pendingResume to null → re-render
+      rerender(
+        <ResumeJobBanner pendingResume={null} validationErrors={[]} {...cbs} />,
+      );
+
+      // Banner gone
+      expect(container.innerHTML).toBe("");
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Odrzuć/i })).not.toBeInTheDocument();
+    });
+
+    it("criteria summary disappears together with the banner after dismiss", async () => {
+      const cbs = defaults();
+      const job = makeJob({ criteria: { make: "Honda", budget_usd: 9000, model: "Civic" } });
+      const { rerender } = render(
+        <ResumeJobBanner pendingResume={job} validationErrors={[]} {...cbs} />,
+      );
+
+      // Criteria visible
+      expect(screen.getByText("Honda")).toBeInTheDocument();
+      expect(screen.getByText("Civic")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /Odrzuć/i }));
+
+      // Parent clears state
+      rerender(
+        <ResumeJobBanner pendingResume={null} validationErrors={[]} {...cbs} />,
+      );
+
+      expect(screen.queryByText("Honda")).not.toBeInTheDocument();
+      expect(screen.queryByText("Civic")).not.toBeInTheDocument();
+    });
+
+    it("onResume is NOT called when Odrzuć is clicked", async () => {
+      const cbs = defaults();
+      render(
+        <ResumeJobBanner pendingResume={makeJob()} validationErrors={[]} {...cbs} />,
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Odrzuć/i }));
+      expect(cbs.onDismiss).toHaveBeenCalledTimes(1);
+      expect(cbs.onResume).not.toHaveBeenCalled();
+      expect(cbs.onClearErrors).not.toHaveBeenCalled();
+    });
+  });
 });
