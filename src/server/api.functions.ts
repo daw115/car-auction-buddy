@@ -1547,6 +1547,10 @@ export const runLotReports = createServerFn({ method: "POST" })
     const criteria = data.criteria as ClientCriteria;
     const listings = data.listings as CarLot[];
 
+    // Read DB-stored AI provider preference
+    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode").eq("id", 1).single();
+    const dbPreference = cfgRow?.ai_analysis_mode ?? null;
+
     const userPrompt = `Kryteria klienta:
 - Marka/model: ${criteria.make} ${criteria.model || "(dowolny)"}
 - Rocznik: ${criteria.year_from || "?"}–${criteria.year_to || "?"}
@@ -1570,6 +1574,7 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
         system: LOT_SYSTEM_PROMPT,
         userPrompt,
         maxTokens: 16384,
+        dbPreference,
       });
       raw = result.text;
       await log.info(
