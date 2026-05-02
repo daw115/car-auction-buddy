@@ -1,4 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  persistScrapeJob,
+  clearPersistedScrapeJob,
+  readPersistedScrapeJob,
+  SCRAPE_JOB_STORAGE_KEY,
+} from "@/lib/scrape-job-storage";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -726,21 +732,10 @@ function Panel() {
   const autoRetryTimerRef = useRef<number | null>(null);
 
   // Scraper job progress — with localStorage persistence for page reload recovery
-  const SCRAPE_JOB_STORAGE_KEY = "car-finder:active-scrape-job";
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
   // Pending resume state — set on mount if localStorage has an active job
   const [pendingResume, setPendingResume] = useState<{ jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number } | null>(null);
-
-  function persistScrapeJob(jobId: string, cacheKey: string, criteria: ClientCriteria) {
-    try {
-      localStorage.setItem(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({ jobId, cacheKey, criteria, startedAt: Date.now() }));
-    } catch { /* quota exceeded etc. */ }
-  }
-
-  function clearPersistedScrapeJob() {
-    try { localStorage.removeItem(SCRAPE_JOB_STORAGE_KEY); } catch { /* noop */ }
-  }
 
   // AI analysis progress
   const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
@@ -861,14 +856,8 @@ function Panel() {
 
   // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SCRAPE_JOB_STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as { jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number };
-      if (!saved.jobId) { clearPersistedScrapeJob(); return; }
-      // Don't auto-resume — let the user decide via the "Wznów" button
-      setPendingResume(saved);
-    } catch { clearPersistedScrapeJob(); }
+    const saved = readPersistedScrapeJob();
+    if (saved) setPendingResume(saved as typeof pendingResume);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
