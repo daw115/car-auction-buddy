@@ -86,6 +86,10 @@ const recordPayloadSchema = z.object({
   analysis: z.any().optional().nullable(),
   report_html: z.string().optional().nullable(),
   mail_html: z.string().optional().nullable(),
+  analysis_status: z.string().max(40).optional().nullable(),
+  analysis_started_at: z.string().optional().nullable(),
+  analysis_completed_at: z.string().optional().nullable(),
+  artifacts_meta: z.any().optional().nullable(),
 });
 
 export const saveRecord = createServerFn({ method: "POST" })
