@@ -420,6 +420,30 @@ function Panel() {
     }
   }
 
+  async function downloadRecordArtifact(
+    recordId: string,
+    field: "report_html" | "ai_input" | "ai_prompt",
+  ) {
+    try {
+      const row = (await fnLoadRecord({ data: { id: recordId } })) as Record<string, unknown>;
+      const value = row[field];
+      if (!value) {
+        toast.error("Ten artefakt nie jest jeszcze dostępny dla tego rekordu.");
+        return;
+      }
+      const filenameMap: Record<string, { name: string; mime: string }> = {
+        report_html: { name: `report-${recordId.slice(0, 8)}.html`, mime: "text/html" },
+        ai_input: { name: `ai-input-${recordId.slice(0, 8)}.json`, mime: "application/json" },
+        ai_prompt: { name: `ai-prompt-${recordId.slice(0, 8)}.txt`, mime: "text/plain" },
+      };
+      const { name, mime } = filenameMap[field];
+      const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      downloadFile(name, content, mime);
+      toast.success(`Pobrano ${name}`);
+    } catch (e) {
+      toast.error(`Pobranie nie powiodło się: ${(e as Error).message}`);
+    }
+  }
 
   const watchLot = async (a: AnalyzedLot) => {
     try {
@@ -1517,6 +1541,39 @@ function Panel() {
                     </div>
                   </div>
                   <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadRecordArtifact(r.id, "report_html");
+                      }}
+                      title="Pobierz raport HTML"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadRecordArtifact(r.id, "ai_input");
+                      }}
+                      title="Pobierz AI input (JSON)"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <BarChart3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadRecordArtifact(r.id, "ai_prompt");
+                      }}
+                      title="Pobierz prompt AI (TXT)"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
