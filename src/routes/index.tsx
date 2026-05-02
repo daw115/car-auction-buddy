@@ -1828,6 +1828,15 @@ function Panel() {
                         )}
                       </div>
                     )}
+                    {r.analysis_status === "failed" && r.analysis_error && (
+                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive">
+                        <div className="flex items-center gap-1 font-medium mb-0.5">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          Błąd analizy
+                        </div>
+                        <p className="line-clamp-3 break-all">{r.analysis_error}</p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
