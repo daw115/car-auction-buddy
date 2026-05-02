@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
-import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL, ANTHROPIC_MODELS } from "./anthropic.server";
+import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "./anthropic.server";
 import { callAI, detectProvider } from "./ai.server";
 import { DEFAULT_GEMINI_MODEL } from "./gemini.server";
 import { renderReportHtml, renderMailHtml } from "./report";
