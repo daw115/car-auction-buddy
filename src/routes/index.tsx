@@ -1544,6 +1544,39 @@ function Panel() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        void downloadRecordArtifact(r.id, "report_html");
+                      }}
+                      title="Pobierz raport HTML"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadRecordArtifact(r.id, "ai_input");
+                      }}
+                      title="Pobierz AI input (JSON)"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <BarChart3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void downloadRecordArtifact(r.id, "ai_prompt");
+                      }}
+                      title="Pobierz prompt AI (TXT)"
+                      disabled={r.status !== "analyzed"}
+                      className="disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         void downloadReportBundle(r.id);
                       }}
                       title="Pobierz pakiet raportu (ZIP: HTML + JSON)"
