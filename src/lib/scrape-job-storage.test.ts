@@ -32,6 +32,10 @@ function seedStorage(data: Partial<PersistedScrapeJob>) {
   store.set(SCRAPE_JOB_STORAGE_KEY, JSON.stringify(data));
 }
 
+function validCriteria() {
+  return { make: "Toyota", budget_usd: 15000 };
+}
+
 /* ---------- suites ---------- */
 describe("scrape-job-storage", () => {
   beforeEach(() => {
@@ -42,20 +46,20 @@ describe("scrape-job-storage", () => {
   // ---- persistScrapeJob ----
   describe("persistScrapeJob", () => {
     it("saves job to localStorage with correct key", () => {
-      persistScrapeJob("job-1", "cache-abc", { seller: "copart" });
+      persistScrapeJob("job-1", "cache-abc", { make: "Toyota", budget_usd: 10000 });
 
       const raw = store.get(SCRAPE_JOB_STORAGE_KEY);
       expect(raw).toBeDefined();
       const parsed = JSON.parse(raw!);
       expect(parsed.jobId).toBe("job-1");
       expect(parsed.cacheKey).toBe("cache-abc");
-      expect(parsed.criteria).toEqual({ seller: "copart" });
+      expect(parsed.criteria).toEqual({ make: "Toyota", budget_usd: 10000 });
       expect(parsed.startedAt).toBeTypeOf("number");
     });
 
     it("overwrites previous entry", () => {
-      persistScrapeJob("job-1", "c1", {});
-      persistScrapeJob("job-2", "c2", { x: 1 });
+      persistScrapeJob("job-1", "c1", validCriteria());
+      persistScrapeJob("job-2", "c2", { make: "Honda", budget_usd: 5000 });
 
       const parsed = JSON.parse(store.get(SCRAPE_JOB_STORAGE_KEY)!);
       expect(parsed.jobId).toBe("job-2");
@@ -66,14 +70,14 @@ describe("scrape-job-storage", () => {
         throw new Error("QuotaExceededError");
       });
 
-      expect(() => persistScrapeJob("j", "c", {})).not.toThrow();
+      expect(() => persistScrapeJob("j", "c", validCriteria())).not.toThrow();
     });
   });
 
   // ---- clearPersistedScrapeJob ----
   describe("clearPersistedScrapeJob", () => {
     it("removes the key from localStorage", () => {
-      seedStorage({ jobId: "job-1", cacheKey: "c", criteria: {}, startedAt: 1 });
+      seedStorage({ jobId: "job-1", cacheKey: "c", criteria: validCriteria(), startedAt: 1 });
       clearPersistedScrapeJob();
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
@@ -88,44 +92,50 @@ describe("scrape-job-storage", () => {
 
   // ---- readPersistedScrapeJob ----
   describe("readPersistedScrapeJob", () => {
-    it("returns null when nothing stored", () => {
-      expect(readPersistedScrapeJob()).toBeNull();
+    it("returns null job when nothing stored", () => {
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors).toEqual([]);
     });
 
-    it("returns parsed job when valid data stored", () => {
-      const job: PersistedScrapeJob = {
+    it("returns validated job when valid data stored", () => {
+      const criteria = { make: "BMW", budget_usd: 20000, model: "X5" };
+      seedStorage({
         jobId: "j-42",
         cacheKey: "ck",
-        criteria: { damage: "front" },
+        criteria,
         startedAt: 1700000000000,
-      };
-      store.set(SCRAPE_JOB_STORAGE_KEY, JSON.stringify(job));
+      });
 
-      const result = readPersistedScrapeJob();
-      expect(result).toEqual(job);
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(validationErrors).toEqual([]);
+      expect(job).not.toBeNull();
+      expect(job!.jobId).toBe("j-42");
+      expect(job!.criteria.make).toBe("BMW");
+      expect(job!.criteria.budget_usd).toBe(20000);
     });
 
     it("returns null and clears storage when jobId is empty", () => {
-      seedStorage({ jobId: "", cacheKey: "c", criteria: {}, startedAt: 1 });
+      seedStorage({ jobId: "", cacheKey: "c", criteria: validCriteria(), startedAt: 1 });
 
-      const result = readPersistedScrapeJob();
-      expect(result).toBeNull();
+      const { job } = readPersistedScrapeJob();
+      expect(job).toBeNull();
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
 
     it("returns null and clears storage when jobId is missing", () => {
-      seedStorage({ cacheKey: "c", criteria: {}, startedAt: 1 });
+      seedStorage({ cacheKey: "c", criteria: validCriteria(), startedAt: 1 });
 
-      const result = readPersistedScrapeJob();
-      expect(result).toBeNull();
+      const { job } = readPersistedScrapeJob();
+      expect(job).toBeNull();
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
 
     it("returns null and clears storage on malformed JSON", () => {
       store.set(SCRAPE_JOB_STORAGE_KEY, "not-json{{{");
 
-      const result = readPersistedScrapeJob();
-      expect(result).toBeNull();
+      const { job } = readPersistedScrapeJob();
+      expect(job).toBeNull();
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
 
@@ -134,45 +144,124 @@ describe("scrape-job-storage", () => {
         throw new Error("SecurityError");
       });
 
-      const result = readPersistedScrapeJob();
-      expect(result).toBeNull();
+      const { job } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+    });
+  });
+
+  // ---- criteria validation ----
+  describe("criteria validation", () => {
+    it("rejects criteria with missing make", () => {
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria: { budget_usd: 5000 }, startedAt: Date.now() });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.length).toBeGreaterThan(0);
+      expect(validationErrors.some((e) => e.includes("make"))).toBe(true);
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("rejects criteria with missing budget_usd", () => {
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria: { make: "Ford" }, startedAt: Date.now() });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.length).toBeGreaterThan(0);
+      expect(validationErrors.some((e) => e.includes("budget_usd"))).toBe(true);
+    });
+
+    it("rejects criteria with empty make", () => {
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria: { make: "", budget_usd: 5000 }, startedAt: Date.now() });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.some((e) => e.toLowerCase().includes("make"))).toBe(true);
+    });
+
+    it("rejects criteria with budget out of range", () => {
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria: { make: "BMW", budget_usd: -500 }, startedAt: Date.now() });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.length).toBeGreaterThan(0);
+    });
+
+    it("rejects criteria with year_from out of range", () => {
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria: { make: "BMW", budget_usd: 5000, year_from: 1800 }, startedAt: Date.now() });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.some((e) => e.includes("year_from"))).toBe(true);
+    });
+
+    it("accepts valid optional fields", () => {
+      const criteria = {
+        make: "Audi",
+        budget_usd: 25000,
+        model: "A4",
+        year_from: 2018,
+        year_to: 2024,
+        max_odometer_mi: 80000,
+        sources: ["copart", "iaai"],
+        max_results: 50,
+      };
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria, startedAt: Date.now() });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(validationErrors).toEqual([]);
+      expect(job).not.toBeNull();
+      expect(job!.criteria).toMatchObject({ make: "Audi", budget_usd: 25000, year_from: 2018 });
+    });
+
+    it("rejects when cacheKey is missing", () => {
+      seedStorage({ jobId: "j-1", criteria: validCriteria(), startedAt: Date.now() } as any);
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.some((e) => e.includes("cache"))).toBe(true);
+    });
+
+    it("rejects when startedAt is invalid", () => {
+      seedStorage({ jobId: "j-1", cacheKey: "c", criteria: validCriteria(), startedAt: -1 });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors.some((e) => e.includes("znacznik"))).toBe(true);
     });
   });
 
   // ---- resume / dismiss flow (integration-style) ----
   describe("resume & dismiss flow", () => {
     it("persist → read → clear simulates dismiss", () => {
-      persistScrapeJob("j-1", "ck-1", { seller: "iaai" });
-      const found = readPersistedScrapeJob();
-      expect(found).not.toBeNull();
-      expect(found!.jobId).toBe("j-1");
+      persistScrapeJob("j-1", "ck-1", { make: "Kia", budget_usd: 8000 });
+      const { job } = readPersistedScrapeJob();
+      expect(job).not.toBeNull();
+      expect(job!.jobId).toBe("j-1");
 
       // Dismiss = clear
       clearPersistedScrapeJob();
-      expect(readPersistedScrapeJob()).toBeNull();
+      expect(readPersistedScrapeJob().job).toBeNull();
     });
 
     it("persist → read simulates resume (data intact)", () => {
-      const criteria = { dateFrom: "2025-01-01", dateTo: "2025-06-01" };
+      const criteria = { make: "Mazda", budget_usd: 12000, model: "CX-5" };
       persistScrapeJob("j-5", "ck-5", criteria);
 
-      const found = readPersistedScrapeJob();
-      expect(found).not.toBeNull();
-      expect(found!.criteria).toEqual(criteria);
-      expect(found!.cacheKey).toBe("ck-5");
-      // After resume the entry stays in localStorage (cleared on job completion)
+      const { job } = readPersistedScrapeJob();
+      expect(job).not.toBeNull();
+      expect(job!.criteria.make).toBe("Mazda");
+      expect(job!.cacheKey).toBe("ck-5");
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
     });
 
     it("persist → read → clear simulates not_found cleanup", () => {
-      persistScrapeJob("expired-job", "ck-old", { seller: "copart" });
-      const found = readPersistedScrapeJob();
-      expect(found).not.toBeNull();
-      expect(found!.jobId).toBe("expired-job");
+      persistScrapeJob("expired-job", "ck-old", { make: "Nissan", budget_usd: 7000 });
+      const { job } = readPersistedScrapeJob();
+      expect(job).not.toBeNull();
+      expect(job!.jobId).toBe("expired-job");
 
-      // Simulate: poll returned not_found → cleanup
       clearPersistedScrapeJob();
-      expect(readPersistedScrapeJob()).toBeNull();
+      expect(readPersistedScrapeJob().job).toBeNull();
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
   });
