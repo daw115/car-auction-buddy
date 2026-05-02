@@ -1346,6 +1346,7 @@ function Panel() {
                 </span>
               )}
             </div>
+            {analysisJob && <AnalysisProgress job={analysisJob} />}
           </Card>
 
           {analysis && analysis.length > 0 && (
