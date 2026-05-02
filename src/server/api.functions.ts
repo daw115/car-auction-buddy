@@ -2,7 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
-import { callAnthropic, parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL, ANTHROPIC_MODELS } from "./anthropic.server";
+import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "./anthropic.server";
+import { callAI, detectProvider } from "./ai.server";
+import { DEFAULT_GEMINI_MODEL } from "./gemini.server";
 import { renderReportHtml, renderMailHtml } from "./report";
 import { makeLogger } from "./logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
@@ -158,12 +160,16 @@ export const deleteRecord = createServerFn({ method: "POST" })
 export const getConfig = createServerFn({ method: "GET" }).handler(async () => {
   const { data, error } = await supabaseAdmin.from("app_config").select("*").eq("id", 1).single();
   if (error) throw new Error(error.message);
+  const provider = detectProvider();
   return {
     config: data,
     env: {
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
       ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
       ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      GEMINI_MODEL: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+      AI_PROVIDER: provider,
       SCRAPER_BASE_URL: !!process.env.SCRAPER_BASE_URL,
       SCRAPER_API_TOKEN: !!process.env.SCRAPER_API_TOKEN,
     },
@@ -247,6 +253,66 @@ export const testAnthropic = createServerFn({ method: "POST" })
         usage: {
           input_tokens: json.usage?.input_tokens ?? 0,
           output_tokens: json.usage?.output_tokens ?? 0,
+        },
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        configured: true,
+        model,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+// ---------- Gemini connection test ----------
+
+export const testGemini = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ model: z.string().max(100).optional() }).parse)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false,
+        configured: false,
+        error: "Brak GEMINI_API_KEY w sekretach Lovable Cloud. Dodaj sekret i spróbuj ponownie.",
+      };
+    }
+    const model = data.model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          generationConfig: { maxOutputTokens: 16 },
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return {
+          ok: false,
+          configured: true,
+          status: res.status,
+          model,
+          error: `Gemini HTTP ${res.status}: ${body.slice(0, 300)}`,
+        };
+      }
+      const json = await res.json() as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+        modelVersion?: string;
+      };
+      const text = (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+      return {
+        ok: true,
+        configured: true,
+        model: json.modelVersion ?? model,
+        sample: text.slice(0, 80),
+        usage: {
+          input_tokens: json.usageMetadata?.promptTokenCount ?? 0,
+          output_tokens: json.usageMetadata?.candidatesTokenCount ?? 0,
         },
       };
     } catch (e) {
@@ -516,14 +582,16 @@ export const runAnalysis = createServerFn({ method: "POST" })
 
     let raw: string;
     try {
-      const result = await callAnthropic({ system: SYSTEM_PROMPT, userPrompt, maxTokens });
+      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens });
       raw = result.text;
       await log.info(
-        "anthropic_response",
-        `Otrzymano odpowiedź z Anthropic (${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów)`,
+        "ai_response",
+        `Odpowiedź AI [${result.provider}${result.usedFallback ? " (fallback)" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
         {
           response_chars: raw.length,
           model: result.model,
+          provider: result.provider,
+          used_fallback: result.usedFallback,
           stop_reason: result.stop_reason,
           usage: result.usage,
         },
@@ -531,11 +599,11 @@ export const runAnalysis = createServerFn({ method: "POST" })
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await log.error("anthropic_call", `Błąd wywołania Anthropic: ${msg}`, {
+      await log.error("ai_call", `Błąd AI: ${msg}`, {
         error: msg,
         prompt_chars: userPrompt.length,
       });
-      throw new Error(`Anthropic API: ${msg}`);
+      throw new Error(`AI API: ${msg}`);
     }
 
     let parsed: unknown;
@@ -1494,7 +1562,7 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
 
     let raw: string;
     try {
-      const result = await callAnthropic({
+      const result = await callAI({
         system: LOT_SYSTEM_PROMPT,
         userPrompt,
         maxTokens: 16384,
@@ -1502,14 +1570,14 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
       raw = result.text;
       await log.info(
         "ai_response",
-        `AI: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
-        { response_chars: raw.length, model: result.model, usage: result.usage },
+        `AI [${result.provider}${result.usedFallback ? " fallback" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
+        { response_chars: raw.length, model: result.model, provider: result.provider, usage: result.usage },
         Date.now() - startedAt,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await log.error("ai_call", `Błąd Anthropic: ${msg}`);
-      throw new Error(`Anthropic API: ${msg}`);
+      await log.error("ai_call", `Błąd AI: ${msg}`);
+      throw new Error(`AI API: ${msg}`);
     }
 
     let parsed: unknown;
