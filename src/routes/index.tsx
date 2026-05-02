@@ -790,7 +790,10 @@ function Panel() {
       return;
     }
     setBusy("ai");
+    const startedAt = Date.now();
+    setAnalysisJob({ phase: "queued", startedAt, elapsedMs: 0, lotsCount: listings.length });
     try {
+      setAnalysisJob((s) => s ? { ...s, phase: "analyzing", elapsedMs: Date.now() - startedAt } : s);
       const r = (await fnRunAnalysis({
         data: { criteria, listings, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
       })) as {
@@ -801,12 +804,12 @@ function Panel() {
       setAiInput(r.ai_input);
       setAiPrompt(r.ai_prompt);
       setAnalysis(r.analysis);
-      toast.success(`Analiza gotowa (${r.analysis.length} lotów)`);
 
-      // Auto-generuj raport HTML + mail i zapisz artefakty do bazy
+      // Auto-generuj raport HTML + mail
       let generatedReportHtml = "";
       let generatedMailHtml = "";
       if (r.analysis.length > 0) {
+        setAnalysisJob((s) => s ? { ...s, phase: "rendering", elapsedMs: Date.now() - startedAt } : s);
         try {
           const rep = (await fnRenderReport({
             data: { clientName: activeClient?.name ?? "Klient", analyzed: r.analysis },
@@ -822,6 +825,7 @@ function Panel() {
 
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
+        setAnalysisJob((s) => s ? { ...s, phase: "saving", elapsedMs: Date.now() - startedAt } : s);
         try {
           const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
           const row = (await fnSaveRecord({
@@ -841,14 +845,18 @@ function Panel() {
           })) as { id: string };
           setActiveRecordId(row.id);
           await refreshRecords(activeClient.id);
-          toast.success("Raport i artefakty zapisane automatycznie");
         } catch (err) {
           console.warn("Auto-zapis rekordu nie powiódł się:", err);
           toast.error("Analiza gotowa, ale automatyczny zapis nie powiódł się. Zapisz ręcznie.");
         }
       }
+
+      setAnalysisJob((s) => s ? { ...s, phase: "done", elapsedMs: Date.now() - startedAt } : s);
+      toast.success(`Analiza zakończona: ${r.analysis.length} lotów przeanalizowanych`);
     } catch (e) {
-      toast.error((e as Error).message);
+      const msg = (e as Error).message;
+      setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
+      toast.error(msg);
     } finally {
       setBusy(null);
     }
