@@ -510,21 +510,55 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
         </div>
       </div>
       <Progress value={pct} className="h-1.5" />
-      {/* Phase pipeline badges */}
+      {/* Phase pipeline badges — show progress through phases, highlight failure point */}
       <div className="flex flex-wrap items-center gap-1">
-        {(job.phase === "failed"
-          ? [job.phase as AnalysisPhase]
-          : analysisPhases
-        ).map((p) => (
-          <PhaseBadge key={p} phase={phaseLabels[p] ?? p} active={p === job.phase} />
-        ))}
+        {(() => {
+          if (job.phase === "failed") {
+            const failedAt = job.lastPhase ?? "analyzing";
+            const failIdx = analysisPhases.indexOf(failedAt);
+            return analysisPhases.map((p, i) => {
+              const isFail = i === failIdx || (failIdx < 0 && i === 0);
+              const reached = failIdx >= 0 && i < failIdx;
+              return (
+                <span
+                  key={p}
+                  className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    isFail
+                      ? "bg-destructive/20 text-destructive ring-1 ring-destructive/30"
+                      : reached
+                        ? "bg-muted text-muted-foreground line-through"
+                        : "bg-muted/50 text-muted-foreground/50"
+                  }`}
+                >
+                  {phaseLabels[p] ?? p}
+                </span>
+              );
+            });
+          }
+          return analysisPhases.map((p) => (
+            <PhaseBadge key={p} phase={phaseLabels[p] ?? p} active={p === job.phase} />
+          ));
+        })()}
       </div>
-      {job.phase === "failed" && job.errorMessage && (
-        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs">
-          <div className="font-medium text-destructive mb-0.5">Szczegóły błędu:</div>
-          <div className="font-mono text-foreground break-words whitespace-pre-wrap">
-            {job.errorMessage}
+      {job.phase === "failed" && (
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs space-y-1">
+          <div className="text-[11px] text-destructive flex items-center gap-1">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            Zatrzymano na etapie: <span className="font-medium">{phaseLabels[job.lastPhase ?? "analyzing"]}</span>
           </div>
+          {job.errorMessage && (
+            <>
+              <div className="font-medium text-destructive">
+                {humanizeError(job.errorMessage)}
+              </div>
+              {job.errorMessage !== humanizeError(job.errorMessage) && (
+                <details className="text-[11px] text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground">Szczegóły techniczne</summary>
+                  <pre className="font-mono text-foreground break-words whitespace-pre-wrap mt-1">{job.errorMessage}</pre>
+                </details>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
