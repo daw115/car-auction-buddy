@@ -69,6 +69,13 @@ export const Route = createFileRoute("/")({
 });
 
 type ClientRow = { id: string; name: string; contact: string | null; notes: string | null; created_at: string };
+type ArtifactsMeta = {
+  report_html?: { size: number; generated_at: string };
+  mail_html?: { size: number; generated_at: string };
+  ai_input?: { size: number; generated_at: string };
+  ai_prompt?: { size: number; generated_at: string };
+  analysis?: { lots_count: number; generated_at: string };
+};
 type RecordSummary = {
   id: string;
   client_id: string | null;
@@ -76,6 +83,10 @@ type RecordSummary = {
   status: string;
   created_at: string;
   updated_at: string;
+  analysis_status: string | null;
+  analysis_started_at: string | null;
+  analysis_completed_at: string | null;
+  artifacts_meta: ArtifactsMeta | null;
 };
 type ConfigEnv = {
   ANTHROPIC_API_KEY: boolean;
