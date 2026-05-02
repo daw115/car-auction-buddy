@@ -212,7 +212,7 @@ function ScraperProgress({
 }: {
   job: ScrapeJobState;
   onCancel?: () => void;
-  onDownloadLogs?: (jobId: string) => void;
+  onDownloadLogs?: (jobId: string, format: "json" | "csv") => void;
   onRerun?: () => void;
   rerunDisabled?: boolean;
 }) {
