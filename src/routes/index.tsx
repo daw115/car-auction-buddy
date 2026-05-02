@@ -874,6 +874,9 @@ function Panel() {
 
   // Cancellation flag for the current scrape loop
   const cancelRequestedRef = useRef(false);
+  // Track whether the current job was resumed (needs confirmation before cancel)
+  const wasResumedRef = useRef(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
@@ -891,12 +894,27 @@ function Panel() {
     setCriteria((c) => ({ ...c, ...saved.criteria }));
     setBusy("scraper");
     cancelRequestedRef.current = false;
+    wasResumedRef.current = true;
     toast.info("Wznowiono śledzenie aktywnego joba scrapera");
   }
 
   function dismissResume() {
     setPendingResume(null);
     clearPersistedScrapeJob();
+  }
+
+  /** Guard cancel with confirmation dialog when the job was resumed */
+  function requestCancelScrape() {
+    if (wasResumedRef.current) {
+      setShowCancelConfirm(true);
+    } else {
+      cancelScrape();
+    }
+  }
+
+  function confirmCancelScrape() {
+    setShowCancelConfirm(false);
+    cancelScrape();
   }
 
   async function cancelScrape() {
