@@ -131,7 +131,7 @@ function SettingsPage() {
     if (!config) return;
     setSaving(true);
     try {
-      await updateConfigFn({ data: patch as Parameters<typeof updateConfigFn>[0]["data"] });
+      await updateConfigFn({ data: patch as never });
       setConfig({ ...config, ...patch });
       toast.success("Zapisano ustawienia AI");
     } catch (e) {
