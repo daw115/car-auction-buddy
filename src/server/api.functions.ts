@@ -265,6 +265,66 @@ export const testAnthropic = createServerFn({ method: "POST" })
     }
   });
 
+// ---------- Gemini connection test ----------
+
+export const testGemini = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ model: z.string().max(100).optional() }).parse)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false,
+        configured: false,
+        error: "Brak GEMINI_API_KEY w sekretach Lovable Cloud. Dodaj sekret i spróbuj ponownie.",
+      };
+    }
+    const model = data.model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          generationConfig: { maxOutputTokens: 16 },
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return {
+          ok: false,
+          configured: true,
+          status: res.status,
+          model,
+          error: `Gemini HTTP ${res.status}: ${body.slice(0, 300)}`,
+        };
+      }
+      const json = await res.json() as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+        modelVersion?: string;
+      };
+      const text = (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+      return {
+        ok: true,
+        configured: true,
+        model: json.modelVersion ?? model,
+        sample: text.slice(0, 80),
+        usage: {
+          input_tokens: json.usageMetadata?.promptTokenCount ?? 0,
+          output_tokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+        },
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        configured: true,
+        model,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
 // ---------- AI analysis ----------
 
 type LotForPrompt = {
