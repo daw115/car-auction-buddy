@@ -229,8 +229,16 @@ function PhaseBadge({ phase, active }: { phase: string; active: boolean }) {
 }
 
 /** Map raw error messages to user-friendly Polish descriptions. */
+/** Check whether a raw error message looks like a scraper 404 */
+function isScraper404(raw: string): boolean {
+  const l = raw.toLowerCase();
+  return (l.includes("404") && (l.includes("scraper") || l.includes("not found")));
+}
+
 function humanizeError(raw: string): string {
   const lower = raw.toLowerCase();
+  if (isScraper404(raw))
+    return "Endpoint scrapera nie został znaleziony (HTTP 404). Serwer scrapera działa, ale żądany adres URL nie istnieje.";
   if (lower.includes("timeout") || lower.includes("timed out")) return "Przekroczono limit czasu oczekiwania na odpowiedź serwera.";
   if (lower.includes("network") || lower.includes("fetch failed") || lower.includes("econnrefused")) return "Błąd połączenia sieciowego — serwer scrapera może być niedostępny.";
   if (lower.includes("rate limit") || lower.includes("429")) return "Zbyt wiele zapytań — serwer ograniczył dostęp. Spróbuj ponownie za chwilę.";
@@ -461,6 +469,18 @@ function ScraperProgress({
           <div className="font-medium text-destructive">
             {humanizeError(job.errorMessage)}
           </div>
+          {isScraper404(job.errorMessage) && (
+            <div className="rounded bg-destructive/5 border border-destructive/20 px-2.5 py-2 text-[11px] text-foreground space-y-1.5 mt-1">
+              <div className="font-semibold text-destructive">Jak naprawić?</div>
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                <li>Sprawdź, czy serwer scrapera jest uruchomiony i dostępny pod adresem ustawionym w <span className="font-mono text-foreground">SCRAPER_BASE_URL</span>.</li>
+                <li>Otwórz <span className="font-mono text-foreground">/health</span> na serwerze scrapera — powinien zwrócić JSON ze statusem <span className="font-mono text-foreground">"ok"</span>.</li>
+                <li>Upewnij się, że endpoint <span className="font-mono text-foreground">POST /search</span> istnieje (np. <span className="font-mono text-foreground">http://twój-scraper/search</span>).</li>
+                <li>Jeśli scraper działa lokalnie, wyeksponuj go publicznie (np. <span className="font-mono text-foreground">ngrok http 8000</span>) i zaktualizuj <span className="font-mono text-foreground">SCRAPER_BASE_URL</span> w ustawieniach.</li>
+                <li>Po zmianie URL scrapera przejdź do <a href="/settings" className="underline text-primary hover:text-primary/80">Ustawień</a> i zweryfikuj połączenie przyciskiem „Test".</li>
+              </ol>
+            </div>
+          )}
           {job.errorMessage !== humanizeError(job.errorMessage) && (
             <details className="text-[11px] text-muted-foreground">
               <summary className="cursor-pointer hover:text-foreground">Szczegóły techniczne</summary>
@@ -1214,7 +1234,10 @@ function Panel() {
       setScrapeJob((s) =>
         s ? { ...s, status: "failed", errorMessage: s.errorMessage ?? msg } : s,
       );
-      toast.error(msg);
+      toast.error(humanizeError(msg), {
+        description: isScraper404(msg) ? "Sprawdź panel błędu poniżej — znajdziesz tam instrukcję naprawy." : undefined,
+        duration: isScraper404(msg) ? 8000 : 4000,
+      });
       setBusy(null);
     }
   }
