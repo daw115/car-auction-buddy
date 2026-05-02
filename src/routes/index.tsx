@@ -2203,6 +2203,14 @@ function Panel() {
                           <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
                         <button
+                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "analysis"); }}
+                          title="Pobierz wynik analizy AI (JSON)"
+                          disabled={!am?.analysis}
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <FlaskConical className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
                           onClick={(e) => { e.stopPropagation(); void downloadRecordStatusJson(r.id); }}
                           title="Pobierz status analizy + artifacts_meta (JSON)"
                           className="disabled:opacity-30 disabled:cursor-not-allowed"
