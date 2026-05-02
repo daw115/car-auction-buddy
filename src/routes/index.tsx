@@ -81,6 +81,7 @@ import {
   BarChart3,
   Eye,
   RotateCcw,
+  FlaskConical,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
