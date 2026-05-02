@@ -761,6 +761,9 @@ function Panel() {
     return () => clearInterval(t);
   }, [scrapeJob?.status, scrapeJob?.startedAt]);
 
+  // Cancellation flag for the current scrape loop
+  const cancelRequestedRef = useRef(false);
+
   // Restore active scrape job from localStorage on mount
   useEffect(() => {
     try {
@@ -778,9 +781,6 @@ function Panel() {
     } catch { clearPersistedScrapeJob(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Cancellation flag for the current scrape loop
-  const cancelRequestedRef = useRef(false);
 
   async function cancelScrape() {
     if (!scrapeJob?.jobId) {
