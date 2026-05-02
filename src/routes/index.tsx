@@ -301,7 +301,11 @@ function ScraperProgress({
         </div>
         <div className="flex items-center gap-3 text-muted-foreground shrink-0">
           <span>Czas: {formatDuration(job.elapsedMs)}</span>
-          {!isFinal && <span>ETA: ~{formatDuration(etaMs)}</span>}
+          {!isFinal && (
+            <span title={effectiveProgress !== null ? `Na podstawie postępu ${Math.round(effectiveProgress * 100)}%` : "Szacunkowe (brak danych o postępie)"}>
+              ETA: ~{formatDuration(etaMs)}
+            </span>
+          )}
           <span className="font-medium text-foreground">{pct}%</span>
           {!isFinal && onCancel && (
             <Button
