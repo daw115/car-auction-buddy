@@ -1584,6 +1584,7 @@ function Panel() {
     setListings([]);
     setListingsRaw("");
     setAnalysis(null);
+    setAiMeta(null);
     setAiInput(null);
     setAiPrompt("");
     setReportHtml("");
