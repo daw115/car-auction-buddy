@@ -471,6 +471,18 @@ function Panel() {
   // Scraper job progress
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
+  // AI analysis progress
+  const [analysisJob, setAnalysisJob] = useState<AnalysisJobState | null>(null);
+
+  // Tick elapsed every 1s while analysis is active
+  useEffect(() => {
+    if (!analysisJob || analysisJob.phase === "done" || analysisJob.phase === "failed") return;
+    const t = setInterval(() => {
+      setAnalysisJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [analysisJob?.phase, analysisJob?.startedAt]);
+
   // Tick elapsed every 1s while job is active
   useEffect(() => {
     if (!scrapeJob || scrapeJob.status === "done" || scrapeJob.status === "failed") return;
