@@ -440,6 +440,7 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
         <div className="flex items-center gap-2 min-w-0">
           {!isFinal && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
           {job.phase === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
+          {job.phase === "cancelled" && <X className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
           {job.phase === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)] shrink-0" />}
           <span className="font-medium truncate">
             {phaseLabels[job.phase]}
