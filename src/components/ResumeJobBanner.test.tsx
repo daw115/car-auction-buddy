@@ -16,34 +16,28 @@ function makeJob(overrides?: Partial<ValidatedScrapeJob>): ValidatedScrapeJob {
   };
 }
 
+const defaults = () => ({
+  onResume: vi.fn(),
+  onDismiss: vi.fn(),
+  onClearErrors: vi.fn(),
+});
+
 describe("ResumeJobBanner", () => {
   // ---- visibility ----
   it("renders nothing when no pending resume and no errors", () => {
     const { container } = render(
-      <ResumeJobBanner
-        pendingResume={null}
-        validationErrors={[]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
-      />,
+      <ResumeJobBanner pendingResume={null} validationErrors={[]} {...defaults()} />,
     );
     expect(container.innerHTML).toBe("");
   });
 
   it('shows "Wznów" and "Odrzuć" buttons when pendingResume is set', () => {
     render(
-      <ResumeJobBanner
-        pendingResume={makeJob()}
-        validationErrors={[]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
-      />,
+      <ResumeJobBanner pendingResume={makeJob()} validationErrors={[]} {...defaults()} />,
     );
 
-    expect(screen.getByText("Wznów")).toBeInTheDocument();
-    expect(screen.getByText("Odrzuć")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Odrzuć/i })).toBeInTheDocument();
   });
 
   it("displays job ID prefix in the banner", () => {
@@ -51,23 +45,21 @@ describe("ResumeJobBanner", () => {
       <ResumeJobBanner
         pendingResume={makeJob({ jobId: "xyz98765-aaa" })}
         validationErrors={[]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
+        {...defaults()}
       />,
     );
 
     expect(screen.getByText("#xyz98765")).toBeInTheDocument();
   });
 
-  it("displays criteria summary (make, budget)", () => {
+  it("displays criteria summary (make, budget, model, years)", () => {
     render(
       <ResumeJobBanner
-        pendingResume={makeJob({ criteria: { make: "BMW", budget_usd: 25000, model: "X5", year_from: 2020, year_to: 2024 } })}
+        pendingResume={makeJob({
+          criteria: { make: "BMW", budget_usd: 25000, model: "X5", year_from: 2020, year_to: 2024 },
+        })}
         validationErrors={[]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
+        {...defaults()}
       />,
     );
 
@@ -79,35 +71,23 @@ describe("ResumeJobBanner", () => {
 
   // ---- interactions ----
   it('calls onResume when "Wznów" is clicked', async () => {
-    const onResume = vi.fn();
+    const cbs = defaults();
     render(
-      <ResumeJobBanner
-        pendingResume={makeJob()}
-        validationErrors={[]}
-        onResume={onResume}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
-      />,
+      <ResumeJobBanner pendingResume={makeJob()} validationErrors={[]} {...cbs} />,
     );
 
-    await userEvent.click(screen.getByText("Wznów"));
-    expect(onResume).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: /Wznów/i }));
+    expect(cbs.onResume).toHaveBeenCalledTimes(1);
   });
 
   it('calls onDismiss when "Odrzuć" is clicked', async () => {
-    const onDismiss = vi.fn();
+    const cbs = defaults();
     render(
-      <ResumeJobBanner
-        pendingResume={makeJob()}
-        validationErrors={[]}
-        onResume={vi.fn()}
-        onDismiss={onDismiss}
-        onClearErrors={vi.fn()}
-      />,
+      <ResumeJobBanner pendingResume={makeJob()} validationErrors={[]} {...cbs} />,
     );
 
-    await userEvent.click(screen.getByText("Odrzuć"));
-    expect(onDismiss).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: /Odrzuć/i }));
+    expect(cbs.onDismiss).toHaveBeenCalledTimes(1);
   });
 
   // ---- validation errors ----
@@ -116,33 +96,29 @@ describe("ResumeJobBanner", () => {
       <ResumeJobBanner
         pendingResume={null}
         validationErrors={["make: Marka jest wymagana", "budget_usd: Expected number"]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
+        {...defaults()}
       />,
     );
 
-    expect(screen.getByText("Zapisane kryteria scrapera były nieprawidłowe — dane wyczyszczone.")).toBeInTheDocument();
+    expect(screen.getByText(/nieprawidłowe/)).toBeInTheDocument();
     expect(screen.getByText("make: Marka jest wymagana")).toBeInTheDocument();
     expect(screen.getByText("budget_usd: Expected number")).toBeInTheDocument();
     // "Wznów" should NOT be visible
-    expect(screen.queryByText("Wznów")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
   });
 
   it('calls onClearErrors when "Zamknij" is clicked on error banner', async () => {
-    const onClearErrors = vi.fn();
+    const cbs = defaults();
     render(
       <ResumeJobBanner
         pendingResume={null}
         validationErrors={["some error"]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={onClearErrors}
+        {...cbs}
       />,
     );
 
-    await userEvent.click(screen.getByText("Zamknij"));
-    expect(onClearErrors).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: /Zamknij/i }));
+    expect(cbs.onClearErrors).toHaveBeenCalledTimes(1);
   });
 
   it("shows resume banner (not errors) when both pendingResume and errors exist", () => {
@@ -150,15 +126,11 @@ describe("ResumeJobBanner", () => {
       <ResumeJobBanner
         pendingResume={makeJob()}
         validationErrors={["should be ignored"]}
-        onResume={vi.fn()}
-        onDismiss={vi.fn()}
-        onClearErrors={vi.fn()}
+        {...defaults()}
       />,
     );
 
-    // Resume banner shown
-    expect(screen.getByText("Wznów")).toBeInTheDocument();
-    // Error banner not shown
-    expect(screen.queryByText("Zapisane kryteria scrapera były nieprawidłowe")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
+    expect(screen.queryByText(/nieprawidłowe/)).not.toBeInTheDocument();
   });
 });
