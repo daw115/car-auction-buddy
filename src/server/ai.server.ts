@@ -1,16 +1,28 @@
 // Unified AI caller — tries primary provider, falls back to secondary.
-// Provider priority: env AI_PROVIDER ("anthropic" | "gemini") or auto-detect by available keys.
+// Provider priority: DB config (ai_analysis_mode) > env AI_PROVIDER > auto-detect by available keys.
 
 import { callAnthropic, type AnthropicResult } from "./anthropic.server";
 import { callGemini } from "./gemini.server";
 
 export type AIProvider = "anthropic" | "gemini";
 
-export function detectProvider(): AIProvider {
+/**
+ * Detect primary provider.
+ * Priority: dbPreference (from app_config.ai_analysis_mode) > env AI_PROVIDER > auto by keys.
+ */
+export function detectProvider(dbPreference?: string | null): AIProvider {
+  // 1. DB preference (explicit user choice)
+  const db = dbPreference?.toLowerCase();
+  if (db === "gemini") return "gemini";
+  if (db === "anthropic") return "anthropic";
+  // "auto" or unknown → fall through to env / auto-detect
+
+  // 2. Env override
   const explicit = process.env.AI_PROVIDER?.toLowerCase();
   if (explicit === "gemini") return "gemini";
   if (explicit === "anthropic") return "anthropic";
-  // auto: prefer anthropic if key exists, else gemini
+
+  // 3. Auto: prefer anthropic if key exists, else gemini
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (process.env.GEMINI_API_KEY) return "gemini";
   return "anthropic"; // default, will fail with descriptive error
@@ -34,15 +46,16 @@ function callProvider(provider: AIProvider, opts: {
 
 /**
  * callAI — calls the primary AI provider; on failure, tries fallback if available.
- * Returns result + which provider was actually used.
+ * Pass dbPreference from app_config.ai_analysis_mode to honor user's saved choice.
  */
 export async function callAI(opts: {
   system: string;
   userPrompt: string;
   model?: string;
   maxTokens?: number;
+  dbPreference?: string | null;
 }): Promise<AnthropicResult & { provider: AIProvider; usedFallback: boolean }> {
-  const primary = detectProvider();
+  const primary = detectProvider(opts.dbPreference);
   const fallback = fallbackProvider(primary);
 
   try {
