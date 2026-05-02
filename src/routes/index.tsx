@@ -226,6 +226,7 @@ function humanizeError(raw: string): string {
   return raw;
 }
 
+function ScraperProgress({
   job,
   onCancel,
   onDownloadLogs,
