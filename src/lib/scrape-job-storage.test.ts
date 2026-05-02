@@ -265,4 +265,101 @@ describe("scrape-job-storage", () => {
       expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
     });
   });
+
+  // ---- localStorage error resilience ----
+  describe("localStorage error resilience", () => {
+    it("persistScrapeJob silently fails when setItem throws QuotaExceededError", () => {
+      (localStorageMock.setItem as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new DOMException("quota exceeded", "QuotaExceededError");
+      });
+
+      expect(() => persistScrapeJob("j", "c", validCriteria())).not.toThrow();
+      // Nothing was stored
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("persistScrapeJob silently fails when setItem throws SecurityError", () => {
+      (localStorageMock.setItem as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new DOMException("access denied", "SecurityError");
+      });
+
+      expect(() => persistScrapeJob("j", "c", validCriteria())).not.toThrow();
+    });
+
+    it("clearPersistedScrapeJob silently fails when removeItem throws", () => {
+      store.set(SCRAPE_JOB_STORAGE_KEY, "data");
+      (localStorageMock.removeItem as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new DOMException("access denied", "SecurityError");
+      });
+
+      expect(() => clearPersistedScrapeJob()).not.toThrow();
+      // Data remains because removeItem failed
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
+    });
+
+    it("readPersistedScrapeJob returns empty result when getItem throws", () => {
+      (localStorageMock.getItem as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new DOMException("access denied", "SecurityError");
+      });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors).toEqual([]);
+    });
+
+    it("readPersistedScrapeJob returns empty when getItem throws TypeError", () => {
+      (localStorageMock.getItem as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new TypeError("Cannot read properties of null");
+      });
+
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors).toEqual([]);
+    });
+
+    it("readPersistedScrapeJob clears storage when getItem returns non-JSON and removeItem also throws", () => {
+      store.set(SCRAPE_JOB_STORAGE_KEY, "{{broken");
+      // removeItem called inside clearPersistedScrapeJob will also throw
+      const originalRemove = localStorageMock.removeItem;
+      (localStorageMock.removeItem as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new DOMException("denied", "SecurityError");
+      });
+
+      // Should not throw despite both parse error and removeItem error
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors).toEqual([]);
+
+      // Restore
+      (localStorageMock.removeItem as ReturnType<typeof vi.fn>).mockImplementation(
+        (key: string) => { store.delete(key); },
+      );
+    });
+
+    it("persist → getItem throws → read returns null (no stale resume)", () => {
+      persistScrapeJob("j-1", "c-1", validCriteria());
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(true);
+
+      // Simulate private browsing or cookie clearing between persist and read
+      (localStorageMock.getItem as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error("Storage disabled");
+      });
+
+      const { job } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+    });
+
+    it("all three ops are safe when localStorage is completely broken", () => {
+      const throwFn = () => { throw new Error("storage disabled"); };
+      (localStorageMock.getItem as ReturnType<typeof vi.fn>).mockImplementation(throwFn);
+      (localStorageMock.setItem as ReturnType<typeof vi.fn>).mockImplementation(throwFn);
+      (localStorageMock.removeItem as ReturnType<typeof vi.fn>).mockImplementation(throwFn);
+
+      expect(() => persistScrapeJob("j", "c", validCriteria())).not.toThrow();
+      expect(() => clearPersistedScrapeJob()).not.toThrow();
+      const { job, validationErrors } = readPersistedScrapeJob();
+      expect(job).toBeNull();
+      expect(validationErrors).toEqual([]);
+    });
+  });
 });
