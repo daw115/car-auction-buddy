@@ -1836,6 +1836,13 @@ function Panel() {
                           <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
                         <button
+                          onClick={(e) => { e.stopPropagation(); void downloadRecordStatusJson(r.id); }}
+                          title="Pobierz status analizy + artifacts_meta (JSON)"
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Eye className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
                           onClick={(e) => { e.stopPropagation(); void downloadReportBundle(r.id); }}
                           title="Pobierz pakiet raportu (ZIP)"
                           disabled={r.status !== "analyzed"}
