@@ -897,7 +897,8 @@ function Panel() {
     setBusy("scraper");
     cancelRequestedRef.current = false;
     wasResumedRef.current = true;
-    toast.info("Wznowiono śledzenie aktywnego joba scrapera");
+    lastNotifiedPhaseRef.current = null;
+    toast.info("Wznowiono śledzenie — łączenie z serwerem scrapera…");
   }
 
   function dismissResume() {
