@@ -724,7 +724,8 @@ function Panel() {
           setListingsRaw(JSON.stringify(result, null, 2));
           toast.success(`Scraper zwrócił ${result.length} lotów`);
           setBusy(null);
-          scrapeContextRef.current = null;
+           scrapeContextRef.current = null;
+           clearPersistedScrapeJob();
         } else if (["error", "failed"].includes(p.status)) {
           const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
