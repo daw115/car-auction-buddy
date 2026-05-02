@@ -43,6 +43,23 @@ const LEVEL_STYLES: Record<string, string> = {
   debug: "bg-muted text-muted-foreground border-border",
 };
 
+// Phase/step color map for log entries — mirrors the one in index.tsx
+const STEP_COLORS: Record<string, string> = {
+  start:              "bg-[oklch(0.92_0.06_250)] text-[oklch(0.35_0.12_250)]",
+  anthropic_response: "bg-[oklch(0.88_0.10_280)] text-[oklch(0.28_0.16_280)]",
+  anthropic_call:     "bg-[oklch(0.88_0.10_280)] text-[oklch(0.28_0.16_280)]",
+  parse_json:         "bg-[oklch(0.90_0.08_200)] text-[oklch(0.32_0.12_200)]",
+  match_lots:         "bg-[oklch(0.90_0.08_60)] text-[oklch(0.32_0.12_60)]",
+  done:               "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  prompt_trimmed:     "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  scraper_start:      "bg-[oklch(0.90_0.08_280)] text-[oklch(0.30_0.14_280)]",
+  scraper_poll:       "bg-[oklch(0.90_0.08_280)] text-[oklch(0.30_0.14_280)]",
+  scraper_done:       "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  scraper_error:      "bg-destructive/15 text-destructive",
+  cache_hit:          "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  cache_miss:         "bg-muted text-muted-foreground",
+};
+
 function levelIcon(level: string) {
   if (level === "error") return <AlertCircle className="h-3 w-3" />;
   if (level === "warn") return <AlertTriangle className="h-3 w-3" />;
@@ -332,9 +349,11 @@ export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) 
                 >
                   {levelIcon(row.level)} {row.level}
                 </Badge>
-                <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                <span className={`rounded px-1 text-[10px] ${
+                  STEP_COLORS[row.step ?? ""] ?? "bg-muted text-muted-foreground"
+                } ${row.step ? "font-semibold" : "font-normal"}`}>
                   {row.operation}
-                  {row.step ? `·${row.step}` : ""}
+                  {row.step ? ` · ${row.step}` : ""}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="break-words leading-snug">{row.message}</div>
@@ -390,7 +409,6 @@ function ProgressLine({ details }: { details: Record<string, unknown> | null }) 
         : null;
 
   const parts: string[] = [];
-  if (phase) parts.push(phase);
   if (step && step !== phase) parts.push(step);
   if (current !== null && total !== null) parts.push(`${current}/${total}`);
   if (pct !== null) parts.push(`${pct}%`);
@@ -405,9 +423,18 @@ function ProgressLine({ details }: { details: Record<string, unknown> | null }) 
           />
         </div>
       )}
-      {parts.length > 0 && (
-        <div className="text-[10px] text-muted-foreground">{parts.join(" · ")}</div>
-      )}
+      <div className="flex flex-wrap items-center gap-1">
+        {phase && (
+          <span className={`inline-flex items-center rounded px-1 py-0 text-[10px] font-bold ${
+            STEP_COLORS[phase] ?? "bg-muted text-muted-foreground"
+          }`}>
+            {phase}
+          </span>
+        )}
+        {parts.length > 0 && (
+          <span className="text-[10px] text-muted-foreground">{parts.join(" · ")}</span>
+        )}
+      </div>
     </div>
   );
 }
