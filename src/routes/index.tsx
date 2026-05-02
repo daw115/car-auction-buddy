@@ -87,6 +87,7 @@ type RecordSummary = {
   analysis_started_at: string | null;
   analysis_completed_at: string | null;
   artifacts_meta: ArtifactsMeta | null;
+  analysis_error: string | null;
 };
 type ConfigEnv = {
   ANTHROPIC_API_KEY: boolean;
@@ -1021,6 +1022,7 @@ function Panel() {
               analysis_started_at: analysisStartedIso,
               analysis_completed_at: now,
               artifacts_meta: artifactsMeta,
+              analysis_error: null,
             },
           })) as { id: string };
           setActiveRecordId(row.id);
@@ -1036,6 +1038,28 @@ function Panel() {
     } catch (e) {
       const msg = (e as Error).message;
       setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
+      // Persist error to DB if we have a record
+      if (activeRecordId || activeClient) {
+        try {
+          await fnSaveRecord({
+            data: {
+              id: activeRecordId ?? undefined,
+              client_id: activeClient?.id ?? activeClientId ?? undefined,
+              title: `${criteria.make} ${criteria.model || ""}`.trim(),
+              status: "draft",
+              criteria,
+              listings,
+              analysis_status: "failed",
+              analysis_started_at: new Date(startedAt).toISOString(),
+              analysis_completed_at: new Date().toISOString(),
+              analysis_error: msg,
+            },
+          });
+          if (activeClient) await refreshRecords(activeClient.id);
+        } catch {
+          // best-effort
+        }
+      }
       toast.error(msg);
     } finally {
       setBusy(null);
@@ -1802,6 +1826,15 @@ function Panel() {
                             MAIL
                           </span>
                         )}
+                      </div>
+                    )}
+                    {r.analysis_status === "failed" && r.analysis_error && (
+                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive">
+                        <div className="flex items-center gap-1 font-medium mb-0.5">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          Błąd analizy
+                        </div>
+                        <p className="line-clamp-3 break-all">{r.analysis_error}</p>
                       </div>
                     )}
                   </div>

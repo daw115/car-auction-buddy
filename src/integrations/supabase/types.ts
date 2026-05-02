@@ -134,6 +134,7 @@ export type Database = {
           ai_prompt: string | null
           analysis: Json | null
           analysis_completed_at: string | null
+          analysis_error: string | null
           analysis_started_at: string | null
           analysis_status: string | null
           artifacts_meta: Json | null
@@ -153,6 +154,7 @@ export type Database = {
           ai_prompt?: string | null
           analysis?: Json | null
           analysis_completed_at?: string | null
+          analysis_error?: string | null
           analysis_started_at?: string | null
           analysis_status?: string | null
           artifacts_meta?: Json | null
@@ -172,6 +174,7 @@ export type Database = {
           ai_prompt?: string | null
           analysis?: Json | null
           analysis_completed_at?: string | null
+          analysis_error?: string | null
           analysis_started_at?: string | null
           analysis_status?: string | null
           artifacts_meta?: Json | null
