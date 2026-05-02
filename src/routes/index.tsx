@@ -154,7 +154,7 @@ type ScrapeJobState = {
   total?: number;
 };
 
-type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed";
+type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed" | "cancelled";
 
 type AnalysisJobState = {
   phase: AnalysisPhase;
