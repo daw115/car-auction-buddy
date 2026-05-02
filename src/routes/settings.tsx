@@ -2,13 +2,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { getConfig, testAnthropic, testGemini } from "@/server/api.functions";
+import { getConfig, testAnthropic, testGemini, updateConfig } from "@/server/api.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, CheckCircle2, XCircle, Loader2, KeyRound, ShieldCheck, Zap } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  ArrowLeft, CheckCircle2, XCircle, Loader2, KeyRound,
+  ShieldCheck, Zap, Shield, Gauge,
+} from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -23,6 +27,11 @@ type EnvFlags = {
   AI_PROVIDER: "anthropic" | "gemini";
   SCRAPER_BASE_URL: boolean;
   SCRAPER_API_TOKEN: boolean;
+};
+
+type ConfigRow = {
+  ai_analysis_mode: string;
+  ai_fallback_mode: string;
 };
 
 type TestResult =
@@ -52,11 +61,14 @@ function SettingsPage() {
   const getConfigFn = useServerFn(getConfig);
   const testAnthropicFn = useServerFn(testAnthropic);
   const testGeminiFn = useServerFn(testGemini);
+  const updateConfigFn = useServerFn(updateConfig);
 
   const [env, setEnv] = useState<EnvFlags | null>(null);
+  const [config, setConfig] = useState<ConfigRow | null>(null);
   const [anthropicModel, setAnthropicModel] = useState("");
   const [geminiModel, setGeminiModel] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [testingAnthropic, setTestingAnthropic] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
   const [anthropicResult, setAnthropicResult] = useState<TestResult | null>(null);
@@ -68,6 +80,10 @@ function SettingsPage() {
       .then((res) => {
         if (!mounted) return;
         setEnv(res.env as EnvFlags);
+        setConfig({
+          ai_analysis_mode: (res.config as Record<string, string>)?.ai_analysis_mode ?? "auto",
+          ai_fallback_mode: (res.config as Record<string, string>)?.ai_fallback_mode ?? "error_only",
+        });
       })
       .catch((e) => toast.error(`Nie udało się pobrać konfiguracji: ${e.message}`))
       .finally(() => mounted && setLoading(false));
@@ -110,6 +126,23 @@ function SettingsPage() {
     }
   };
 
+  const handleSaveConfig = async (patch: Partial<ConfigRow>) => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      await updateConfigFn({ data: patch as Parameters<typeof updateConfigFn>[0]["data"] });
+      setConfig({ ...config, ...patch });
+      toast.success("Zapisano ustawienia AI");
+    } catch (e) {
+      toast.error(`Błąd zapisu: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const bothKeysConfigured = env?.ANTHROPIC_API_KEY && env?.GEMINI_API_KEY;
+  const isRaceBoth = config?.ai_fallback_mode === "race_both";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-6 py-10">
@@ -128,7 +161,7 @@ function SettingsPage() {
         <h1 className="mb-2 text-3xl font-bold tracking-tight">Ustawienia — AI</h1>
         <p className="mb-8 text-sm text-muted-foreground">
           Konfiguracja dostawców AI. Aplikacja automatycznie wykrywa dostępne klucze i wybiera
-          dostawcę. Jeśli oba są skonfigurowane, Anthropic jest domyślny, a Gemini działa jako fallback.
+          dostawcę. Jeśli oba są skonfigurowane, możesz kontrolować strategię fallbacku.
         </p>
 
         {/* Active provider indicator */}
@@ -140,13 +173,99 @@ function SettingsPage() {
               <Badge variant="secondary" className="ml-1">
                 {env.AI_PROVIDER === "gemini" ? "Google Gemini" : "Anthropic Claude"}
               </Badge>
-              {env.ANTHROPIC_API_KEY && env.GEMINI_API_KEY && (
+              {bothKeysConfigured && (
                 <span className="ml-2 text-muted-foreground">
                   (fallback: {env.AI_PROVIDER === "gemini" ? "Anthropic" : "Gemini"})
                 </span>
               )}
             </div>
           </div>
+        )}
+
+        {/* Fallback Strategy Card */}
+        {bothKeysConfigured && config && (
+          <Card className="mb-6 p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Shield className="h-5 w-5 text-amber-500" />
+              <h2 className="text-lg font-semibold">Strategia fallbacku</h2>
+            </div>
+
+            <div className="space-y-5">
+              {/* Mode selector */}
+              <div
+                className={`rounded-lg border p-4 cursor-pointer transition-colors ${
+                  !isRaceBoth
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+                onClick={() => handleSaveConfig({ ai_fallback_mode: "error_only" })}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Shield className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium text-sm">Fallback tylko przy błędach</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Najpierw główny dostawca. Zapasowy tylko gdy główny zwróci błąd.
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`h-4 w-4 rounded-full border-2 ${
+                    !isRaceBoth ? "border-primary bg-primary" : "border-muted-foreground/40"
+                  }`}>
+                    {!isRaceBoth && (
+                      <div className="h-full w-full rounded-full bg-primary flex items-center justify-center">
+                        <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`rounded-lg border p-4 cursor-pointer transition-colors ${
+                  isRaceBoth
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+                onClick={() => handleSaveConfig({ ai_fallback_mode: "race_both" })}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Gauge className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium text-sm">Zawsze próbuj obu</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Oba dostawcy uruchamiani równolegle. Używa odpowiedzi tego, który odpowie pierwszy.
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`h-4 w-4 rounded-full border-2 ${
+                    isRaceBoth ? "border-primary bg-primary" : "border-muted-foreground/40"
+                  }`}>
+                    {isRaceBoth && (
+                      <div className="h-full w-full rounded-full bg-primary flex items-center justify-center">
+                        <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {saving && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Zapisuję...
+                </div>
+              )}
+
+              {isRaceBoth && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+                  <strong>Uwaga:</strong> Tryb „zawsze próbuj obu" zużywa tokeny u obu dostawców
+                  przy każdym zapytaniu. Szybsze odpowiedzi, ale wyższe koszty.
+                </div>
+              )}
+            </div>
+          </Card>
         )}
 
         {/* Anthropic Card */}
@@ -258,10 +377,6 @@ function SettingsPage() {
                 </a>{" "}
                 i poproś Lovable o dodanie sekretu <code>GEMINI_API_KEY</code>.
               </p>
-              <p className="mt-1 text-muted-foreground">
-                Opcjonalnie ustaw <code>GEMINI_MODEL</code> (domyślnie: gemini-2.5-flash)
-                i <code>AI_PROVIDER=gemini</code> aby używać Gemini jako głównego dostawcy.
-              </p>
             </div>
           )}
 
@@ -302,10 +417,18 @@ function SettingsPage() {
         <Card className="mt-6 p-6 border-dashed">
           <h3 className="mb-2 text-sm font-semibold">Jak działa fallback?</h3>
           <ul className="space-y-1.5 text-sm text-muted-foreground list-disc pl-5">
-            <li>Aplikacja najpierw próbuje użyć <strong>głównego dostawcy</strong> (domyślnie Anthropic).</li>
-            <li>Jeśli wywołanie się nie powiedzie, automatycznie przełącza się na <strong>zapasowego dostawcę</strong> (Gemini).</li>
-            <li>Aby zmienić głównego dostawcę, ustaw sekret <code>AI_PROVIDER=gemini</code>.</li>
-            <li>Jeśli tylko jeden klucz jest skonfigurowany, aplikacja użyje tego dostawcy bez fallbacku.</li>
+            <li>
+              <strong>Fallback tylko przy błędach</strong> — próbuje głównego dostawcę.
+              Jeśli zwróci błąd (timeout, HTTP 5xx, brak klucza), automatycznie próbuje zapasowego.
+              Oszczędza tokeny.
+            </li>
+            <li>
+              <strong>Zawsze próbuj obu</strong> — oba dostawcy uruchamiani równolegle (race).
+              Używa odpowiedzi tego, kto odpowie szybciej. Szybsze czasy odpowiedzi, ale
+              podwójne zużycie tokenów.
+            </li>
+            <li>Jeśli tylko jeden klucz jest skonfigurowany, fallback jest niedostępny.</li>
+            <li>Głównego dostawcę zmieniasz w panelu konfiguracji (pole „Tryb analizy AI").</li>
           </ul>
         </Card>
       </div>
