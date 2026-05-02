@@ -1218,9 +1218,10 @@ function Panel() {
   }
 
   async function retryAnalysis(recordId: string) {
+    // Cancel any pending auto-retry
+    if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
+    currentRetryRef.current = 0;
     await openRecord(recordId);
-    // openRecord sets listings/criteria — runAi will use them
-    // We need to wait for state to settle, so we use a microtask
     setTimeout(() => {
       runAi();
     }, 100);
