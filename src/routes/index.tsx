@@ -1817,7 +1817,7 @@ function Panel() {
             {scrapeJob && (
               <ScraperProgress
                 job={scrapeJob}
-                onCancel={cancelScrape}
+                onCancel={requestCancelScrape}
                 onDownloadLogs={downloadJobLogs}
                 onRerun={callScraper}
                 rerunDisabled={busy === "scraper"}
