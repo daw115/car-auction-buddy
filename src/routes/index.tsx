@@ -1042,6 +1042,9 @@ function Panel() {
         }
       }
 
+      // Reset retry state on success
+      currentRetryRef.current = 0;
+      if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
       setAnalysisJob((s) => s ? { ...s, phase: "done", elapsedMs: Date.now() - startedAt } : s);
       toast.success(`Analiza zakończona: ${r.analysis.length} lotów przeanalizowanych`);
     } catch (e) {
