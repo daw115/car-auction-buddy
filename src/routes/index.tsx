@@ -789,6 +789,7 @@ function Panel() {
     if (!scrapeJob?.jobId) {
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
+      clearPersistedScrapeJob();
       setScrapeJob((s) => (s ? { ...s, status: "cancelled" } : s));
       setBusy(null);
       await persistCancelledStatus();
