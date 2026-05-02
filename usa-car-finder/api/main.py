@@ -506,6 +506,66 @@ async def dashboard_search(request: SearchRequest, _auth: None = Depends(_requir
     }
 
 
+def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
+    """Spłaszcza Job do shape'u oczekiwanego przez car-auction-buddy frontend.
+
+    TS oczekuje: { status, listings?, error?, progress?, step?, message?, current?, total?, phase? }
+    """
+    listings: list = []
+    if job.result:
+        for item in (job.result.get("all_results") or []):
+            lot = item.get("lot") if isinstance(item, dict) else None
+            if lot:
+                listings.append(lot)
+
+    latest_phase = job.phases[-1] if job.phases else None
+    phase_name = latest_phase.name if latest_phase else None
+    phase_info = latest_phase.info if latest_phase else {}
+    current = phase_info.get("current")
+    total = phase_info.get("total")
+    progress: Optional[float] = None
+    if isinstance(current, (int, float)) and isinstance(total, (int, float)) and total:
+        progress = max(0.0, min(1.0, current / total))
+    elif job.status == "done":
+        progress = 1.0
+
+    return {
+        "status": job.status,
+        "listings": listings if job.status == "done" else None,
+        "error": job.error,
+        "progress": progress,
+        "phase": phase_name,
+        "step": phase_info.get("step"),
+        "message": phase_info.get("message"),
+        "current": current,
+        "total": total,
+    }
+
+
+@app.get("/api/jobs/{job_id}")
+async def dashboard_get_job(job_id: str, _auth: None = Depends(_require_bearer)):
+    """Adapter dla zewnętrznych dashboardów — alias do GET /search/jobs/{id}
+    z reshapingiem odpowiedzi do shape'u car-auction-buddy."""
+    job = jobs_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zadania")
+    return _job_to_dashboard_dict(job)
+
+
+@app.delete("/api/jobs/{job_id}")
+async def dashboard_cancel_job(job_id: str, _auth: None = Depends(_require_bearer)):
+    """Adapter dla zewnętrznych dashboardów — alias do DELETE /search/jobs/{id}."""
+    job = jobs_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zadania")
+    requested = jobs_store.request_cancel(job)
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "cancel_requested": requested,
+    }
+
+
 @app.post("/search", status_code=202)
 async def search_cars(request: SearchRequest):
     criteria_hash = _compute_criteria_hash(request)
