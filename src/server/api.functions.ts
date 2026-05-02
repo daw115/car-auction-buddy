@@ -587,9 +587,11 @@ export const runAnalysis = createServerFn({ method: "POST" })
     }
 
     let raw: string;
+    let aiMeta: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
     try {
       const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens, dbPreference, fallbackMode });
       raw = result.text;
+      aiMeta = { provider: result.provider, model: result.model, usedFallback: result.usedFallback, fallbackMode: result.fallbackMode, usage: result.usage };
       await log.info(
         "ai_response",
         `Odpowiedź AI [${result.provider}${result.usedFallback ? " (fallback)" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
