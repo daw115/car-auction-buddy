@@ -1156,6 +1156,15 @@ function Panel() {
     }
   }
 
+  async function retryAnalysis(recordId: string) {
+    await openRecord(recordId);
+    // openRecord sets listings/criteria — runAi will use them
+    // We need to wait for state to settle, so we use a microtask
+    setTimeout(() => {
+      runAi();
+    }, 100);
+  }
+
   async function removeRecord(id: string) {
     if (!confirm("Usunąć ten rekord?")) return;
     try {
@@ -1742,6 +1751,16 @@ function Panel() {
                         >
                           <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
+                        {r.analysis_status === "failed" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
+                            title="Ponów analizę AI"
+                            className="disabled:opacity-30 disabled:cursor-not-allowed"
+                            disabled={busy !== null}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); void removeRecord(r.id); }}
                           title="Usuń"
