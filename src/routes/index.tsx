@@ -872,7 +872,24 @@ function Panel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function cancelScrape() {
+  function resumeScrapeJob() {
+    if (!pendingResume) return;
+    const saved = pendingResume;
+    setPendingResume(null);
+    scrapeContextRef.current = { jobId: saved.jobId, cacheKey: saved.cacheKey, criteria: saved.criteria };
+    setScrapeJob({ status: "running", jobId: saved.jobId, startedAt: saved.startedAt, elapsedMs: Date.now() - saved.startedAt });
+    setCriteria((c) => ({ ...c, ...saved.criteria }));
+    setBusy("scraper");
+    cancelRequestedRef.current = false;
+    toast.info("Wznowiono śledzenie aktywnego joba scrapera");
+  }
+
+  function dismissResume() {
+    setPendingResume(null);
+    clearPersistedScrapeJob();
+  }
+
+
     if (!scrapeJob?.jobId) {
       cancelRequestedRef.current = true;
       scrapeContextRef.current = null;
