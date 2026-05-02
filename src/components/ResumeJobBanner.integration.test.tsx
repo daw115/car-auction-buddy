@@ -128,6 +128,7 @@ function ResumeFlowHarness({
         onClearErrors={() => setValidationErrors([])}
       />
       {busy && <div data-testid="busy-indicator">busy: {busy}</div>}
+      {errorMessage && <div data-testid="error-message" role="alert">{errorMessage}</div>}
       {jobResult && <div data-testid="job-result">{jobResult}</div>}
       {!pendingResume && !busy && !validationErrors.length && !jobResult && (
         <div data-testid="idle-state">idle</div>
