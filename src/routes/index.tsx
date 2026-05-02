@@ -1202,7 +1202,7 @@ function Panel() {
       toast.success(`Analiza zakończona: ${r.analysis.length} lotów przeanalizowanych`);
     } catch (e) {
       const msg = (e as Error).message;
-      setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
+      setAnalysisJob((s) => s ? { ...s, phase: "failed", lastPhase: s.phase !== "failed" ? s.phase : s.lastPhase, elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
 
       // Persist error + compute retry backoff
       const currentRetry = currentRetryRef.current;
