@@ -489,7 +489,7 @@ function Panel() {
   const fnPollScraper = useServerFn(pollScraperJob);
   const fnCancelScraper = useServerFn(cancelScraperJob);
   const fnGetJobLogs = useServerFn(getJobLogs);
-  const fnClearCache = useServerFn(clearScrapeCache);
+  const fnLogRetryEvent = useServerFn(logRetryEvent);
 
   async function clearCacheAll() {
     if (!confirm("Wyczyścić cały cache wyników wyszukiwań?")) return;
