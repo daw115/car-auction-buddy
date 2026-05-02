@@ -454,20 +454,20 @@ function ConfigValidationWarnings({ env, config }: { env: EnvFlags; config: Conf
     });
   } else if (mode === "anthropic" && !hasAnthropic) {
     warnings.push({
-      message: "Wybrany dostawca „Anthropic", ale brak klucza ANTHROPIC_API_KEY.",
-      hint: "Dodaj sekret ANTHROPIC_API_KEY lub zmień tryb na „Gemini" albo „Auto".",
+      message: 'Wybrany dostawca "Anthropic", ale brak klucza ANTHROPIC_API_KEY.',
+      hint: 'Dodaj sekret ANTHROPIC_API_KEY lub zmień tryb na "Gemini" albo "Auto".',
     });
   } else if (mode === "gemini" && !hasGemini) {
     warnings.push({
-      message: "Wybrany dostawca „Gemini", ale brak klucza GEMINI_API_KEY.",
-      hint: "Dodaj sekret GEMINI_API_KEY lub zmień tryb na „Anthropic" albo „Auto".",
+      message: 'Wybrany dostawca "Gemini", ale brak klucza GEMINI_API_KEY.',
+      hint: 'Dodaj sekret GEMINI_API_KEY lub zmień tryb na "Anthropic" albo "Auto".',
     });
   }
 
   if (config.ai_fallback_mode === "race_both" && (!hasAnthropic || !hasGemini)) {
     warnings.push({
-      message: "Strategia „Zawsze próbuj obu" wymaga obu kluczy API.",
-      hint: "Dodaj brakujący klucz lub zmień strategię na „Fallback tylko przy błędach".",
+      message: 'Strategia "Zawsze próbuj obu" wymaga obu kluczy API.',
+      hint: 'Dodaj brakujący klucz lub zmień strategię na "Fallback tylko przy błędach".',
     });
   }
 
