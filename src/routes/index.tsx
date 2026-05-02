@@ -469,6 +469,18 @@ function ScraperProgress({
           <div className="font-medium text-destructive">
             {humanizeError(job.errorMessage)}
           </div>
+          {isScraper404(job.errorMessage) && (
+            <div className="rounded bg-destructive/5 border border-destructive/20 px-2.5 py-2 text-[11px] text-foreground space-y-1.5 mt-1">
+              <div className="font-semibold text-destructive">Jak naprawić?</div>
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                <li>Sprawdź, czy serwer scrapera jest uruchomiony i dostępny pod adresem ustawionym w <span className="font-mono text-foreground">SCRAPER_BASE_URL</span>.</li>
+                <li>Otwórz <span className="font-mono text-foreground">/health</span> na serwerze scrapera — powinien zwrócić JSON ze statusem <span className="font-mono text-foreground">"ok"</span>.</li>
+                <li>Upewnij się, że endpoint <span className="font-mono text-foreground">POST /search</span> istnieje (np. <span className="font-mono text-foreground">http://twój-scraper/search</span>).</li>
+                <li>Jeśli scraper działa lokalnie, wyeksponuj go publicznie (np. <span className="font-mono text-foreground">ngrok http 8000</span>) i zaktualizuj <span className="font-mono text-foreground">SCRAPER_BASE_URL</span> w ustawieniach.</li>
+                <li>Po zmianie URL scrapera przejdź do <a href="/settings" className="underline text-primary hover:text-primary/80">Ustawień</a> i zweryfikuj połączenie przyciskiem „Test".</li>
+              </ol>
+            </div>
+          )}
           {job.errorMessage !== humanizeError(job.errorMessage) && (
             <details className="text-[11px] text-muted-foreground">
               <summary className="cursor-pointer hover:text-foreground">Szczegóły techniczne</summary>
