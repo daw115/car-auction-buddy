@@ -43,6 +43,23 @@ const LEVEL_STYLES: Record<string, string> = {
   debug: "bg-muted text-muted-foreground border-border",
 };
 
+// Phase/step color map for log entries — mirrors the one in index.tsx
+const STEP_COLORS: Record<string, string> = {
+  start:              "bg-[oklch(0.92_0.06_250)] text-[oklch(0.35_0.12_250)]",
+  anthropic_response: "bg-[oklch(0.88_0.10_280)] text-[oklch(0.28_0.16_280)]",
+  anthropic_call:     "bg-[oklch(0.88_0.10_280)] text-[oklch(0.28_0.16_280)]",
+  parse_json:         "bg-[oklch(0.90_0.08_200)] text-[oklch(0.32_0.12_200)]",
+  match_lots:         "bg-[oklch(0.90_0.08_60)] text-[oklch(0.32_0.12_60)]",
+  done:               "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  prompt_trimmed:     "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  scraper_start:      "bg-[oklch(0.90_0.08_280)] text-[oklch(0.30_0.14_280)]",
+  scraper_poll:       "bg-[oklch(0.90_0.08_280)] text-[oklch(0.30_0.14_280)]",
+  scraper_done:       "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  scraper_error:      "bg-destructive/15 text-destructive",
+  cache_hit:          "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]",
+  cache_miss:         "bg-muted text-muted-foreground",
+};
+
 function levelIcon(level: string) {
   if (level === "error") return <AlertCircle className="h-3 w-3" />;
   if (level === "warn") return <AlertTriangle className="h-3 w-3" />;
