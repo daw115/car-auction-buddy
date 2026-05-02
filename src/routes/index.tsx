@@ -22,6 +22,7 @@ import {
   getJobLogs,
   runLotReports,
   getReportBundle,
+  logRetryEvent,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
