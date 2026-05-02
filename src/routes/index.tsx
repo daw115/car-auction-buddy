@@ -856,14 +856,8 @@ function Panel() {
 
   // On mount: detect active scrape job in localStorage and offer resume
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SCRAPE_JOB_STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as { jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number };
-      if (!saved.jobId) { clearPersistedScrapeJob(); return; }
-      // Don't auto-resume — let the user decide via the "Wznów" button
-      setPendingResume(saved);
-    } catch { clearPersistedScrapeJob(); }
+    const saved = readPersistedScrapeJob();
+    if (saved) setPendingResume(saved as typeof pendingResume);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
