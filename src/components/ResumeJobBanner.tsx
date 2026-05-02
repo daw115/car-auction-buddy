@@ -95,6 +95,12 @@ export function ResumeJobBanner({
             Do: <strong>{pendingResume.criteria.year_to}</strong>
           </span>
         )}
+        <span>
+          Cache: <strong data-testid="cache-key">{pendingResume.cacheKey.slice(0, 12)}</strong>
+        </span>
+        <span>
+          Start: <strong data-testid="started-ago">{formatElapsed(Date.now() - pendingResume.startedAt)}</strong>
+        </span>
       </div>
     </div>
   );
