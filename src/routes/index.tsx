@@ -1307,6 +1307,9 @@ function Panel() {
       if (generatedMailHtml) {
         artifactsMeta.mail_html = { size: generatedMailHtml.length, generated_at: now };
       }
+      if (r.ai_meta) {
+        artifactsMeta.ai_meta = r.ai_meta;
+      }
 
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
