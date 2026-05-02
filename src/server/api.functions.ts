@@ -160,12 +160,16 @@ export const deleteRecord = createServerFn({ method: "POST" })
 export const getConfig = createServerFn({ method: "GET" }).handler(async () => {
   const { data, error } = await supabaseAdmin.from("app_config").select("*").eq("id", 1).single();
   if (error) throw new Error(error.message);
+  const provider = detectProvider();
   return {
     config: data,
     env: {
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
       ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
       ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      GEMINI_MODEL: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+      AI_PROVIDER: provider,
       SCRAPER_BASE_URL: !!process.env.SCRAPER_BASE_URL,
       SCRAPER_API_TOKEN: !!process.env.SCRAPER_API_TOKEN,
     },
