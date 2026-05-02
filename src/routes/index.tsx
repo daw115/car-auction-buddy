@@ -1063,7 +1063,7 @@ function Panel() {
               next_retry_at: null,
               last_error_at: null,
             },
-          })) as { id: string };
+          })) as unknown as { id: string };
           setActiveRecordId(row.id);
           await refreshRecords(activeClient.id);
         } catch (err) {
@@ -1109,7 +1109,7 @@ function Panel() {
               next_retry_at: nextRetryAt,
               last_error_at: new Date().toISOString(),
             },
-          })) as { id: string };
+          })) as unknown as { id: string };
           if (!activeRecordId) setActiveRecordId(savedRow.id);
           if (activeClient) await refreshRecords(activeClient.id);
         } catch {
@@ -1204,7 +1204,7 @@ function Panel() {
           report_html: reportHtml || null,
           mail_html: mailHtml || null,
         },
-      })) as { id: string };
+      })) as unknown as { id: string };
       setActiveRecordId(row.id);
       await refreshRecords(activeClient.id);
       toast.success("Rekord zapisany");
