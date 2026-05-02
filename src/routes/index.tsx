@@ -729,6 +729,9 @@ function Panel() {
   const SCRAPE_JOB_STORAGE_KEY = "car-finder:active-scrape-job";
   const [scrapeJob, setScrapeJob] = useState<ScrapeJobState | null>(null);
 
+  // Pending resume state — set on mount if localStorage has an active job
+  const [pendingResume, setPendingResume] = useState<{ jobId: string; cacheKey: string; criteria: ClientCriteria; startedAt: number } | null>(null);
+
   function persistScrapeJob(jobId: string, cacheKey: string, criteria: ClientCriteria) {
     try {
       localStorage.setItem(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({ jobId, cacheKey, criteria, startedAt: Date.now() }));
