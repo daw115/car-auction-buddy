@@ -1032,6 +1032,9 @@ function Panel() {
               analysis_completed_at: now,
               artifacts_meta: artifactsMeta,
               analysis_error: null,
+              retry_count: 0,
+              next_retry_at: null,
+              last_error_at: null,
             },
           })) as { id: string };
           setActiveRecordId(row.id);
