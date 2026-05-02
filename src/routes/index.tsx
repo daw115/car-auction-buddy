@@ -1042,10 +1042,19 @@ function Panel() {
     } catch (e) {
       const msg = (e as Error).message;
       setAnalysisJob((s) => s ? { ...s, phase: "failed", elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
-      // Persist error to DB if we have a record
+
+      // Persist error + compute retry backoff
+      const currentRetry = currentRetryRef.current;
+      const maxRetries = maxRetriesRef.current;
+      const newRetryCount = currentRetry + 1;
+      const canRetry = newRetryCount < maxRetries;
+      // Exponential backoff: 10s, 30s, 90s, 270s...
+      const backoffMs = canRetry ? Math.min(10_000 * Math.pow(3, currentRetry), 300_000) : null;
+      const nextRetryAt = canRetry && backoffMs ? new Date(Date.now() + backoffMs).toISOString() : null;
+
       if (activeRecordId || activeClient) {
         try {
-          await fnSaveRecord({
+          const savedRow = (await fnSaveRecord({
             data: {
               id: activeRecordId ?? undefined,
               client_id: activeClient?.id ?? activeClientId ?? undefined,
@@ -1057,14 +1066,30 @@ function Panel() {
               analysis_started_at: new Date(startedAt).toISOString(),
               analysis_completed_at: new Date().toISOString(),
               analysis_error: msg,
+              retry_count: newRetryCount,
+              max_retries: maxRetries,
+              next_retry_at: nextRetryAt,
+              last_error_at: new Date().toISOString(),
             },
-          });
+          })) as { id: string };
+          if (!activeRecordId) setActiveRecordId(savedRow.id);
           if (activeClient) await refreshRecords(activeClient.id);
         } catch {
           // best-effort
         }
       }
-      toast.error(msg);
+
+      if (canRetry && backoffMs) {
+        const delaySec = Math.round(backoffMs / 1000);
+        toast.error(`${msg} — ponowna próba za ${delaySec}s (${newRetryCount}/${maxRetries})`);
+        // Schedule auto-retry
+        autoRetryTimerRef.current = window.setTimeout(() => {
+          currentRetryRef.current = newRetryCount;
+          runAi();
+        }, backoffMs);
+      } else {
+        toast.error(canRetry ? msg : `${msg} — wyczerpano limit ${maxRetries} prób`);
+      }
     } finally {
       setBusy(null);
     }
