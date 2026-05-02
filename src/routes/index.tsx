@@ -81,6 +81,7 @@ import {
   BarChart3,
   Eye,
   RotateCcw,
+  FlaskConical,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -88,12 +89,14 @@ export const Route = createFileRoute("/")({
 });
 
 type ClientRow = { id: string; name: string; contact: string | null; notes: string | null; created_at: string };
+type AiMeta = { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
 type ArtifactsMeta = {
   report_html?: { size: number; generated_at: string };
   mail_html?: { size: number; generated_at: string };
   ai_input?: { size: number; generated_at: string };
   ai_prompt?: { size: number; generated_at: string };
   analysis?: { lots_count: number; generated_at: string };
+  ai_meta?: AiMeta;
 };
 type RecordSummary = {
   id: string;
@@ -661,7 +664,7 @@ function Panel() {
 
   async function downloadRecordArtifact(
     recordId: string,
-    field: "report_html" | "ai_input" | "ai_prompt",
+    field: "report_html" | "ai_input" | "ai_prompt" | "analysis",
   ) {
     try {
       const row = (await fnLoadRecord({ data: { id: recordId } })) as Record<string, unknown>;
@@ -674,6 +677,7 @@ function Panel() {
         report_html: { name: `report-${recordId.slice(0, 8)}.html`, mime: "text/html" },
         ai_input: { name: `ai-input-${recordId.slice(0, 8)}.json`, mime: "application/json" },
         ai_prompt: { name: `ai-prompt-${recordId.slice(0, 8)}.txt`, mime: "text/plain" },
+        analysis: { name: `analysis-${recordId.slice(0, 8)}.json`, mime: "application/json" },
       };
       const { name, mime } = filenameMap[field];
       const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -751,7 +755,7 @@ function Panel() {
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
-  const [aiMeta, setAiMeta] = useState<{ provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } } | null>(null);
+  const [aiMeta, setAiMeta] = useState<AiMeta | null>(null);
   const [aiInput, setAiInput] = useState<unknown>(null);
   const [aiPrompt, setAiPrompt] = useState<string>("");
   const [reportHtml, setReportHtml] = useState<string>("");
@@ -1305,6 +1309,9 @@ function Panel() {
       if (generatedMailHtml) {
         artifactsMeta.mail_html = { size: generatedMailHtml.length, generated_at: now };
       }
+      if (r.ai_meta) {
+        artifactsMeta.ai_meta = r.ai_meta;
+      }
 
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
@@ -1510,6 +1517,7 @@ function Panel() {
         analysis: AnalyzedLot[] | null;
         report_html: string | null;
         mail_html: string | null;
+        artifacts_meta: ArtifactsMeta | null;
       };
       setActiveRecordId(row.id);
       if (row.client_id) setActiveClientId(row.client_id);
@@ -1519,6 +1527,7 @@ function Panel() {
       setAiInput(row.ai_input);
       setAiPrompt(row.ai_prompt ?? "");
       setAnalysis(row.analysis);
+      setAiMeta((row.artifacts_meta as ArtifactsMeta | null)?.ai_meta ?? null);
       setReportHtml(row.report_html ?? "");
       setMailHtml(row.mail_html ?? "");
       toast.success("Rekord wczytany");
@@ -2194,6 +2203,14 @@ function Panel() {
                           className="disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                           <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "analysis"); }}
+                          title="Pobierz wynik analizy AI (JSON)"
+                          disabled={!am?.analysis}
+                          className="disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <FlaskConical className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); void downloadRecordStatusJson(r.id); }}
