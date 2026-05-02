@@ -544,5 +544,116 @@ describe("Resume flow integration", () => {
       expect(onResume).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ---- Legacy / malformed localStorage formats ----
+  describe("legacy or incompatible localStorage format is safely skipped", () => {
+    it("v0 format (no cacheKey field): banner hidden, storage cleared silently", () => {
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({ jobId: "old-job-1", criteria: { make: "Ford", budget_usd: 10000 }, startedAt: Date.now() }),
+      );
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+      expect(onResume).not.toHaveBeenCalled();
+    });
+
+    it("v0 format (no startedAt): banner hidden, validation error shown", () => {
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({ jobId: "old-job-2", cacheKey: "ck-old", criteria: { make: "Ford", budget_usd: 5000 } }),
+      );
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/dane uszkodzone/)).toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("completely different JSON shape (e.g. array): banner hidden, storage cleared", () => {
+      store.set(SCRAPE_JOB_STORAGE_KEY, JSON.stringify([1, 2, 3]));
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("non-JSON string in storage: banner hidden, storage cleared", () => {
+      store.set(SCRAPE_JOB_STORAGE_KEY, "not-json-at-all");
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("legacy criteria with extra unknown fields: valid fields kept, banner shown", () => {
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({
+          jobId: "legacy-extra",
+          cacheKey: "ck-legacy",
+          criteria: { make: "BMW", budget_usd: 20000, unknown_field: "xyz", another: 42 },
+          startedAt: Date.now(),
+        }),
+      );
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // Zod .strip() passes — banner should show with valid data
+      expect(screen.getByRole("button", { name: /Wznów/i })).toBeInTheDocument();
+      expect(screen.getByText("BMW")).toBeInTheDocument();
+    });
+
+    it("empty object in storage: banner hidden, storage cleared", () => {
+      store.set(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({}));
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("legacy format with jobId but missing criteria entirely: storage cleared", () => {
+      store.set(
+        SCRAPE_JOB_STORAGE_KEY,
+        JSON.stringify({ jobId: "old-no-criteria", cacheKey: "ck", startedAt: Date.now() }),
+      );
+
+      const onResume = vi.fn();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+    });
+
+    it("after legacy cleanup + remount: idle state, no phantom banner", () => {
+      store.set(SCRAPE_JOB_STORAGE_KEY, JSON.stringify({ jobId: "phantom", criteria: {} }));
+
+      const onResume = vi.fn();
+      const { unmount } = render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      // First mount clears the bad data
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(store.has(SCRAPE_JOB_STORAGE_KEY)).toBe(false);
+
+      // Remount — still clean
+      unmount();
+      render(<ResumeFlowHarness onResumeTriggered={onResume} />);
+
+      expect(screen.queryByRole("button", { name: /Wznów/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId("idle-state")).toBeInTheDocument();
+    });
+  });
 });
 });
