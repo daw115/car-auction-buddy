@@ -1866,13 +1866,29 @@ function Panel() {
                         )}
                       </div>
                     )}
-                    {r.analysis_status === "failed" && r.analysis_error && (
-                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive">
-                        <div className="flex items-center gap-1 font-medium mb-0.5">
+                    {r.analysis_status === "failed" && (
+                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive space-y-1">
+                        <div className="flex items-center gap-1 font-medium">
                           <AlertCircle className="h-3 w-3 shrink-0" />
                           Błąd analizy
+                          {r.retry_count > 0 && (
+                            <span className="text-muted-foreground font-normal ml-1">
+                              (próba {r.retry_count}/{r.max_retries})
+                            </span>
+                          )}
                         </div>
-                        <p className="line-clamp-3 break-all">{r.analysis_error}</p>
+                        {r.analysis_error && (
+                          <p className="line-clamp-3 break-all">{r.analysis_error}</p>
+                        )}
+                        {r.next_retry_at && new Date(r.next_retry_at) > new Date() && (
+                          <p className="text-[10px] text-muted-foreground">
+                            <RefreshCw className="h-2.5 w-2.5 inline mr-0.5" />
+                            Następna próba: {new Date(r.next_retry_at).toLocaleTimeString("pl-PL")}
+                          </p>
+                        )}
+                        {r.retry_count >= r.max_retries && (
+                          <p className="text-[10px] font-medium">Wyczerpano limit prób</p>
+                        )}
                       </div>
                     )}
                   </div>
