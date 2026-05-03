@@ -298,11 +298,14 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         try:
             from ai.analyzer import analyze_lots
 
-            top_recommendations, ranked_results = analyze_lots(
+            # asyncio.to_thread bo analyze_lots jest sync z time.sleep w retry
+            # (Gemini 429 backoff może 60s) — bez tego blokuje cały event loop
+            top_recommendations, ranked_results = await asyncio.to_thread(
+                analyze_lots,
                 all_lots,
                 criteria,
-                top_n=5,
-                force_local=request.demo,
+                5,  # top_n
+                request.demo,  # force_local
             )
             progress_cb("ai_analyze", {"_status": "done", "ranked": len(ranked_results)})
         except Exception as exc:

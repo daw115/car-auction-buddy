@@ -635,7 +635,14 @@ def _call_gemini(model: str, system: str, user_prompt: str, max_tokens: int = 81
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="ignore")
             sanitized = _sanitize_error_text(error_body[:500])
-            if exc.code in (429, 500, 502, 503) and attempt < max_retries - 1:
+            if exc.code == 429 and attempt < max_retries - 1:
+                # Gemini free tier 15 RPM rolling window — czekaj 30s, potem 60s
+                wait = 30 if attempt == 0 else 60
+                print(f"[AI] Gemini HTTP 429 (rate limit), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                last_exc = RuntimeError(f"Gemini HTTP 429: rate limit")
+                continue
+            if exc.code in (500, 502, 503) and attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 60)
                 print(f"[AI] Gemini HTTP {exc.code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
@@ -671,40 +678,70 @@ def _analyze_lots_with_gemini(
     criteria: ClientCriteria,
     top_n: int = 5,
 ) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
+    """Analiza Gemini z chunkingiem — gemini-2.5-flash ma hard 8k token output cap,
+    co przy szczegółowym opisie per lot pozwala bezpiecznie analizować ~3 lotów per call.
+
+    Free tier: 15 RPM, 1500 RPD. Aby zmieścić się komfortowo:
+    - Pre-filtr heurystyką do GEMINI_MAX_LOTS (default 15) → max 5 chunków po 3 loty
+    - 5s delay między chunki = 12 RPM safe
+    """
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    lots_data = _lot_payloads(lots)
-    user_prompt = _analysis_user_prompt(lots_data, criteria)
-    max_tokens = max(2000, len(lots_data) * 400)
-    max_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", str(min(max_tokens, 8192))))
-    print(f"[AI] Analizuję {len(lots)} lotów przez Gemini API ({model}, max_tokens={max_tokens})...")
+    chunk_size = int(os.getenv("GEMINI_CHUNK_SIZE", "3"))
+    chunk_delay_ms = int(os.getenv("GEMINI_CHUNK_DELAY_MS", "5000"))
+    max_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "8192"))
+    max_lots_for_ai = int(os.getenv("GEMINI_MAX_LOTS", "15"))
 
-    raw = _call_gemini(model=model, system=SYSTEM_PROMPT, user_prompt=user_prompt, max_tokens=max_tokens).strip()
+    if len(lots) > max_lots_for_ai:
+        print(f"[AI] Pre-filtr heurystyczny: {len(lots)} → top {max_lots_for_ai} (oszczędność free tier RPM)")
+        _, all_local = _analyze_lots_locally(lots, criteria, top_n=max_lots_for_ai)
+        lots = [r.lot for r in all_local[:max_lots_for_ai]]
 
-    try:
-        analyses_data = _parse_analysis_json(raw)
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"[AI] Błąd parsowania JSON od Gemini: {e}")
-        print(f"[AI] Surowa odpowiedź (pierwsze 500 znaków): {raw[:500]}")
-        with open("/tmp/ai_response_error.txt", "w") as f:
-            f.write(raw)
-        # Truncate / parse error → retry z połową lotów (model 8k tokens cap dla flash)
-        if len(lots) > 1:
-            shrunk = max(1, len(lots) // 2)
-            print(f"[AI] Retry z {shrunk} lotami (z {len(lots)})...")
-            lots = lots[:shrunk]
-            lots_data = _lot_payloads(lots)
-            user_prompt = _analysis_user_prompt(lots_data, criteria)
+    n_chunks = (len(lots) + chunk_size - 1) // chunk_size
+    print(f"[AI] Analizuję {len(lots)} lotów przez Gemini API ({model}, chunki po {chunk_size}, total {n_chunks} call, delay {chunk_delay_ms}ms)...")
+
+    all_analyses: list[dict] = []
+    for chunk_idx in range(n_chunks):
+        if chunk_idx > 0 and chunk_delay_ms > 0:
+            time.sleep(chunk_delay_ms / 1000.0)
+        start = chunk_idx * chunk_size
+        chunk_lots = lots[start:start + chunk_size]
+        chunk_data = _lot_payloads(chunk_lots)
+        chunk_prompt = _analysis_user_prompt(chunk_data, criteria)
+
+        try:
             raw = _call_gemini(
                 model=model,
                 system=SYSTEM_PROMPT,
-                user_prompt=user_prompt,
+                user_prompt=chunk_prompt,
                 max_tokens=max_tokens,
             ).strip()
-            analyses_data = _parse_analysis_json(raw)
-        else:
-            raise
+            chunk_analyses = _parse_analysis_json(raw)
+            all_analyses.extend(chunk_analyses)
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: zwrócono {len(chunk_analyses)} analiz")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
+            shrunk = chunk_lots[:max(1, len(chunk_lots) // 2)]
+            chunk_data = _lot_payloads(shrunk)
+            chunk_prompt = _analysis_user_prompt(chunk_data, criteria)
+            try:
+                raw = _call_gemini(
+                    model=model,
+                    system=SYSTEM_PROMPT,
+                    user_prompt=chunk_prompt,
+                    max_tokens=max_tokens,
+                ).strip()
+                all_analyses.extend(_parse_analysis_json(raw))
+                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
+            except Exception as inner_exc:
+                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
+        except Exception as exc:
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
 
-    return _results_from_analysis_data(analyses_data, lots, top_n)
+    if not all_analyses:
+        raise RuntimeError("Gemini: żaden chunk nie zwrócił poprawnych analiz")
+
+    print(f"[AI] Łącznie zebrano {len(all_analyses)} analiz Gemini z {n_chunks} chunków")
+    return _results_from_analysis_data(all_analyses, lots, top_n)
 
 
 def _analyze_lots_with_claude(lots: List[CarLot], criteria: ClientCriteria, top_n: int = 5) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
