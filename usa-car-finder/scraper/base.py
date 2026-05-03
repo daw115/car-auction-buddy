@@ -449,14 +449,16 @@ class BaseScraper:
         lot_id = re.sub(r"\D+", "", str(lot_id or ""))
         if not lot_id:
             return None
+        # Bez prefiksu /en/ AutoHelperBot serwuje stronę po rosyjsku — parser
+        # EXTENSION_DATA_JS regex'em szuka angielskich napisów ("VIN code", "Who sells").
         if self.source_name == "iaai":
             return (
-                f"https://autohelperbot.com/iaai_lot/{lot_id}/"
+                f"https://autohelperbot.com/en/iaai_lot/{lot_id}/"
                 "?type=ns&lang=en&autohelperbot_app=1.0&jsonp=false"
             )
         if self.source_name == "copart":
             return (
-                f"https://autohelperbot.com/copart_lot/{lot_id}/"
+                f"https://autohelperbot.com/en/copart_lot/{lot_id}/"
                 "?lang=en&v=2&autohelperbot_app=1.0&jsonp=false"
             )
         return None
@@ -577,7 +579,13 @@ class BaseScraper:
         return True
 
     @staticmethod
-    async def _first_visible_on_page(page: Page, selectors: list[str]):
+    async def _first_visible_on_page(page: Page, selectors: list[str], visibility_timeout_ms: int = 5000):
+        # Najpierw poczekaj aż strona DOM-u skończy ładować — Cloudflare challenge
+        # potrafi zająć 3-4s na pokazanie formularza
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+        except Exception:
+            pass
         for selector in selectors:
             locator = page.locator(selector)
             try:
@@ -587,7 +595,7 @@ class BaseScraper:
             for index in range(count):
                 candidate = locator.nth(index)
                 try:
-                    if await candidate.is_visible(timeout=1000):
+                    if await candidate.is_visible(timeout=visibility_timeout_ms):
                         return candidate
                 except Exception:
                     continue
