@@ -300,6 +300,9 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str, max_toke
     last_exc: Exception = RuntimeError("Anthropic: brak odpowiedzi")
     for attempt in range(max_retries):
         try:
+            # SDK 0.97+: prompt caching jest GA, nie potrzeba beta header.
+            # thinking wymaga modelu który to wspiera; routeai.cc proxy może
+            # tego nie obsługiwać — pomijamy dla bezpieczeństwa kompatybilności.
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -311,8 +314,6 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str, max_toke
                     }
                 ],
                 messages=[{"role": "user", "content": user_prompt}],
-                thinking={"type": "adaptive"},
-                betas=["prompt-caching-2024-07-31"],
             )
             chunks = [block.text for block in response.content if block.type == "text"]
             if not chunks:
@@ -746,6 +747,12 @@ def _analyze_lots_with_gemini(
 
 def _analyze_lots_with_claude(lots: List[CarLot], criteria: ClientCriteria, top_n: int = 5) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
     model = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-7")
+    max_lots_for_ai = int(os.getenv("ANTHROPIC_MAX_LOTS", "15"))
+
+    if len(lots) > max_lots_for_ai:
+        print(f"[AI] Pre-filtr heurystyczny dla Anthropic: {len(lots)} → top {max_lots_for_ai}")
+        _, all_local = _analyze_lots_locally(lots, criteria, top_n=max_lots_for_ai)
+        lots = [r.lot for r in all_local[:max_lots_for_ai]]
 
     lots_data = _lot_payloads(lots)
     user_prompt = _analysis_user_prompt(lots_data, criteria)
