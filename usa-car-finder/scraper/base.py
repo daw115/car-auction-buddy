@@ -464,7 +464,13 @@ class BaseScraper:
         return None
 
     async def extract_autohelperbot_direct(self, page: Page, lot_id: str, timeout_s: int = 20) -> dict:
-        """Fallback: otwiera stronę AutoHelperBot bezpośrednio w tym samym profilu przeglądarki."""
+        """Fallback: otwiera stronę AutoHelperBot bezpośrednio w tym samym profilu przeglądarki.
+
+        Optymalizacje:
+        - Pre-login odbywa się tylko RAZ per BrowserContext (cached przez context.__autohelperbot_logged)
+        - Per-lot pomija scenę logowania jeśli sesja już aktywna (storage_state w playwright_profiles)
+        - Skrócone timeouty: networkidle 4s zamiast 10s, pętla danych do 8s zamiast 20s
+        """
         if (
             os.getenv("USE_EXTENSIONS", "false").lower() != "true"
             and os.getenv("AUTOHELPERBOT_DIRECT_ENABLED", "false").lower() != "true"
@@ -479,22 +485,33 @@ class BaseScraper:
         try:
             print(f"[Scraper] Fallback AutoHelperBot direct: lot {lot_id}")
 
-            await self._login_autohelperbot_if_configured(bot_page)
+            # Pre-login tylko raz per context — tag w obiekcie context
+            ctx = page.context
+            if not getattr(ctx, "_autohelperbot_login_attempted", False):
+                ctx._autohelperbot_login_attempted = True  # type: ignore[attr-defined]
+                logged = await self._login_autohelperbot_if_configured(bot_page)
+                if logged:
+                    print(f"[Scraper] AutoHelperBot: zapisuję świeży storage_state po loginie")
+                    try:
+                        from scraper.storage_state import storage_state_path
+                        await ctx.storage_state(path=str(storage_state_path("autohelperbot")))
+                    except Exception:
+                        pass
 
             try:
-                await bot_page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await bot_page.goto(url, wait_until="domcontentloaded", timeout=15000)
             except Exception as exc:
-                print(f"[Scraper] AutoHelperBot direct: domcontentloaded timeout, próbuję odczytać stronę ({exc})")
-                try:
-                    await bot_page.goto(url, wait_until="commit", timeout=15000)
-                except Exception:
-                    pass
+                print(f"[Scraper] AutoHelperBot direct: timeout ({exc})")
+
+            # networkidle skrócony 10s → 4s; samo domcontentloaded zwykle wystarczy
             try:
-                await bot_page.wait_for_load_state("networkidle", timeout=10000)
+                await bot_page.wait_for_load_state("networkidle", timeout=4000)
             except Exception:
                 pass
 
-            for _ in range(timeout_s):
+            # pętla skrócona 20s → 8s (dane przychodzą zwykle w 1-3s gdy sesja OK)
+            poll_max = min(timeout_s, 8)
+            for _ in range(poll_max):
                 try:
                     data = await bot_page.evaluate(EXTENSION_DATA_JS)
                 except Exception:
@@ -531,6 +548,17 @@ class BaseScraper:
         except Exception as exc:
             print(f"[Scraper] AutoHelperBot login: nie udało się otworzyć logowania ({exc})")
             return False
+
+        # Strona ma 2 przyciski "TELEGRAM" i "E-MAIL" — formularz email/password
+        # jest schowany dopóki user nie wybierze metody E-MAIL
+        try:
+            email_button = page.locator("text=E-MAIL").first
+            if await email_button.is_visible(timeout=5000):
+                await email_button.click()
+                await page.wait_for_timeout(1500)
+                print("[Scraper] AutoHelperBot login: klikam E-MAIL żeby pokazać formularz")
+        except Exception:
+            pass  # może już rozpięty
 
         email_input = await self._first_visible_on_page(
             page,
@@ -579,11 +607,11 @@ class BaseScraper:
         return True
 
     @staticmethod
-    async def _first_visible_on_page(page: Page, selectors: list[str], visibility_timeout_ms: int = 5000):
-        # Najpierw poczekaj aż strona DOM-u skończy ładować — Cloudflare challenge
-        # potrafi zająć 3-4s na pokazanie formularza
+    async def _first_visible_on_page(page: Page, selectors: list[str], visibility_timeout_ms: int = 3000):
+        # Najpierw szybki wait na DOM (max 3s — strona zwykle ma już domcontentloaded
+        # gdy ta funkcja jest wywoływana, więc to natychmiastowe)
         try:
-            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+            await page.wait_for_load_state("domcontentloaded", timeout=3000)
         except Exception:
             pass
         for selector in selectors:
