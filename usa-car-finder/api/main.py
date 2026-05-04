@@ -515,10 +515,26 @@ async def dashboard_search(request: SearchRequest, _auth: None = Depends(_requir
     }
 
 
+PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "https://moneybitches.organof.org") or "").rstrip("/")
+
+
+def _absolute_artifact_url(rel: Optional[str]) -> Optional[str]:
+    """Zamienia /artifacts/foo.md -> https://moneybitches.organof.org/artifacts/foo.md"""
+    if not rel:
+        return None
+    if rel.startswith("http"):
+        return rel
+    if not rel.startswith("/"):
+        rel = "/" + rel
+    return f"{PUBLIC_BASE_URL}{rel}"
+
+
 def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
     """Spłaszcza Job do shape'u oczekiwanego przez car-auction-buddy frontend.
 
     TS oczekuje: { status, listings?, error?, progress?, step?, message?, current?, total?, phase? }
+    Dodatkowo: artifact_urls + reports z linkami do gotowych raportów wygenerowanych
+    przez Pythonowy generator (Markdown + JSON), oraz link do pełnego HTML raportu klient/broker.
     """
     listings: list = []
     if job.result:
@@ -538,6 +554,13 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
     elif job.status == "done":
         progress = 1.0
 
+    # Linki do raportów wygenerowanych przy /search
+    result = job.result or {}
+    raw_artifact_urls = result.get("artifact_urls") or {}
+    artifact_urls = {
+        k: _absolute_artifact_url(v) for k, v in raw_artifact_urls.items() if v
+    }
+
     return {
         "status": job.status,
         "listings": listings if job.status == "done" else None,
@@ -548,6 +571,19 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
         "message": phase_info.get("message"),
         "current": current,
         "total": total,
+        # Linki do raportów (gotowe pliki Markdown/JSON wygenerowane podczas /search)
+        "artifact_urls": artifact_urls,
+        # Convenience: główny raport klienta (Markdown) jako pojedynczy URL
+        "client_report_url": artifact_urls.get("client_report"),
+        # Endpointy do generowania pełnych HTML raportów na żądanie (POST z listą lotów)
+        "report_endpoints": {
+            "client_html": f"{PUBLIC_BASE_URL}/report/client-html",
+            "broker_html": f"{PUBLIC_BASE_URL}/report/broker-html",
+            "offer_email_html": f"{PUBLIC_BASE_URL}/report/offer-email-html",
+            "pdf": f"{PUBLIC_BASE_URL}/report",
+        },
+        "analysis_notice": result.get("analysis_notice"),
+        "vin_coverage": result.get("vin_coverage") or {},
     }
 
 
