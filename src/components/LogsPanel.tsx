@@ -33,6 +33,12 @@ type Props = {
   recordId?: string | null;
   records?: RecordSummary[];
   onOpenRecord?: (id: string) => void;
+  serverFns: {
+    listLogs: typeof import("@/server/api.functions").listLogs;
+    clearLogs: typeof import("@/server/api.functions").clearLogs;
+    getLogRetention: typeof import("@/server/api.functions").getLogRetention;
+    cleanupLogs: typeof import("@/server/api.functions").cleanupLogs;
+  };
 };
 
 const LEVEL_STYLES: Record<string, string> = {
