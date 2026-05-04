@@ -33,7 +33,8 @@ class CopartScraper(BaseScraper):
         from urllib.parse import quote
         parts = [criteria.make]
         if criteria.model:
-            parts.append(criteria.model)
+            # Normalizuj 'CRV' → 'cr-v' itp. — Copart full-text search wyszukuje dosłownie
+            parts.append(self.normalize_model_for_query(criteria.model))
         query = quote(" ".join(parts).lower())
         url = f"{self.BASE_URL}/lotSearchResults?free=true&query={query}"
         return url

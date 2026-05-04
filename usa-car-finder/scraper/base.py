@@ -116,6 +116,34 @@ class BaseScraper:
         url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
         return self.cache_dir / f"{url_hash}.html"
 
+    # Mapowanie modeli które user wpisuje "krotko" (CRV) na to jak Copart/IAAI
+    # przechowują w bazie (CR-V z myślnikiem). Używane przy budowaniu search URL —
+    # filtr lokalny i tak normalizuje obie strony, ale Copart full-text search
+    # wyszukuje DOSŁOWNIE: query=honda%20crv → 0 wyników, query=honda%20cr-v → 50+.
+    MODEL_QUERY_ALIASES = {
+        "crv": "cr-v",
+        "rav4": "rav4",      # już bez myślnika
+        "x trail": "x-trail",
+        "xtrail": "x-trail",
+        "q5": "q5",
+        "f150": "f-150",
+        "f250": "f-250",
+        "f350": "f-350",
+        "cx5": "cx-5",
+        "cx9": "cx-9",
+        "cx30": "cx-30",
+        "cx50": "cx-50",
+        "cls": "cls",
+    }
+
+    @classmethod
+    def normalize_model_for_query(cls, model: Optional[str]) -> Optional[str]:
+        """Zamienia 'CRV' → 'CR-V' itp. dla zapytania do Copart/IAAI search."""
+        if not model:
+            return model
+        key = model.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+        return cls.MODEL_QUERY_ALIASES.get(key, model)
+
     @staticmethod
     def browser_launch_kwargs() -> dict:
         """Common browser launch options for non-extension scraping."""

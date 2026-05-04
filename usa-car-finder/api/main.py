@@ -605,7 +605,8 @@ async def dashboard_search(request: SearchRequest, _auth: None = Depends(_requir
             criteria_hash=criteria_hash,
             request_snapshot=request.model_dump(mode="json"),
         )
-        job.task = asyncio.create_task(_run_job(request, job))
+        # Sync /api/search też przechodzi przez kolejkę — czekaj jeśli inny scrape leci
+        job.task = asyncio.create_task(_run_job_with_queue(request, job))
         try:
             await job.task
         except asyncio.CancelledError:
@@ -743,6 +744,38 @@ async def dashboard_cancel_job(job_id: str, _auth: None = Depends(_require_beare
     }
 
 
+# Kolejkowanie scrape jobów: max 1 jednocześnie (Playwright + Chrome to ciężki proces,
+# multiple = OOM, slow downloads, race conditions na sesji). Każdy job czeka w kolejce
+# aż poprzedni skończy. Override przez SEARCH_MAX_CONCURRENT.
+_SEARCH_MAX_CONCURRENT = int(os.getenv("SEARCH_MAX_CONCURRENT", "1"))
+_search_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_search_semaphore() -> asyncio.Semaphore:
+    """Lazy init semafora — asyncio.Semaphore() musi być w event loop."""
+    global _search_semaphore
+    if _search_semaphore is None:
+        _search_semaphore = asyncio.Semaphore(_SEARCH_MAX_CONCURRENT)
+    return _search_semaphore
+
+
+async def _run_job_with_queue(request: SearchRequest, job: jobs_store.Job) -> None:
+    """Wrapper na _run_job z semaforem — kolejkuje gdy inny job leci."""
+    semaphore = _get_search_semaphore()
+    waiting_count = _SEARCH_MAX_CONCURRENT - semaphore._value if semaphore.locked() else 0
+    if waiting_count > 0 or semaphore.locked():
+        logger.info("[/search] Job %s czeka w kolejce (max %d concurrent)", job.id, _SEARCH_MAX_CONCURRENT)
+        # Oznacz w job że czeka
+        try:
+            from api.jobs import Phase
+            queue_phase = Phase(name="queued", status="running", info={"reason": "max_concurrent_reached"})
+            job.phases.append(queue_phase)
+        except Exception:
+            pass
+    async with semaphore:
+        await _run_job(request, job)
+
+
 @app.post("/search", status_code=202)
 async def search_cars(request: SearchRequest):
     criteria_hash = _compute_criteria_hash(request)
@@ -762,7 +795,8 @@ async def search_cars(request: SearchRequest):
         criteria_hash=criteria_hash,
         request_snapshot=request.model_dump(mode="json"),
     )
-    job.task = asyncio.create_task(_run_job(request, job))
+    # _run_job_with_queue: kolejkuje gdy inny scrape już leci (max SEARCH_MAX_CONCURRENT=1)
+    job.task = asyncio.create_task(_run_job_with_queue(request, job))
     return {
         "job_id": job.id,
         "status_url": f"/search/jobs/{job.id}",

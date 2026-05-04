@@ -33,7 +33,8 @@ class IAAIScraper(BaseScraper):
 
         parts = [criteria.make]
         if criteria.model:
-            parts.append(criteria.model)
+            # Normalizuj 'CRV' → 'cr-v' itp. — IAAI też wyszukuje dosłownie
+            parts.append(self.normalize_model_for_query(criteria.model))
         query = quote(" ".join(parts).strip().lower())
         return f"{self.BASE_URL}/Search?searchkeyword={query}"
 
