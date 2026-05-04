@@ -844,6 +844,9 @@ function Panel() {
           message?: string;
           current?: number;
           total?: number;
+          client_report_url?: string;
+          artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+          report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
         };
         // Phase labels for toast notifications
         const PHASE_TOAST_LABELS: Record<string, string> = {
