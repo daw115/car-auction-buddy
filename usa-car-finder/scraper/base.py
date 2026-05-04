@@ -499,9 +499,12 @@ class BaseScraper:
                         pass
 
             try:
-                await bot_page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                # Krótszy timeout — AutoHelperBot często odpowiada w 2-4s; jeśli >8s
+                # to znaczy że ma overload, lepiej szybko skipnąć niż czekać 15s
+                await bot_page.goto(url, wait_until="domcontentloaded", timeout=8000)
             except Exception as exc:
-                print(f"[Scraper] AutoHelperBot direct: timeout ({exc})")
+                print(f"[Scraper] AutoHelperBot direct: timeout, skip lot ({type(exc).__name__})")
+                return {}
 
             # networkidle skrócony 10s → 4s; samo domcontentloaded zwykle wystarczy
             try:
