@@ -2397,6 +2397,103 @@ function DownloadBtn({
   );
 }
 
+function ScraperReportsSection({
+  reportUrls,
+  listings,
+  criteria,
+}: {
+  reportUrls: ScraperReportUrls;
+  listings: CarLot[];
+  criteria: ClientCriteria;
+}) {
+  const [loadingEndpoint, setLoadingEndpoint] = useState<string | null>(null);
+
+  const hasAny =
+    reportUrls.client_report_url ||
+    reportUrls.artifact_urls?.analysis_json ||
+    reportUrls.report_endpoints?.client_html ||
+    reportUrls.report_endpoints?.broker_html;
+
+  if (!hasAny) return null;
+
+  async function openHtmlReport(endpoint: string, label: string) {
+    setLoadingEndpoint(label);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ criteria, listings }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+      }
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      toast.error(`Błąd generowania raportu: ${(e as Error).message}`);
+    } finally {
+      setLoadingEndpoint(null);
+    }
+  }
+
+  return (
+    <Card className="mt-4 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <FileText className="h-4 w-4 text-primary" />
+        <span className="font-semibold text-sm">Raporty z analizy AI (Python)</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {reportUrls.client_report_url && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(reportUrls.client_report_url, "_blank")}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Pobierz raport klienta (Markdown)
+          </Button>
+        )}
+        {reportUrls.artifact_urls?.analysis_json && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.analysis_json, "_blank")}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Pobierz pełną analizę (JSON)
+          </Button>
+        )}
+        {reportUrls.report_endpoints?.client_html && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loadingEndpoint === "client"}
+            onClick={() => openHtmlReport(reportUrls.report_endpoints!.client_html!, "client")}
+          >
+            {loadingEndpoint === "client" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+            Generuj raport HTML klienta
+          </Button>
+        )}
+        {reportUrls.report_endpoints?.broker_html && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loadingEndpoint === "broker"}
+            onClick={() => openHtmlReport(reportUrls.report_endpoints!.broker_html!, "broker")}
+          >
+            {loadingEndpoint === "broker" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+            Generuj raport HTML brokera
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function ListingsTable({ listings }: { listings: CarLot[] }) {
   return (
     <div className="mt-3 max-h-[260px] overflow-auto rounded border">
