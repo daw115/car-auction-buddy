@@ -3,7 +3,7 @@
 // or import `withDevLogging` to wrap quickly.
 
 import { createMiddleware } from "@tanstack/react-start";
-import { logHttp, devLog } from "./dev-logger.server";
+import { logHttp, devLog } from "@/server/dev-logger.server";
 
 export const devRequestLogger = createMiddleware({ type: "function" }).server(
   async (ctx) => {
