@@ -1282,7 +1282,7 @@ export const listActiveScraperJobs = createServerFn({ method: "GET" })
           id: string;
           status: string;
           label: string;
-          criteria: Record<string, unknown>;
+          criteria: Record<string, string | number | boolean | null>;
           created_at: string;
           finished_at?: string | null;
           phase?: string | null;

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { decodeVin, fetchRecalls, getFxRates, type VinDecoded, type RecallItem, type FxRates } from "@/server/external.functions";
+import { decodeVin, fetchRecalls, getFxRates, type VinDecoded, type RecallItem, type FxRates } from "@/functions/external.functions";
 import { calculateCost, US_STATES, type CostBreakdown, type FuelType } from "@/lib/cost-calculator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
