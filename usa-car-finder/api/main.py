@@ -328,85 +328,93 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     remaining_results = [r for r in ranked_results if not r.is_top_recommendation][:5]
     all_results = top_recommendations + remaining_results
 
-    # Auto-generuj raporty HTML po analizie AI:
-    #  - KLIENT: 1 zagregowana oferta (TOP 5 + dodatkowe 5 w jednej stronie)
-    #  - BROKER: szczegółowy raport per TOP lot + index linkujący wszystkie
-    offer_html_file: Optional[str] = None
+    # Auto-generuj raporty HTML po analizie AI — TYLKO dla lotów z rekomendacją POLECAM:
+    #  - klient HTML per polecony lot (HERO + PHOTO + STORY + SPEC + DAMAGE + TIMELINE + DOCS + CTA)
+    #  - broker HTML per polecony lot (PIPELINE + DANE + SCORING + KOSZTY + FLAGI + RAW + ZDJĘCIA + CHECKLIST + STRATEGIA)
+    #  - index linkujący wszystkie polecone (1 plik z buttonami)
+    client_html_files: list[str] = []
     broker_html_files: list[str] = []
-    broker_index_file: Optional[str] = None
+    index_file: Optional[str] = None
 
-    if top_recommendations and slug:
+    # Tylko loty które AI POLECAM (nie RYZYKO/ODRZUĆ) — bo inne nie warte raportowania
+    polecane = [it for it in top_recommendations if it.analysis.recommendation == "POLECAM"]
+
+    if polecane and slug:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        client_name = "Kliencie"
-        try:
-            if hasattr(request, "client") and request.client and getattr(request.client, "name", None):
-                client_name = request.client.name
-        except Exception:
-            pass
         search_query_str = (
             f"{criteria.make} {criteria.model or ''} "
             f"{criteria.year_from or ''}-{criteria.year_to or ''}, "
             f"budżet ${criteria.budget_usd:,.0f}"
         ).strip()
 
-        # 1. Zagregowana oferta dla klienta
         try:
-            from report.offer_html_generator import generate_offer_html
-            offer_html = generate_offer_html(
-                top_lots=top_recommendations,
-                remaining_lots=remaining_results,
-                client_name=client_name,
-                search_query=search_query_str,
-            )
-            fpath = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_oferta_klient.html"
-            fpath.write_text(offer_html, encoding="utf-8")
-            offer_html_file = str(fpath)
-            logger.info("Auto-generated oferta klienta: %s", fpath.name)
-        except Exception:
-            logger.exception("Auto-generate offer HTML (klient) failed")
+            from report.html_reports import render_client_report, render_broker_report
+            lot_links: list[dict] = []
+            for idx, item in enumerate(polecane, start=1):
+                lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
+                title = f"{item.lot.year or ''} {item.lot.make or ''} {item.lot.model or ''} {item.lot.trim or ''}".strip()
+                badge = f"score {item.analysis.score:.1f}"
+                links = {"title": title, "badge": badge, "client": None, "broker": None}
 
-        # 2. Per-lot szczegółowy raport brokerski (TOP 5)
-        try:
-            from report.html_reports import render_broker_report
-            broker_lot_links: list[tuple[str, str]] = []
-            for idx, item in enumerate(top_recommendations, start=1):
+                # Klient HTML
                 try:
-                    lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
-                    html_broker = render_broker_report(item, criteria=criteria, lots_scanned=len(all_lots))
-                    fname = f"{slug}_{ts}_broker_lot{idx}_{lot_id_safe}.html"
+                    html = render_client_report(item, criteria=criteria)
+                    fname = f"{slug}_{ts}_polecany{idx}_{lot_id_safe}_klient.html"
                     fpath = SEARCH_ARTIFACT_DIR / fname
-                    fpath.write_text(html_broker, encoding="utf-8")
+                    fpath.write_text(html, encoding="utf-8")
+                    client_html_files.append(str(fpath))
+                    links["client"] = fname
+                except Exception:
+                    logger.exception("render_client_report failed lot %s", item.lot.lot_id)
+
+                # Broker HTML
+                try:
+                    html = render_broker_report(item, criteria=criteria, lots_scanned=len(all_lots))
+                    fname = f"{slug}_{ts}_polecany{idx}_{lot_id_safe}_broker.html"
+                    fpath = SEARCH_ARTIFACT_DIR / fname
+                    fpath.write_text(html, encoding="utf-8")
                     broker_html_files.append(str(fpath))
-                    title = f"#{idx}. {item.lot.year or ''} {item.lot.make or ''} {item.lot.model or ''} — {item.analysis.recommendation} (score {item.analysis.score:.1f})"
-                    broker_lot_links.append((fname, title.strip()))
+                    links["broker"] = fname
                 except Exception:
                     logger.exception("render_broker_report failed lot %s", item.lot.lot_id)
 
-            # 3. Index broker — jedna strona linkująca wszystkie szczegółowe raporty
-            if broker_lot_links:
+                if links["client"] or links["broker"]:
+                    lot_links.append(links)
+
+            # INDEX — jedna strona z buttonami "Klient" / "Broker" per polecony lot
+            if lot_links:
                 index_html = (
                     "<!DOCTYPE html><html lang='pl'><head><meta charset='UTF-8'>"
-                    "<title>Raport brokera — TOP 5 lotów</title>"
-                    "<style>body{font-family:'DM Sans',Arial,sans-serif;background:#f5f7fb;padding:32px;color:#1a1f36}"
-                    ".wrap{max-width:920px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,0.08)}"
-                    "h1{margin:0 0 8px;color:#0d2855}.sub{color:#6b7280;margin-bottom:24px}"
-                    "ul{list-style:none;padding:0}li{padding:14px 16px;border:1px solid #e5e9f2;border-radius:8px;margin-bottom:8px;transition:border-color .2s}"
-                    "li:hover{border-color:#0066ff}a{color:#0066ff;text-decoration:none;font-weight:600;font-size:15px}"
-                    ".meta{color:#6b7280;font-size:13px;margin-top:4px}</style></head><body><div class='wrap'>"
-                    f"<h1>Raport brokera — TOP {len(broker_lot_links)} lotów</h1>"
-                    f"<div class='sub'>Zapytanie: <em>{search_query_str}</em> · Łącznie zeskanowanych: {len(all_lots)}</div>"
-                    "<ul>"
+                    f"<title>Polecane oferty — {criteria.make} {criteria.model or ''}</title>"
+                    "<style>body{font-family:'DM Sans',Arial,sans-serif;background:#f5f7fb;padding:32px;color:#1a1f36;margin:0}"
+                    ".wrap{max-width:980px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,0.08)}"
+                    "h1{margin:0 0 8px;color:#0d2855;font-size:24px}.sub{color:#6b7280;margin-bottom:24px;font-size:14px}"
+                    ".lot{padding:18px 20px;border:1px solid #e5e9f2;border-radius:10px;margin-bottom:14px;transition:border-color .2s}"
+                    ".lot:hover{border-color:#0066ff}.lot-title{font-weight:700;font-size:16px;color:#0d2855;margin-bottom:4px}"
+                    ".lot-badge{display:inline-block;padding:2px 10px;border-radius:12px;background:#dcfce7;color:#166534;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-left:8px}"
+                    ".lot-actions{margin-top:10px;display:flex;gap:10px;flex-wrap:wrap}"
+                    ".btn{padding:8px 14px;border:1px solid #e5e9f2;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;background:white;transition:all .15s}"
+                    ".btn-client{border-color:#16a34a;color:#16a34a}.btn-client:hover{background:#16a34a;color:white}"
+                    ".btn-broker{border-color:#0066ff;color:#0066ff}.btn-broker:hover{background:#0066ff;color:white}</style></head>"
+                    "<body><div class='wrap'>"
+                    f"<h1>🎯 Polecane oferty ({len(lot_links)})</h1>"
+                    f"<div class='sub'>Zapytanie: <em>{search_query_str}</em> · Zeskanowano: {len(all_lots)} lotów · POLECAM: {len(polecane)}</div>"
                 )
-                for fname, title in broker_lot_links:
-                    index_html += f"<li><a href='{fname}' target='_blank'>{title}</a><div class='meta'>Otwórz pełny raport →</div></li>"
-                index_html += "</ul></div></body></html>"
+                for ll in lot_links:
+                    index_html += f"<div class='lot'><div class='lot-title'>{ll['title']}<span class='lot-badge'>POLECAM · {ll['badge']}</span></div><div class='lot-actions'>"
+                    if ll["client"]:
+                        index_html += f"<a class='btn btn-client' href='{ll['client']}' target='_blank'>📄 Raport dla klienta</a>"
+                    if ll["broker"]:
+                        index_html += f"<a class='btn btn-broker' href='{ll['broker']}' target='_blank'>📊 Raport brokerski</a>"
+                    index_html += "</div></div>"
+                index_html += "</div></body></html>"
 
-                idx_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_broker_index.html"
+                idx_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_polecane_index.html"
                 idx_path.write_text(index_html, encoding="utf-8")
-                broker_index_file = str(idx_path)
-                logger.info("Auto-generated broker index: %s (%d lots)", idx_path.name, len(broker_lot_links))
+                index_file = str(idx_path)
+                logger.info("Auto-generated %d polecanych raportów (klient+broker) + index", len(lot_links))
         except Exception:
-            logger.exception("Auto-generate broker reports failed")
+            logger.exception("Auto-generate POLECAM reports failed")
 
     # SearchResponse.artifact_urls wymaga dict[str, str], więc tylko same stringi
     artifact_urls = {
@@ -414,13 +422,10 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         "ai_prompt": artifact_url(ai_prompt_file),
         "analysis_json": artifact_url(analysis_file),
         "client_report": artifact_url(client_report_file),
-        # Zagregowana oferta dla klienta (1 plik)
-        "offer_html": artifact_url(offer_html_file),
-        # Index brokerski (linkuje do per-lot raportów)
-        "broker_index_html": artifact_url(broker_index_file),
+        # Index linkujący wszystkie POLECANE oferty (klient + broker per lot)
+        "polecane_index": artifact_url(index_file),
     }
-    # Listy URL-ów per-lot trzymamy obok artifact_urls (dict[str, str]),
-    # żeby Pydantic SearchResponse się walidował poprawnie.
+    client_reports_html_urls = [artifact_url(f) for f in client_html_files if f]
     broker_reports_html_urls = [artifact_url(f) for f in broker_html_files if f]
 
     notice = analysis_notice(force_local=request.demo)
@@ -445,6 +450,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         analysis_file=analysis_file,
         client_report_file=client_report_file,
         artifact_urls={key: value for key, value in artifact_urls.items() if value},
+        client_reports_html=client_reports_html_urls,
         broker_reports_html=broker_reports_html_urls,
         analysis_notice=notice,
         collected_count=len(all_lots),
@@ -662,13 +668,11 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
         "total": total,
         # Linki do raportów (gotowe pliki Markdown/JSON wygenerowane podczas /search)
         "artifact_urls": artifact_urls,
-        # Convenience: główne raporty jako pojedyncze URL-e (auto-generowane po analizie AI)
-        "client_report_url": artifact_urls.get("client_report"),  # Markdown
-        "offer_html_url": artifact_urls.get("offer_html"),         # ZAGREGOWANA oferta klient HTML (1 plik)
-        "broker_index_url": artifact_urls.get("broker_index_html"),  # INDEX brokerskich raportów (TOP 5)
-        "broker_reports_html": [
-            _absolute_artifact_url(u) for u in (result.get("broker_reports_html") or [])
-        ],
+        # Convenience: główne raporty (auto-generowane po analizie AI dla lotów POLECAM)
+        "client_report_url": artifact_urls.get("client_report"),       # Markdown summary
+        "polecane_index_url": artifact_urls.get("polecane_index"),     # INDEX wszystkich polecanych (1 plik)
+        "client_reports_html": [_absolute_artifact_url(u) for u in (result.get("client_reports_html") or [])],
+        "broker_reports_html": [_absolute_artifact_url(u) for u in (result.get("broker_reports_html") or [])],
         # Endpointy do generowania pełnych HTML raportów na żądanie (POST z listą lotów)
         "report_endpoints": {
             "client_html": f"{PUBLIC_BASE_URL}/report/client-html",
