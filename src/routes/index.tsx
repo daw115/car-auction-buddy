@@ -877,7 +877,14 @@ function Panel() {
         if (DONE.includes(p.status) || (typeof p.progress === "number" && p.progress >= 1.0)) {
           const result = Array.isArray(p.listings) ? p.listings : [];
           setScrapeJob((s) =>
-            s ? { ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt } : s,
+            s ? {
+              ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt,
+              reportUrls: {
+                client_report_url: (p as any).client_report_url,
+                artifact_urls: (p as any).artifact_urls,
+                report_endpoints: (p as any).report_endpoints,
+              },
+            } : s,
           );
           setListings(result);
           setListingsRaw(JSON.stringify(result, null, 2));
