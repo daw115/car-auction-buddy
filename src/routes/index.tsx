@@ -25,6 +25,7 @@ import {
   startScraperSearch,
   pollScraperJob,
   cancelScraperJob,
+  listActiveScraperJobs,
   clearScrapeCache,
   getJobLogs,
   runLotReports,
@@ -1885,6 +1886,10 @@ function Panel() {
 
             <Separator className="my-4" />
 
+            <ActiveJobsPanel />
+
+            <Separator className="my-4" />
+
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Loty z aukcji ({listings.length})
@@ -2878,5 +2883,113 @@ function ConnectionStatusPanel() {
         </div>
       )}
     </Card>
+  );
+}
+
+// Panel aktywnych zadań — pokazuje running + queued jobs z buttonem cancel.
+// Polluje co 3s. Widać job_id, status, kryteria, progress.
+function ActiveJobsPanel() {
+  const fnList = useServerFn(listActiveScraperJobs);
+  const fnCancel = useServerFn(cancelScraperJob);
+  const [jobs, setJobs] = useState<Array<{
+    id: string;
+    status: string;
+    label: string;
+    created_at: string;
+    phase?: string | null;
+    cancel_requested?: boolean;
+  }>>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      try {
+        const r = (await fnList()) as { jobs: typeof jobs };
+        if (!stop) setJobs(r.jobs ?? []);
+      } catch {
+        if (!stop) setJobs([]);
+      }
+    };
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [fnList]);
+
+  if (jobs.length === 0) return null;
+
+  const cancel = async (jobId: string) => {
+    setBusy(jobId);
+    try {
+      await fnCancel({ data: { jobId } });
+      toast.success(`Anulowano #${jobId.slice(0, 8)}`);
+      setJobs((js) => js.filter((j) => j.id !== jobId));
+    } catch (e) {
+      toast.error(`Nie udało się anulować: ${(e as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const formatElapsed = (iso: string): string => {
+    const ms = Date.now() - new Date(iso + (iso.includes("Z") || iso.includes("+") ? "" : "Z")).getTime();
+    if (ms < 0) return "0s";
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "queued") return <Badge variant="outline" className="text-xs">⏸ W kolejce</Badge>;
+    if (status === "running") return <Badge variant="default" className="text-xs">▶ Działa</Badge>;
+    return <Badge variant="secondary" className="text-xs">{status}</Badge>;
+  };
+
+  return (
+    <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-2 text-sm font-semibold text-primary"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Aktywne zadania ({jobs.length})
+          <span className="text-xs text-muted-foreground">{collapsed ? "▼" : "▲"}</span>
+        </button>
+      </div>
+      {!collapsed && (
+        <div className="space-y-1.5">
+          {jobs.map((j) => (
+            <div
+              key={j.id}
+              className="flex items-center justify-between gap-2 rounded bg-background/60 px-3 py-2 text-sm"
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {statusBadge(j.status)}
+                <span className="font-mono text-xs text-muted-foreground">#{j.id.slice(0, 8)}</span>
+                <span className="font-medium truncate">{j.label}</span>
+                {j.phase && j.status === "running" && (
+                  <span className="text-xs text-muted-foreground">· {j.phase}</span>
+                )}
+                <span className="text-xs text-muted-foreground ml-auto">{formatElapsed(j.created_at)}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy === j.id || j.cancel_requested}
+                onClick={() => cancel(j.id)}
+                className="h-7 px-2 text-xs"
+              >
+                {busy === j.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Anuluj"}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

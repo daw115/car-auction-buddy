@@ -1265,6 +1265,39 @@ export const clearScrapeCache = createServerFn({ method: "POST" })
     return { ok: true, deleted: count ?? null };
   });
 
+// Lista aktywnych zadań (running + queued) z Pythona — dla panelu w UI.
+export const listActiveScraperJobs = createServerFn({ method: "GET" })
+  .handler(async (): Promise<{
+    jobs: Array<{
+      id: string;
+      status: string;
+      label: string;
+      criteria: Record<string, unknown>;
+      created_at: string;
+      finished_at?: string | null;
+      phase?: string | null;
+      phase_status?: string | null;
+      cancel_requested?: boolean;
+      error?: string | null;
+      listings_count?: number;
+    }>;
+    total: number;
+  }> => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl) return { jobs: [], total: 0 };
+
+    try {
+      const res = await fetch(`${baseUrl}/api/jobs?active_only=true`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return { jobs: [], total: 0 };
+      return (await res.json()) as { jobs: []; total: number };
+    } catch {
+      return { jobs: [], total: 0 };
+    }
+  });
+
 export const cancelScraperJob = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
