@@ -84,6 +84,9 @@ import {
   RotateCcw,
   FlaskConical,
   ExternalLink,
+  Wifi,
+  WifiOff,
+  Clock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
