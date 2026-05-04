@@ -1935,6 +1935,14 @@ function Panel() {
             />
             {listings.length > 0 && <ListingsTable listings={listings} />}
 
+            {scrapeJob?.status === "done" && scrapeJob.reportUrls && (
+              <ScraperReportsSection
+                reportUrls={scrapeJob.reportUrls}
+                listings={listings}
+                criteria={criteria}
+              />
+            )}
+
             <Separator className="my-4" />
 
             <div className="flex flex-wrap items-center gap-2">
