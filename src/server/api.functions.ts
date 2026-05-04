@@ -1227,6 +1227,9 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current: typeof j.current === "number" ? j.current : undefined,
       total: typeof j.total === "number" ? j.total : undefined,
       phase: j.phase,
+      client_report_url: j.client_report_url,
+      artifact_urls: j.artifact_urls,
+      report_endpoints: j.report_endpoints,
     };
   });
 
