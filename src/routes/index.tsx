@@ -819,22 +819,25 @@ function Panel() {
     const ctx = scrapeContextRef.current;
     let polling = false;
 
-    const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+    // Pełen flow: scrape (Copart 7-10 lotów + IAAI 25-30 lotów) + AI analiza +
+    // 5×LLM raporty parallel (Gemini/Anthropic) = realistycznie 8-15 min.
+    // 5 min było za mało, podnosimy do 20 min.
+    const POLL_TIMEOUT_MS = 20 * 60 * 1000;
 
     const t = setInterval(async () => {
       // Always tick elapsed
       const elapsed = Date.now() - (scrapeJob?.startedAt ?? Date.now());
       setScrapeJob((s) => (s ? { ...s, elapsedMs: Date.now() - s.startedAt } : s));
 
-      // Timeout after 5 min
+      // Timeout after 20 min
       if (elapsed > POLL_TIMEOUT_MS) {
         setScrapeJob((s) =>
-          s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 5 min", elapsedMs: Date.now() - s.startedAt } : s,
+          s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 20 min", elapsedMs: Date.now() - s.startedAt } : s,
         );
         scrapeContextRef.current = null;
         clearPersistedScrapeJob();
         setBusy(null);
-        toast.error("Timeout scrapera (5 min)");
+        toast.error("Timeout scrapera (20 min)");
         return;
       }
 
