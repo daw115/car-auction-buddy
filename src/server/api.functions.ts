@@ -1353,35 +1353,6 @@ export const cancelScraperJob = createServerFn({ method: "POST" })
 
 // ---------- Operation logs ----------
 
-export const listLogs = createServerFn({ method: "GET" })
-  .inputValidator(
-    z.object({
-      clientId: z.string().uuid().nullable().optional(),
-      recordId: z.string().uuid().nullable().optional(),
-      operation: z.string().max(40).optional(),
-      levels: z.array(z.enum(["info", "warn", "error", "debug"])).max(4).optional(),
-      from: z.string().datetime().optional(),
-      to: z.string().datetime().optional(),
-      limit: z.number().int().min(1).max(500).optional(),
-    }).parse,
-  )
-  .handler(async ({ data }) => {
-    let q = supabaseAdmin
-      .from("operation_logs")
-      .select("id, created_at, client_id, record_id, operation, step, level, message, details, duration_ms")
-      .order("created_at", { ascending: false })
-      .limit(data.limit ?? 100);
-    if (data.clientId) q = q.eq("client_id", data.clientId);
-    if (data.recordId) q = q.eq("record_id", data.recordId);
-    if (data.operation) q = q.eq("operation", data.operation);
-    if (data.levels && data.levels.length > 0) q = q.in("level", data.levels);
-    if (data.from) q = q.gte("created_at", data.from);
-    if (data.to) q = q.lte("created_at", data.to);
-    const { data: rows, error } = await q;
-    if (error) throw new Error(error.message);
-    return rows ?? [];
-  });
-
 // Logs scoped to a specific scraper job_id. Combines local operation_logs
 // (filtered by details->>job_id) with the scraper backend's own job logs if available.
 export const getJobLogs = createServerFn({ method: "POST" })
