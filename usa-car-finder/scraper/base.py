@@ -585,21 +585,19 @@ class BaseScraper:
 
         await email_input.fill(email)
         await password_input.fill(password)
-        submit = await self._first_visible_on_page(
-            page,
-            [
-                "button[type='submit']",
-                "input[type='submit']",
-                "button:has-text('Log in')",
-                "button:has-text('Login')",
-                "button:has-text('Sign in')",
-                "button:has-text('Sign In')",
-            ],
-        )
-        if submit is None:
+        # Submit przez Enter na password input — najpewniejszy sposób, nie ryzykujemy
+        # że klikniemy "Search by VIN" button w nagłówku (który też ma type='submit'),
+        # ani modal Magnific Popup nie zablokuje (Enter idzie wprost do form).
+        try:
             await password_input.press("Enter")
-        else:
-            await submit.click()
+        except Exception:
+            # Fallback: szukaj submit ALE wewnątrz form (nie globalnie - inaczej trafi search bar)
+            submit_in_form = page.locator("form button[type='submit'], form input[type='submit']").last
+            try:
+                await submit_in_form.click(timeout=5000, force=True)
+            except Exception:
+                print("[Scraper] AutoHelperBot login: nie udało się kliknąć submit, próbuję dalej z założeniem aktywnej sesji")
+                return False
 
         wait_seconds = int(os.getenv("AUTOHELPERBOT_POST_LOGIN_WAIT_SECONDS", "5"))
         print(f"[Scraper] AutoHelperBot login: czekam {wait_seconds}s po logowaniu")

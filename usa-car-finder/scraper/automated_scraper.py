@@ -436,7 +436,11 @@ class AutomatedScraper:
 
     @staticmethod
     def _normalize_text(text: Optional[str]) -> str:
-        return (text or "").strip().lower()
+        # Usuwamy myślniki, spacje, podkreślenia — "CR-V" / "CR V" / "crv" / "CR_V"
+        # wszystkie traktujemy jako "crv" (Copart/IAAI używają "CR-V", user "CRV")
+        import re
+        normalized = (text or "").strip().lower()
+        return re.sub(r"[\s\-_]+", "", normalized)
 
     def _filter_by_client_criteria(self, lots: List[CarLot], criteria: ClientCriteria) -> List[CarLot]:
         filtered: List[CarLot] = []

@@ -234,18 +234,37 @@ def _provider() -> str:
 def _call_llm(
     system: str, skeleton: str, lot_data: str, skeleton_label: str, max_tokens: int = 8192
 ) -> str:
-    """Dispatch między Gemini (free, default) a Anthropic (paid, fallback)."""
+    """Dispatch między Gemini (free, default) a Anthropic (paid, fallback) z retry on timeout."""
     provider = _provider()
-    if provider == "gemini":
+    fallback_enabled = os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true"
+    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
+    max_retries = int(os.getenv("LLM_REPORTS_MAX_RETRIES", "2"))
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(max_retries):
         try:
-            return _call_gemini_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+            if provider == "gemini":
+                try:
+                    return _call_gemini_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+                except Exception as gemini_exc:
+                    if fallback_enabled and has_anthropic:
+                        print(f"[LLM-Reports] Gemini failed ({type(gemini_exc).__name__}), fallback Anthropic")
+                        return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+                    raise
+            return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
         except Exception as exc:
-            if os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true":
-                if os.getenv("ANTHROPIC_API_KEY"):
-                    print(f"[LLM-Reports] Gemini failed ({exc}), fallback na Anthropic")
-                    return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+            last_exc = exc
+            err_msg = str(exc)
+            is_timeout = "timed out" in err_msg.lower() or "timeout" in err_msg.lower()
+            is_retryable = is_timeout or "503" in err_msg or "529" in err_msg
+            if attempt < max_retries - 1 and is_retryable:
+                print(f"[LLM-Reports] {skeleton_label} attempt {attempt + 1}/{max_retries} failed ({type(exc).__name__}: {err_msg[:80]}), retry...")
+                time.sleep(5)
+                continue
             raise
-    return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("LLM call failed without exception")
 
 
 def _call_claude_for_html(
