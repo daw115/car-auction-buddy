@@ -1119,6 +1119,9 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     current?: number;
     total?: number;
     phase?: string;
+    client_report_url?: string;
+    artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+    report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
   }> => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -1136,7 +1139,6 @@ export const pollScraperJob = createServerFn({ method: "POST" })
         http_status: res.status,
         body_preview: body.slice(0, 200),
       });
-      // Return not_found so the client can clean up localStorage
       if (res.status === 404) {
         return { status: "not_found", error: `Job ${data.jobId} nie istnieje na serwerze scrapera.` };
       }
@@ -1152,6 +1154,9 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current?: number;
       total?: number;
       phase?: string;
+      client_report_url?: string;
+      artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+      report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
     };
 
     const status = j.status ?? "unknown";
@@ -1222,6 +1227,9 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current: typeof j.current === "number" ? j.current : undefined,
       total: typeof j.total === "number" ? j.total : undefined,
       phase: j.phase,
+      client_report_url: j.client_report_url,
+      artifact_urls: j.artifact_urls,
+      report_endpoints: j.report_endpoints,
     };
   });
 
