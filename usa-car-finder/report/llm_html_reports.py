@@ -1,15 +1,20 @@
-"""LLM-driven HTML report generation.
+"""LLM-driven HTML report generation z dual provider (Gemini default + Anthropic fallback).
 
-Wykorzystuje Claude (przez Anthropic SDK + RouteAI proxy) do generowania
-bogatych raportów HTML w stylu wzorca BMW M550i (z storytellingiem,
-sekcjami HERO/STORY/SPEC/DAMAGE/TIMELINE/DOCS/CTA) dla konkretnego lotu.
+Wykorzystuje Claude (Anthropic SDK + RouteAI proxy) lub Gemini (Google AI Studio)
+do generowania bogatych raportów HTML w stylu wzorca BMW M550i.
 
-Skeleton wzorca (z usuniętymi base64 zdjęciami) jest cachowany jako
-prompt cache breakpoint — pierwsze wywołanie pełen koszt, kolejne loty
-~10x tańsze (cache TTL Anthropic 5 min default, 1h jeśli włączone).
+Provider dispatch przez env LLM_REPORTS_PROVIDER:
+  - "gemini" (default) — DARMOWE w free tier (1500 RPD, 15 RPM)
+  - "anthropic" — Claude Sonnet 4.6 przez RouteAI, lepsza jakość ale kosztuje
+
+Skeleton wzorca (z usuniętymi base64 zdjęciami) jest cachowany — Anthropic ma
+prompt caching (cache_control), Gemini ma context caching (jeszcze nie wszędzie).
 """
 import json
 import os
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -150,6 +155,99 @@ def _strip_html_wrapper(text: str) -> str:
     return text.strip()
 
 
+def _call_gemini_for_html(
+    system: str,
+    skeleton: str,
+    lot_data: str,
+    skeleton_label: str,
+    max_tokens: int = 8192,
+) -> str:
+    """Generuje HTML przez Gemini API (free tier, 15 RPM, 1500 RPD)."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak GEMINI_API_KEY")
+    model = os.getenv("GEMINI_REPORTS_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    timeout = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "180"))
+
+    full_system = (
+        f"{system}\n\nWZORZEC HTML ({skeleton_label}, dla BMW M550i 2020):\n\n{skeleton}"
+    )
+    user_prompt = (
+        f"Wygeneruj kompletny raport HTML dla podanego auta zachowując strukturę wzorca.\n\n"
+        f"DANE LOTU (do zastąpienia BMW M550i ze wzorca):\n```json\n{lot_data}\n```\n\n"
+        f"Zwróć WYŁĄCZNIE HTML, gotowy do wyświetlenia w przeglądarce."
+    )
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": full_system}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.7,
+        },
+    }
+
+    last_err: Exception = RuntimeError("Gemini: brak odpowiedzi")
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="ignore")[:500]
+            if exc.code == 429 and attempt < 2:
+                wait = 30 if attempt == 0 else 60
+                print(f"[LLM-Reports] Gemini 429 ({skeleton_label}), wait {wait}s...")
+                time.sleep(wait)
+                last_err = RuntimeError(f"Gemini 429: rate limit")
+                continue
+            raise RuntimeError(f"Gemini HTTP {exc.code}: {err_body}") from exc
+        except urllib.error.URLError as exc:
+            last_err = exc
+            if attempt < 2:
+                time.sleep(5)
+                continue
+            raise
+
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise RuntimeError(f"Gemini brak candidates dla {skeleton_label}")
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts if p.get("text"))
+        if not text:
+            finish = candidates[0].get("finishReason")
+            raise RuntimeError(f"Gemini empty (finish={finish}) dla {skeleton_label}")
+        return _strip_html_wrapper(text)
+    raise last_err
+
+
+def _provider() -> str:
+    return (os.getenv("LLM_REPORTS_PROVIDER", "gemini") or "gemini").lower()
+
+
+def _call_llm(
+    system: str, skeleton: str, lot_data: str, skeleton_label: str, max_tokens: int = 8192
+) -> str:
+    """Dispatch między Gemini (free, default) a Anthropic (paid, fallback)."""
+    provider = _provider()
+    if provider == "gemini":
+        try:
+            return _call_gemini_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+        except Exception as exc:
+            if os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true":
+                if os.getenv("ANTHROPIC_API_KEY"):
+                    print(f"[LLM-Reports] Gemini failed ({exc}), fallback na Anthropic")
+                    return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+            raise
+    return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+
+
 def _call_claude_for_html(
     system: str,
     skeleton: str,
@@ -192,13 +290,15 @@ def _call_claude_for_html(
 
 
 def render_client_report_llm(item: AnalyzedLot, criteria: Optional[ClientCriteria] = None) -> str:
-    """Generuje raport HTML dla klienta przez LLM na bazie wzorca BMW M550i."""
-    return _call_claude_for_html(
+    """Generuje raport HTML dla klienta przez LLM (Gemini default, Anthropic opcjonalnie)."""
+    # Gemini Flash ma cap 8192, Anthropic 16000+
+    default_max = "8192" if _provider() == "gemini" else "16000"
+    return _call_llm(
         system=_system_prompt_client(),
         skeleton=_client_skeleton(),
         lot_data=_lot_data_for_prompt(item, criteria),
         skeleton_label="raport klienta",
-        max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", "16000")),
+        max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", default_max)),
     )
 
 
@@ -207,14 +307,15 @@ def render_broker_report_llm(
     criteria: Optional[ClientCriteria] = None,
     lots_scanned: int = 0,
 ) -> str:
-    """Generuje raport brokerski HTML przez LLM na bazie wzorca."""
+    """Generuje raport brokerski HTML przez LLM (Gemini default, Anthropic opcjonalnie)."""
     lot_data = _lot_data_for_prompt(item, criteria)
     if lots_scanned:
         lot_data = lot_data.rstrip().rstrip("}") + f',\n  "lots_scanned": {lots_scanned}\n}}'
-    return _call_claude_for_html(
+    default_max = "8192" if _provider() == "gemini" else "16000"
+    return _call_llm(
         system=_system_prompt_broker(),
         skeleton=_broker_skeleton(),
         lot_data=lot_data,
         skeleton_label="raport brokerski",
-        max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", "16000")),
+        max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", default_max)),
     )

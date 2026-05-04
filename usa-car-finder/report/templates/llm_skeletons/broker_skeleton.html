@@ -7,17 +7,16 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --navy:#0a2540;--navy2:#0d2f50;--blue:#1a56a0;--accent:#f0a500;
-  --ok:#1a7f37;--ok-bg:#eafbee;--ok-bdr:#b2dfbb;
-  --warn:#9a3412;--warn-bg:#fff4ee;--warn-bdr:#f9c0c0;
-  --amber:#7a4f00;--amber-bg:#fffbe6;--amber-bdr:#f4d27a;
-  --red:#cf222e;--red-bg:#fff0f0;--red-bdr:#f5c6cb;
-  --text:#1f2328;--muted:#57606a;--border:#d0d7de;
-  --panel:#f6f8fa;--white:#fff;
+--navy:#0a2540;--navy2:#0d2f50;--blue:#1a56a0;--accent:#f0a500;
+--ok:#1a7f37;--ok-bg:#eafbee;--ok-bdr:#b2dfbb;
+--warn:#9a3412;--warn-bg:#fff4ee;--warn-bdr:#f9c0c0;
+--amber:#7a4f00;--amber-bg:#fffbe6;--amber-bdr:#f4d27a;
+--red:#cf222e;--red-bg:#fff0f0;--red-bdr:#f5c6cb;
+--text:#1f2328;--muted:#57606a;--border:#d0d7de;
+--panel:#f6f8fa;--white:#fff;
 }
 body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text);font-size:13.5px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page{max-width:920px;margin:24px auto;background:var(--white);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1),0 16px 48px rgba(10,37,64,.12)}
-
 /* HEADER */
 .hdr{background:var(--navy2);padding:28px 40px 24px;border-bottom:3px solid var(--red)}
 .hdr::before{display:none}
@@ -32,7 +31,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .score-big{font-size:42px;font-weight:700;color:var(--accent);line-height:1}
 .score-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);opacity:.7}
 .status-pill{display:inline-block;background:var(--amber-bg);color:var(--amber);border:1.5px solid var(--amber-bdr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-top:4px}
-
 /* STAT CARDS */
 .stats{width:100%;border-collapse:collapse;border-bottom:1px solid var(--border)}
 .stats td{padding:14px 10px;text-align:center;border-right:1px solid var(--border)}
@@ -43,24 +41,20 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .sv.red{color:var(--red)}
 .sv.amb{color:var(--amber)}
 .sl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
-
 /* BODY */
 .body{padding:26px 40px 36px}
 .section{margin-bottom:28px}
 .sh{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--navy);margin-bottom:10px;display:table;width:100%}
 .sh td:first-child{vertical-align:bottom}
 .sh::after{content:'';display:table-cell;border-bottom:1.5px solid var(--navy);padding-bottom:7px}
-
 /* section pill */
 .pill{display:inline-block;background:var(--navy2);color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 12px;border-radius:5px;margin-bottom:12px}
 .pill.red{background:var(--red)}
 .pill.amber{background:#8a5c00}
 .pill.ok{background:var(--ok)}
 .pill.blue{background:var(--blue)}
-
 /* section divider title */
 .stitle{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:14px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px}
-
 /* TABLES */
 .dtbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:13px}
 .dtbl tr:nth-child(even) td{background:var(--panel)}
@@ -72,7 +66,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .dv.ok{color:var(--ok)}
 .dv.warn{color:var(--amber)}
 .dv.mono{font-family:"DM Mono",monospace;font-size:11.5px;font-weight:500}
-
 .htbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12.5px}
 .htbl thead tr{background:var(--navy2);color:#fff}
 .htbl thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
@@ -88,7 +81,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .htbl .neu{color:var(--muted);text-align:center}
 .htbl tfoot td{padding:8px 10px;font-weight:700;background:var(--amber-bg)}
 .htbl tfoot .c{text-align:center;color:var(--amber);font-size:15px}
-
 .rtbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px}
 .rtbl tr:nth-child(even) td{background:var(--panel)}
 .rtbl td{padding:5px 10px;border-bottom:1px solid var(--border)}
@@ -98,7 +90,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .rv.bad{color:var(--red);font-family:"DM Sans",sans-serif;font-weight:700}
 .rv.ok{color:var(--ok);font-family:"DM Sans",sans-serif;font-weight:700}
 .rv.warn{color:var(--amber);font-family:"DM Sans",sans-serif;font-weight:600}
-
 .ctbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12.5px}
 .ctbl thead tr{background:var(--navy2);color:#fff}
 .ctbl thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
@@ -111,7 +102,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .ctbl tfoot .pess td{background:#fff1f0;font-weight:700;padding:8px 10px}
 .ctbl tfoot .opt .num{color:var(--ok)}
 .ctbl tfoot .pess .num{color:var(--red)}
-
 .chtbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12.5px}
 .chtbl thead tr{background:var(--navy2);color:#fff}
 .chtbl thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
@@ -125,7 +115,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .cprio.h{background:var(--warn-bg);color:var(--warn)}
 .cprio.m{background:var(--amber-bg);color:var(--amber)}
 .cprio.l{background:var(--panel);color:var(--muted)}
-
 /* FLAGS */
 .flag{display:table;width:100%;margin-bottom:7px;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:13px}
 .flag-bar{display:table-cell;width:4px}
@@ -148,7 +137,6 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .flevel.med{background:var(--amber-bg);color:var(--amber)}
 .flevel.low{background:var(--panel);color:var(--muted)}
 .fdesc{color:var(--muted);font-size:12.5px;line-height:1.5}
-
 /* BID TABLE */
 .btbl{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:13px}
 .btbl tr:nth-child(even) td{background:var(--panel)}
@@ -157,20 +145,17 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 .bk{font-weight:700;width:170px;white-space:nowrap}
 .bv{color:var(--muted)}
 .bv.wrn{color:var(--red);font-weight:600}
-
 /* NOTES (strategy) */
 .notes-tbl{width:100%;border-collapse:collapse;font-size:13px}
 .notes-tbl td{padding:8px 10px 8px 0;vertical-align:top;border-bottom:1px solid var(--border)}
 .notes-tbl tr:last-child td{border-bottom:none}
 .nk{font-weight:700;color:var(--navy);width:190px;white-space:nowrap;padding-right:16px}
 .nv{color:var(--muted);line-height:1.6}
-
 /* PHOTOS */
 .photo-main{width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--border);margin-bottom:6px}
 .photo-grid{width:100%;border-collapse:separate;border-spacing:5px}
 .photo-grid td{padding:0;vertical-align:top}
 .photo-grid img{width:100%;height:auto;display:block;border-radius:6px;border:1px solid var(--border)}
-
 /* MISC */
 .summary-box{background:var(--panel);border-left:4px solid var(--blue);border-radius:0 8px 8px 0;padding:11px 15px;font-size:13px;color:var(--muted);line-height:1.6;margin:14px 0}
 .expert-box{background:var(--navy2);color:#c8d8ea;border-radius:8px;padding:13px 17px;margin-top:11px;font-size:12.5px;line-height:1.65}
@@ -183,379 +168,357 @@ body{font-family:"DM Sans",Arial,sans-serif;background:#e8edf4;color:var(--text)
 </head>
 <body>
 <div class="page">
-
 <!-- HEADER -->
 <div class="hdr">
-  <table class="hdr-top" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td>
-      <div class="hdr-conf">Poufne &mdash; tylko do u&#380;ytku wewn&#281;trznego</div>
-      <h1>BMW M550i xDrive &mdash; Raport Brokera</h1>
-      <div class="hdr-sub">Lot #77565135 &nbsp;&middot;&nbsp; COPART NC&ndash;CONCORD &nbsp;&middot;&nbsp; Pipeline aukcyjny v1.0</div>
-    </td>
-    <td class="hdr-score" style="width:120px;vertical-align:top;text-align:right">
-      <div class="score-big">6.5</div>
-      <div class="score-lbl">/ 10</div>
-      <div class="status-pill">OBSERWOWA&#262;</div>
-    </td>
-  </tr></tbody></table>
-  <table class="hdr-meta" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td>&#128197; Wygenerowano: 2026-04-29T10:47:02</td>
-    <td>&#128269; Kryteria: BMW M5 &middot; 2015&ndash;2020 &middot; &le;30 000 USD &middot; &le;100 000 mi</td>
-    <td>&#128230; &#377;r&oacute;d&#322;a: Copart + IAAI</td>
-    <td>&#9940; Wykluczone: Flood, Fire</td>
-  </tr></tbody></table>
+<table class="hdr-top" cellspacing="0" cellpadding="0"><tbody><tr>
+<td>
+<div class="hdr-conf">Poufne &mdash; tylko do u&#380;ytku wewn&#281;trznego</div>
+<h1>BMW M550i xDrive &mdash; Raport Brokera</h1>
+<div class="hdr-sub">Lot #77565135 &nbsp;&middot;&nbsp; COPART NC&ndash;CONCORD &nbsp;&middot;&nbsp; Pipeline aukcyjny v1.0</div>
+</td>
+<td class="hdr-score" style="width:120px;vertical-align:top;text-align:right">
+<div class="score-big">6.5</div>
+<div class="score-lbl">/ 10</div>
+<div class="status-pill">OBSERWOWA&#262;</div>
+</td>
+</tr></tbody></table>
+<table class="hdr-meta" cellspacing="0" cellpadding="0"><tbody><tr>
+<td>&#128197; Wygenerowano: 2026-04-29T10:47:02</td>
+<td>&#128269; Kryteria: BMW M5 &middot; 2015&ndash;2020 &middot; &le;30 000 USD &middot; &le;100 000 mi</td>
+<td>&#128230; &#377;r&oacute;d&#322;a: Copart + IAAI</td>
+<td>&#9940; Wykluczone: Flood, Fire</td>
+</tr></tbody></table>
 </div>
-
 <!-- STAT CARDS -->
 <table class="stats" cellspacing="0" cellpadding="0"><tbody><tr>
-  <td><div class="sv">1/1</div><div class="sl">Lot / Skan</div></td>
-  <td><div class="sv amb">6.5/10</div><div class="sl">Score ko&#324;cowy</div></td>
-  <td><div class="sv red">67/100</div><div class="sl">Damage score</div></td>
-  <td><div class="sv">43 050 USD</div><div class="sl">ACV Copart</div></td>
-  <td><div class="sv ok">11 800 USD</div><div class="sl">Koszt opt.</div></td>
-  <td><div class="sv red">17 100 USD</div><div class="sl">Koszt pesym.</div></td>
+<td><div class="sv">1/1</div><div class="sl">Lot / Skan</div></td>
+<td><div class="sv amb">6.5/10</div><div class="sl">Score ko&#324;cowy</div></td>
+<td><div class="sv red">67/100</div><div class="sl">Damage score</div></td>
+<td><div class="sv">43 050 USD</div><div class="sl">ACV Copart</div></td>
+<td><div class="sv ok">11 800 USD</div><div class="sl">Koszt opt.</div></td>
+<td><div class="sv red">17 100 USD</div><div class="sl">Koszt pesym.</div></td>
 </tr></tbody></table>
-
 <div class="body">
-
 <!-- ── SEKCJA: PIPELINE ── -->
 <div class="section">
-  <span class="pill">&#9658; Konfiguracja pipeline&apos;u</span>
-  <table class="htbl" cellspacing="0" cellpadding="0">
-  <thead><tr><th>Parametr</th><th>Warto&#347;&#263;</th><th>Parametr</th><th>Warto&#347;&#263;</th></tr></thead>
-  <tbody>
-    <tr><td>make / model</td><td>bmw / m5</td><td>year_from / year_to</td><td>2015 / 2020</td></tr>
-    <tr><td>budget_usd</td><td>30 000</td><td>max_odometer_mi</td><td>100 000</td></tr>
-    <tr><td>excluded_damage</td><td>Flood, Fire</td><td>sources</td><td>copart, iaai</td></tr>
-    <tr><td>seller_type</td><td>insurance</td><td>max_results</td><td>10</td></tr>
-    <tr><td>auction_window</td><td>12h &ndash; 120h</td><td>damage_priority</td><td>min. widoczne uszkodzenia</td></tr>
-    <tr><td>rule #1</td><td>auction window first</td><td>rule #2</td><td>seller_type = insurance</td></tr>
-    <tr><td>rule #3</td><td>exclude Flood / Fire</td><td>rule #4</td><td>damage &rarr; mileage &rarr; year &rarr; title</td></tr>
-  </tbody>
-  </table>
+<span class="pill">&#9658; Konfiguracja pipeline&apos;u</span>
+<table class="htbl" cellspacing="0" cellpadding="0">
+<thead><tr><th>Parametr</th><th>Warto&#347;&#263;</th><th>Parametr</th><th>Warto&#347;&#263;</th></tr></thead>
+<tbody>
+<tr><td>make / model</td><td>bmw / m5</td><td>year_from / year_to</td><td>2015 / 2020</td></tr>
+<tr><td>budget_usd</td><td>30 000</td><td>max_odometer_mi</td><td>100 000</td></tr>
+<tr><td>excluded_damage</td><td>Flood, Fire</td><td>sources</td><td>copart, iaai</td></tr>
+<tr><td>seller_type</td><td>insurance</td><td>max_results</td><td>10</td></tr>
+<tr><td>auction_window</td><td>12h &ndash; 120h</td><td>damage_priority</td><td>min. widoczne uszkodzenia</td></tr>
+<tr><td>rule #1</td><td>auction window first</td><td>rule #2</td><td>seller_type = insurance</td></tr>
+<tr><td>rule #3</td><td>exclude Flood / Fire</td><td>rule #4</td><td>damage &rarr; mileage &rarr; year &rarr; title</td></tr>
+</tbody>
+</table>
 </div>
-
 <!-- ── DANE LOTU ── -->
 <div class="section">
-  <span class="pill">&#9658; Dane lotu &mdash; identyfikacja</span>
-  <table class="dtbl" cellspacing="0" cellpadding="0"><tbody>
-    <tr><td class="dk">lot_id / source</td>            <td class="dv mono">77565135 / copart</td></tr>
-    <tr><td class="dk">URL</td>                        <td class="dv"><a href="https://www.copart.com/lot/77565135/salvage-2020-bmw-m550xi-nc-concord" style="color:var(--blue)">copart.com/lot/77565135</a></td></tr>
-    <tr><td class="dk">VIN (pe&#322;ny)</td>            <td class="dv mono">WBAJS7C06LCD00163</td></tr>
-    <tr><td class="dk">VIN (masked)</td>               <td class="dv mono">WBAJS7C06LC******</td></tr>
-    <tr><td class="dk">year / make / model</td>        <td class="dv">2020 / BMW / M550XI</td></tr>
-    <tr><td class="dk">model_group (lmg)</td>          <td class="dv warn">M5 &mdash; obejmuje M550i, nie tylko F90</td></tr>
-    <tr><td class="dk">silnik (egn / cy)</td>          <td class="dv">4.4L V8 Biturbo (N63B44T3) / 8</td></tr>
-    <tr><td class="dk">skrzynia (tmtp)</td>            <td class="dv">AUTOMATIC</td></tr>
-    <tr><td class="dk">nap&#281;d (drv)</td>            <td class="dv">ALL WHEEL DRIVE</td></tr>
-    <tr><td class="dk">kolor / paliwo</td>             <td class="dv">BLACK / GAS</td></tr>
-    <tr><td class="dk">karoseria (bstl)</td>           <td class="dv">SEDAN</td></tr>
-    <tr><td class="dk">odometer_mi</td>                <td class="dv bad">NULL</td></tr>
-    <tr><td class="dk">ord (odometer reading)</td>     <td class="dv bad">NOT ACTUAL</td></tr>
-    <tr><td class="dk">obc (odometer brand code)</td>  <td class="dv">N</td></tr>
-    <tr><td class="dk">damage_primary (dd / dtc)</td>  <td class="dv bad">FRONT END / FR</td></tr>
-    <tr><td class="dk">damage_secondary (sdd)</td>     <td class="dv warn">SIDE</td></tr>
-    <tr><td class="dk">listing_damage_score</td>       <td class="dv bad">67 / 100 (front+secondary)</td></tr>
-    <tr><td class="dk">listing_damage_label</td>       <td class="dv warn">front+secondary</td></tr>
-    <tr><td class="dk">title_type (tgd)</td>           <td class="dv bad">SALVAGE TITLE</td></tr>
-    <tr><td class="dk">title_group (tgc)</td>          <td class="dv bad">TITLEGROUP_S</td></tr>
-    <tr><td class="dk">title_desc (td)</td>            <td class="dv">SALVAGE CERTIFICATE OF TITLE</td></tr>
-    <tr><td class="dk">stt (state title)</td>          <td class="dv">SC</td></tr>
-    <tr><td class="dk">current_bid (hb)</td>           <td class="dv">0.0 USD</td></tr>
-    <tr><td class="dk">buy_now (bnp)</td>              <td class="dv">NULL</td></tr>
-    <tr><td class="dk">seller_reserve</td>             <td class="dv">NULL</td></tr>
-    <tr><td class="dk">sellerReserveMet</td>           <td class="dv warn">TRUE &mdash; artefakt API (bid=0)</td></tr>
-    <tr><td class="dk">saleStatus (ess)</td>           <td class="dv">PURE_SALE</td></tr>
-    <tr><td class="dk">seller_type</td>                <td class="dv ok">insurance</td></tr>
-    <tr><td class="dk">location (yn)</td>              <td class="dv">NC &ndash; CONCORD</td></tr>
-    <tr><td class="dk">yard_num (ynumb)</td>           <td class="dv">356</td></tr>
-    <tr><td class="dk">auction_date (ad)</td>          <td class="dv">2026-04-30 14:00:00 EDT</td></tr>
-    <tr><td class="dk">airbags_deployed</td>           <td class="dv ok">FALSE &mdash; nie odpalone &#10003;</td></tr>
-    <tr><td class="dk">keys (hk)</td>                  <td class="dv bad">NO &mdash; brak kluczy &#9888;</td></tr>
-    <tr><td class="dk">ACV (lotPlugAcv)</td>           <td class="dv warn">43 050,00 USD</td></tr>
-    <tr><td class="dk">RC (replacement cost, rc)</td>  <td class="dv">61 508,69 USD</td></tr>
-    <tr><td class="dk">last ask (la)</td>              <td class="dv">23 065,00 USD</td></tr>
-    <tr><td class="dk">enhanced_vehicle (hegn)</td>    <td class="dv ok">Y (lcd = ENHANCED VEHICLES)</td></tr>
-    <tr><td class="dk">lot_status (lsts / lstg)</td>   <td class="dv">O (Open) / 40</td></tr>
-    <tr><td class="dk">license (lfd / lic)</td>        <td class="dv ok">No License Required / IV, NLC, CERT-E</td></tr>
-    <tr><td class="dk">hcr / hcfx / cfx</td>          <td class="dv">TRUE / TRUE / FALSE &mdash; historia jest, raport online niedost&#281;pny</td></tr>
-    <tr><td class="dk">images_count (real)</td>        <td class="dv ok">10 / 10</td></tr>
-    <tr><td class="dk">enriched_by_extension</td>      <td class="dv ok">TRUE</td></tr>
-    <tr><td class="dk">html_cache</td>                 <td class="dv mono">data/html_cache/copart/807e2e4c4c.html</td></tr>
-  </tbody></table>
+<span class="pill">&#9658; Dane lotu &mdash; identyfikacja</span>
+<table class="dtbl" cellspacing="0" cellpadding="0"><tbody>
+<tr><td class="dk">lot_id / source</td>            <td class="dv mono">77565135 / copart</td></tr>
+<tr><td class="dk">URL</td>                        <td class="dv"><a href="https://www.copart.com/lot/77565135/salvage-2020-bmw-m550xi-nc-concord" style="color:var(--blue)">copart.com/lot/77565135</a></td></tr>
+<tr><td class="dk">VIN (pe&#322;ny)</td>            <td class="dv mono">WBAJS7C06LCD00163</td></tr>
+<tr><td class="dk">VIN (masked)</td>               <td class="dv mono">WBAJS7C06LC******</td></tr>
+<tr><td class="dk">year / make / model</td>        <td class="dv">2020 / BMW / M550XI</td></tr>
+<tr><td class="dk">model_group (lmg)</td>          <td class="dv warn">M5 &mdash; obejmuje M550i, nie tylko F90</td></tr>
+<tr><td class="dk">silnik (egn / cy)</td>          <td class="dv">4.4L V8 Biturbo (N63B44T3) / 8</td></tr>
+<tr><td class="dk">skrzynia (tmtp)</td>            <td class="dv">AUTOMATIC</td></tr>
+<tr><td class="dk">nap&#281;d (drv)</td>            <td class="dv">ALL WHEEL DRIVE</td></tr>
+<tr><td class="dk">kolor / paliwo</td>             <td class="dv">BLACK / GAS</td></tr>
+<tr><td class="dk">karoseria (bstl)</td>           <td class="dv">SEDAN</td></tr>
+<tr><td class="dk">odometer_mi</td>                <td class="dv bad">NULL</td></tr>
+<tr><td class="dk">ord (odometer reading)</td>     <td class="dv bad">NOT ACTUAL</td></tr>
+<tr><td class="dk">obc (odometer brand code)</td>  <td class="dv">N</td></tr>
+<tr><td class="dk">damage_primary (dd / dtc)</td>  <td class="dv bad">FRONT END / FR</td></tr>
+<tr><td class="dk">damage_secondary (sdd)</td>     <td class="dv warn">SIDE</td></tr>
+<tr><td class="dk">listing_damage_score</td>       <td class="dv bad">67 / 100 (front+secondary)</td></tr>
+<tr><td class="dk">listing_damage_label</td>       <td class="dv warn">front+secondary</td></tr>
+<tr><td class="dk">title_type (tgd)</td>           <td class="dv bad">SALVAGE TITLE</td></tr>
+<tr><td class="dk">title_group (tgc)</td>          <td class="dv bad">TITLEGROUP_S</td></tr>
+<tr><td class="dk">title_desc (td)</td>            <td class="dv">SALVAGE CERTIFICATE OF TITLE</td></tr>
+<tr><td class="dk">stt (state title)</td>          <td class="dv">SC</td></tr>
+<tr><td class="dk">current_bid (hb)</td>           <td class="dv">0.0 USD</td></tr>
+<tr><td class="dk">buy_now (bnp)</td>              <td class="dv">NULL</td></tr>
+<tr><td class="dk">seller_reserve</td>             <td class="dv">NULL</td></tr>
+<tr><td class="dk">sellerReserveMet</td>           <td class="dv warn">TRUE &mdash; artefakt API (bid=0)</td></tr>
+<tr><td class="dk">saleStatus (ess)</td>           <td class="dv">PURE_SALE</td></tr>
+<tr><td class="dk">seller_type</td>                <td class="dv ok">insurance</td></tr>
+<tr><td class="dk">location (yn)</td>              <td class="dv">NC &ndash; CONCORD</td></tr>
+<tr><td class="dk">yard_num (ynumb)</td>           <td class="dv">356</td></tr>
+<tr><td class="dk">auction_date (ad)</td>          <td class="dv">2026-04-30 14:00:00 EDT</td></tr>
+<tr><td class="dk">airbags_deployed</td>           <td class="dv ok">FALSE &mdash; nie odpalone &#10003;</td></tr>
+<tr><td class="dk">keys (hk)</td>                  <td class="dv bad">NO &mdash; brak kluczy &#9888;</td></tr>
+<tr><td class="dk">ACV (lotPlugAcv)</td>           <td class="dv warn">43 050,00 USD</td></tr>
+<tr><td class="dk">RC (replacement cost, rc)</td>  <td class="dv">61 508,69 USD</td></tr>
+<tr><td class="dk">last ask (la)</td>              <td class="dv">23 065,00 USD</td></tr>
+<tr><td class="dk">enhanced_vehicle (hegn)</td>    <td class="dv ok">Y (lcd = ENHANCED VEHICLES)</td></tr>
+<tr><td class="dk">lot_status (lsts / lstg)</td>   <td class="dv">O (Open) / 40</td></tr>
+<tr><td class="dk">license (lfd / lic)</td>        <td class="dv ok">No License Required / IV, NLC, CERT-E</td></tr>
+<tr><td class="dk">hcr / hcfx / cfx</td>          <td class="dv">TRUE / TRUE / FALSE &mdash; historia jest, raport online niedost&#281;pny</td></tr>
+<tr><td class="dk">images_count (real)</td>        <td class="dv ok">10 / 10</td></tr>
+<tr><td class="dk">enriched_by_extension</td>      <td class="dv ok">TRUE</td></tr>
+<tr><td class="dk">html_cache</td>                 <td class="dv mono">data/html_cache/copart/807e2e4c4c.html</td></tr>
+</tbody></table>
 </div>
-
 <!-- ── SCORING ── -->
 <div class="section">
-  <span class="pill">&#9658; Scoring breakdown &mdash; 6.5 / 10</span>
-  <table class="htbl" cellspacing="0" cellpadding="0">
-  <thead><tr><th>Kryterium</th><th class="c" style="width:52px;">&Delta;</th><th>Uzasadnienie operacyjne</th></tr></thead>
-  <tbody>
-    <tr><td>Lokalizacja NC &mdash; wschodnie wybrze&#380;e</td><td class="pos">+0.5</td><td>Transport l&#261;dowy do portu Newark/Baltimore ~800&ndash;1 000 USD (vs. ~1 650 USD z CA)</td></tr>
-    <tr><td>Sprzedawca: Insurance</td>                      <td class="pos">+0.5</td><td>Pe&#322;na dokumentacja szkody, historia ubezpieczeniowa weryfikowalna w NMVTIS</td></tr>
-    <tr><td>Airbagi nie odpalone (driveStatus=FALSE)</td>   <td class="pos">+0.5</td><td>Brak wymiany workbag&oacute;w, modu&#322;u SRS, pirotechnicznych napinacz&oacute;w &mdash; oszcz&#281;dno&#347;&#263; 4 000&ndash;8 000 PLN</td></tr>
-    <tr><td>Damage score 67/100 (front+secondary)</td>      <td class="neg">&minus;1.0</td><td>Przekracza pr&oacute;g 60 dla pojazd&oacute;w premium; podw&oacute;jny obszar uszkodze&#324; = wy&#380;sze ryzyko strukturalne</td></tr>
-    <tr><td>SALVAGE TITLE (TITLEGROUP_S)</td>               <td class="neg">&minus;1.5</td><td>Homologacja indywidualna PL obowi&#261;zkowa; utrudnione OC/AC; deprecjacja odsprzeda&#380;y</td></tr>
-    <tr><td>Odometer NOT ACTUAL (ord=NOT ACTUAL)</td>       <td class="neg">&minus;0.5</td><td>Rzeczywisty przebieg nieznany &mdash; mo&#380;e przekracza&#263; 100 000 mi; ryzyko zu&#380;ycia silnika N63</td></tr>
-    <tr><td>Brak ceny / buy-now (bnp=NULL)</td>             <td class="neg">&minus;0.5</td><td>Nieznany seller reserve; ACV 43 050 >> bud&#380;et 30 000 &mdash; ryzyko przekroczenia</td></tr>
-    <tr><td>ACV 43 050 >> bud&#380;et klienta 30 000</td>  <td class="neg">&minus;0.5</td><td>Warto&#347;&#263; rynkowa 43 050 USD &mdash; licytacja mo&#380;e wys&#322;uchiwac powy&#380;ej mo&#380;liwo&#347;ci</td></tr>
-    <tr><td>M550i &ne; M5 F90 (lmg=M5 &ne; S63/S58)</td>  <td class="neg">&minus;0.5</td><td>N63B44T3 530 KM vs S63B44T4 600+ KM; inna warto&#347;&#263; rynkowa i cz&#281;&#347;ci w PL</td></tr>
-    <tr><td>keys = NO (hk=NO)</td>                         <td class="neg">&minus;0.5</td><td>Wymiana/programowanie klucza BMW M550i (FEM/BDC): 800&ndash;2 000 USD &mdash; uwzgl&#281;dni&#263; w kosztorysie</td></tr>
-  </tbody>
-  <tfoot><tr>
-    <td><strong>SCORE KO&#323;COWY</strong></td>
-    <td class="c"><strong>6.5</strong></td>
-    <td>Status: OBSERWOWA&#262; &mdash; nie licytowa&#263; bez CarFax, weryfikacji zdj&#281;&#263; HD i limitu bid</td>
-  </tr></tfoot>
-  </table>
+<span class="pill">&#9658; Scoring breakdown &mdash; 6.5 / 10</span>
+<table class="htbl" cellspacing="0" cellpadding="0">
+<thead><tr><th>Kryterium</th><th class="c" style="width:52px;">&Delta;</th><th>Uzasadnienie operacyjne</th></tr></thead>
+<tbody>
+<tr><td>Lokalizacja NC &mdash; wschodnie wybrze&#380;e</td><td class="pos">+0.5</td><td>Transport l&#261;dowy do portu Newark/Baltimore ~800&ndash;1 000 USD (vs. ~1 650 USD z CA)</td></tr>
+<tr><td>Sprzedawca: Insurance</td>                      <td class="pos">+0.5</td><td>Pe&#322;na dokumentacja szkody, historia ubezpieczeniowa weryfikowalna w NMVTIS</td></tr>
+<tr><td>Airbagi nie odpalone (driveStatus=FALSE)</td>   <td class="pos">+0.5</td><td>Brak wymiany workbag&oacute;w, modu&#322;u SRS, pirotechnicznych napinacz&oacute;w &mdash; oszcz&#281;dno&#347;&#263; 4 000&ndash;8 000 PLN</td></tr>
+<tr><td>Damage score 67/100 (front+secondary)</td>      <td class="neg">&minus;1.0</td><td>Przekracza pr&oacute;g 60 dla pojazd&oacute;w premium; podw&oacute;jny obszar uszkodze&#324; = wy&#380;sze ryzyko strukturalne</td></tr>
+<tr><td>SALVAGE TITLE (TITLEGROUP_S)</td>               <td class="neg">&minus;1.5</td><td>Homologacja indywidualna PL obowi&#261;zkowa; utrudnione OC/AC; deprecjacja odsprzeda&#380;y</td></tr>
+<tr><td>Odometer NOT ACTUAL (ord=NOT ACTUAL)</td>       <td class="neg">&minus;0.5</td><td>Rzeczywisty przebieg nieznany &mdash; mo&#380;e przekracza&#263; 100 000 mi; ryzyko zu&#380;ycia silnika N63</td></tr>
+<tr><td>Brak ceny / buy-now (bnp=NULL)</td>             <td class="neg">&minus;0.5</td><td>Nieznany seller reserve; ACV 43 050 >> bud&#380;et 30 000 &mdash; ryzyko przekroczenia</td></tr>
+<tr><td>ACV 43 050 >> bud&#380;et klienta 30 000</td>  <td class="neg">&minus;0.5</td><td>Warto&#347;&#263; rynkowa 43 050 USD &mdash; licytacja mo&#380;e wys&#322;uchiwac powy&#380;ej mo&#380;liwo&#347;ci</td></tr>
+<tr><td>M550i &ne; M5 F90 (lmg=M5 &ne; S63/S58)</td>  <td class="neg">&minus;0.5</td><td>N63B44T3 530 KM vs S63B44T4 600+ KM; inna warto&#347;&#263; rynkowa i cz&#281;&#347;ci w PL</td></tr>
+<tr><td>keys = NO (hk=NO)</td>                         <td class="neg">&minus;0.5</td><td>Wymiana/programowanie klucza BMW M550i (FEM/BDC): 800&ndash;2 000 USD &mdash; uwzgl&#281;dni&#263; w kosztorysie</td></tr>
+</tbody>
+<tfoot><tr>
+<td><strong>SCORE KO&#323;COWY</strong></td>
+<td class="c"><strong>6.5</strong></td>
+<td>Status: OBSERWOWA&#262; &mdash; nie licytowa&#263; bez CarFax, weryfikacji zdj&#281;&#263; HD i limitu bid</td>
+</tr></tfoot>
+</table>
 </div>
-
 <!-- ── KOSZTY ── -->
 <div class="section">
-  <span class="pill">&#9658; Kalkulacja koszt&oacute;w importu</span>
-  <table class="ctbl" cellspacing="0" cellpadding="0">
-  <thead><tr><th>Sk&#322;adnik</th><th class="r">Opt. (USD)</th><th class="r">Pesym. (USD)</th><th>Uwagi</th></tr></thead>
-  <tbody>
-    <tr><td>Cena aukcji Copart</td>              <td class="num">2 000</td><td class="num">4 500</td><td class="note">Brak ofert; ACV = 43 050 USD</td></tr>
-    <tr><td>Op&#322;aty aukcyjne Copart</td>      <td class="num">600</td>  <td class="num">900</td>  <td class="note">Zale&#380;ne od ceny i konta</td></tr>
-    <tr><td>Transport l&#261;dowy NC &rarr; port</td><td class="num">800</td><td class="num">1 000</td><td class="note">Concord NC &rarr; Newark/Baltimore</td></tr>
-    <tr><td>Fracht morski &rarr; PL</td>          <td class="num">1 200</td><td class="num">1 500</td><td class="note">RoRo lub kontener</td></tr>
-    <tr><td>C&#322;o 6,5% + akcyza 3,1%</td>      <td class="num">1 800</td><td class="num">3 200</td><td class="note">Od warto&#347;ci CIF; akcyza os. prywatna</td></tr>
-    <tr><td>VAT 23%</td>                          <td class="num">800</td>  <td class="num">1 500</td><td class="note">Wliczony przy odprawie celnej</td></tr>
-    <tr><td>Naprawa &mdash; cz&#281;&#347;ci</td>  <td class="num">800</td>  <td class="num">1 500</td><td class="note">Zderzak, kratka, reflektor, b&#322;otnik</td></tr>
-    <tr><td>Naprawa &mdash; robocizna</td>         <td class="num">1 200</td><td class="num">2 000</td><td class="note">Blacharstwo, lakierowanie, geometria</td></tr>
-    <tr><td>Naprawa &mdash; ch&#322;odnica/intercooler</td><td class="num">400</td><td class="num">1 500</td><td class="note">Do potwierdzenia po inspekcji HD</td></tr>
-    <tr><td>Klucze (hk=NO)</td>                   <td class="num">400</td>  <td class="num">900</td>  <td class="note">Programowanie FEM/BDC BMW M550i</td></tr>
-    <tr><td>Homologacja indywidualna</td>          <td class="num">1 200</td><td class="num">2 000</td><td class="note">Salvage title &rarr; procedura indywidualna PL</td></tr>
-    <tr><td>T&#322;umaczenia przysi&#281;g&#322;e + rejestracja</td><td class="num">600</td><td class="num">1 000</td><td class="note">COC, tytu&#322;, decyzja celna</td></tr>
-  </tbody>
-  <tfoot>
-    <tr class="opt"><td><strong>&#321;ĄCZNIE opt.</strong></td><td class="num">11 800 USD</td><td class="num">&mdash;</td><td class="note">Bez niespodzianek strukturalnych</td></tr>
-    <tr class="pess"><td><strong>&#321;ĄCZNIE pesym.</strong></td><td class="num">&mdash;</td><td class="num">17 100 USD</td><td class="note">Z ukrytymi uszkodzeniami pod&#322;u&#380;nic / EPAS</td></tr>
-  </tfoot>
-  </table>
+<span class="pill">&#9658; Kalkulacja koszt&oacute;w importu</span>
+<table class="ctbl" cellspacing="0" cellpadding="0">
+<thead><tr><th>Sk&#322;adnik</th><th class="r">Opt. (USD)</th><th class="r">Pesym. (USD)</th><th>Uwagi</th></tr></thead>
+<tbody>
+<tr><td>Cena aukcji Copart</td>              <td class="num">2 000</td><td class="num">4 500</td><td class="note">Brak ofert; ACV = 43 050 USD</td></tr>
+<tr><td>Op&#322;aty aukcyjne Copart</td>      <td class="num">600</td>  <td class="num">900</td>  <td class="note">Zale&#380;ne od ceny i konta</td></tr>
+<tr><td>Transport l&#261;dowy NC &rarr; port</td><td class="num">800</td><td class="num">1 000</td><td class="note">Concord NC &rarr; Newark/Baltimore</td></tr>
+<tr><td>Fracht morski &rarr; PL</td>          <td class="num">1 200</td><td class="num">1 500</td><td class="note">RoRo lub kontener</td></tr>
+<tr><td>C&#322;o 6,5% + akcyza 3,1%</td>      <td class="num">1 800</td><td class="num">3 200</td><td class="note">Od warto&#347;ci CIF; akcyza os. prywatna</td></tr>
+<tr><td>VAT 23%</td>                          <td class="num">800</td>  <td class="num">1 500</td><td class="note">Wliczony przy odprawie celnej</td></tr>
+<tr><td>Naprawa &mdash; cz&#281;&#347;ci</td>  <td class="num">800</td>  <td class="num">1 500</td><td class="note">Zderzak, kratka, reflektor, b&#322;otnik</td></tr>
+<tr><td>Naprawa &mdash; robocizna</td>         <td class="num">1 200</td><td class="num">2 000</td><td class="note">Blacharstwo, lakierowanie, geometria</td></tr>
+<tr><td>Naprawa &mdash; ch&#322;odnica/intercooler</td><td class="num">400</td><td class="num">1 500</td><td class="note">Do potwierdzenia po inspekcji HD</td></tr>
+<tr><td>Klucze (hk=NO)</td>                   <td class="num">400</td>  <td class="num">900</td>  <td class="note">Programowanie FEM/BDC BMW M550i</td></tr>
+<tr><td>Homologacja indywidualna</td>          <td class="num">1 200</td><td class="num">2 000</td><td class="note">Salvage title &rarr; procedura indywidualna PL</td></tr>
+<tr><td>T&#322;umaczenia przysi&#281;g&#322;e + rejestracja</td><td class="num">600</td><td class="num">1 000</td><td class="note">COC, tytu&#322;, decyzja celna</td></tr>
+</tbody>
+<tfoot>
+<tr class="opt"><td><strong>&#321;ĄCZNIE opt.</strong></td><td class="num">11 800 USD</td><td class="num">&mdash;</td><td class="note">Bez niespodzianek strukturalnych</td></tr>
+<tr class="pess"><td><strong>&#321;ĄCZNIE pesym.</strong></td><td class="num">&mdash;</td><td class="num">17 100 USD</td><td class="note">Z ukrytymi uszkodzeniami pod&#322;u&#380;nic / EPAS</td></tr>
+</tfoot>
+</table>
 </div>
-
 <!-- ── CZERWONE FLAGI ── -->
 <div class="section">
-  <span class="pill red">&#9658; Czerwone flagi &mdash; ocena brokera</span>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar r">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle r">&#9888; Salvage Title (TITLEGROUP_S)</div></td>
-        <td style="text-align:right"><span class="flevel crit">Krytyczne</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">Homologacja indywidualna PL obowi&#261;zkowa (rzeczoznawca, badania, urz&#261;d). Niekt&oacute;re TU odmawiaj&#261; AC. Przy odsprzeda&#380;y klient musi ujawni&#263; histori&#281; &mdash; deprecjacja 20&ndash;35% vs. clean title tej samej klasy.</div>
-    </td>
-  </tr></tbody></table></div>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar r">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle r">&#9888; Damage score 67/100 (FRONT END + SIDE)</div></td>
-        <td style="text-align:right"><span class="flevel high">Wysokie</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">Przekracza pr&oacute;g 60 dla pojazd&oacute;w premium. Potencjalne ukryte uszkodzenia: pod&#322;u&#380;nice, kolumna kierownicy EPAS, ch&#322;odnica, intercooler turbodo&#322;adowania, wzmacniacz zderzaka. <strong>Obowi&#261;zkowa inspekcja zdj&#281;&#263; HD + raport geometrii nadwozia przed napraw&#261;.</strong></div>
-    </td>
-  </tr></tbody></table></div>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar r">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle r">&#9888; Odometer NOT ACTUAL (ord=NOT ACTUAL, obc=N)</div></td>
-        <td style="text-align:right"><span class="flevel high">Wysokie</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">Licznik nieza&#322;&#261;czony do dokumentu tytu&#322;u. Mo&#380;liwy rollback lub uszkodzenie wy&#347;wietlacza w kolizji. Silnik N63B44T3 ma znane problemy z turbo i wtr&#281;tnikami przy przebiegu 120 000+ mi. CarFax/NMVTIS obowi&#261;zkowy przed decyzj&#261;.</div>
-    </td>
-  </tr></tbody></table></div>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar a">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle a">&#9888; ACV 43 050 USD &gt;&gt; bud&#380;et 30 000 USD</div></td>
-        <td style="text-align:right"><span class="flevel med">&#346;rednie</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">sellerReserveMet=TRUE przy bid=0 &mdash; prawdopodobny artefakt API Copart (pure sale, brak bid&oacute;w). Nie interpretowa&#263; jako brak reserve. La=23 065 USD to last ask &mdash; mo&#380;e by&#263; wska&#378;nikiem minimalnej oczekiwanej ceny sprzedawcy.</div>
-    </td>
-  </tr></tbody></table></div>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar a">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle a">&#9888; keys = NO (hk=NO)</div></td>
-        <td style="text-align:right"><span class="flevel med">&#346;rednie</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">Brak kluczy potwierdzony (hk=NO). Programowanie nowego klucza BMW M550i (FEM/BDC): 400&ndash;900 USD zale&#380;nie od warsztatu i dostawcy klucza. Uwzgl&#281;dni&#263; w kosztorysie.</div>
-    </td>
-  </tr></tbody></table></div>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar a">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle a">&#9888; M550i &ne; M5 F90 &mdash; r&oacute;&#380;ne modele</div></td>
-        <td style="text-align:right"><span class="flevel med">&#346;rednie</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">N63B44T3 (530 KM, M Performance) vs S63B44T4 (600+ KM, pe&#322;ne M). Copart grupuje oba jako lmg=M5 &mdash; klient szukaj&#261;cy pe&#322;nego M5 musi by&#263; poinformowany. Cena rynkowa M550i w PL: 110&ndash;140 000 PLN vs M5 F90: 200&ndash;280 000 PLN.</div>
-    </td>
-  </tr></tbody></table></div>
-
-  <div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
-    <td class="flag-bar g">&nbsp;</td><td class="flag-cnt">
-      <table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
-        <td><div class="ftitle g">&#9432; CarFax: hcfx=TRUE, cfx=FALSE</div></td>
-        <td style="text-align:right"><span class="flevel low">Info</span></td>
-      </tr></tbody></table>
-      <div class="fdesc">Historia pojazdu istnieje w systemie (hcr=TRUE, hcfx=TRUE), ale raport online przez Copart niedost&#281;pny (cfx=FALSE). Zam&oacute;wi&#263; bezpo&#347;rednio z CarFax.com lub NMVTIS na podstawie VIN przed licytacj&#261;.</div>
-    </td>
-  </tr></tbody></table></div>
+<span class="pill red">&#9658; Czerwone flagi &mdash; ocena brokera</span>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar r">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle r">&#9888; Salvage Title (TITLEGROUP_S)</div></td>
+<td style="text-align:right"><span class="flevel crit">Krytyczne</span></td>
+</tr></tbody></table>
+<div class="fdesc">Homologacja indywidualna PL obowi&#261;zkowa (rzeczoznawca, badania, urz&#261;d). Niekt&oacute;re TU odmawiaj&#261; AC. Przy odsprzeda&#380;y klient musi ujawni&#263; histori&#281; &mdash; deprecjacja 20&ndash;35% vs. clean title tej samej klasy.</div>
+</td>
+</tr></tbody></table></div>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar r">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle r">&#9888; Damage score 67/100 (FRONT END + SIDE)</div></td>
+<td style="text-align:right"><span class="flevel high">Wysokie</span></td>
+</tr></tbody></table>
+<div class="fdesc">Przekracza pr&oacute;g 60 dla pojazd&oacute;w premium. Potencjalne ukryte uszkodzenia: pod&#322;u&#380;nice, kolumna kierownicy EPAS, ch&#322;odnica, intercooler turbodo&#322;adowania, wzmacniacz zderzaka. <strong>Obowi&#261;zkowa inspekcja zdj&#281;&#263; HD + raport geometrii nadwozia przed napraw&#261;.</strong></div>
+</td>
+</tr></tbody></table></div>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar r">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle r">&#9888; Odometer NOT ACTUAL (ord=NOT ACTUAL, obc=N)</div></td>
+<td style="text-align:right"><span class="flevel high">Wysokie</span></td>
+</tr></tbody></table>
+<div class="fdesc">Licznik nieza&#322;&#261;czony do dokumentu tytu&#322;u. Mo&#380;liwy rollback lub uszkodzenie wy&#347;wietlacza w kolizji. Silnik N63B44T3 ma znane problemy z turbo i wtr&#281;tnikami przy przebiegu 120 000+ mi. CarFax/NMVTIS obowi&#261;zkowy przed decyzj&#261;.</div>
+</td>
+</tr></tbody></table></div>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar a">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle a">&#9888; ACV 43 050 USD &gt;&gt; bud&#380;et 30 000 USD</div></td>
+<td style="text-align:right"><span class="flevel med">&#346;rednie</span></td>
+</tr></tbody></table>
+<div class="fdesc">sellerReserveMet=TRUE przy bid=0 &mdash; prawdopodobny artefakt API Copart (pure sale, brak bid&oacute;w). Nie interpretowa&#263; jako brak reserve. La=23 065 USD to last ask &mdash; mo&#380;e by&#263; wska&#378;nikiem minimalnej oczekiwanej ceny sprzedawcy.</div>
+</td>
+</tr></tbody></table></div>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar a">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle a">&#9888; keys = NO (hk=NO)</div></td>
+<td style="text-align:right"><span class="flevel med">&#346;rednie</span></td>
+</tr></tbody></table>
+<div class="fdesc">Brak kluczy potwierdzony (hk=NO). Programowanie nowego klucza BMW M550i (FEM/BDC): 400&ndash;900 USD zale&#380;nie od warsztatu i dostawcy klucza. Uwzgl&#281;dni&#263; w kosztorysie.</div>
+</td>
+</tr></tbody></table></div>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar a">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle a">&#9888; M550i &ne; M5 F90 &mdash; r&oacute;&#380;ne modele</div></td>
+<td style="text-align:right"><span class="flevel med">&#346;rednie</span></td>
+</tr></tbody></table>
+<div class="fdesc">N63B44T3 (530 KM, M Performance) vs S63B44T4 (600+ KM, pe&#322;ne M). Copart grupuje oba jako lmg=M5 &mdash; klient szukaj&#261;cy pe&#322;nego M5 musi by&#263; poinformowany. Cena rynkowa M550i w PL: 110&ndash;140 000 PLN vs M5 F90: 200&ndash;280 000 PLN.</div>
+</td>
+</tr></tbody></table></div>
+<div class="flag"><table width="100%" cellspacing="0" cellpadding="0"><tbody><tr>
+<td class="flag-bar g">&nbsp;</td><td class="flag-cnt">
+<table class="flag-hdr" cellspacing="0" cellpadding="0"><tbody><tr>
+<td><div class="ftitle g">&#9432; CarFax: hcfx=TRUE, cfx=FALSE</div></td>
+<td style="text-align:right"><span class="flevel low">Info</span></td>
+</tr></tbody></table>
+<div class="fdesc">Historia pojazdu istnieje w systemie (hcr=TRUE, hcfx=TRUE), ale raport online przez Copart niedost&#281;pny (cfx=FALSE). Zam&oacute;wi&#263; bezpo&#347;rednio z CarFax.com lub NMVTIS na podstawie VIN przed licytacj&#261;.</div>
+</td>
+</tr></tbody></table></div>
 </div>
-
 <!-- ── POLA RAW COPART ── -->
 <div class="section">
-  <span class="pill blue">&#9658; Kluczowe pola Copart API &mdash; raw</span>
-  <table class="rtbl" cellspacing="0" cellpadding="0"><tbody>
-    <tr><td class="rk">la (last ask)</td>          <td class="rv warn">23 065,00 USD</td></tr>
-    <tr><td class="rk">rc (replacement cost)</td>  <td class="rv">61 508,69 USD</td></tr>
-    <tr><td class="rk">lotPlugAcv</td>             <td class="rv warn">43 050,00 USD</td></tr>
-    <tr><td class="rk">lfd / lic</td>              <td class="rv ok">No License Required / IV, NLC, CERT-E</td></tr>
-    <tr><td class="rk">ord / obc</td>              <td class="rv bad">NOT ACTUAL / N</td></tr>
-    <tr><td class="rk">saleStatus / ess</td>       <td class="rv">PURE_SALE / Pure Sale</td></tr>
-    <tr><td class="rk">sellerReserveMet</td>       <td class="rv warn">TRUE (artefakt API &mdash; nie weryfikowa&#263;)</td></tr>
-    <tr><td class="rk">dd / dtc</td>               <td class="rv bad">FRONT END / FR</td></tr>
-    <tr><td class="rk">sdd</td>                    <td class="rv warn">SIDE</td></tr>
-    <tr><td class="rk">tgc / tgd / td</td>         <td class="rv bad">TITLEGROUP_S / SALVAGE TITLE / SALVAGE CERT.</td></tr>
-    <tr><td class="rk">stt (state title code)</td> <td class="rv">SC</td></tr>
-    <tr><td class="rk">hk (hot key)</td>           <td class="rv bad">NO &mdash; brak kluczy</td></tr>
-    <tr><td class="rk">hegn / lcd</td>             <td class="rv ok">Y / ENHANCED VEHICLES</td></tr>
-    <tr><td class="rk">lmg</td>                    <td class="rv warn">M5 (obejmuje M550i)</td></tr>
-    <tr><td class="rk">hcr / hcfx / cfx</td>       <td class="rv">TRUE / TRUE / FALSE</td></tr>
-    <tr><td class="rk">lsts / lstg</td>            <td class="rv">O (Open) / 40</td></tr>
-    <tr><td class="rk">ynumb / phynumb</td>        <td class="rv">356 / 356</td></tr>
-    <tr><td class="rk">vehicleCatCode</td>         <td class="rv">VEHCAT_SE (Sedan)</td></tr>
-    <tr><td class="rk">aan / hb / ahb</td>         <td class="rv">0 / 0.0 / 0.0 &mdash; zero ofert</td></tr>
-    <tr><td class="rk">lspa / crg / myb</td>       <td class="rv">0.0 / 0.0 / 0.0</td></tr>
-    <tr><td class="rk">driveStatus</td>            <td class="rv ok">FALSE &mdash; airbagi nie odpalone &#10003;</td></tr>
-    <tr><td class="rk">listing_damage_score</td>   <td class="rv bad">67 / 100</td></tr>
-    <tr><td class="rk">listing_damage_text</td>    <td class="rv">FRONT END | SIDE | 2020 BMW M550XI</td></tr>
-  </tbody></table>
+<span class="pill blue">&#9658; Kluczowe pola Copart API &mdash; raw</span>
+<table class="rtbl" cellspacing="0" cellpadding="0"><tbody>
+<tr><td class="rk">la (last ask)</td>          <td class="rv warn">23 065,00 USD</td></tr>
+<tr><td class="rk">rc (replacement cost)</td>  <td class="rv">61 508,69 USD</td></tr>
+<tr><td class="rk">lotPlugAcv</td>             <td class="rv warn">43 050,00 USD</td></tr>
+<tr><td class="rk">lfd / lic</td>              <td class="rv ok">No License Required / IV, NLC, CERT-E</td></tr>
+<tr><td class="rk">ord / obc</td>              <td class="rv bad">NOT ACTUAL / N</td></tr>
+<tr><td class="rk">saleStatus / ess</td>       <td class="rv">PURE_SALE / Pure Sale</td></tr>
+<tr><td class="rk">sellerReserveMet</td>       <td class="rv warn">TRUE (artefakt API &mdash; nie weryfikowa&#263;)</td></tr>
+<tr><td class="rk">dd / dtc</td>               <td class="rv bad">FRONT END / FR</td></tr>
+<tr><td class="rk">sdd</td>                    <td class="rv warn">SIDE</td></tr>
+<tr><td class="rk">tgc / tgd / td</td>         <td class="rv bad">TITLEGROUP_S / SALVAGE TITLE / SALVAGE CERT.</td></tr>
+<tr><td class="rk">stt (state title code)</td> <td class="rv">SC</td></tr>
+<tr><td class="rk">hk (hot key)</td>           <td class="rv bad">NO &mdash; brak kluczy</td></tr>
+<tr><td class="rk">hegn / lcd</td>             <td class="rv ok">Y / ENHANCED VEHICLES</td></tr>
+<tr><td class="rk">lmg</td>                    <td class="rv warn">M5 (obejmuje M550i)</td></tr>
+<tr><td class="rk">hcr / hcfx / cfx</td>       <td class="rv">TRUE / TRUE / FALSE</td></tr>
+<tr><td class="rk">lsts / lstg</td>            <td class="rv">O (Open) / 40</td></tr>
+<tr><td class="rk">ynumb / phynumb</td>        <td class="rv">356 / 356</td></tr>
+<tr><td class="rk">vehicleCatCode</td>         <td class="rv">VEHCAT_SE (Sedan)</td></tr>
+<tr><td class="rk">aan / hb / ahb</td>         <td class="rv">0 / 0.0 / 0.0 &mdash; zero ofert</td></tr>
+<tr><td class="rk">lspa / crg / myb</td>       <td class="rv">0.0 / 0.0 / 0.0</td></tr>
+<tr><td class="rk">driveStatus</td>            <td class="rv ok">FALSE &mdash; airbagi nie odpalone &#10003;</td></tr>
+<tr><td class="rk">listing_damage_score</td>   <td class="rv bad">67 / 100</td></tr>
+<tr><td class="rk">listing_damage_text</td>    <td class="rv">FRONT END | SIDE | 2020 BMW M550XI</td></tr>
+</tbody></table>
 </div>
-
 <!-- ── ZDJĘCIA ── -->
 <div class="section">
-  <span class="pill">&#9658; Zdj&#281;cia z aukcji (10 szt.)</span>
-  <img class="photo-main"
-    src="data:image/jpeg;base64,PLACEHOLDER"
-    alt="BMW M550i widok g&#322;&oacute;wny">
-  <table class="photo-grid" cellspacing="0" cellpadding="0"><tbody>
-    <tr>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="2"></td>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="3"></td>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="4"></td>
-    </tr>
-    <tr>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="5"></td>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="6"></td>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="7"></td>
-    </tr>
-    <tr>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="8"></td>
-      <td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="9"></td>
-      <td>&nbsp;</td>
-    </tr>
-  </tbody></table>
+<span class="pill">&#9658; Zdj&#281;cia z aukcji (10 szt.)</span>
+<img class="photo-main"
+src="data:image/jpeg;base64,PLACEHOLDER"
+alt="BMW M550i widok g&#322;&oacute;wny">
+<table class="photo-grid" cellspacing="0" cellpadding="0"><tbody>
+<tr>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="2"></td>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="3"></td>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="4"></td>
+</tr>
+<tr>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="5"></td>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="6"></td>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="7"></td>
+</tr>
+<tr>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="8"></td>
+<td><img src="data:image/jpeg;base64,PLACEHOLDER" alt="9"></td>
+<td>&nbsp;</td>
+</tr>
+</tbody></table>
 </div>
-
 <!-- ── CHECKLIST ── -->
 <div class="section">
-  <span class="pill">&#9658; Checklist przed licytacj&#261;</span>
-  <table class="chtbl" cellspacing="0" cellpadding="0">
-  <thead><tr>
-    <th style="width:24px">#</th><th>Zadanie</th>
-    <th style="width:88px;text-align:center">Priorytet</th>
-    <th style="width:24px;text-align:center">&#10003;</th>
-  </tr></thead>
-  <tbody>
-    <tr><td class="cnum">1</td><td>Pobra&#263; zdj&#281;cia HD (spodnia, progi, s&#322;upki A/B) z portalu Copart &mdash; konto wymagane</td><td style="text-align:center"><span class="cprio c">KRYTYCZNY</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">2</td><td>Zam&oacute;wi&#263; raport CarFax / NMVTIS dla VIN: WBAJS7C06LCD00163</td><td style="text-align:center"><span class="cprio c">KRYTYCZNY</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">3</td><td>Ustali&#263; max limit bid z klientem (deadline: 30.04.2026 &middot; 12:00 polskiego)</td><td style="text-align:center"><span class="cprio c">KRYTYCZNY</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">4</td><td>Potwierdzi&#263; op&#322;aty aukcyjne Copart dla konta (tier, cz&#322;onkostwo)</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">5</td><td>Ustali&#263; koszt transportu NC &rarr; port &mdash; 3 oferty przewo&#378;nik&oacute;w</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">6</td><td>Skonsultowa&#263; homologacj&#281; salvage title z rzeczoznawc&#261; / importerem PL</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">7</td><td>Poinformowa&#263; klienta: M550i (M Performance, N63) &ne; M5 F90 (S63) &mdash; uzyska&#263; akceptacj&#281;</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">8</td><td>Sprawdzi&#263; dost&#281;pno&#347;&#263; frachtowca RoRo / kontenera USA &rarr; PL na maj 2026</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">9</td><td>Weryfikacja geometrii nadwozia (pomiar 3D) &mdash; obowi&#261;zkowo po transporcie</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">10</td><td>Sprawdzi&#263; dost&#281;pno&#347;&#263; cz&#281;&#347;ci N63B44T3 na rynku PL / EU</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">11</td><td>Kosztorys kluczy (hk=NO) &mdash; programowanie FEM/BDC uwzgl&#281;dnic przed ofert&#261;</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
-    <tr><td class="cnum">12</td><td>Zweryfikowa&#263; czy serwis BMW PL obs&#322;uguje pojazdy z salvage title USA</td><td style="text-align:center"><span class="cprio l">NISKI</span></td><td class="ccheck">&#9744;</td></tr>
-  </tbody>
-  </table>
+<span class="pill">&#9658; Checklist przed licytacj&#261;</span>
+<table class="chtbl" cellspacing="0" cellpadding="0">
+<thead><tr>
+<th style="width:24px">#</th><th>Zadanie</th>
+<th style="width:88px;text-align:center">Priorytet</th>
+<th style="width:24px;text-align:center">&#10003;</th>
+</tr></thead>
+<tbody>
+<tr><td class="cnum">1</td><td>Pobra&#263; zdj&#281;cia HD (spodnia, progi, s&#322;upki A/B) z portalu Copart &mdash; konto wymagane</td><td style="text-align:center"><span class="cprio c">KRYTYCZNY</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">2</td><td>Zam&oacute;wi&#263; raport CarFax / NMVTIS dla VIN: WBAJS7C06LCD00163</td><td style="text-align:center"><span class="cprio c">KRYTYCZNY</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">3</td><td>Ustali&#263; max limit bid z klientem (deadline: 30.04.2026 &middot; 12:00 polskiego)</td><td style="text-align:center"><span class="cprio c">KRYTYCZNY</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">4</td><td>Potwierdzi&#263; op&#322;aty aukcyjne Copart dla konta (tier, cz&#322;onkostwo)</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">5</td><td>Ustali&#263; koszt transportu NC &rarr; port &mdash; 3 oferty przewo&#378;nik&oacute;w</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">6</td><td>Skonsultowa&#263; homologacj&#281; salvage title z rzeczoznawc&#261; / importerem PL</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">7</td><td>Poinformowa&#263; klienta: M550i (M Performance, N63) &ne; M5 F90 (S63) &mdash; uzyska&#263; akceptacj&#281;</td><td style="text-align:center"><span class="cprio h">WYSOKI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">8</td><td>Sprawdzi&#263; dost&#281;pno&#347;&#263; frachtowca RoRo / kontenera USA &rarr; PL na maj 2026</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">9</td><td>Weryfikacja geometrii nadwozia (pomiar 3D) &mdash; obowi&#261;zkowo po transporcie</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">10</td><td>Sprawdzi&#263; dost&#281;pno&#347;&#263; cz&#281;&#347;ci N63B44T3 na rynku PL / EU</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">11</td><td>Kosztorys kluczy (hk=NO) &mdash; programowanie FEM/BDC uwzgl&#281;dnic przed ofert&#261;</td><td style="text-align:center"><span class="cprio m">&#346;REDNI</span></td><td class="ccheck">&#9744;</td></tr>
+<tr><td class="cnum">12</td><td>Zweryfikowa&#263; czy serwis BMW PL obs&#322;uguje pojazdy z salvage title USA</td><td style="text-align:center"><span class="cprio l">NISKI</span></td><td class="ccheck">&#9744;</td></tr>
+</tbody>
+</table>
 </div>
-
 <!-- ── STRATEGIA LICYTACJI ── -->
 <div class="section">
-  <span class="pill">&#9658; Strategia licytacji</span>
-  <table class="btbl" cellspacing="0" cellpadding="0"><tbody>
-    <tr><td class="bk">Okno aukcji</td><td class="bv"><strong>30.04.2026 &middot; 14:00 EDT</strong> (20:00 czasu polskiego)</td></tr>
-    <tr><td class="bk">Max bid sugerowany</td><td class="bv"><strong>&le; 4 500 USD</strong> ceny aukcji &rarr; &#322;&#261;czny koszt ~13&ndash;15 tys. USD z importem</td></tr>
-    <tr><td class="bk">Pr&oacute;g op&#322;acalno&#347;ci</td><td class="bv">Powy&#380;ej <strong>6 000 USD</strong> ceny aukcji mar&#380;a importowa spada poni&#380;ej akceptowalnej</td></tr>
-    <tr><td class="bk">ACV vs bud&#380;et</td><td class="bv wrn">ACV 43 050 USD >> bud&#380;et 30 000 USD. Auto mo&#380;e osi&#261;gn&#261;&#263; cen&#281; poza mo&#380;liwo&#347;ciami klienta.</td></tr>
-    <tr><td class="bk">sellerReserveMet</td><td class="bv wrn">TRUE przy bid=0 &mdash; artefakt API. Nie potwierdza braku reserve. Obserwowa&#263; otwarcie aukcji.</td></tr>
-    <tr><td class="bk">la = 23 065 USD</td><td class="bv wrn">Last ask mo&#380;e wskazywa&#263; minimaln&#261; cen&#281; oczekiwan&#261; przez sprzedawc&#281; &mdash; powy&#380;ej bud&#380;etu.</td></tr>
-    <tr><td class="bk">Rekomendacja</td><td class="bv"><strong>Nie licytowa&#263;</strong> bez: CarFax, weryfikacji zdj&#281;&#263; HD, zgody klienta na M550i (nie M5), ustalonego limitu bid.</td></tr>
-  </tbody></table>
+<span class="pill">&#9658; Strategia licytacji</span>
+<table class="btbl" cellspacing="0" cellpadding="0"><tbody>
+<tr><td class="bk">Okno aukcji</td><td class="bv"><strong>30.04.2026 &middot; 14:00 EDT</strong> (20:00 czasu polskiego)</td></tr>
+<tr><td class="bk">Max bid sugerowany</td><td class="bv"><strong>&le; 4 500 USD</strong> ceny aukcji &rarr; &#322;&#261;czny koszt ~13&ndash;15 tys. USD z importem</td></tr>
+<tr><td class="bk">Pr&oacute;g op&#322;acalno&#347;ci</td><td class="bv">Powy&#380;ej <strong>6 000 USD</strong> ceny aukcji mar&#380;a importowa spada poni&#380;ej akceptowalnej</td></tr>
+<tr><td class="bk">ACV vs bud&#380;et</td><td class="bv wrn">ACV 43 050 USD >> bud&#380;et 30 000 USD. Auto mo&#380;e osi&#261;gn&#261;&#263; cen&#281; poza mo&#380;liwo&#347;ciami klienta.</td></tr>
+<tr><td class="bk">sellerReserveMet</td><td class="bv wrn">TRUE przy bid=0 &mdash; artefakt API. Nie potwierdza braku reserve. Obserwowa&#263; otwarcie aukcji.</td></tr>
+<tr><td class="bk">la = 23 065 USD</td><td class="bv wrn">Last ask mo&#380;e wskazywa&#263; minimaln&#261; cen&#281; oczekiwan&#261; przez sprzedawc&#281; &mdash; powy&#380;ej bud&#380;etu.</td></tr>
+<tr><td class="bk">Rekomendacja</td><td class="bv"><strong>Nie licytowa&#263;</strong> bez: CarFax, weryfikacji zdj&#281;&#263; HD, zgody klienta na M550i (nie M5), ustalonego limitu bid.</td></tr>
+</tbody></table>
 </div>
-
 <!-- ── NOTATKI STRATEGICZNE ── -->
 <div class="section">
-  <span class="pill amber">&#9658; Notatki strategiczne (copywriting / sprzeda&#380;)</span>
-  <table class="notes-tbl" cellspacing="0" cellpadding="0"><tbody>
-    <tr>
-      <td class="nk">Tryb oferty</td>
-      <td class="nv">PREMIUM &mdash; ton doradczy, bez superlatyw&oacute;w. M550i to &#347;wiadomy wyb&oacute;r, nie "okazja z gie&#322;dy". Unika&#263;: "okazja", "oszcz&#281;dno&#347;&#263;" w nag&#322;&oacute;wku. U&#380;ywa&#263;: "&#347;wiadomy wyb&oacute;r", "r&oacute;&#380;nica 100 000 PLN".</td>
-    </tr>
-    <tr>
-      <td class="nk">G&#322;&oacute;wny trigger</td>
-      <td class="nv"><strong>Anchoring + awersja do straty.</strong> Pokaza&#263; 155&ndash;185 000 PLN PRZED cen&#261; oferty. Klient por&oacute;wnuje nie do "taniego auta" lecz do "tego samego za trzy razy tyle".</td>
-    </tr>
-    <tr>
-      <td class="nk">Wariant nag&#322;&oacute;wka A</td>
-      <td class="nv">BMW M550i xDrive 2020 &mdash; V8 za cen&#281; benzynowego X5. <em>(Scarcity/FOMO)</em></td>
-    </tr>
-    <tr>
-      <td class="nk">Wariant nag&#322;&oacute;wka B</td>
-      <td class="nv">530 KM, kt&oacute;re nie wygl&#261;da jak show-off. <em>(Aspiracja / status)</em></td>
-    </tr>
-    <tr>
-      <td class="nk">Wariant nag&#322;&oacute;wka C</td>
-      <td class="nv">BMW M550i za ~55 000 PLN zamiast 160 000 PLN z salonu. <em>(Racjonalna kalkulacja)</em></td>
-    </tr>
-    <tr>
-      <td class="nk">Ryzyka komunikacyjne</td>
-      <td class="nv">
-        1. Klient odrzuci salvage title bez zrozumienia &rarr; wyja&#347;ni&#263; r&oacute;&#380;nic&#281; salvage vs. rebuilt, przebieg homologacji PL.<br>
-        2. "NOT ACTUAL" brzmi podejrzanie &rarr; wyja&#347;ni&#263;: to decyzja ubezpieczyciela, nie ukrywanie przebiegu. CarFax poka&#380;e histori&#281; serwisow&#261;.<br>
-        3. "67/100 damage score" niepokoi &rarr; przet&#322;umaczy&#263;: dwa obszary karoserii, nie podwozie ani silnik.<br>
-        4. M550i vs. M5 &rarr; aktywnie poinformowa&#263; klienta zanim sam sprawdzi i poczuje si&#281; wprowadzony w b&#322;&#261;d.
-      </td>
-    </tr>
-    <tr>
-      <td class="nk">Follow-up 48h (brak odpowiedzi)</td>
-      <td class="nv">"Wstawiam link do zdj&#281;&#263; HD z Copart &mdash; &#380;eby m&oacute;g&#322; Pan sam oceni&#263; stan karoserii zanim podejmiemy decyzj&#281;." Niskoprogowe. Nie pyta&#263; czy zainteresowany &mdash; da&#263; co&#347; do obejrzenia.</td>
-    </tr>
-    <tr>
-      <td class="nk">Wariant Short (WhatsApp)</td>
-      <td class="nv">BMW M550i xDrive 2020 &mdash; 530 KM, V8 biturbo, czarny, AWD. Uszkodzenie przodu po aukcji USA, airbagi nie odpalone. Po naprawie i imporcie: ~55 000 PLN vs. 155&ndash;185 000 PLN z rynku PL. Aukcja: 30.04 wieczorem. Mo&#380;emy pom&oacute;wi&#263; 15 minut?</td>
-    </tr>
-    <tr>
-      <td class="nk">Damaging admission</td>
-      <td class="nv">Salvage title i brak przebiegu komunikowa&#263; wprost &mdash; to buduje zaufanie i chroni przed rozczarowaniem. Klient, kt&oacute;ry czyta uczciw&#261; diagnoz&#281;, ufa te&#380; reszcie oferty.</td>
-    </tr>
-  </tbody></table>
+<span class="pill amber">&#9658; Notatki strategiczne (copywriting / sprzeda&#380;)</span>
+<table class="notes-tbl" cellspacing="0" cellpadding="0"><tbody>
+<tr>
+<td class="nk">Tryb oferty</td>
+<td class="nv">PREMIUM &mdash; ton doradczy, bez superlatyw&oacute;w. M550i to &#347;wiadomy wyb&oacute;r, nie "okazja z gie&#322;dy". Unika&#263;: "okazja", "oszcz&#281;dno&#347;&#263;" w nag&#322;&oacute;wku. U&#380;ywa&#263;: "&#347;wiadomy wyb&oacute;r", "r&oacute;&#380;nica 100 000 PLN".</td>
+</tr>
+<tr>
+<td class="nk">G&#322;&oacute;wny trigger</td>
+<td class="nv"><strong>Anchoring + awersja do straty.</strong> Pokaza&#263; 155&ndash;185 000 PLN PRZED cen&#261; oferty. Klient por&oacute;wnuje nie do "taniego auta" lecz do "tego samego za trzy razy tyle".</td>
+</tr>
+<tr>
+<td class="nk">Wariant nag&#322;&oacute;wka A</td>
+<td class="nv">BMW M550i xDrive 2020 &mdash; V8 za cen&#281; benzynowego X5. <em>(Scarcity/FOMO)</em></td>
+</tr>
+<tr>
+<td class="nk">Wariant nag&#322;&oacute;wka B</td>
+<td class="nv">530 KM, kt&oacute;re nie wygl&#261;da jak show-off. <em>(Aspiracja / status)</em></td>
+</tr>
+<tr>
+<td class="nk">Wariant nag&#322;&oacute;wka C</td>
+<td class="nv">BMW M550i za ~55 000 PLN zamiast 160 000 PLN z salonu. <em>(Racjonalna kalkulacja)</em></td>
+</tr>
+<tr>
+<td class="nk">Ryzyka komunikacyjne</td>
+<td class="nv">
+1. Klient odrzuci salvage title bez zrozumienia &rarr; wyja&#347;ni&#263; r&oacute;&#380;nic&#281; salvage vs. rebuilt, przebieg homologacji PL.<br>
+2. "NOT ACTUAL" brzmi podejrzanie &rarr; wyja&#347;ni&#263;: to decyzja ubezpieczyciela, nie ukrywanie przebiegu. CarFax poka&#380;e histori&#281; serwisow&#261;.<br>
+3. "67/100 damage score" niepokoi &rarr; przet&#322;umaczy&#263;: dwa obszary karoserii, nie podwozie ani silnik.<br>
+4. M550i vs. M5 &rarr; aktywnie poinformowa&#263; klienta zanim sam sprawdzi i poczuje si&#281; wprowadzony w b&#322;&#261;d.
+</td>
+</tr>
+<tr>
+<td class="nk">Follow-up 48h (brak odpowiedzi)</td>
+<td class="nv">"Wstawiam link do zdj&#281;&#263; HD z Copart &mdash; &#380;eby m&oacute;g&#322; Pan sam oceni&#263; stan karoserii zanim podejmiemy decyzj&#281;." Niskoprogowe. Nie pyta&#263; czy zainteresowany &mdash; da&#263; co&#347; do obejrzenia.</td>
+</tr>
+<tr>
+<td class="nk">Wariant Short (WhatsApp)</td>
+<td class="nv">BMW M550i xDrive 2020 &mdash; 530 KM, V8 biturbo, czarny, AWD. Uszkodzenie przodu po aukcji USA, airbagi nie odpalone. Po naprawie i imporcie: ~55 000 PLN vs. 155&ndash;185 000 PLN z rynku PL. Aukcja: 30.04 wieczorem. Mo&#380;emy pom&oacute;wi&#263; 15 minut?</td>
+</tr>
+<tr>
+<td class="nk">Damaging admission</td>
+<td class="nv">Salvage title i brak przebiegu komunikowa&#263; wprost &mdash; to buduje zaufanie i chroni przed rozczarowaniem. Klient, kt&oacute;ry czyta uczciw&#261; diagnoz&#281;, ufa te&#380; reszcie oferty.</td>
+</tr>
+</tbody></table>
 </div>
-
 <div class="conf-bar">Dokument POUFNY &mdash; przeznaczony wy&#322;&#261;cznie do u&#380;ytku wewn&#281;trznego brokera. Nie udost&#281;pnia&#263; klientowi.</div>
 <div class="divider"></div>
 <div class="footer">&copy; 2026 Pipeline aukcyjny v1.0 &nbsp;&middot;&nbsp; generated_at: 2026-04-29T10:47:02 &nbsp;&middot;&nbsp; Lot #77565135 COPART NC-CONCORD &nbsp;&middot;&nbsp; VIN WBAJS7C06LCD00163 &nbsp;&middot;&nbsp; BROKER INTERNAL</div>
-
 </div></div></body></html>
