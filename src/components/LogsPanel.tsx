@@ -28,16 +28,19 @@ type LogRow = {
 
 type RecordSummary = { id: string; title: string | null };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ServerFnAny = (...args: any[]) => any;
+
 type Props = {
   clientId: string | null;
   recordId?: string | null;
   records?: RecordSummary[];
   onOpenRecord?: (id: string) => void;
   serverFns: {
-    listLogs: typeof import("@/server/api.functions").listLogs;
-    clearLogs: typeof import("@/server/api.functions").clearLogs;
-    getLogRetention: typeof import("@/server/api.functions").getLogRetention;
-    cleanupLogs: typeof import("@/server/api.functions").cleanupLogs;
+    listLogs: ServerFnAny;
+    clearLogs: ServerFnAny;
+    getLogRetention: ServerFnAny;
+    cleanupLogs: ServerFnAny;
   };
 };
 
