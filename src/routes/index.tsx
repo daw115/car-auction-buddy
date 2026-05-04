@@ -30,6 +30,7 @@ import {
   runLotReports,
   getReportBundle,
   logRetryEvent,
+  checkHealth,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
