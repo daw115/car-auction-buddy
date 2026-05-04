@@ -328,16 +328,26 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     remaining_results = [r for r in ranked_results if not r.is_top_recommendation][:5]
     all_results = top_recommendations + remaining_results
 
-    # Auto-generuj raporty HTML po analizie AI — TYLKO dla lotów z rekomendacją POLECAM:
-    #  - klient HTML per polecony lot (HERO + PHOTO + STORY + SPEC + DAMAGE + TIMELINE + DOCS + CTA)
-    #  - broker HTML per polecony lot (PIPELINE + DANE + SCORING + KOSZTY + FLAGI + RAW + ZDJĘCIA + CHECKLIST + STRATEGIA)
-    #  - index linkujący wszystkie polecone (1 plik z buttonami)
+    # Auto-generuj raporty HTML po analizie AI — SHOWCASE 5 = TOP 4 + 1 marketing pick:
+    # 4 najlepsze (top_recommendations[:4]) + 1 pierwszy z "gorszych" lotów (z poza TOP 4)
+    # jako zabieg marketingowy — daje klientowi porównanie i czuje że ma większy wybór
     client_html_files: list[str] = []
     broker_html_files: list[str] = []
     index_file: Optional[str] = None
 
-    # Tylko loty które AI POLECAM (nie RYZYKO/ODRZUĆ) — bo inne nie warte raportowania
-    polecane = [it for it in top_recommendations if it.analysis.recommendation == "POLECAM"]
+    showcase: list = list(top_recommendations[:4])  # 4 najlepsze
+    # 5-ta pozycja: pierwszy lot z poza TOP 4 (najlepszy z "gorszych" = najlepszy z RYZYKO/POLECAM
+    # po pozycji 4-tej w rankingu). Jeśli wszystkie POLECAM mieszczą się w top 4, weź najlepszy
+    # z RYZYKO. To jest "marketing pick" — pokazuje klientowi że jest też alternatywa.
+    fifth_pick = None
+    for candidate in ranked_results[4:]:
+        if candidate.analysis.recommendation in ("POLECAM", "RYZYKO"):
+            fifth_pick = candidate
+            break
+    if fifth_pick:
+        showcase.append(fifth_pick)
+
+    polecane = showcase  # zachowuję nazwę zmiennej żeby reszta kodu nie wymagała zmian
 
     if polecane and slug:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -371,7 +381,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 results = await asyncio.gather(client_task, broker_task, return_exceptions=True)
 
                 if not isinstance(results[0], Exception):
-                    fname = f"{slug}_{ts}_polecany{idx}_{lot_id_safe}_klient.html"
+                    fname = f"{slug}_{ts}_top{idx}_{lot_id_safe}_klient.html"
                     (SEARCH_ARTIFACT_DIR / fname).write_text(results[0], encoding="utf-8")
                     client_html_files.append(str(SEARCH_ARTIFACT_DIR / fname))
                     links["client"] = fname
@@ -379,7 +389,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     logger.exception("Client report failed lot %s: %s", item.lot.lot_id, results[0])
 
                 if not isinstance(results[1], Exception):
-                    fname = f"{slug}_{ts}_polecany{idx}_{lot_id_safe}_broker.html"
+                    fname = f"{slug}_{ts}_top{idx}_{lot_id_safe}_broker.html"
                     (SEARCH_ARTIFACT_DIR / fname).write_text(results[1], encoding="utf-8")
                     broker_html_files.append(str(SEARCH_ARTIFACT_DIR / fname))
                     links["broker"] = fname
@@ -407,8 +417,8 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     ".btn-client{border-color:#16a34a;color:#16a34a}.btn-client:hover{background:#16a34a;color:white}"
                     ".btn-broker{border-color:#0066ff;color:#0066ff}.btn-broker:hover{background:#0066ff;color:white}</style></head>"
                     "<body><div class='wrap'>"
-                    f"<h1>🎯 Polecane oferty ({len(lot_links)})</h1>"
-                    f"<div class='sub'>Zapytanie: <em>{search_query_str}</em> · Zeskanowano: {len(all_lots)} lotów · POLECAM: {len(polecane)}</div>"
+                    f"<h1>🎯 Wyselekcjonowane oferty ({len(lot_links)})</h1>"
+                    f"<div class='sub'>Zapytanie: <em>{search_query_str}</em> · Zeskanowano: {len(all_lots)} lotów (filtr: insurance only) · TOP 4 + 1 alternatywa</div>"
                 )
                 for ll in lot_links:
                     index_html += f"<div class='lot'><div class='lot-title'>{ll['title']}<span class='lot-badge'>POLECAM · {ll['badge']}</span></div><div class='lot-actions'>"
