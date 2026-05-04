@@ -89,11 +89,11 @@ function toIsoEnd(localDate: string): string | undefined {
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
-export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) {
-  const fnList = useServerFn(listLogs);
-  const fnClear = useServerFn(clearLogs);
-  const fnRetention = useServerFn(getLogRetention);
-  const fnCleanup = useServerFn(cleanupLogs);
+export function LogsPanel({ clientId, recordId, records, onOpenRecord, serverFns }: Props) {
+  const fnList = useServerFn(serverFns.listLogs);
+  const fnClear = useServerFn(serverFns.clearLogs);
+  const fnRetention = useServerFn(serverFns.getLogRetention);
+  const fnCleanup = useServerFn(serverFns.cleanupLogs);
   const [retention, setRetention] = useState<{ days: number; source: string } | null>(null);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
