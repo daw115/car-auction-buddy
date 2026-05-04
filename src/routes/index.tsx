@@ -1772,6 +1772,7 @@ function Panel() {
               ))}
             </div>
           </Card>
+          <ConnectionStatusPanel />
         </aside>
 
         {/* ---- Workspace ---- */}
