@@ -883,9 +883,9 @@ function Panel() {
             s ? {
               ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt,
               reportUrls: {
-                client_report_url: (p as any).client_report_url,
-                artifact_urls: (p as any).artifact_urls,
-                report_endpoints: (p as any).report_endpoints,
+                client_report_url: p.client_report_url,
+                artifact_urls: p.artifact_urls,
+                report_endpoints: p.report_endpoints,
               },
             } : s,
           );
