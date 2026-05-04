@@ -2402,6 +2402,7 @@ function Panel() {
             recordId={activeRecordId}
             records={records}
             onOpenRecord={(id) => void openRecord(id)}
+            serverFns={{ listLogs, clearLogs, getLogRetention, cleanupLogs }}
           />
         </aside>
       </main>
