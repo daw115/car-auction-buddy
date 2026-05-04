@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { getConfig, testAnthropic, testGemini, updateConfig } from "@/server/api.functions";
+import { getConfig, testAnthropic, testGemini, updateConfig } from "@/functions/api.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

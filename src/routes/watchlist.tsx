@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   listWatchlist, removeFromWatchlist, updateWatchlist,
-} from "@/server/watchlist.functions";
+} from "@/functions/watchlist.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
