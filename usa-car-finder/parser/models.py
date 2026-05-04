@@ -137,6 +137,7 @@ class SearchResponse(BaseModel):
     analysis_file: Optional[str] = None  # JSON z rankingiem i uzasadnieniem
     client_report_file: Optional[str] = None  # Markdown gotowy do wklejenia/wysłania
     artifact_urls: dict[str, str] = Field(default_factory=dict)  # Linki do pobrania artefaktów z UI
+    broker_reports_html: list[str] = Field(default_factory=list)  # Lista URL-ów per-lot raportów brokerskich
     analysis_notice: Optional[str] = None
     collected_count: int = 0  # Ile lotów zebrano przed skróceniem odpowiedzi UI
     vin_coverage: dict[str, int] = Field(default_factory=dict)  # {"with_full_vin": N, "total": M}

@@ -195,7 +195,7 @@
       <div class="card-label">Score AI</div>
       <div class="card-value">{{ score }}<span style="font-size:12px;color:var(--muted)">/10</span></div>
     </div>
-    <div class="card{% if damage_score is defined and damage_score > 50 %} warn{% endif %}">
+    <div class="card{% if damage_score is defined and damage_score is number and damage_score > 50 %} warn{% endif %}">
       <div class="card-label">Damage score</div>
       <div class="card-value">{{ damage_score | default('—') }}</div>
       <div class="card-sub">/100</div>
@@ -268,8 +268,8 @@
           {% for criterion in scoring_criteria %}
           <tr>
             <td>{{ criterion.name }}</td>
-            <td class="{% if criterion.delta > 0 %}delta-pos{% elif criterion.delta < 0 %}delta-neg{% else %}delta-neu{% endif %}">
-              {% if criterion.delta > 0 %}+{% endif %}{{ criterion.delta }}
+            <td class="{% if criterion.delta is string and criterion.delta.startswith('+') %}delta-pos{% elif criterion.delta is string and (criterion.delta.startswith('−') or criterion.delta.startswith('-')) %}delta-neg{% elif criterion.delta is number and criterion.delta > 0 %}delta-pos{% elif criterion.delta is number and criterion.delta < 0 %}delta-neg{% else %}delta-neu{% endif %}">
+              {{ criterion.delta }}
             </td>
             <td>{{ criterion.justification }}</td>
           </tr>
