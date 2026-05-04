@@ -1,47 +1,43 @@
-// Log-related server functions — extracted from src/server/api.functions.ts
-// so that src/components/LogsPanel.tsx can import them without triggering
-// the import-protection plugin (which blocks **/server/** from components).
+// Log-related server functions — placed outside src/server/ so that
+// src/components/LogsPanel.tsx can import them without triggering import-protection.
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-export const listLogs = createServerFn({ method: "POST" })
+export const listLogs = createServerFn({ method: "GET" })
   .inputValidator(
     z.object({
+      clientId: z.string().uuid().nullable().optional(),
+      recordId: z.string().uuid().nullable().optional(),
+      operation: z.string().max(40).optional(),
+      levels: z.array(z.enum(["info", "warn", "error", "debug"])).max(4).optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
       limit: z.number().int().min(1).max(500).optional(),
-      offset: z.number().int().min(0).optional(),
-      clientId: z.string().uuid().optional(),
-      recordId: z.string().uuid().optional(),
-      filter: z.string().max(200).optional(),
-      levels: z.array(z.string().max(20)).optional(),
-      dateFrom: z.string().max(30).optional(),
-      dateTo: z.string().max(30).optional(),
     }).parse,
   )
   .handler(async ({ data }) => {
     let q = supabaseAdmin
       .from("operation_logs")
-      .select("*", { count: "exact" })
+      .select("id, created_at, client_id, record_id, operation, step, level, message, details, duration_ms")
       .order("created_at", { ascending: false })
-      .range(data.offset ?? 0, (data.offset ?? 0) + (data.limit ?? 100) - 1);
-
+      .limit(data.limit ?? 100);
     if (data.clientId) q = q.eq("client_id", data.clientId);
     if (data.recordId) q = q.eq("record_id", data.recordId);
-    if (data.filter) q = q.or(`message.ilike.%${data.filter}%,operation.ilike.%${data.filter}%,step.ilike.%${data.filter}%`);
+    if (data.operation) q = q.eq("operation", data.operation);
     if (data.levels && data.levels.length > 0) q = q.in("level", data.levels);
-    if (data.dateFrom) q = q.gte("created_at", data.dateFrom);
-    if (data.dateTo) q = q.lte("created_at", data.dateTo);
-
-    const { data: rows, error, count } = await q;
+    if (data.from) q = q.gte("created_at", data.from);
+    if (data.to) q = q.lte("created_at", data.to);
+    const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    return { rows: rows ?? [], total: count ?? 0 };
+    return rows ?? [];
   });
 
 export const clearLogs = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      clientId: z.string().uuid().optional(),
+      clientId: z.string().uuid().nullable().optional(),
     }).parse,
   )
   .handler(async ({ data }) => {
@@ -49,34 +45,37 @@ export const clearLogs = createServerFn({ method: "POST" })
     if (data.clientId) {
       q = q.eq("client_id", data.clientId);
     } else {
-      q = q.neq("id", "00000000-0000-0000-0000-000000000000"); // delete all
+      q = q.not("id", "is", null);
     }
     const { error } = await q;
     if (error) throw new Error(error.message);
     return { ok: true };
   });
 
+const DEFAULT_LOG_RETENTION_DAYS = 30;
+
+function getLogRetentionDays(): number {
+  const raw = process.env.LOG_RETENTION_DAYS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LOG_RETENTION_DAYS;
+  return Math.min(parsed, 3650);
+}
+
 export const getLogRetention = createServerFn({ method: "GET" }).handler(async () => {
-  const { data } = await supabaseAdmin
-    .from("app_config")
-    .select("value")
-    .eq("key", "log_retention_days")
-    .maybeSingle();
-  return { days: data?.value ? Number(data.value) : 30, source: data ? "db" : "default" };
+  return {
+    days: getLogRetentionDays(),
+    default: DEFAULT_LOG_RETENTION_DAYS,
+    source: process.env.LOG_RETENTION_DAYS ? "env" : "default",
+  };
 });
 
 export const cleanupLogs = createServerFn({ method: "POST" }).handler(async () => {
-  const { data: cfg } = await supabaseAdmin
-    .from("app_config")
-    .select("value")
-    .eq("key", "log_retention_days")
-    .maybeSingle();
-  const days = cfg?.value ? Number(cfg.value) : 30;
-  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  const days = getLogRetentionDays();
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const { error, count } = await supabaseAdmin
     .from("operation_logs")
     .delete({ count: "exact" })
     .lt("created_at", cutoff);
   if (error) throw new Error(error.message);
-  return { deleted: count ?? 0, retention_days: days };
+  return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
 });
