@@ -1,16 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { SYSTEM_PROMPT } from "./prompts/system-prompt";
-import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "./anthropic.server";
-import { callAI, detectProvider } from "./ai.server";
-import { DEFAULT_GEMINI_MODEL } from "./gemini.server";
-import { renderReportHtml, renderMailHtml } from "./report";
-import { makeLogger } from "./logger.server";
+import { SYSTEM_PROMPT } from "@/server/prompts/system-prompt";
+import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "@/server/anthropic.server";
+import { callAI, detectProvider } from "@/server/ai.server";
+import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
+import { renderReportHtml, renderMailHtml } from "@/server/report";
+import { makeLogger } from "@/server/logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
-import { LOT_SYSTEM_PROMPT } from "./prompts/lot-prompt";
-import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "./lot-report";
-import { validateArtifactsMeta } from "./validate-artifacts-meta";
+import { LOT_SYSTEM_PROMPT } from "@/server/prompts/lot-prompt";
+import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "@/server/lot-report";
+import { validateArtifactsMeta } from "@/server/validate-artifacts-meta";
 
 // ---------- Clients ----------
 

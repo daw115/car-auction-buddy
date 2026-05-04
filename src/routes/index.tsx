@@ -32,8 +32,8 @@ import {
   getReportBundle,
   logRetryEvent,
   checkHealth,
-} from "@/server/api.functions";
-import { addToWatchlist } from "@/server/watchlist.functions";
+} from "@/functions/api.functions";
+import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
 import { LogsPanel } from "@/components/LogsPanel";
 import { ThemeToggle } from "@/components/theme-toggle";
