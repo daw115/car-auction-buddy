@@ -1789,3 +1789,75 @@ export const logRetryEvent = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+// ---------- Health Check ----------
+
+type ServiceStatus = "ok" | "down" | "unconfigured";
+
+export const checkHealth = createServerFn({ method: "GET" }).handler(async (): Promise<{
+  checkedAt: string;
+  durationMs: number;
+  services: {
+    database: { status: ServiceStatus; error?: string };
+    scraper: { status: ServiceStatus; url?: string; error?: string };
+    ai: { status: ServiceStatus; provider?: string; model?: string };
+  };
+}> => {
+  const startedAt = Date.now();
+
+  // Database
+  let dbStatus: ServiceStatus = "ok";
+  let dbError: string | undefined;
+  try {
+    const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
+    if (error) { dbStatus = "down"; dbError = error.message; }
+  } catch (e) {
+    dbStatus = "down";
+    dbError = (e as Error).message;
+  }
+
+  // Scraper
+  const scraperUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+  const scraperToken = process.env.SCRAPER_API_TOKEN;
+  let scraperStatus: ServiceStatus = "unconfigured";
+  let scraperError: string | undefined;
+  if (scraperUrl) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const res = await fetch(`${scraperUrl}/health`, {
+        signal: ctrl.signal,
+        headers: scraperToken ? { Authorization: `Bearer ${scraperToken}` } : {},
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        scraperStatus = "ok";
+      } else {
+        scraperStatus = "down";
+        scraperError = `HTTP ${res.status}`;
+      }
+    } catch (e) {
+      scraperStatus = "down";
+      scraperError = (e as Error).message?.includes("abort") ? "Timeout (5s)" : (e as Error).message;
+    }
+  }
+
+  // AI
+  const aiProvider = process.env.AI_PROVIDER || (process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.GEMINI_API_KEY ? "gemini" : "none");
+  const hasAiKey = !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY);
+  const aiModel = aiProvider === "anthropic"
+    ? (process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6")
+    : aiProvider === "gemini"
+      ? (process.env.GEMINI_MODEL || "gemini-2.5-flash")
+      : undefined;
+
+  return {
+    checkedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    services: {
+      database: { status: dbStatus, error: dbError },
+      scraper: { status: scraperStatus, url: scraperUrl ? new URL(scraperUrl).host : undefined, error: scraperError },
+      ai: { status: hasAiKey ? "ok" : "unconfigured", provider: aiProvider !== "none" ? aiProvider : undefined, model: aiModel },
+    },
+  };
+});
