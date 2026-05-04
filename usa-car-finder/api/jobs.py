@@ -185,6 +185,19 @@ def get_job(job_id: str) -> Optional[Job]:
     return _jobs.get(job_id)
 
 
+def list_active_jobs() -> list["Job"]:
+    """Zwraca aktywne joby (running + queued) sortowane od najnowszych."""
+    actives = [j for j in _jobs.values() if j.status in ("running", "queued")]
+    actives.sort(key=lambda j: j.created_at, reverse=True)
+    return actives
+
+
+def list_recent_jobs(limit: int = 20) -> list["Job"]:
+    """Zwraca ostatnie joby (wszystkie statusy) sortowane od najnowszych."""
+    all_jobs = sorted(_jobs.values(), key=lambda j: j.created_at, reverse=True)
+    return all_jobs[:limit]
+
+
 async def _publish(job: Job, event: dict) -> None:
     await job._queue.put(event)
 

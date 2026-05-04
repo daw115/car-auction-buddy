@@ -720,6 +720,51 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
     }
 
 
+@app.get("/api/jobs")
+async def list_jobs(
+    active_only: bool = True,
+    limit: int = 20,
+    _auth: None = Depends(_require_bearer),
+):
+    """Lista aktywnych zadań (lub wszystkich ostatnich) — dla panelu w UI.
+
+    active_only=True (default): tylko running + queued
+    active_only=false: ostatnie N jobów (wszystkie statusy)
+    """
+    if active_only:
+        jobs = jobs_store.list_active_jobs()
+    else:
+        jobs = jobs_store.list_recent_jobs(limit=limit)
+
+    items = []
+    for job in jobs:
+        # Wyciągnij kryteria z request_snapshot dla czytelnego label
+        crit = (job.request_snapshot or {}).get("criteria", {}) if job.request_snapshot else {}
+        label_parts = [str(crit.get("make", "?")), str(crit.get("model") or "")]
+        budget = crit.get("budget_usd")
+        if budget:
+            label_parts.append(f"${int(budget):,}")
+        label = " ".join(p for p in label_parts if p).strip()
+
+        # Najnowsza faza dla statusu / progressu
+        latest_phase = job.phases[-1] if job.phases else None
+        is_queued = (latest_phase and latest_phase.name == "queued")
+        items.append({
+            "id": job.id,
+            "status": "queued" if is_queued and job.status == "running" else job.status,
+            "label": label or "?",
+            "criteria": crit,
+            "created_at": job.created_at,
+            "finished_at": job.finished_at,
+            "phase": latest_phase.name if latest_phase else None,
+            "phase_status": latest_phase.status if latest_phase else None,
+            "cancel_requested": job.cancel_requested,
+            "error": job.error,
+            "listings_count": len((job.result or {}).get("all_results") or []) if job.status == "done" else 0,
+        })
+    return {"jobs": items, "total": len(items)}
+
+
 @app.get("/api/jobs/{job_id}")
 async def dashboard_get_job(job_id: str, _auth: None = Depends(_require_bearer)):
     """Adapter dla zewnętrznych dashboardów — alias do GET /search/jobs/{id}
@@ -762,17 +807,25 @@ def _get_search_semaphore() -> asyncio.Semaphore:
 async def _run_job_with_queue(request: SearchRequest, job: jobs_store.Job) -> None:
     """Wrapper na _run_job z semaforem — kolejkuje gdy inny job leci."""
     semaphore = _get_search_semaphore()
-    waiting_count = _SEARCH_MAX_CONCURRENT - semaphore._value if semaphore.locked() else 0
-    if waiting_count > 0 or semaphore.locked():
+    if semaphore.locked():
         logger.info("[/search] Job %s czeka w kolejce (max %d concurrent)", job.id, _SEARCH_MAX_CONCURRENT)
-        # Oznacz w job że czeka
         try:
             from api.jobs import Phase
+            from datetime import datetime as _dt
+            # Job status = "queued", oddzielna faza pokazuje to w panelu
+            job.status = "queued"
             queue_phase = Phase(name="queued", status="running", info={"reason": "max_concurrent_reached"})
             job.phases.append(queue_phase)
         except Exception:
             pass
     async with semaphore:
+        # Po zwolnieniu semafora — oznacz fazę queued jako done, status=running idzie ze _run_job
+        try:
+            for ph in job.phases:
+                if ph.name == "queued" and ph.status == "running":
+                    ph.status = "done"
+        except Exception:
+            pass
         await _run_job(request, job)
 
 
