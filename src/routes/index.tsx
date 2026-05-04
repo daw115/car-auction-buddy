@@ -163,7 +163,10 @@ function recommendationBadge(r: string) {
 
 type ScraperReportUrls = {
   client_report_url?: string;
-  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+  polecane_index_url?: string;
+  client_reports_html?: string[];
+  broker_reports_html?: string[];
+  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
   report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
 };
 
@@ -846,7 +849,10 @@ function Panel() {
           current?: number;
           total?: number;
           client_report_url?: string;
-          artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+          polecane_index_url?: string;
+          client_reports_html?: string[];
+          broker_reports_html?: string[];
+          artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
           report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
         };
         // Phase labels for toast notifications
@@ -885,6 +891,9 @@ function Panel() {
               ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt,
               reportUrls: {
                 client_report_url: p.client_report_url,
+                polecane_index_url: p.polecane_index_url,
+                client_reports_html: p.client_reports_html,
+                broker_reports_html: p.broker_reports_html,
                 artifact_urls: p.artifact_urls,
                 report_endpoints: p.report_endpoints,
               },
@@ -2410,6 +2419,9 @@ function ScraperReportsSection({
 
   const hasAny =
     reportUrls.client_report_url ||
+    reportUrls.polecane_index_url ||
+    (reportUrls.client_reports_html?.length ?? 0) > 0 ||
+    (reportUrls.broker_reports_html?.length ?? 0) > 0 ||
     reportUrls.artifact_urls?.analysis_json ||
     reportUrls.report_endpoints?.client_html ||
     reportUrls.report_endpoints?.broker_html;
@@ -2447,6 +2459,38 @@ function ScraperReportsSection({
         <span className="font-semibold text-sm">Raporty z analizy AI (Python)</span>
       </div>
       <div className="flex flex-wrap gap-2">
+        {reportUrls.polecane_index_url && (
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => window.open(reportUrls.polecane_index_url, "_blank")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            🎯 Polecane oferty (klient + broker)
+          </Button>
+        )}
+        {(reportUrls.client_reports_html?.length ?? 0) > 0 && reportUrls.client_reports_html!.map((url, i) => (
+          <Button
+            key={`client-${i}`}
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(url, "_blank")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            📄 Klient #{i + 1}
+          </Button>
+        ))}
+        {(reportUrls.broker_reports_html?.length ?? 0) > 0 && reportUrls.broker_reports_html!.map((url, i) => (
+          <Button
+            key={`broker-${i}`}
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(url, "_blank")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            📊 Broker #{i + 1}
+          </Button>
+        ))}
         {reportUrls.client_report_url && (
           <Button
             variant="outline"

@@ -1120,7 +1120,10 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     total?: number;
     phase?: string;
     client_report_url?: string;
-    artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+    polecane_index_url?: string;
+    client_reports_html?: string[];
+    broker_reports_html?: string[];
+    artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
     report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
   }> => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -1155,7 +1158,10 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       total?: number;
       phase?: string;
       client_report_url?: string;
-      artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+      polecane_index_url?: string;
+      client_reports_html?: string[];
+      broker_reports_html?: string[];
+      artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
       report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
     };
 
@@ -1228,6 +1234,9 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       total: typeof j.total === "number" ? j.total : undefined,
       phase: j.phase,
       client_report_url: j.client_report_url,
+      polecane_index_url: j.polecane_index_url,
+      client_reports_html: j.client_reports_html,
+      broker_reports_html: j.broker_reports_html,
       artifact_urls: j.artifact_urls,
       report_endpoints: j.report_endpoints,
     };
