@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BMW M550i xDrive 2020 — Oferta importu z USA</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0a2540;--blue:#1a56a0;--accent:#f0a500;
+  --ok:#1a7f37;--ok-bg:#eafbee;--ok-bdr:#b2dfbb;
+  --amber:#7a4f00;--amber-bg:#fffbe6;--amber-bdr:#f4d27a;
+  --red:#cf222e;--red-bg:#fff0f0;--red-bdr:#f5c6cb;
+  --text:#1f2328;--muted:#57606a;--border:#d0d7de;
+  --panel:#f6f8fa;--white:#fff;
+}
+body{
+  font-family:"DM Sans",Arial,sans-serif;
+  background:#e8edf4;color:var(--text);
+  font-size:14px;line-height:1.6;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;
+}
+/* A4 single page feel */
+.page{
+  max-width:740px;margin:24px auto;
+  background:var(--white);border-radius:14px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.1),0 16px 48px rgba(10,37,64,.12);
+}
+
+/* HERO */
+.hero{
+  background:var(--navy);padding:32px 36px 26px;
+  border-bottom:3px solid var(--accent);position:relative;overflow:hidden;
+}
+.hero::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse at 88% -25%,rgba(26,86,160,.55) 0%,transparent 55%),
+    radial-gradient(ellipse at -5% 115%,rgba(240,165,0,.18) 0%,transparent 50%);
+}
+.hero>*{position:relative}
+.hero-tag{font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.hero h1{font-size:28px;font-weight:700;color:#fff;line-height:1.1;margin-bottom:5px;letter-spacing:-.025em}
+.hero h1 em{color:var(--accent);font-style:normal}
+.hero-sub{font-size:14px;color:#8ba8c8;margin-bottom:18px}
+.hero-pills td{padding:0 7px 0 0}
+.hpill{display:inline-block;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.hpill.ok  {background:rgba(26,127,55,.3);color:#6ee08a;border:1px solid rgba(110,224,138,.25)}
+.hpill.blue{background:rgba(26,86,160,.35);color:#93c5fd;border:1px solid rgba(147,197,253,.25)}
+.hpill.warn{background:rgba(207,34,46,.25);color:#fca5a5;border:1px solid rgba(252,165,165,.25)}
+
+/* PHOTO */
+.photo img{width:100%;height:240px;object-fit:cover;object-position:center;display:block}
+.photo-caption{background:#111;color:#6e8ba8;font-size:10.5px;padding:5px 14px 7px;letter-spacing:.03em}
+
+/* STATS */
+.stats{width:100%;border-collapse:collapse;border-bottom:1px solid var(--border)}
+.stats td{padding:13px 8px;text-align:center;border-right:1px solid var(--border)}
+.stats td:last-child{border-right:none}
+.sv{font-size:19px;font-weight:700;color:var(--navy);line-height:1;margin-bottom:3px}
+.sv.acc{color:var(--accent)}
+.sv.ok{color:var(--ok)}
+.sl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+
+/* BODY */
+.body{padding:24px 36px 30px}
+
+/* HEADLINE */
+.headline{
+  margin-bottom:20px;border-left:4px solid var(--accent);
+  padding:13px 17px;background:var(--panel);border-radius:0 9px 9px 0;
+}
+.headline h2{font-size:19px;font-weight:700;color:var(--navy);line-height:1.25;margin-bottom:4px}
+.headline h2 span{color:var(--blue)}
+.headline p{font-size:13.5px;color:var(--muted);line-height:1.5}
+
+/* STORY */
+.story{margin-bottom:20px}
+.story p{font-size:13.5px;line-height:1.7;color:var(--text);margin-bottom:10px}
+.story p:last-child{margin-bottom:0}
+.story strong{color:var(--navy)}
+
+/* SPEC — 2-col inline */
+.spec{width:100%;border-collapse:collapse;margin-bottom:20px}
+.spec td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top;font-size:13px}
+.spec tr:last-child td{border-bottom:none}
+.spec tr:nth-child(even) td{background:var(--panel)}
+.sfeat{font-weight:600;color:var(--navy);width:38%;padding-right:10px}
+.sarr{color:var(--accent);font-weight:700;width:16px}
+.sben{color:var(--text)}
+
+/* DAMAGE FLAGS — compact */
+.dmg{display:table;width:100%;margin-bottom:6px;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:13px}
+.dmg-bar{display:table-cell;width:4px}
+.dmg-bar.ok{background:var(--ok)}
+.dmg-bar.a{background:#e6a800}
+.dmg-bar.r{background:var(--red)}
+.dmg-cnt{display:table-cell;padding:8px 13px}
+.dmg-title{font-weight:700;margin-bottom:2px;font-size:13px}
+.dmg-title.ok{color:var(--ok)}
+.dmg-title.a{color:var(--amber)}
+.dmg-title.r{color:var(--red)}
+.dmg-desc{color:var(--muted);font-size:12.5px;line-height:1.45}
+
+/* DOCS — compact */
+.docs{margin:14px 0;border-collapse:collapse;width:100%}
+.docs td{padding:4px 10px 4px 0;font-size:13px;color:var(--text);vertical-align:top}
+.docs .dchk{color:var(--ok);font-weight:700;width:18px}
+
+/* TIMELINE — 1-row horizontal */
+.tl{width:100%;border-collapse:collapse;margin:14px 0 18px}
+.tl td{padding:7px 10px;border:1px solid var(--border);text-align:center;font-size:12px;background:var(--panel)}
+.tl .tday{font-weight:700;color:var(--blue);font-size:11px;display:block;margin-bottom:2px}
+
+/* CTA */
+.cta{
+  background:var(--navy);border-radius:10px;padding:20px 22px;
+  border-top:3px solid var(--accent);margin-top:20px;
+}
+.cta h3{font-size:17px;font-weight:700;color:#fff;margin-bottom:6px}
+.cta p{font-size:13px;color:#8ba8c8;line-height:1.6;margin-bottom:14px}
+.cta-urgency{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:9px 12px;margin-bottom:14px}
+.cta-urgency td{padding:3px 6px 3px 0;font-size:12.5px;color:#8ba8c8;vertical-align:top}
+.cu-icon{color:var(--accent);font-weight:700;width:18px;white-space:nowrap}
+.cu-val{color:#c8d8ea}
+.cta-btn{display:inline-block;background:var(--accent);color:var(--navy);text-decoration:none;padding:10px 22px;border-radius:7px;font-size:13.5px;font-weight:700}
+
+/* FOOTER */
+.fnote{font-size:11.5px;color:var(--muted);line-height:1.55;padding:14px 0 0;border-top:1px solid var(--border);margin-top:18px}
+@media print{
+  body{background:#fff}
+  .page{margin:0;box-shadow:none;border-radius:0;max-width:100%}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-tag">Oferta przygotowana indywidualnie &nbsp;&middot;&nbsp; Import z USA</div>
+  <h1>BMW M550i xDrive <em>2020</em></h1>
+  <div class="hero-sub">4.4&thinsp;L V8 Biturbo &middot; 530&thinsp;KM &middot; All Wheel Drive &middot; Karolina P&oacute;&#322;nocna, USA</div>
+  <table class="hero-pills" cellspacing="0" cellpadding="0"><tbody><tr>
+    <td><span class="hpill ok">Airbagi nie odpalone</span></td>
+    <td><span class="hpill blue">Sprzedawca: ubezpieczyciel</span></td>
+    <td><span class="hpill warn">Salvage title &mdash; do homologacji</span></td>
+  </tr></tbody></table>
+</div>
+
+<!-- PHOTO -->
+<div class="photo">
+  <img src="data:image/jpeg;base64,PLACEHOLDER"
+       alt="BMW M550i xDrive 2020">
+</div>
+<div class="photo-caption">Zdj&#281;cie z aukcji Copart &nbsp;&middot;&nbsp; Lot #77565135 &nbsp;&middot;&nbsp; Concord, NC</div>
+
+<!-- STATS (bez cen) -->
+<table class="stats" cellspacing="0" cellpadding="0"><tbody><tr>
+  <td><div class="sv">2020</div><div class="sl">Rocznik</div></td>
+  <td><div class="sv acc">530 KM</div><div class="sl">V8 Biturbo</div></td>
+  <td><div class="sv ok">AWD</div><div class="sl">Nap&#281;d 4&times;4</div></td>
+  <td><div class="sv" style="color:var(--blue);font-size:14px">30.04.2026</div><div class="sl">Data aukcji</div></td>
+</tr></tbody></table>
+
+<!-- BODY -->
+<div class="body">
+
+  <!-- HEADLINE -->
+  <div class="headline">
+    <h2>530 KM, kt&oacute;re nie wygl&#261;da jak <span>show-off</span></h2>
+    <p>M550i to wyb&oacute;r kogoś, kto zna r&oacute;&#380;nic&#281; &mdash; elegancki sedan z osi&#261;gami lepszymi ni&#380; 90% aut na autostradzie, w specyfikacji, kt&oacute;rej w Polsce prawie nie ma.</p>
+  </div>
+
+  <!-- STORY -->
+  <div class="story">
+    <p>Ten <strong>BMW M550i xDrive</strong> pochodzi z Karoliny P&oacute;&#322;nocnej &mdash; stanu bez soli drogowej przez wi&#281;kszo&#347;&#263; roku. Na aukcj&#281; ubezpieczeniow&#261; trafi&#322; po kolizji, kt&oacute;ra uszkodzi&#322;a prz&oacute;d i lewy bok karoserii.</p>
+    <p>Dlaczego tak si&#281; sta&#322;o? W USA naprawa auta wartego 43&thinsp;000&thinsp;USD kosztuje w autoryzowanym serwisie 10&ndash;14&thinsp;000&thinsp;USD. Ubezpieczyciel woli sprzeda&#263; auto na aukcji ni&#380; naprawia&#263;. <strong>To arytmetyka, nie problem z pojazdem.</strong></p>
+    <p>Poduszki <strong>nie zadziala&#322;y</strong> &mdash; co potwierdza, &#380;e uderzenie nie przekroczy&#322;o progu aktywacji SRS. Silnik i skrzynia bieg&oacute;w s&#261; nieuszkodzone. Po naprawie w polskim warsztacie i homologacji &mdash; pe&#322;noprawne, zarejestrowane auto z kompletn&#261; histori&#261;.</p>
+  </div>
+
+  <!-- SPEC -->
+  <table class="spec" cellspacing="0" cellpadding="0"><tbody>
+    <tr>
+      <td class="sfeat">V8 Biturbo 530&thinsp;KM, 750&thinsp;Nm</td>
+      <td class="sarr">&rarr;</td>
+      <td class="sben">0&ndash;100 km/h w 3,9&thinsp;s. Wyprzedzanie bez otwierania okna. Poni&#380;ej 10&thinsp;L/100&thinsp;km na trasie.</td>
+    </tr>
+    <tr>
+      <td class="sfeat">xDrive &mdash; nap&#281;d 4&times;4</td>
+      <td class="sarr">&rarr;</td>
+      <td class="sben">Pewna trakcja zim&#261;, reakcja w 100&thinsp;ms. Bezpieczny na &#347;niegu bez opon 4&times;4.</td>
+    </tr>
+    <tr>
+      <td class="sfeat">Automatyczna skrzynia ZF 8-bieg&oacute;w</td>
+      <td class="sarr">&rarr;</td>
+      <td class="sben">Zmiany bieg&oacute;w niezauwa&#380;alne. Serwisowana w Polsce, sprawdzona konstrukcja.</td>
+    </tr>
+    <tr>
+      <td class="sfeat">Sprzedawca: ubezpieczyciel</td>
+      <td class="sarr">&rarr;</td>
+      <td class="sben">Historia szkody w pe&#322;ni udokumentowana. Brak ukrytego poprzedniego wypadku.</td>
+    </tr>
+    <tr>
+      <td class="sfeat">Lokalizacja: Concord, NC</td>
+      <td class="sarr">&rarr;</td>
+      <td class="sben">Wschodnie wybrze&#380;e USA &mdash; kr&oacute;tsza i ta&#324;sza droga do portu ni&#380; ze stan&oacute;w zachodnich.</td>
+    </tr>
+  </tbody></table>
+
+  <!-- DAMAGE -->
+  <div class="dmg"><table width="100%" cellspacing="0"><tbody><tr>
+    <td class="dmg-bar a">&nbsp;</td>
+    <td class="dmg-cnt">
+      <div class="dmg-title a">Co jest uszkodzone &mdash; m&oacute;wimy o tym wprost</div>
+      <div class="dmg-desc">Prz&oacute;d auta (zderzak, kratka, prawdopodobnie reflektor i ch&#322;odnica) oraz lewy bok (b&#322;otnik lub drzwi). Dok&#322;adny zakres potwierdzi nasz rzeczoznawca przed licytacj&#261; &mdash; <strong>nie licytujemy bez tej weryfikacji.</strong></div>
+    </td>
+  </tr></tbody></table></div>
+
+  <div class="dmg" style="margin-bottom:18px"><table width="100%" cellspacing="0"><tbody><tr>
+    <td class="dmg-bar ok">&nbsp;</td>
+    <td class="dmg-cnt">
+      <div class="dmg-title ok">Czego NIE by&#322;o &mdash; potwierdzone</div>
+      <div class="dmg-desc">Airbagi nie odpalone &middot; brak uszkodze&#324; od wody &middot; brak historii kradzie&#380;y &middot; sprzedawca ubezpieczeniowy = pe&#322;na historia szkody</div>
+    </td>
+  </tr></tbody></table></div>
+
+  <!-- TIMELINE -->
+  <table class="tl" cellspacing="0" cellpadding="0"><tbody><tr>
+    <td><span class="tday">Dzie&#324; 0</span>Zakup na aukcji</td>
+    <td><span class="tday">+7 dni</span>Za&#322;adunek na statek</td>
+    <td><span class="tday">+32 dni</span>Port Gdynia / Bremerhaven</td>
+    <td><span class="tday">+42 dni</span>Odprawa celna</td>
+    <td><span class="tday">+75&ndash;85 dni</span><strong>Odbi&oacute;r z tablicami</strong></td>
+  </tr></tbody></table>
+
+  <!-- DOCS -->
+  <table class="docs" cellspacing="0" cellpadding="0"><tbody>
+    <tr><td class="dchk">&#10003;</td><td>Raport CarFax / NMVTIS &mdash; pe&#322;na historia VIN</td></tr>
+    <tr><td class="dchk">&#10003;</td><td>Dokumentacja naprawy &mdash; 50+ zdj&#281;&#263; na ka&#380;dym etapie</td></tr>
+    <tr><td class="dchk">&#10003;</td><td>Diagnoza ISTA+ po naprawie &mdash; zero aktywnych b&#322;&#281;d&oacute;w</td></tr>
+    <tr><td class="dchk">&#10003;</td><td>Faktura VAT + t&#322;umaczenie przysi&#281;g&#322;e tytu&#322;u w&#322;asno&#347;ci</td></tr>
+    <tr><td class="dchk">&#10003;</td><td>Komplet do rejestracji &mdash; wyje&#380;d&#380;a Pan z tablicami</td></tr>
+  </tbody></table>
+
+  <!-- CTA -->
+  <div class="cta">
+    <h3>15 minut, &#380;eby zobaczy&#263; pe&#322;ny obraz.</h3>
+    <p>Proponuj&#281; kr&oacute;tk&#261; rozmow&#281; wideo &mdash; poka&#380;&#281; raport VIN, zdj&#281;cia HD z aukcji i odpowiem na ka&#380;de pytanie dotycz&#261;ce techniki i procesu. Bez zobowi&#261;za&#324;.</p>
+    <table class="cta-urgency" cellspacing="0" cellpadding="0"><tbody>
+      <tr><td class="cu-icon">&#9200;</td><td class="cu-val">Aukcja ko&#324;czy si&#281; <strong>30 kwietnia 2026, godz. 20:00 czasu polskiego.</strong></td></tr>
+      <tr><td class="cu-icon">&#128269;</td><td class="cu-val">BMW M550i 2020 z tak&#261; specyfikacj&#261; pojawia si&#281; na Copart raz na 2&ndash;3 miesi&#261;ce.</td></tr>
+    </tbody></table>
+    <a href="#" class="cta-btn">Um&oacute;w 15-minutow&#261; rozmow&#281; &rarr;</a>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="fnote">
+    Pe&#322;na kalkulacja kosztowa &mdash; w tym cena auta, import, naprawa i dokumenty &mdash; zostanie przedstawiona podczas rozmowy po weryfikacji zdj&#281;&#263; HD i raportu VIN. Ceny i terminy s&#261; szacunkowe i zale&#380;&#261; od wyniku aukcji oraz kursu USD/PLN.
+    &nbsp;&middot;&nbsp; VIN: WBAJS7C06LCD00163 &nbsp;&middot;&nbsp; Lot #77565135 COPART
+  </div>
+
+</div>
+</div>
+</body>
+</html>

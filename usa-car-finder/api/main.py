@@ -347,39 +347,49 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             f"budżet ${criteria.budget_usd:,.0f}"
         ).strip()
 
+        # Mode: 'llm' (Claude generuje rich raporty z few-shot wzorca) lub 'template' (Jinja2)
+        reports_mode = os.getenv("REPORTS_MODE", "llm").lower()
         try:
-            from report.html_reports import render_client_report, render_broker_report
-            lot_links: list[dict] = []
-            for idx, item in enumerate(polecane, start=1):
+            if reports_mode == "llm":
+                from report.llm_html_reports import render_client_report_llm, render_broker_report_llm
+                render_client_fn = lambda it: render_client_report_llm(it, criteria=criteria)
+                render_broker_fn = lambda it: render_broker_report_llm(it, criteria=criteria, lots_scanned=len(all_lots))
+            else:
+                from report.html_reports import render_client_report, render_broker_report
+                render_client_fn = lambda it: render_client_report(it, criteria=criteria)
+                render_broker_fn = lambda it: render_broker_report(it, criteria=criteria, lots_scanned=len(all_lots))
+
+            # Generuj 2N raportów RÓWNOLEGLE przez asyncio.gather + to_thread
+            # (kazdy LLM call to ~30-60s, sekwencyjnie 10 calli = 5-10 min, parallel = 1-2 min)
+            async def gen_one(idx: int, item: AnalyzedLot) -> dict:
                 lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
                 title = f"{item.lot.year or ''} {item.lot.make or ''} {item.lot.model or ''} {item.lot.trim or ''}".strip()
-                badge = f"score {item.analysis.score:.1f}"
-                links = {"title": title, "badge": badge, "client": None, "broker": None}
+                links = {"title": title, "badge": f"score {item.analysis.score:.1f}", "client": None, "broker": None}
 
-                # Klient HTML
-                try:
-                    html = render_client_report(item, criteria=criteria)
+                client_task = asyncio.to_thread(render_client_fn, item)
+                broker_task = asyncio.to_thread(render_broker_fn, item)
+                results = await asyncio.gather(client_task, broker_task, return_exceptions=True)
+
+                if not isinstance(results[0], Exception):
                     fname = f"{slug}_{ts}_polecany{idx}_{lot_id_safe}_klient.html"
-                    fpath = SEARCH_ARTIFACT_DIR / fname
-                    fpath.write_text(html, encoding="utf-8")
-                    client_html_files.append(str(fpath))
+                    (SEARCH_ARTIFACT_DIR / fname).write_text(results[0], encoding="utf-8")
+                    client_html_files.append(str(SEARCH_ARTIFACT_DIR / fname))
                     links["client"] = fname
-                except Exception:
-                    logger.exception("render_client_report failed lot %s", item.lot.lot_id)
+                else:
+                    logger.exception("Client report failed lot %s: %s", item.lot.lot_id, results[0])
 
-                # Broker HTML
-                try:
-                    html = render_broker_report(item, criteria=criteria, lots_scanned=len(all_lots))
+                if not isinstance(results[1], Exception):
                     fname = f"{slug}_{ts}_polecany{idx}_{lot_id_safe}_broker.html"
-                    fpath = SEARCH_ARTIFACT_DIR / fname
-                    fpath.write_text(html, encoding="utf-8")
-                    broker_html_files.append(str(fpath))
+                    (SEARCH_ARTIFACT_DIR / fname).write_text(results[1], encoding="utf-8")
+                    broker_html_files.append(str(SEARCH_ARTIFACT_DIR / fname))
                     links["broker"] = fname
-                except Exception:
-                    logger.exception("render_broker_report failed lot %s", item.lot.lot_id)
+                else:
+                    logger.exception("Broker report failed lot %s: %s", item.lot.lot_id, results[1])
+                return links
 
-                if links["client"] or links["broker"]:
-                    lot_links.append(links)
+            logger.info("Generuję %d raportów (klient+broker) w mode=%s, parallel...", len(polecane), reports_mode)
+            lot_links_all = await asyncio.gather(*[gen_one(i + 1, it) for i, it in enumerate(polecane)])
+            lot_links: list[dict] = [ll for ll in lot_links_all if ll.get("client") or ll.get("broker")]
 
             # INDEX — jedna strona z buttonami "Klient" / "Broker" per polecony lot
             if lot_links:
