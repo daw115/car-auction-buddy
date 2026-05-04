@@ -12,7 +12,7 @@ os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -99,6 +99,15 @@ def has_usable_openai_key() -> bool:
 
 @app.get("/")
 async def root():
+    """Domyślne UI to Lovable (React+Tailwind+shadcn). Python to tylko backend API.
+    Zachowujemy stary UI pod /legacy dla testów lokalnych."""
+    lovable_url = os.getenv("LOVABLE_UI_URL", "https://car-auction-buddy.lovable.app/")
+    return RedirectResponse(url=lovable_url, status_code=302)
+
+
+@app.get("/legacy")
+async def legacy_ui():
+    """Stary statyczny UI Pythona (do dev/testów)."""
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
