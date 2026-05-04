@@ -32,7 +32,7 @@ import {
   logRetryEvent,
 } from "@/server/api.functions";
 import { addToWatchlist } from "@/server/watchlist.functions";
-import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
+import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
 import { LogsPanel } from "@/components/LogsPanel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
@@ -854,6 +854,9 @@ function Panel() {
           broker_reports_html?: string[];
           artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
           report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
+          // Python adapter zwraca już gotową analizę AI (POLECAM/RYZYKO/ODRZUĆ + score)
+          // Dzięki temu TS NIE musi dublować callAI() przez runAnalysis (~50% mniej tokenów).
+          analyzed_lots?: Array<{ lot: CarLot; analysis: AIAnalysis; is_top_recommendation?: boolean }>;
         };
         // Phase labels for toast notifications
         const PHASE_TOAST_LABELS: Record<string, string> = {
@@ -901,7 +904,15 @@ function Panel() {
           );
           setListings(result);
           setListingsRaw(JSON.stringify(result, null, 2));
-          toast.success(`Scraper zakończył pracę — zwrócono ${result.length} lotów`);
+          // Jeśli Python zwrócił już gotową analizę (POLECAM/RYZYKO/ODRZUĆ + score),
+          // wstaw ją od razu — bez konieczności wywołania runAnalysis (oszczędność tokenów).
+          if (Array.isArray(p.analyzed_lots) && p.analyzed_lots.length > 0) {
+            setAnalysis(p.analyzed_lots as AnalyzedLot[]);
+            const polecam = p.analyzed_lots.filter((a) => a.analysis?.recommendation === "POLECAM").length;
+            toast.success(`Scraper + AI gotowe: ${result.length} lotów, ${polecam} polecanych`);
+          } else {
+            toast.success(`Scraper zakończył pracę — zwrócono ${result.length} lotów`);
+          }
           setBusy(null);
           scrapeContextRef.current = null;
           clearPersistedScrapeJob();
