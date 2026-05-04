@@ -160,6 +160,12 @@ function recommendationBadge(r: string) {
   return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
 }
 
+type ScraperReportUrls = {
+  client_report_url?: string;
+  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string };
+  report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
+};
+
 type ScrapeJobState = {
   status: string;
   jobId?: string;
@@ -173,6 +179,7 @@ type ScrapeJobState = {
   message?: string;
   current?: number;
   total?: number;
+  reportUrls?: ScraperReportUrls;
 };
 
 type AnalysisPhase = "queued" | "analyzing" | "rendering" | "saving" | "done" | "failed" | "cancelled";
