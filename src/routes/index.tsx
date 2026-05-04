@@ -32,10 +32,6 @@ import {
   getReportBundle,
   logRetryEvent,
   checkHealth,
-  listLogs,
-  clearLogs,
-  getLogRetention,
-  cleanupLogs,
 } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
@@ -2402,7 +2398,6 @@ function Panel() {
             recordId={activeRecordId}
             records={records}
             onOpenRecord={(id) => void openRecord(id)}
-            serverFns={{ listLogs, clearLogs, getLogRetention, cleanupLogs }}
           />
         </aside>
       </main>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { listLogs, clearLogs, getLogRetention, cleanupLogs } from "@/functions/api.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,20 +29,11 @@ type LogRow = {
 
 type RecordSummary = { id: string; title: string | null };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ServerFnAny = (...args: any[]) => any;
-
 type Props = {
   clientId: string | null;
   recordId?: string | null;
   records?: RecordSummary[];
   onOpenRecord?: (id: string) => void;
-  serverFns: {
-    listLogs: ServerFnAny;
-    clearLogs: ServerFnAny;
-    getLogRetention: ServerFnAny;
-    cleanupLogs: ServerFnAny;
-  };
 };
 
 const LEVEL_STYLES: Record<string, string> = {
@@ -89,11 +81,11 @@ function toIsoEnd(localDate: string): string | undefined {
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
-export function LogsPanel({ clientId, recordId, records, onOpenRecord, serverFns }: Props) {
-  const fnList = useServerFn(serverFns.listLogs);
-  const fnClear = useServerFn(serverFns.clearLogs);
-  const fnRetention = useServerFn(serverFns.getLogRetention);
-  const fnCleanup = useServerFn(serverFns.cleanupLogs);
+export function LogsPanel({ clientId, recordId, records, onOpenRecord }: Props) {
+  const fnList = useServerFn(listLogs);
+  const fnClear = useServerFn(clearLogs);
+  const fnRetention = useServerFn(getLogRetention);
+  const fnCleanup = useServerFn(cleanupLogs);
   const [retention, setRetention] = useState<{ days: number; source: string } | null>(null);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
