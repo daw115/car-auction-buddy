@@ -642,11 +642,20 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
     przez Pythonowy generator (Markdown + JSON), oraz link do pełnego HTML raportu klient/broker.
     """
     listings: list = []
+    analyzed_lots: list = []  # CarLot + AIAnalysis razem (zamiast TS robiło drugą AI analizę)
     if job.result:
         for item in (job.result.get("all_results") or []):
-            lot = item.get("lot") if isinstance(item, dict) else None
+            if not isinstance(item, dict):
+                continue
+            lot = item.get("lot")
             if lot:
                 listings.append(lot)
+                # Pełen AnalyzedLot (lot + analysis + is_top_recommendation)
+                analyzed_lots.append({
+                    "lot": lot,
+                    "analysis": item.get("analysis"),
+                    "is_top_recommendation": bool(item.get("is_top_recommendation")),
+                })
 
     latest_phase = job.phases[-1] if job.phases else None
     phase_name = latest_phase.name if latest_phase else None
@@ -669,6 +678,9 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
     return {
         "status": job.status,
         "listings": listings if job.status == "done" else None,
+        # Pełna analiza AI (POLECAM/RYZYKO/ODRZUĆ + score + red_flags + descriptions)
+        # już zrobiona po stronie Pythona — TS NIE musi wołać runAnalysis (dublować tokens)
+        "analyzed_lots": analyzed_lots if job.status == "done" else None,
         "error": job.error,
         "progress": progress,
         "phase": phase_name,
