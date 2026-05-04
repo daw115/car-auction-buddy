@@ -82,6 +82,7 @@ import {
   Eye,
   RotateCcw,
   FlaskConical,
+  ExternalLink,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
