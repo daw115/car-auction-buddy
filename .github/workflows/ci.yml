@@ -25,6 +25,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Check server imports in client code
+        run: node scripts/check-server-imports.mjs
+
       - name: Build
         id: build
         run: |
