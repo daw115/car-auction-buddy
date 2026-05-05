@@ -90,6 +90,7 @@ import {
   Wifi,
   WifiOff,
   Clock,
+  HardDrive,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
