@@ -2469,6 +2469,13 @@ function ScraperReportsSection({
   selectedLotIds?: Set<string>;
 }) {
   const [loadingEndpoint, setLoadingEndpoint] = useState<string | null>(null);
+  const [cacheStats, setCacheStats] = useState<{ enabled: boolean; total: number; fresh: number; ttl_hours: number; by_kind: Record<string, number> } | null>(null);
+  const [clearingCache, setClearingCache] = useState(false);
+
+  // Fetch cache stats on mount
+  useEffect(() => {
+    getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
+  }, []);
 
   const hasAny =
     reportUrls.client_report_url ||
@@ -2481,7 +2488,6 @@ function ScraperReportsSection({
 
   if (!hasAny) return null;
 
-  // Wybrane loty (z checkboxów w tabeli) — fallback na pierwszy
   const selectedCount = selectedLotIds?.size ?? 0;
   const lotsToProcess = selectedCount > 0
     ? listings.filter((l) => selectedLotIds!.has(l.lot_id))
@@ -2511,15 +2517,13 @@ function ScraperReportsSection({
     }
   }
 
-  // Rich LLM dla każdego zaznaczonego lotu osobno (każdy = nowa karta przeglądarki)
-  async function openRichLlmForSelected(endpoint: string, label: string, costPerLot: string) {
+  async function openRichLlmForSelected(endpoint: string, label: string) {
     if (lotsToProcess.length === 0) {
       toast.error("Brak lotów — zaznacz przynajmniej jeden checkbox w tabeli");
       return;
     }
     const total = lotsToProcess.length;
-    const totalCostStr = total > 1 ? ` (~${total}× ${costPerLot} = ~$${(total * parseFloat(costPerLot.replace("$", ""))).toFixed(2)})` : "";
-    const confirmMsg = `Wygenerujesz rich LLM raport dla ${total} ${total === 1 ? "lota" : "lotów"}${totalCostStr}.\n\nKontynuować?`;
+    const confirmMsg = `Wygenerujesz rich raport (Gemini → Anthropic fallback) dla ${total} ${total === 1 ? "lota" : "lotów"}.\n\nPierwszy raz: ~30s/lot. Potem cache 24h (instant).\nKontynuować?`;
     if (!window.confirm(confirmMsg)) return;
 
     setLoadingEndpoint(label);
@@ -2530,11 +2534,13 @@ function ScraperReportsSection({
         toast.info(`Generuję ${i + 1}/${total}: ${lot.year} ${lot.make} ${lot.model}...`);
         try {
           const approvedLots = [{ ...lot, included_in_report: true }];
+          const t0 = Date.now();
           const res = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ criteria, approved_lots: approvedLots }),
           });
+          const elapsedMs = Date.now() - t0;
           if (!res.ok) {
             const errText = await res.text().catch(() => "");
             throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
@@ -2545,13 +2551,37 @@ function ScraperReportsSection({
           window.open(url, "_blank");
           setTimeout(() => URL.revokeObjectURL(url), 120_000);
           successCount++;
+          // Cache hit/miss feedback
+          if (elapsedMs < 1500) {
+            toast.success(`${lot.year} ${lot.make} ${lot.model} — cache HIT (${elapsedMs}ms)`);
+          } else {
+            toast.success(`${lot.year} ${lot.make} ${lot.model} — wygenerowano (${(elapsedMs / 1000).toFixed(1)}s)`);
+          }
         } catch (e) {
           toast.error(`Lot ${lot.lot_id}: ${(e as Error).message}`);
         }
       }
-      if (successCount > 0) toast.success(`Wygenerowano ${successCount}/${total} raportów`);
+      if (successCount > 0) {
+        toast.success(`Wygenerowano ${successCount}/${total} raportów`);
+        // Refresh cache stats
+        getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
+      }
     } finally {
       setLoadingEndpoint(null);
+    }
+  }
+
+  async function handleClearCache() {
+    setClearingCache(true);
+    try {
+      const result = await clearLlmCache();
+      toast.success(`Wyczyszczono cache: ${result.removed} wpisów`);
+      setCacheStats(null);
+      getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
+    } catch {
+      toast.error("Błąd czyszczenia cache");
+    } finally {
+      setClearingCache(false);
     }
   }
 
@@ -2638,49 +2668,63 @@ function ScraperReportsSection({
         )}
       </div>
       {(reportUrls.report_endpoints?.client_llm || reportUrls.report_endpoints?.broker_llm) && (
-        <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+        <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
           <div className="flex items-center gap-2 mb-2 text-xs">
-            <span className="font-semibold text-destructive">🔥 Rich LLM (płatne — Claude Sonnet)</span>
+            <span className="font-semibold text-amber-700 dark:text-amber-400">✨ Rich LLM (Gemini darmowy / Claude fallback)</span>
             <span className="text-muted-foreground">
               {selectedCount > 0
                 ? `Zaznaczono ${selectedCount} ${selectedCount === 1 ? "lot" : "loty"} w tabeli`
                 : "Zaznacz loty checkboxami w tabeli (lub kliknij — domyślnie pierwszy)"}
             </span>
           </div>
+          {cacheStats && (
+            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+              <span>💾 Cache: {cacheStats.fresh} świeżych (TTL {cacheStats.ttl_hours}h)</span>
+              <button
+                type="button"
+                className="underline hover:text-foreground transition-colors disabled:opacity-50"
+                disabled={clearingCache}
+                onClick={handleClearCache}
+              >
+                {clearingCache ? "Czyszczę..." : "Wyczyść"}
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {reportUrls.report_endpoints?.client_llm && (
               <Button
-                variant="destructive"
                 size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white"
                 disabled={loadingEndpoint === "client_llm"}
-                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.client_llm!, "client_llm", "$0.50")}
-                title={`Claude pisze rich raport klienta — ~30s/lot, ~$0.50/lot`}
+                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.client_llm!, "client_llm")}
+                title="Gemini/Claude generuje rich raport klienta — ~30s/lot (cache 24h)"
               >
                 {loadingEndpoint === "client_llm" ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  "🔥"
+                  "✨"
                 )}
-                Rich klient × {lotsToProcess.length} (~${(lotsToProcess.length * 0.5).toFixed(2)})
+                Rich klient × {lotsToProcess.length}
               </Button>
             )}
             {reportUrls.report_endpoints?.broker_llm && (
               <Button
-                variant="destructive"
                 size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white"
                 disabled={loadingEndpoint === "broker_llm"}
-                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.broker_llm!, "broker_llm", "$1.00")}
-                title={`Claude pisze rich raport brokerski — ~60s/lot, ~$1/lot`}
+                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.broker_llm!, "broker_llm")}
+                title="Gemini/Claude generuje rich raport brokerski — ~30s/lot (cache 24h)"
               >
                 {loadingEndpoint === "broker_llm" ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  "🔥"
+                  "✨"
                 )}
-                Rich broker × {lotsToProcess.length} (~${(lotsToProcess.length * 1.0).toFixed(2)})
+                Rich broker × {lotsToProcess.length}
               </Button>
             )}
           </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">Pierwsze wywołanie ~30–60s, ponowne &lt;1s (cache 24h)</p>
         </div>
       )}
     </Card>
