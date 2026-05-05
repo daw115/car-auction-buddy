@@ -22,6 +22,7 @@ import anthropic
 from dotenv import load_dotenv
 
 from parser.models import AnalyzedLot, ClientCriteria
+from report import llm_cache
 
 # .env może być uruchamiany z różnych cwd (api, skrypty test'owe), więc szukamy explicite
 _ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -308,17 +309,54 @@ def _call_claude_for_html(
     return _strip_html_wrapper("".join(chunks))
 
 
+def _fingerprint_payload(item: AnalyzedLot) -> dict:
+    """Pola wpływające na output LLM — używane jako fingerprint dla cache."""
+    lot = item.lot
+    ai = item.analysis
+    return {
+        "ai_score": ai.score,
+        "ai_recommendation": ai.recommendation,
+        "current_bid_usd": lot.current_bid_usd,
+        "buy_now_price_usd": lot.buy_now_price_usd,
+        "ai_estimated_repair_usd": ai.estimated_repair_usd,
+        "damage_primary": lot.damage_primary,
+        "damage_secondary": lot.damage_secondary,
+        "title_type": lot.title_type,
+        "odometer_mi": lot.odometer_mi,
+        "year": lot.year,
+        "make": lot.make,
+        "model": lot.model,
+    }
+
+
 def render_client_report_llm(item: AnalyzedLot, criteria: Optional[ClientCriteria] = None) -> str:
-    """Generuje raport HTML dla klienta przez LLM (Gemini default, Anthropic opcjonalnie)."""
+    """Generuje raport HTML dla klienta przez LLM (Gemini default, Anthropic opcjonalnie).
+
+    Cache (24h TTL): drugi klik dla tego samego lota = 0 ms, $0.
+    """
+    lot = item.lot
+    fingerprint = llm_cache.make_fingerprint(_fingerprint_payload(item))
+
+    cached = llm_cache.get_cached(
+        lot_id=lot.lot_id, source=lot.source or "", kind="client_llm", fingerprint=fingerprint,
+    )
+    if cached:
+        return cached
+
     # Gemini Flash ma cap 8192, Anthropic 16000+
     default_max = "8192" if _provider() == "gemini" else "16000"
-    return _call_llm(
+    html = _call_llm(
         system=_system_prompt_client(),
         skeleton=_client_skeleton(),
         lot_data=_lot_data_for_prompt(item, criteria),
         skeleton_label="raport klienta",
         max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", default_max)),
     )
+    llm_cache.store(
+        lot_id=lot.lot_id, source=lot.source or "", kind="client_llm", fingerprint=fingerprint,
+        html=html, provider=_provider(),
+    )
+    return html
 
 
 def render_broker_report_llm(
@@ -326,15 +364,32 @@ def render_broker_report_llm(
     criteria: Optional[ClientCriteria] = None,
     lots_scanned: int = 0,
 ) -> str:
-    """Generuje raport brokerski HTML przez LLM (Gemini default, Anthropic opcjonalnie)."""
+    """Generuje raport brokerski HTML przez LLM (Gemini default, Anthropic opcjonalnie).
+
+    Cache (24h TTL): drugi klik dla tego samego lota = 0 ms, $0.
+    """
+    lot = item.lot
+    fingerprint = llm_cache.make_fingerprint(_fingerprint_payload(item))
+
+    cached = llm_cache.get_cached(
+        lot_id=lot.lot_id, source=lot.source or "", kind="broker_llm", fingerprint=fingerprint,
+    )
+    if cached:
+        return cached
+
     lot_data = _lot_data_for_prompt(item, criteria)
     if lots_scanned:
         lot_data = lot_data.rstrip().rstrip("}") + f',\n  "lots_scanned": {lots_scanned}\n}}'
     default_max = "8192" if _provider() == "gemini" else "16000"
-    return _call_llm(
+    html = _call_llm(
         system=_system_prompt_broker(),
         skeleton=_broker_skeleton(),
         lot_data=lot_data,
         skeleton_label="raport brokerski",
         max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", default_max)),
     )
+    llm_cache.store(
+        lot_id=lot.lot_id, source=lot.source or "", kind="broker_llm", fingerprint=fingerprint,
+        html=html, provider=_provider(),
+    )
+    return html

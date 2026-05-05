@@ -44,6 +44,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("[lifespan] Inicjalizacja job_db nieudana")
 
+    # Startup: init LLM report cache (24h TTL, drugi klik tego samego lota = $0)
+    try:
+        from report import llm_cache
+        llm_cache.init_db()
+        purged = llm_cache.purge_expired()
+        if purged:
+            logger.info("[lifespan] LLM cache: usunięto %d starych wpisów", purged)
+    except Exception:
+        logger.exception("[lifespan] Inicjalizacja llm_cache nieudana")
+
     yield
 
     try:
@@ -1038,37 +1048,64 @@ async def generate_broker_html_report(request: ApproveReportRequest):
     return HTMLResponse(content=html)
 
 
+def _llm_engine() -> str:
+    """'hybrid' (domyślne, ~30× taniej) lub 'legacy' (full HTML LLM)."""
+    return (os.getenv("LLM_REPORTS_ENGINE", "hybrid") or "hybrid").lower()
+
+
 @app.post("/report/client-llm")
 async def generate_client_llm_report(request: ApproveReportRequest):
-    """Rich raport klienta przez LLM (~$0.50 per call!). Tylko on-demand."""
-    from report.llm_html_reports import render_client_report_llm
+    """Rich raport klienta. Engine: 'hybrid' (default, ~$0.014) lub 'legacy' (~$0.50)."""
     from fastapi.responses import HTMLResponse
 
     lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
     if not lots_for_report:
         raise HTTPException(status_code=400, detail="Brak lotów")
 
-    html = await asyncio.to_thread(render_client_report_llm, lots_for_report[0], request.criteria)
+    if _llm_engine() == "hybrid":
+        from report.hybrid_reports import render_client_hybrid
+        html = await asyncio.to_thread(render_client_hybrid, lots_for_report[0], request.criteria)
+    else:
+        from report.llm_html_reports import render_client_report_llm
+        html = await asyncio.to_thread(render_client_report_llm, lots_for_report[0], request.criteria)
     return HTMLResponse(content=html)
 
 
 @app.post("/report/broker-llm")
 async def generate_broker_llm_report(request: ApproveReportRequest):
-    """Rich raport brokerski przez LLM (~$1 per call!). Tylko on-demand."""
-    from report.llm_html_reports import render_broker_report_llm
+    """Rich raport brokerski. Engine: 'hybrid' (default, ~$0.027) lub 'legacy' (~$1)."""
     from fastapi.responses import HTMLResponse
 
     lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
     if not lots_for_report:
         raise HTTPException(status_code=400, detail="Brak lotów")
 
-    html = await asyncio.to_thread(
-        render_broker_report_llm,
-        lots_for_report[0],
-        request.criteria,
-        len(request.approved_lots),
-    )
+    if _llm_engine() == "hybrid":
+        from report.hybrid_reports import render_broker_hybrid
+        html = await asyncio.to_thread(
+            render_broker_hybrid, lots_for_report[0], request.criteria, len(request.approved_lots),
+        )
+    else:
+        from report.llm_html_reports import render_broker_report_llm
+        html = await asyncio.to_thread(
+            render_broker_report_llm, lots_for_report[0], request.criteria, len(request.approved_lots),
+        )
     return HTMLResponse(content=html)
+
+
+@app.get("/api/llm-cache/stats")
+async def llm_cache_stats(_auth: None = Depends(_require_bearer)):
+    """Statystyki cache wygenerowanych raportów LLM (rich klient/broker)."""
+    from report import llm_cache
+    return llm_cache.stats()
+
+
+@app.delete("/api/llm-cache")
+async def llm_cache_clear(_auth: None = Depends(_require_bearer)):
+    """Czyści cały cache LLM raportów (force regenerate przy następnym kliku)."""
+    from report import llm_cache
+    removed = llm_cache.clear_all()
+    return {"removed": removed}
 
 
 @app.get("/health")
