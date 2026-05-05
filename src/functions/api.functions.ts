@@ -1894,3 +1894,44 @@ export const checkHealth = createServerFn({ method: "GET" }).handler(async (): P
     },
   };
 });
+
+// ---------- LLM Cache stats ----------
+
+export const getLlmCacheStats = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return null;
+    try {
+      const res = await fetch(`${baseUrl}/api/llm-cache/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        enabled: boolean;
+        total: number;
+        fresh: number;
+        ttl_hours: number;
+        by_kind: Record<string, number>;
+      }>;
+    } catch {
+      return null;
+    }
+  });
+
+export const clearLlmCache = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return { removed: 0 };
+    try {
+      const res = await fetch(`${baseUrl}/api/llm-cache`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { removed: 0 };
+      return res.json() as Promise<{ removed: number }>;
+    } catch {
+      return { removed: 0 };
+    }
+  });
