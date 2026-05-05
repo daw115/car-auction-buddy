@@ -172,7 +172,7 @@ type ScraperReportUrls = {
   client_reports_html?: string[];
   broker_reports_html?: string[];
   artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
-  report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
+  report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
 };
 
 type ScrapeJobState = {
@@ -861,7 +861,7 @@ function Panel() {
           client_reports_html?: string[];
           broker_reports_html?: string[];
           artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
-          report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
+          report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
           // Python adapter zwraca już gotową analizę AI (POLECAM/RYZYKO/ODRZUĆ + score)
           // Dzięki temu TS NIE musi dublować callAI() przez runAnalysis (~50% mniej tokenów).
           analyzed_lots?: Array<{ lot: CarLot; analysis: AIAnalysis; is_top_recommendation?: boolean }>;
@@ -2555,6 +2555,30 @@ function ScraperReportsSection({
           >
             {loadingEndpoint === "broker" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
             Generuj raport HTML brokera
+          </Button>
+        )}
+        {reportUrls.report_endpoints?.client_llm && (
+          <Button
+            variant="default"
+            size="sm"
+            disabled={loadingEndpoint === "client_llm"}
+            onClick={() => openHtmlReport(reportUrls.report_endpoints!.client_llm!, "client_llm")}
+            title="Claude pisze rich raport — ~30s, ~$0.50"
+          >
+            {loadingEndpoint === "client_llm" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "🔥"}
+            Rich LLM klient (~$0.50)
+          </Button>
+        )}
+        {reportUrls.report_endpoints?.broker_llm && (
+          <Button
+            variant="default"
+            size="sm"
+            disabled={loadingEndpoint === "broker_llm"}
+            onClick={() => openHtmlReport(reportUrls.report_endpoints!.broker_llm!, "broker_llm")}
+            title="Claude pisze rich raport brokerski — ~60s, ~$1"
+          >
+            {loadingEndpoint === "broker_llm" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "🔥"}
+            Rich LLM broker (~$1)
           </Button>
         )}
       </div>
