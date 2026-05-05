@@ -24,5 +24,30 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  // Block client code from importing server-only modules directly.
+  // Components, hooks, routes (except /api/**) must use @/functions/, never @/server/.
+  {
+    files: [
+      "src/components/**/*.{ts,tsx}",
+      "src/hooks/**/*.{ts,tsx}",
+      "src/lib/**/*.{ts,tsx}",
+      "src/routes/**/*.{ts,tsx}",
+    ],
+    ignores: ["src/routes/api/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/server/*", "*/server/*"],
+              message:
+                "Do not import server-only modules from client code. Use @/functions/ for createServerFn wrappers instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   eslintPluginPrettier,
 );
