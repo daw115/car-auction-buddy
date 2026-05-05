@@ -1100,12 +1100,183 @@ async def llm_cache_stats(_auth: None = Depends(_require_bearer)):
     return llm_cache.stats()
 
 
+@app.get("/api/llm-cache/list")
+async def llm_cache_list(limit: int = 50, _auth: None = Depends(_require_bearer)):
+    """Lista wpisów cache LLM (bez full HTML — tylko meta)."""
+    import sqlite3
+    from pathlib import Path
+    db_path = Path(os.getenv("LLM_CACHE_DB_PATH", "./data/llm_cache.db")).resolve()
+    if not db_path.exists():
+        return {"items": []}
+    limit = max(1, min(int(limit or 50), 500))
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT cache_key, lot_id, source, kind, fingerprint, provider, model, "
+        "input_tokens, output_tokens, length(html) AS html_size, generated_at "
+        "FROM llm_reports ORDER BY generated_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return {"items": [dict(r) for r in rows]}
+
+
+@app.get("/api/llm-cache/entry/{cache_key}")
+async def llm_cache_entry(cache_key: str, _auth: None = Depends(_require_bearer)):
+    """Zwraca pojedynczy zapisany HTML z cache (do podglądu w UI)."""
+    import sqlite3
+    from pathlib import Path
+    from fastapi.responses import HTMLResponse
+    db_path = Path(os.getenv("LLM_CACHE_DB_PATH", "./data/llm_cache.db")).resolve()
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail="Brak cache DB")
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT html FROM llm_reports WHERE cache_key=?", (cache_key,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Brak wpisu")
+    return HTMLResponse(content=row[0])
+
+
 @app.delete("/api/llm-cache")
 async def llm_cache_clear(_auth: None = Depends(_require_bearer)):
     """Czyści cały cache LLM raportów (force regenerate przy następnym kliku)."""
     from report import llm_cache
     removed = llm_cache.clear_all()
     return {"removed": removed}
+
+
+@app.delete("/api/llm-cache/entry/{cache_key}")
+async def llm_cache_delete_entry(cache_key: str, _auth: None = Depends(_require_bearer)):
+    """Usuwa pojedynczy wpis cache (force regenerate tylko dla tego lota/kind)."""
+    import sqlite3
+    from pathlib import Path
+    db_path = Path(os.getenv("LLM_CACHE_DB_PATH", "./data/llm_cache.db")).resolve()
+    if not db_path.exists():
+        return {"removed": 0}
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.execute("DELETE FROM llm_reports WHERE cache_key=?", (cache_key,))
+    conn.commit()
+    return {"removed": cur.rowcount or 0}
+
+
+@app.get("/api/clients")
+async def list_clients(_auth: None = Depends(_require_bearer)):
+    """Lista klientów zapisanych w app.db."""
+    from api.client_database import init_db, _connect
+    init_db()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT c.id, c.name, c.email, c.phone, c.notes, c.created_at, c.updated_at, "
+            "(SELECT COUNT(*) FROM search_records sr WHERE sr.client_id=c.id) AS records_count "
+            "FROM clients c ORDER BY c.created_at DESC"
+        ).fetchall()
+    return {"clients": [dict(r) for r in rows]}
+
+
+@app.get("/api/db/overview")
+async def db_overview(_auth: None = Depends(_require_bearer)):
+    """Podsumowanie wszystkich zapisanych danych — dla dashboardu."""
+    import sqlite3
+    from pathlib import Path
+    out: dict = {}
+
+    # app.db
+    app_path = Path(os.getenv("APP_DATABASE_PATH", "./data/app.db")).resolve()
+    if app_path.exists():
+        c = sqlite3.connect(str(app_path))
+        clients = c.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+        records = c.execute("SELECT COUNT(*) FROM search_records").fetchone()[0]
+        latest = c.execute("SELECT created_at FROM search_records ORDER BY created_at DESC LIMIT 1").fetchone()
+        out["app_db"] = {
+            "path": str(app_path), "size_kb": app_path.stat().st_size // 1024,
+            "clients": clients, "search_records": records,
+            "latest_record_at": latest[0] if latest else None,
+        }
+
+    # jobs.db
+    jobs_path = Path(os.getenv("JOB_DB_PATH", "./data/jobs.db")).resolve()
+    if jobs_path.exists():
+        c = sqlite3.connect(str(jobs_path))
+        c.row_factory = sqlite3.Row
+        total = c.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        by_status = {r["status"]: r["c"] for r in c.execute(
+            "SELECT status, COUNT(*) AS c FROM jobs GROUP BY status"
+        ).fetchall()}
+        latest = c.execute("SELECT created_at FROM jobs ORDER BY created_at DESC LIMIT 1").fetchone()
+        out["jobs_db"] = {
+            "path": str(jobs_path), "size_kb": jobs_path.stat().st_size // 1024,
+            "total": total, "by_status": by_status,
+            "latest_at": latest["created_at"] if latest else None,
+        }
+
+    # llm_cache.db
+    from report import llm_cache
+    out["llm_cache"] = llm_cache.stats()
+
+    # html_cache (folder)
+    html_dir = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache")).resolve()
+    if html_dir.exists():
+        sources = {}
+        total_files = 0
+        total_bytes = 0
+        for src_dir in html_dir.iterdir():
+            if src_dir.is_dir():
+                files = list(src_dir.glob("*.html"))
+                size = sum(f.stat().st_size for f in files)
+                sources[src_dir.name] = {"count": len(files), "size_kb": size // 1024}
+                total_files += len(files)
+                total_bytes += size
+        out["html_cache"] = {
+            "path": str(html_dir), "total_files": total_files,
+            "total_size_kb": total_bytes // 1024, "by_source": sources,
+        }
+
+    return out
+
+
+@app.get("/api/html-cache")
+async def html_cache_list(source: Optional[str] = None, limit: int = 100, _auth: None = Depends(_require_bearer)):
+    """Lista cached HTML scraperowych (Copart/IAAI)."""
+    from pathlib import Path
+    html_dir = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache")).resolve()
+    if not html_dir.exists():
+        return {"items": []}
+
+    items = []
+    sources = [source] if source else [d.name for d in html_dir.iterdir() if d.is_dir()]
+    for src in sources:
+        src_dir = html_dir / src
+        if not src_dir.exists():
+            continue
+        for f in sorted(src_dir.glob("*.html"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+            stat = f.stat()
+            items.append({
+                "source": src,
+                "filename": f.name,
+                "size_kb": stat.st_size // 1024,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                "url": f"/api/html-cache/{src}/{f.name}",
+            })
+    items.sort(key=lambda i: i["modified_at"], reverse=True)
+    return {"items": items[:limit]}
+
+
+@app.get("/api/html-cache/{source}/{filename}")
+async def html_cache_serve(source: str, filename: str, _auth: None = Depends(_require_bearer)):
+    """Serwuje pojedynczy zapisany HTML z scrapera (do podglądu)."""
+    from pathlib import Path
+    from fastapi.responses import HTMLResponse
+    if "/" in source or "/" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    html_dir = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache")).resolve()
+    target = html_dir / source / filename
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Brak pliku")
+    # Bezpiecznik: nie wychodź poza html_dir
+    try:
+        target.resolve().relative_to(html_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path traversal blocked")
+    return HTMLResponse(content=target.read_text(encoding="utf-8", errors="ignore"))
 
 
 @app.get("/health")
