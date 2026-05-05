@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ lot.year }} {{ lot.make }} {{ lot.model }} — Raport</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:#0d1117;color:#e6edf3;line-height:1.6;padding:0}
+  .container{max-width:920px;margin:0 auto;padding:24px}
+  .hero{background:linear-gradient(135deg,#1f6feb 0%,#388bfd 100%);padding:40px 32px;border-radius:14px;margin-bottom:24px;position:relative;overflow:hidden}
+  .hero::before{content:"";position:absolute;top:0;right:0;width:300px;height:300px;background:radial-gradient(circle,rgba(255,255,255,0.12) 0%,transparent 70%);pointer-events:none}
+  .hero-tag{display:inline-block;background:rgba(255,255,255,0.18);padding:4px 12px;border-radius:99px;font-size:11px;font-weight:600;letter-spacing:1.2px;margin-bottom:12px}
+  .hero h1{font-size:34px;font-weight:800;margin-bottom:6px;color:#fff;letter-spacing:-0.5px}
+  .hero .sub{font-size:15px;color:rgba(255,255,255,0.92);margin-bottom:18px}
+  .hero .tagline{font-size:18px;color:#fff;font-weight:500;font-style:italic;line-height:1.4;max-width:680px}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;margin-bottom:24px}
+  .photo-grid img{width:100%;height:200px;object-fit:cover;border-radius:8px;background:#161b22}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+  .stat{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px}
+  .stat .label{font-size:10px;color:#7d8590;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
+  .stat .value{font-size:20px;font-weight:700;color:#e6edf3}
+  .stat .hint{font-size:11px;color:#7d8590;margin-top:4px}
+  .section{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;margin-bottom:20px}
+  .section h2{font-size:13px;font-weight:700;color:#7d8590;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #30363d}
+  .story p{margin-bottom:14px;color:#c9d1d9;font-size:15px}
+  .story p:last-child{margin-bottom:0}
+  .spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .spec-row{display:flex;justify-content:space-between;padding:10px 14px;background:#0d1117;border-radius:6px;border:1px solid #21262d}
+  .spec-row .k{color:#7d8590;font-size:13px}
+  .spec-row .v{color:#e6edf3;font-weight:600;font-size:13px}
+  .red-flags{display:grid;gap:10px}
+  .flag{display:flex;gap:12px;padding:14px;background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.3);border-radius:8px;align-items:flex-start}
+  .flag .icon{font-size:18px;flex-shrink:0}
+  .flag .text{font-size:14px;color:#e6edf3}
+  .cost{display:grid;gap:8px}
+  .cost-row{display:grid;grid-template-columns:1fr auto;align-items:center;padding:8px 14px;background:#0d1117;border-radius:6px;border:1px solid #21262d}
+  .cost-row.total{background:linear-gradient(135deg,#238636 0%,#2ea043 100%);border:none;font-weight:700;font-size:16px;padding:14px}
+  .cost-row .k{color:#c9d1d9;font-size:14px}
+  .cost-row .v{font-weight:600;color:#e6edf3;font-size:14px}
+  .cost-row.total .k,.cost-row.total .v{color:#fff;font-size:16px}
+  .verdict{padding:24px;background:linear-gradient(135deg,{% if verdict_color == 'green' %}#1a4d2e 0%,#238636 100%{% elif verdict_color == 'amber' %}#7a5300 0%,#bf8700 100%{% else %}#67060c 0%,#a40e26 100%{% endif %});border-radius:12px;color:#fff;text-align:center;margin-bottom:20px}
+  .verdict-badge{display:inline-block;background:rgba(255,255,255,0.2);padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:14px}
+  .verdict h3{font-size:24px;margin-bottom:10px;font-weight:700}
+  .verdict p{font-size:15px;color:rgba(255,255,255,0.95);max-width:720px;margin:0 auto}
+  .cta{background:linear-gradient(135deg,#1f6feb 0%,#388bfd 100%);padding:28px;border-radius:12px;text-align:center;margin-bottom:20px}
+  .cta h3{font-size:20px;color:#fff;margin-bottom:8px}
+  .cta p{color:rgba(255,255,255,0.9);font-size:14px;margin-bottom:16px}
+  .cta a{display:inline-block;background:#fff;color:#1f6feb;padding:11px 28px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px}
+  .footer{text-align:center;color:#7d8590;font-size:12px;padding:20px}
+  .footer a{color:#58a6ff;text-decoration:none}
+  .meta-tag{display:inline-block;padding:3px 10px;background:#30363d;border-radius:99px;font-size:11px;color:#c9d1d9;margin-right:6px;margin-bottom:6px}
+  .meta-tag.ok{background:rgba(46,160,67,0.2);color:#56d364}
+  .meta-tag.warn{background:rgba(210,153,34,0.2);color:#e3b341}
+  .meta-tag.bad{background:rgba(248,81,73,0.2);color:#ff7b72}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <span class="hero-tag">RAPORT KLIENTA · {{ lot.source|upper }} · {{ today }}</span>
+    <h1>{{ lot.year }} {{ lot.make }} {{ lot.model }}{% if lot.trim %} {{ lot.trim }}{% endif %}</h1>
+    <div class="sub">Lot #{{ lot.lot_id }} · {{ lot.location_city or '' }}{% if lot.location_state %}, {{ lot.location_state }}{% endif %} · Aukcja: {{ lot.auction_date or 'TBA' }}</div>
+    <div class="tagline">{{ tagline }}</div>
+  </div>
+
+  <!-- ZDJĘCIA -->
+  {% if lot.images %}
+  <div class="photo-grid">
+    {% for img in lot.images[:3] %}
+    <img src="{{ img }}" alt="{{ lot.make }} {{ lot.model }} – zdjęcie {{ loop.index }}" loading="lazy">
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Aktualna oferta</div>
+      <div class="value">${{ "{:,}".format(lot.current_bid_usd|int) if lot.current_bid_usd else '—' }}</div>
+      <div class="hint">{{ "{:,}".format((lot.current_bid_usd * cost.usd_pln)|int) }} PLN</div>
+    </div>
+    <div class="stat">
+      <div class="label">Przebieg</div>
+      <div class="value">{% if lot.odometer_mi %}{{ "{:,}".format(lot.odometer_mi) }} mi{% else %}—{% endif %}</div>
+      <div class="hint">{% if lot.odometer_mi %}{{ "{:,}".format((lot.odometer_mi * 1.609)|int) }} km{% endif %}</div>
+    </div>
+    <div class="stat">
+      <div class="label">AI Score</div>
+      <div class="value">{{ "%.1f"|format(ai.score) }} / 10</div>
+      <div class="hint">{{ ai.recommendation }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Tytuł</div>
+      <div class="value">{{ lot.title_type or '—' }}</div>
+      <div class="hint">{{ lot.damage_primary or '' }}</div>
+    </div>
+  </div>
+
+  <!-- STORY -->
+  <div class="section">
+    <h2>📖 Historia tego auta</h2>
+    <div class="story">
+      {% for paragraph in story_paragraphs %}
+      <p>{{ paragraph }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- SPECYFIKACJA -->
+  <div class="section">
+    <h2>⚙️ Specyfikacja</h2>
+    <div class="spec-grid">
+      <div class="spec-row"><span class="k">VIN</span><span class="v">{{ lot.full_vin or lot.vin or '—' }}</span></div>
+      <div class="spec-row"><span class="k">Rok</span><span class="v">{{ lot.year or '—' }}</span></div>
+      <div class="spec-row"><span class="k">Marka / Model</span><span class="v">{{ lot.make }} {{ lot.model }}</span></div>
+      {% if lot.trim %}<div class="spec-row"><span class="k">Wersja</span><span class="v">{{ lot.trim }}</span></div>{% endif %}
+      <div class="spec-row"><span class="k">Przebieg</span><span class="v">{% if lot.odometer_mi %}{{ "{:,}".format(lot.odometer_mi) }} mi{% endif %}</span></div>
+      <div class="spec-row"><span class="k">Uszkodzenie</span><span class="v">{{ lot.damage_primary or '—' }}</span></div>
+      <div class="spec-row"><span class="k">Tytuł</span><span class="v">{{ lot.title_type or '—' }}</span></div>
+      <div class="spec-row"><span class="k">Kluczyki</span><span class="v">{% if lot.keys %}TAK{% elif lot.keys is sameas false %}NIE{% else %}—{% endif %}</span></div>
+      <div class="spec-row"><span class="k">Poduszki</span><span class="v">{% if lot.airbags_deployed is sameas true %}WYSTRZELONE{% elif lot.airbags_deployed is sameas false %}OK{% else %}—{% endif %}</span></div>
+      <div class="spec-row"><span class="k">Sprzedawca</span><span class="v">{{ lot.seller_type or '—' }}</span></div>
+    </div>
+  </div>
+
+  {% if red_flags and red_flags|length > 0 %}
+  <!-- RED FLAGS -->
+  <div class="section">
+    <h2>⚠️ Czerwone flagi</h2>
+    <div class="red-flags">
+      {% for flag in red_flags %}
+      <div class="flag"><span class="icon">⚠️</span><span class="text">{{ flag }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- KOSZTY -->
+  <div class="section">
+    <h2>💰 Pełne koszty sprowadzenia do PL</h2>
+    <div class="cost">
+      <div class="cost-row"><span class="k">Aktualna oferta (USA)</span><span class="v">${{ "{:,}".format(cost.bid_usd) }}</span></div>
+      <div class="cost-row"><span class="k">Opłata aukcyjna</span><span class="v">${{ "{:,}".format(cost.auction_fee_usd) }}</span></div>
+      <div class="cost-row"><span class="k">Transport USA → port</span><span class="v">${{ "{:,}".format(cost.transport_us_usd) }}</span></div>
+      <div class="cost-row"><span class="k">Ocean freight (USA → Gdynia)</span><span class="v">${{ "{:,}".format(cost.ocean_freight_usd) }}</span></div>
+      <div class="cost-row"><span class="k">Cło ({{ cost.duty_pct }}%)</span><span class="v">{{ "{:,}".format(cost.duty_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Akcyza ({{ cost.excise_pct }}%)</span><span class="v">{{ "{:,}".format(cost.excise_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">VAT ({{ cost.vat_pct }}%)</span><span class="v">{{ "{:,}".format(cost.vat_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Homologacja + tłumaczenia + rejestracja</span><span class="v">{{ "{:,}".format(cost.homologation_pln + cost.translation_pln + cost.registration_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Transport krajowy</span><span class="v">{{ "{:,}".format(cost.transport_pl_pln) }} PLN</span></div>
+      {% if cost.repair_pln > 0 %}
+      <div class="cost-row"><span class="k">Szacowana naprawa (AI)</span><span class="v">{{ "{:,}".format(cost.repair_pln) }} PLN</span></div>
+      {% endif %}
+      <div class="cost-row total"><span class="k">SUMA (na drogę)</span><span class="v">{{ "{:,}".format(cost.grand_total_pln) }} PLN</span></div>
+    </div>
+    <div style="margin-top:14px;font-size:12px;color:#7d8590">
+      Kurs USD/PLN: {{ cost.usd_pln }} · Akcyza zakłada silnik {% if cost.engine_liters_assumed >= 2.0 %}≥ 2.0L{% else %}&lt; 2.0L{% endif %}
+    </div>
+  </div>
+
+  <!-- VERDICT -->
+  <div class="verdict">
+    <span class="verdict-badge">{{ ai.recommendation }} · SCORE {{ "%.1f"|format(ai.score) }}/10</span>
+    <h3>{{ verdict_headline }}</h3>
+    <p>{{ verdict_pl }}</p>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta">
+    <h3>🚗 Zainteresowany?</h3>
+    <p>Skontaktuj się — sprawdzimy lot, ustalimy strategię licytacji i zorganizujemy import pod klucz.</p>
+    <a href="{{ lot.url }}" target="_blank" rel="noopener">Zobacz lot na {{ lot.source|capitalize }}</a>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    USA Car Finder · Raport wygenerowany automatycznie {{ today }}<br>
+    AI: {{ provider }} · model: {{ model }} · czas generacji: {{ generated_at }}<br>
+    <a href="{{ lot.url }}" target="_blank">Aukcja źródłowa</a>
+  </div>
+
+</div>
+</body>
+</html>

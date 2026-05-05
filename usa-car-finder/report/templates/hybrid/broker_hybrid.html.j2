@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BROKER — {{ lot.year }} {{ lot.make }} {{ lot.model }} #{{ lot.lot_id }}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'SF Mono','Menlo',Consolas,monospace;background:#0a0e14;color:#b3b9c5;line-height:1.55;font-size:13px}
+  .container{max-width:1100px;margin:0 auto;padding:24px}
+  .header{background:linear-gradient(135deg,#1a1f2e 0%,#252b3d 100%);padding:24px 28px;border-radius:10px;border:1px solid #2d3548;margin-bottom:20px}
+  .header h1{font-size:22px;color:#e3e9f5;margin-bottom:6px;font-weight:700}
+  .header .meta{color:#8b94a8;font-size:12px}
+  .header .verdict{display:inline-block;margin-top:12px;padding:5px 14px;border-radius:5px;font-weight:700;font-size:11px;letter-spacing:1.2px}
+  .verdict.polecam{background:#0d3a1f;color:#56d364;border:1px solid #2ea043}
+  .verdict.ryzyko{background:#3d2d00;color:#e3b341;border:1px solid #d29922}
+  .verdict.odrzuc{background:#3d0c0c;color:#ff7b72;border:1px solid #f85149}
+  .grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px}
+  .card{background:#10141f;border:1px solid #2d3548;border-radius:8px;padding:16px}
+  .card .label{font-size:10px;color:#6b7388;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+  .card .value{font-size:18px;color:#e3e9f5;font-weight:700}
+  .card .delta{font-size:11px;margin-top:4px}
+  .delta.pos{color:#56d364}
+  .delta.neg{color:#ff7b72}
+  .section{background:#10141f;border:1px solid #2d3548;border-radius:8px;padding:20px;margin-bottom:18px}
+  .section h2{color:#a5b4fc;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #2d3548}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #1f2638}
+  th{color:#6b7388;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.8px}
+  td{color:#c9d1d9}
+  td.num{text-align:right;font-feature-settings:"tnum";color:#e3e9f5}
+  .scoring-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;padding:8px 14px;border-bottom:1px solid #1f2638;font-size:12px}
+  .scoring-row .pts.pos{color:#56d364}
+  .scoring-row .pts.neg{color:#ff7b72}
+  .scoring-row .pts.zero{color:#6b7388}
+  .scoring-row .pts{font-weight:700;text-align:right;min-width:60px}
+  .scoring-row .reason{color:#8b94a8;font-size:11px;margin-left:14px}
+  .red-flag{padding:11px 14px;background:rgba(248,81,73,0.07);border-left:3px solid #f85149;margin-bottom:8px;border-radius:0 4px 4px 0}
+  .red-flag .severity{display:inline-block;padding:2px 7px;background:#3d0c0c;color:#ff7b72;border-radius:3px;font-size:10px;letter-spacing:0.8px;margin-right:8px}
+  .strategy-box{padding:16px;background:rgba(102,126,234,0.07);border:1px solid #4c63b6;border-radius:6px;margin-top:12px}
+  .strategy-box .title{color:#a5b4fc;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px}
+  .strategy-box .body{color:#c9d1d9;font-size:13px;line-height:1.65}
+  .bid-thresholds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+  .threshold{padding:10px;background:#0a0e14;border:1px solid #2d3548;border-radius:5px;text-align:center}
+  .threshold .label{color:#6b7388;font-size:10px;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px}
+  .threshold .value{color:#e3e9f5;font-weight:700;font-size:14px}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px}
+  .photo-grid img{width:100%;height:130px;object-fit:cover;border-radius:5px;background:#1a1f2e}
+  .checklist{display:grid;gap:6px}
+  .check-item{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;padding:7px 0;border-bottom:1px dashed #1f2638;font-size:12px}
+  .check-item .dot{width:14px;height:14px;border-radius:50%;margin-top:3px;background:#2d3548}
+  .check-item .dot.ok{background:#238636}
+  .check-item .dot.warn{background:#d29922}
+  .check-item .dot.bad{background:#f85149}
+  .footer{text-align:center;color:#6b7388;font-size:11px;padding:16px}
+  .footer code{background:#1a1f2e;padding:2px 6px;border-radius:3px;color:#a5b4fc}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>{{ lot.year }} {{ lot.make }} {{ lot.model }}{% if lot.trim %} {{ lot.trim }}{% endif %} — Broker Brief</h1>
+    <div class="meta">
+      Lot #{{ lot.lot_id }} · {{ lot.source|upper }} · {{ lot.location_city or '' }}{% if lot.location_state %}, {{ lot.location_state }}{% endif %}<br>
+      VIN: <code>{{ lot.full_vin or lot.vin or '—' }}</code> · Aukcja: {{ lot.auction_date or 'TBA' }} · Przeskanowano: {{ lots_scanned }} lotów
+    </div>
+    <span class="verdict {% if ai.recommendation == 'POLECAM' %}polecam{% elif ai.recommendation == 'RYZYKO' %}ryzyko{% else %}odrzuc{% endif %}">
+      {{ ai.recommendation }} · SCORE {{ "%.1f"|format(ai.score) }}/10
+    </span>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="grid-3">
+    <div class="card">
+      <div class="label">Aktualny bid</div>
+      <div class="value">${{ "{:,}".format(lot.current_bid_usd|int) if lot.current_bid_usd else '—' }}</div>
+      <div class="delta {% if budget_delta_pct > 0 %}pos{% else %}neg{% endif %}">
+        {% if budget_delta_pct != 0 %}vs budżet {{ "%+d"|format(budget_delta_pct) }}%{% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">Buy Now</div>
+      <div class="value">${{ "{:,}".format(lot.buy_now_price_usd|int) if lot.buy_now_price_usd else '—' }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Reserve</div>
+      <div class="value">${{ "{:,}".format(lot.seller_reserve_usd|int) if lot.seller_reserve_usd else '—' }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Suma docelowa (PLN)</div>
+      <div class="value">{{ "{:,}".format(cost.grand_total_pln) }}</div>
+      <div class="delta">{{ "{:,}".format(cost.grand_total_usd) }} USD</div>
+    </div>
+    <div class="card">
+      <div class="label">Szacowana naprawa</div>
+      <div class="value">${{ "{:,}".format(ai.estimated_repair_usd|int) if ai.estimated_repair_usd else '—' }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total cost AI</div>
+      <div class="value">${{ "{:,}".format(ai.estimated_total_cost_usd|int) if ai.estimated_total_cost_usd else '—' }}</div>
+    </div>
+  </div>
+
+  <!-- DANE LOTU -->
+  <div class="section">
+    <h2>📋 Dane lotu</h2>
+    <table>
+      <tr><td style="width:30%;color:#6b7388">Source / Lot</td><td>{{ lot.source }} / <a href="{{ lot.url }}" target="_blank" style="color:#a5b4fc">{{ lot.lot_id }}</a></td></tr>
+      <tr><td style="color:#6b7388">VIN</td><td><code>{{ lot.full_vin or lot.vin or '—' }}</code></td></tr>
+      <tr><td style="color:#6b7388">Rok / Make / Model / Trim</td><td>{{ lot.year }} · {{ lot.make }} · {{ lot.model }}{% if lot.trim %} · {{ lot.trim }}{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Przebieg</td><td>{% if lot.odometer_mi %}{{ "{:,}".format(lot.odometer_mi) }} mi / {{ "{:,}".format((lot.odometer_mi*1.609)|int) }} km{% else %}—{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Damage primary / secondary</td><td>{{ lot.damage_primary or '—' }}{% if lot.damage_secondary %} · {{ lot.damage_secondary }}{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Title</td><td>{{ lot.title_type or '—' }}</td></tr>
+      <tr><td style="color:#6b7388">Lokalizacja</td><td>{{ lot.location_city or '—' }}{% if lot.location_state %}, {{ lot.location_state }}{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Aukcja</td><td>{{ lot.auction_date or 'TBA' }}</td></tr>
+      <tr><td style="color:#6b7388">Keys / Airbags</td><td>{% if lot.keys is sameas true %}✓ KEYS{% elif lot.keys is sameas false %}✗ NO KEYS{% else %}? KEYS{% endif %} · {% if lot.airbags_deployed is sameas true %}AIRBAGS DEPLOYED{% elif lot.airbags_deployed is sameas false %}AIRBAGS OK{% else %}AIRBAGS ?{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Seller type</td><td>{{ lot.seller_type or '—' }}</td></tr>
+    </table>
+  </div>
+
+  <!-- SCORING -->
+  <div class="section">
+    <h2>🎯 Scoring breakdown</h2>
+    {% for s in scoring_breakdown %}
+    <div class="scoring-row">
+      <span>{{ s.category }} <span class="reason">{{ s.reason }}</span></span>
+      <span class="pts {% if s.points > 0 %}pos{% elif s.points < 0 %}neg{% else %}zero{% endif %}">{{ "%+d"|format(s.points) }}</span>
+    </div>
+    {% endfor %}
+    <div class="scoring-row" style="border-top:2px solid #2d3548;margin-top:8px;padding-top:14px;font-weight:700;color:#e3e9f5">
+      <span>SCORE TOTAL</span>
+      <span class="pts {% if ai.score >= 7 %}pos{% elif ai.score >= 4 %}zero{% else %}neg{% endif %}" style="font-size:16px">{{ "%.1f"|format(ai.score) }} / 10</span>
+    </div>
+  </div>
+
+  <!-- KOSZTY DETAL -->
+  <div class="section">
+    <h2>💰 Pełna kalkulacja kosztów (USA → PL)</h2>
+    <table>
+      <thead><tr><th>Pozycja</th><th class="num">USD</th><th class="num">PLN ({{ cost.usd_pln }})</th></tr></thead>
+      <tbody>
+        <tr><td>Bid (current)</td><td class="num">${{ "{:,}".format(cost.bid_usd) }}</td><td class="num">{{ "{:,}".format((cost.bid_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Auction fee</td><td class="num">${{ "{:,}".format(cost.auction_fee_usd) }}</td><td class="num">{{ "{:,}".format((cost.auction_fee_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Transport USA → port</td><td class="num">${{ "{:,}".format(cost.transport_us_usd) }}</td><td class="num">{{ "{:,}".format((cost.transport_us_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Ocean freight (Gdynia)</td><td class="num">${{ "{:,}".format(cost.ocean_freight_usd) }}</td><td class="num">{{ "{:,}".format((cost.ocean_freight_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Title / handling</td><td class="num">${{ "{:,}".format(cost.title_handling_usd) }}</td><td class="num">{{ "{:,}".format((cost.title_handling_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr style="background:#0a0e14"><td><b>CIF (cło baza)</b></td><td class="num"><b>${{ "{:,}".format(cost.cif_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.cif_pln) }}</b></td></tr>
+        <tr><td>Cło {{ cost.duty_pct }}%</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.duty_pln) }}</td></tr>
+        <tr><td>Akcyza {{ cost.excise_pct }}% (silnik {{ cost.engine_liters_assumed }}L)</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.excise_pln) }}</td></tr>
+        <tr><td>VAT {{ cost.vat_pct }}%</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.vat_pln) }}</td></tr>
+        <tr><td>Homologacja + tłumaczenia + rejestracja</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.homologation_pln + cost.translation_pln + cost.registration_pln) }}</td></tr>
+        <tr><td>Transport krajowy</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.transport_pl_pln) }}</td></tr>
+        {% if cost.repair_pln > 0 %}
+        <tr><td>Naprawa (AI estimate)</td><td class="num">${{ "{:,}".format(cost.repair_usd) }}</td><td class="num">{{ "{:,}".format(cost.repair_pln) }}</td></tr>
+        {% endif %}
+        <tr style="background:#0d3a1f;color:#56d364"><td><b>SUMA</b></td><td class="num"><b>${{ "{:,}".format(cost.grand_total_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.grand_total_pln) }}</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if red_flags %}
+  <!-- RED FLAGS -->
+  <div class="section">
+    <h2>🚩 Czerwone flagi ({{ red_flags|length }})</h2>
+    {% for flag in red_flags %}
+    <div class="red-flag">
+      <span class="severity">{{ flag.severity|default('MID') }}</span>
+      {{ flag.text if flag is mapping else flag }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ZDJĘCIA -->
+  {% if lot.images %}
+  <div class="section">
+    <h2>📸 Galeria ({{ lot.images|length }} zdjęć)</h2>
+    <div class="photo-grid">
+      {% for img in lot.images[:8] %}
+      <img src="{{ img }}" alt="zdj {{ loop.index }}" loading="lazy">
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- STRATEGIA LICYTACJI -->
+  <div class="section">
+    <h2>🎲 Strategia licytacji</h2>
+    <div class="bid-thresholds">
+      <div class="threshold">
+        <div class="label">Wejście</div>
+        <div class="value">${{ "{:,}".format(bid_thresholds.entry_usd) }}</div>
+      </div>
+      <div class="threshold">
+        <div class="label">Cel</div>
+        <div class="value">${{ "{:,}".format(bid_thresholds.target_usd) }}</div>
+      </div>
+      <div class="threshold">
+        <div class="label">Walk-away</div>
+        <div class="value">${{ "{:,}".format(bid_thresholds.walkaway_usd) }}</div>
+      </div>
+    </div>
+    <div class="strategy-box">
+      <div class="title">📌 Reasoning</div>
+      <div class="body">{{ bidding_strategy }}</div>
+    </div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <div class="section">
+    <h2>✅ Pre-bid checklist</h2>
+    <div class="checklist">
+      {% for item in checklist %}
+      <div class="check-item">
+        <div class="dot {{ item.status|default('') }}"></div>
+        <div>
+          <strong style="color:#e3e9f5">{{ item.label }}</strong>
+          {% if item.note %}<br><span style="color:#8b94a8;font-size:11px">{{ item.note }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- NOTATKI STRATEGICZNE -->
+  <div class="section">
+    <h2>📝 Notatki strategiczne (AI)</h2>
+    <div style="color:#c9d1d9;font-size:13px;line-height:1.7">{{ notes_pl }}</div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Generated {{ generated_at }} · provider: <code>{{ provider }}</code> · model: <code>{{ model }}</code> · cache: <code>{{ cache_status }}</code>
+  </div>
+
+</div>
+</body>
+</html>
