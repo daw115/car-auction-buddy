@@ -770,6 +770,23 @@ function Panel() {
   const [criteria, setCriteria] = useState<ClientCriteria>(DEFAULT_CRITERIA);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
+  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+
+  const toggleLotSelection = useCallback((lotId: string) => {
+    setSelectedLotIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(lotId)) next.delete(lotId);
+      else next.add(lotId);
+      return next;
+    });
+  }, []);
+
+  const toggleAllSelection = useCallback(() => {
+    setSelectedLotIds((prev) => {
+      if (prev.size === listings.length) return new Set();
+      return new Set(listings.map((l) => l.lot_id));
+    });
+  }, [listings]);
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
   const [aiMeta, setAiMeta] = useState<AiMeta | null>(null);
   const [aiInput, setAiInput] = useState<unknown>(null);
@@ -1966,13 +1983,21 @@ function Panel() {
               value={listingsRaw}
               onChange={(e) => setListingsRaw(e.target.value)}
             />
-            {listings.length > 0 && <ListingsTable listings={listings} />}
+            {listings.length > 0 && (
+              <ListingsTable
+                listings={listings}
+                selectedIds={selectedLotIds}
+                onToggle={toggleLotSelection}
+                onToggleAll={toggleAllSelection}
+              />
+            )}
 
             {scrapeJob?.status === "done" && scrapeJob.reportUrls && (
               <ScraperReportsSection
                 reportUrls={scrapeJob.reportUrls}
                 listings={listings}
                 criteria={criteria}
+                selectedLotIds={selectedLotIds}
               />
             )}
 
@@ -2434,10 +2459,12 @@ function ScraperReportsSection({
   reportUrls,
   listings,
   criteria,
+  selectedLotIds,
 }: {
   reportUrls: ScraperReportUrls;
   listings: CarLot[];
   criteria: ClientCriteria;
+  selectedLotIds?: Set<string>;
 }) {
   const [loadingEndpoint, setLoadingEndpoint] = useState<string | null>(null);
 
@@ -2451,6 +2478,12 @@ function ScraperReportsSection({
     reportUrls.report_endpoints?.broker_html;
 
   if (!hasAny) return null;
+
+  // Wybrane loty (z checkboxów w tabeli) — fallback na pierwszy
+  const selectedCount = selectedLotIds?.size ?? 0;
+  const lotsToProcess = selectedCount > 0
+    ? listings.filter((l) => selectedLotIds!.has(l.lot_id))
+    : listings.slice(0, 1);
 
   async function openHtmlReport(endpoint: string, label: string) {
     setLoadingEndpoint(label);
@@ -2471,6 +2504,50 @@ function ScraperReportsSection({
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) {
       toast.error(`Błąd generowania raportu: ${(e as Error).message}`);
+    } finally {
+      setLoadingEndpoint(null);
+    }
+  }
+
+  // Rich LLM dla każdego zaznaczonego lotu osobno (każdy = nowa karta przeglądarki)
+  async function openRichLlmForSelected(endpoint: string, label: string, costPerLot: string) {
+    if (lotsToProcess.length === 0) {
+      toast.error("Brak lotów — zaznacz przynajmniej jeden checkbox w tabeli");
+      return;
+    }
+    const total = lotsToProcess.length;
+    const totalCostStr = total > 1 ? ` (~${total}× ${costPerLot} = ~$${(total * parseFloat(costPerLot.replace("$", ""))).toFixed(2)})` : "";
+    const confirmMsg = `Wygenerujesz rich LLM raport dla ${total} ${total === 1 ? "lota" : "lotów"}${totalCostStr}.\n\nKontynuować?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setLoadingEndpoint(label);
+    let successCount = 0;
+    try {
+      for (let i = 0; i < lotsToProcess.length; i++) {
+        const lot = lotsToProcess[i];
+        toast.info(`Generuję ${i + 1}/${total}: ${lot.year} ${lot.make} ${lot.model}...`);
+        try {
+          const approvedLots = [{ ...lot, included_in_report: true }];
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ criteria, approved_lots: approvedLots }),
+          });
+          if (!res.ok) {
+            const errText = await res.text().catch(() => "");
+            throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+          }
+          const html = await res.text();
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          window.open(url, "_blank");
+          setTimeout(() => URL.revokeObjectURL(url), 120_000);
+          successCount++;
+        } catch (e) {
+          toast.error(`Lot ${lot.lot_id}: ${(e as Error).message}`);
+        }
+      }
+      if (successCount > 0) toast.success(`Wygenerowano ${successCount}/${total} raportów`);
     } finally {
       setLoadingEndpoint(null);
     }
@@ -2557,41 +2634,85 @@ function ScraperReportsSection({
             Generuj raport HTML brokera
           </Button>
         )}
-        {reportUrls.report_endpoints?.client_llm && (
-          <Button
-            variant="default"
-            size="sm"
-            disabled={loadingEndpoint === "client_llm"}
-            onClick={() => openHtmlReport(reportUrls.report_endpoints!.client_llm!, "client_llm")}
-            title="Claude pisze rich raport — ~30s, ~$0.50"
-          >
-            {loadingEndpoint === "client_llm" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "🔥"}
-            Rich LLM klient (~$0.50)
-          </Button>
-        )}
-        {reportUrls.report_endpoints?.broker_llm && (
-          <Button
-            variant="default"
-            size="sm"
-            disabled={loadingEndpoint === "broker_llm"}
-            onClick={() => openHtmlReport(reportUrls.report_endpoints!.broker_llm!, "broker_llm")}
-            title="Claude pisze rich raport brokerski — ~60s, ~$1"
-          >
-            {loadingEndpoint === "broker_llm" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "🔥"}
-            Rich LLM broker (~$1)
-          </Button>
-        )}
       </div>
+      {(reportUrls.report_endpoints?.client_llm || reportUrls.report_endpoints?.broker_llm) && (
+        <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+          <div className="flex items-center gap-2 mb-2 text-xs">
+            <span className="font-semibold text-destructive">🔥 Rich LLM (płatne — Claude Sonnet)</span>
+            <span className="text-muted-foreground">
+              {selectedCount > 0
+                ? `Zaznaczono ${selectedCount} ${selectedCount === 1 ? "lot" : "loty"} w tabeli`
+                : "Zaznacz loty checkboxami w tabeli (lub kliknij — domyślnie pierwszy)"}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {reportUrls.report_endpoints?.client_llm && (
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={loadingEndpoint === "client_llm"}
+                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.client_llm!, "client_llm", "$0.50")}
+                title={`Claude pisze rich raport klienta — ~30s/lot, ~$0.50/lot`}
+              >
+                {loadingEndpoint === "client_llm" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  "🔥"
+                )}
+                Rich klient × {lotsToProcess.length} (~${(lotsToProcess.length * 0.5).toFixed(2)})
+              </Button>
+            )}
+            {reportUrls.report_endpoints?.broker_llm && (
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={loadingEndpoint === "broker_llm"}
+                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.broker_llm!, "broker_llm", "$1.00")}
+                title={`Claude pisze rich raport brokerski — ~60s/lot, ~$1/lot`}
+              >
+                {loadingEndpoint === "broker_llm" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  "🔥"
+                )}
+                Rich broker × {lotsToProcess.length} (~${(lotsToProcess.length * 1.0).toFixed(2)})
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
 
-function ListingsTable({ listings }: { listings: CarLot[] }) {
+function ListingsTable({
+  listings,
+  selectedIds,
+  onToggle,
+  onToggleAll,
+}: {
+  listings: CarLot[];
+  selectedIds?: Set<string>;
+  onToggle?: (lotId: string) => void;
+  onToggleAll?: () => void;
+}) {
+  const selectionMode = !!selectedIds && !!onToggle;
+  const allSelected = selectionMode && listings.length > 0 && listings.every((l) => selectedIds!.has(l.lot_id));
   return (
     <div className="mt-3 max-h-[260px] overflow-auto rounded border">
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-muted">
           <tr className="text-left">
+            {selectionMode && (
+              <th className="w-8 px-2 py-1.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => onToggleAll?.()}
+                  title={allSelected ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+                />
+              </th>
+            )}
             <th className="px-2 py-1.5">Pojazd</th>
             <th className="px-2 py-1.5">Lot</th>
             <th className="px-2 py-1.5">Stan</th>
@@ -2602,21 +2723,36 @@ function ListingsTable({ listings }: { listings: CarLot[] }) {
           </tr>
         </thead>
         <tbody>
-          {listings.map((l) => (
-            <tr key={`${l.source}-${l.lot_id}`} className="border-t">
-              <td className="px-2 py-1">
-                {l.year ?? "?"} {l.make ?? ""} {l.model ?? ""}
-              </td>
-              <td className="px-2 py-1 text-muted-foreground">
-                {l.source}/{l.lot_id}
-              </td>
-              <td className="px-2 py-1">{l.location_state ?? "—"}</td>
-              <td className="px-2 py-1">${l.current_bid_usd ?? "—"}</td>
-              <td className="px-2 py-1">{l.damage_primary ?? "—"}</td>
-              <td className="px-2 py-1">{l.title_type ?? "—"}</td>
-              <td className="px-2 py-1">{l.seller_type ?? "—"}</td>
-            </tr>
-          ))}
+          {listings.map((l) => {
+            const checked = selectionMode && selectedIds!.has(l.lot_id);
+            return (
+              <tr
+                key={`${l.source}-${l.lot_id}`}
+                className={`border-t ${checked ? "bg-primary/5" : ""}`}
+              >
+                {selectionMode && (
+                  <td className="px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggle!(l.lot_id)}
+                    />
+                  </td>
+                )}
+                <td className="px-2 py-1">
+                  {l.year ?? "?"} {l.make ?? ""} {l.model ?? ""}
+                </td>
+                <td className="px-2 py-1 text-muted-foreground">
+                  {l.source}/{l.lot_id}
+                </td>
+                <td className="px-2 py-1">{l.location_state ?? "—"}</td>
+                <td className="px-2 py-1">${l.current_bid_usd ?? "—"}</td>
+                <td className="px-2 py-1">{l.damage_primary ?? "—"}</td>
+                <td className="px-2 py-1">{l.title_type ?? "—"}</td>
+                <td className="px-2 py-1">{l.seller_type ?? "—"}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
