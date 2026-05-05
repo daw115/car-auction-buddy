@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
@@ -31,6 +32,11 @@ const WatchlistRoute = WatchlistRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DatabaseRoute = DatabaseRouteImport.update({
+  id: '/database',
+  path: '/database',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
+  '/database': typeof DatabaseRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
+  '/database': typeof DatabaseRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
+  '/database': typeof DatabaseRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
@@ -142,6 +151,7 @@ export interface FileRouteTypes {
     | '/'
     | '/calculator'
     | '/dashboard'
+    | '/database'
     | '/settings'
     | '/watchlist'
     | '/api/config'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/'
     | '/calculator'
     | '/dashboard'
+    | '/database'
     | '/settings'
     | '/watchlist'
     | '/api/config'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/'
     | '/calculator'
     | '/dashboard'
+    | '/database'
     | '/settings'
     | '/watchlist'
     | '/api/config'
@@ -188,6 +200,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CalculatorRoute: typeof CalculatorRoute
   DashboardRoute: typeof DashboardRoute
+  DatabaseRoute: typeof DatabaseRoute
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
   ApiConfigRoute: typeof ApiConfigRoute
@@ -214,6 +227,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/database': {
+      id: '/database'
+      path: '/database'
+      fullPath: '/database'
+      preLoaderRoute: typeof DatabaseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -300,6 +320,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CalculatorRoute: CalculatorRoute,
   DashboardRoute: DashboardRoute,
+  DatabaseRoute: DatabaseRoute,
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,
   ApiConfigRoute: ApiConfigRoute,

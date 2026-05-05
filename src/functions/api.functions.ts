@@ -1935,3 +1935,182 @@ export const clearLlmCache = createServerFn({ method: "POST" })
       return { removed: 0 };
     }
   });
+
+// ---------- Database Browser (Python backend) ----------
+
+export const getDbOverview = createServerFn({ method: "GET" }).handler(async () => {
+  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+  const token = process.env.SCRAPER_API_TOKEN;
+  if (!baseUrl || !token) return null;
+  try {
+    const res = await fetch(`${baseUrl}/api/db/overview`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+});
+
+export const listBackendClients = createServerFn({ method: "GET" }).handler(async () => {
+  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+  const token = process.env.SCRAPER_API_TOKEN;
+  if (!baseUrl || !token) return [];
+  try {
+    const res = await fetch(`${baseUrl}/api/clients`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.clients ?? [];
+  } catch {
+    return [];
+  }
+});
+
+export const getBackendRecordsList = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ query: z.string().optional(), limit: z.number().optional() }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return [];
+    try {
+      const params = new URLSearchParams();
+      if (data.query) params.set("query", data.query);
+      if (data.limit) params.set("limit", String(data.limit));
+      const res = await fetch(`${baseUrl}/records?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.records ?? [];
+    } catch {
+      return [];
+    }
+  });
+
+export const getBackendRecordDetails = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ id: z.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return null;
+    try {
+      const res = await fetch(`${baseUrl}/records/${data.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  });
+
+export const listAllJobs = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ limit: z.number().optional() }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return [];
+    try {
+      const params = new URLSearchParams({ active_only: "false" });
+      if (data.limit) params.set("limit", String(data.limit));
+      const res = await fetch(`${baseUrl}/api/jobs?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.jobs ?? [];
+    } catch {
+      return [];
+    }
+  });
+
+export const getJobDetails = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ id: z.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return null;
+    try {
+      const res = await fetch(`${baseUrl}/api/jobs/${data.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  });
+
+export const listLlmCacheEntries = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ limit: z.number().optional() }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return [];
+    try {
+      const params = new URLSearchParams();
+      if (data.limit) params.set("limit", String(data.limit));
+      const res = await fetch(`${baseUrl}/api/llm-cache/list?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.items ?? [];
+    } catch {
+      return [];
+    }
+  });
+
+export const deleteLlmCacheEntry = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ key: z.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) throw new Error("Backend not configured");
+    const res = await fetch(`${baseUrl}/api/llm-cache/entry/${encodeURIComponent(data.key)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { ok: true };
+  });
+
+export const listHtmlCache = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ source: z.string().optional(), limit: z.number().optional() }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return [];
+    try {
+      const params = new URLSearchParams();
+      if (data.source) params.set("source", data.source);
+      if (data.limit) params.set("limit", String(data.limit));
+      const res = await fetch(`${baseUrl}/api/html-cache?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.items ?? [];
+    } catch {
+      return [];
+    }
+  });
+
+export const fetchAuthHtml = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ path: z.string().min(1).max(500) }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) throw new Error("Backend not configured");
+    if (!data.path.startsWith("/api/llm-cache/entry/") && !data.path.startsWith("/api/html-cache/")) {
+      throw new Error("Forbidden path");
+    }
+    const res = await fetch(`${baseUrl}${data.path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  });
