@@ -1405,7 +1405,7 @@ export const getJobLogs = createServerFn({ method: "POST" })
       .order("created_at", { ascending: true })
       .limit(500);
 
-    const local: LogRow[] = (localRows ?? []).map((r) => ({
+    const local: LogRow[] = (localRows ?? []).map((r: any) => ({
       id: r.id,
       created_at: r.created_at,
       level: r.level,
