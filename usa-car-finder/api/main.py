@@ -742,8 +742,10 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
         "broker_reports_html": [_absolute_artifact_url(u) for u in (result.get("broker_reports_html") or [])],
         # Endpointy do generowania pełnych HTML raportów na żądanie (POST z listą lotów)
         "report_endpoints": {
-            "client_html": f"{PUBLIC_BASE_URL}/report/client-html",
-            "broker_html": f"{PUBLIC_BASE_URL}/report/broker-html",
+            "client_html": f"{PUBLIC_BASE_URL}/report/client-html",       # Jinja2 template (zero kosztów)
+            "broker_html": f"{PUBLIC_BASE_URL}/report/broker-html",       # Jinja2 template (zero kosztów)
+            "client_llm": f"{PUBLIC_BASE_URL}/report/client-llm",         # 🔥 Claude rich (~$0.50/call)
+            "broker_llm": f"{PUBLIC_BASE_URL}/report/broker-llm",         # 🔥 Claude rich (~$1/call)
             "offer_email_html": f"{PUBLIC_BASE_URL}/report/offer-email-html",
             "pdf": f"{PUBLIC_BASE_URL}/report",
         },
