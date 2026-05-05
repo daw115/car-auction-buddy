@@ -1124,7 +1124,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     client_reports_html?: string[];
     broker_reports_html?: string[];
     artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
-    report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
+    report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
   }> => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -1162,7 +1162,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       client_reports_html?: string[];
       broker_reports_html?: string[];
       artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
-      report_endpoints?: { client_html?: string; broker_html?: string; offer_email_html?: string; pdf?: string };
+      report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
     };
 
     const status = j.status ?? "unknown";
