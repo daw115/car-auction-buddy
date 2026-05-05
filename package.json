@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:check": "bun run build 2>&1 | tee /tmp/build-output.log || node scripts/parse-build-errors.mjs /tmp/build-output.log"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [

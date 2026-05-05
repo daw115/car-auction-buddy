@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Build
+        id: build
+        run: |
+          bun run build 2>&1 | tee /tmp/build-output.log
+          exit ${PIPESTATUS[0]}
+        continue-on-error: true
+
+      - name: Parse import-protection errors
+        if: steps.build.outcome == 'failure'
+        run: node scripts/parse-build-errors.mjs /tmp/build-output.log
+
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
