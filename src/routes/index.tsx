@@ -1705,6 +1705,12 @@ function Panel() {
               <Calculator className="h-3.5 w-3.5" /> Kalkulator + VIN
             </Link>
             <Link
+              to="/database"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              <HardDrive className="h-3.5 w-3.5" /> 🗄️ Baza danych
+            </Link>
+            <Link
               to="/settings"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
             >
