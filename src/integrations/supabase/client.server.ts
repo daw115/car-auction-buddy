@@ -5,18 +5,18 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
+let _initWarned = false;
+
 function createSupabaseAdminClient() {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    const missing = [
-      ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
-      ...(!SUPABASE_SERVICE_ROLE_KEY ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
-    ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
-    console.error(`[Supabase] ${message}`);
-    throw new Error(message);
+    if (!_initWarned) {
+      console.warn("[supabase] Disabled — brakuje SUPABASE_URL lub SUPABASE_SERVICE_ROLE_KEY. Operacje DB zwrócą puste wyniki.");
+      _initWarned = true;
+    }
+    return null;
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -30,12 +30,45 @@ function createSupabaseAdminClient() {
 
 let _supabaseAdmin: ReturnType<typeof createSupabaseAdminClient> | undefined;
 
+// A chainable no-op query builder that returns { data: null, error: null }
+// for any method chain (.select, .insert, .update, .delete, .eq, .order, etc.)
+function createNoopBuilder(): any {
+  const terminal = { data: null, error: null, count: 0 };
+  const builder: any = new Proxy(Promise.resolve(terminal), {
+    get(target, prop) {
+      // Allow awaiting — return the thenable
+      if (prop === 'then' || prop === 'catch' || prop === 'finally') {
+        return (target as any)[prop].bind(target);
+      }
+      // Any chained method returns itself
+      return (..._args: any[]) => builder;
+    },
+  });
+  return builder;
+}
+
+// No-op Supabase client mock — every .from() returns a chainable no-op builder
+function createNoopClient(): any {
+  return new Proxy({}, {
+    get(_target, prop) {
+      if (prop === '__isNoopClient') return true;
+      // .from() and any other method return a no-op builder
+      return (..._args: any[]) => createNoopBuilder();
+    },
+  });
+}
+
 // Server-side Supabase client with service role - bypasses RLS
 // SECURITY: Only use this for trusted server-side operations, never expose to client code
 // Import like: import { supabaseAdmin } from "@/integrations/supabase/client.server";
-export const supabaseAdmin = new Proxy({} as ReturnType<typeof createSupabaseAdminClient>, {
+export const supabaseAdmin = new Proxy({} as any, {
   get(_, prop, receiver) {
-    if (!_supabaseAdmin) _supabaseAdmin = createSupabaseAdminClient();
-    return Reflect.get(_supabaseAdmin, prop, receiver);
+    if (prop === 'isAvailable') {
+      if (_supabaseAdmin === undefined) _supabaseAdmin = createSupabaseAdminClient();
+      return _supabaseAdmin !== null;
+    }
+    if (_supabaseAdmin === undefined) _supabaseAdmin = createSupabaseAdminClient();
+    const client = _supabaseAdmin ?? createNoopClient();
+    return Reflect.get(client, prop, receiver);
   },
 });
