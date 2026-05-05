@@ -330,26 +330,47 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     remaining_results = [r for r in ranked_results if not r.is_top_recommendation][:5]
     all_results = top_recommendations + remaining_results
 
-    # Auto-generuj raporty HTML po analizie AI — SHOWCASE 5 = TOP 4 + 1 marketing pick:
-    # 4 najlepsze (top_recommendations[:4]) + 1 pierwszy z "gorszych" lotów (z poza TOP 4)
-    # jako zabieg marketingowy — daje klientowi porównanie i czuje że ma większy wybór
+    # Auto-generuj raporty HTML po analizie AI — SHOWCASE 5 = TOP 3 POLECAM + 2 najlepsze RYZYKO:
+    # Klient widzi 3 najlepsze (jakość) + 2 alternatywy z większym ryzykiem (zabieg marketingowy
+    # — daje porównanie, klient ma poczucie wyboru). Sortowanie po score wewnątrz każdej kategorii.
     client_html_files: list[str] = []
     broker_html_files: list[str] = []
     index_file: Optional[str] = None
 
-    showcase: list = list(top_recommendations[:4])  # 4 najlepsze
-    # 5-ta pozycja: pierwszy lot z poza TOP 4 (najlepszy z "gorszych" = najlepszy z RYZYKO/POLECAM
-    # po pozycji 4-tej w rankingu). Jeśli wszystkie POLECAM mieszczą się w top 4, weź najlepszy
-    # z RYZYKO. To jest "marketing pick" — pokazuje klientowi że jest też alternatywa.
-    fifth_pick = None
-    for candidate in ranked_results[4:]:
-        if candidate.analysis.recommendation in ("POLECAM", "RYZYKO"):
-            fifth_pick = candidate
-            break
-    if fifth_pick:
-        showcase.append(fifth_pick)
+    polecam_lots = sorted(
+        [r for r in ranked_results if r.analysis.recommendation == "POLECAM"],
+        key=lambda r: -r.analysis.score,
+    )
+    ryzyko_lots = sorted(
+        [r for r in ranked_results if r.analysis.recommendation == "RYZYKO"],
+        key=lambda r: -r.analysis.score,
+    )
+
+    SHOWCASE_TOP_POLECAM = int(os.getenv("SHOWCASE_TOP_POLECAM", "3"))
+    SHOWCASE_TOP_RYZYKO = int(os.getenv("SHOWCASE_TOP_RYZYKO", "2"))
+    SHOWCASE_TOTAL = SHOWCASE_TOP_POLECAM + SHOWCASE_TOP_RYZYKO
+
+    showcase: list = list(polecam_lots[:SHOWCASE_TOP_POLECAM])
+    showcase += list(ryzyko_lots[:SHOWCASE_TOP_RYZYKO])
+
+    # Fallback: jeśli mniej niż 5 łącznie (np. brak POLECAM), uzupełnij z pozostałych RYZYKO
+    if len(showcase) < SHOWCASE_TOTAL:
+        used_ids = {r.lot.lot_id for r in showcase}
+        for candidate in ryzyko_lots[SHOWCASE_TOP_RYZYKO:] + polecam_lots[SHOWCASE_TOP_POLECAM:]:
+            if candidate.lot.lot_id not in used_ids:
+                showcase.append(candidate)
+                used_ids.add(candidate.lot.lot_id)
+                if len(showcase) >= SHOWCASE_TOTAL:
+                    break
 
     polecane = showcase  # zachowuję nazwę zmiennej żeby reszta kodu nie wymagała zmian
+    logger.info(
+        "Showcase: %d POLECAM + %d RYZYKO (target %d+%d)",
+        sum(1 for r in showcase if r.analysis.recommendation == "POLECAM"),
+        sum(1 for r in showcase if r.analysis.recommendation == "RYZYKO"),
+        SHOWCASE_TOP_POLECAM,
+        SHOWCASE_TOP_RYZYKO,
+    )
 
     if polecane and slug:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -359,8 +380,11 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             f"budżet ${criteria.budget_usd:,.0f}"
         ).strip()
 
-        # Mode: 'llm' (Claude generuje rich raporty z few-shot wzorca) lub 'template' (Jinja2)
-        reports_mode = os.getenv("REPORTS_MODE", "llm").lower()
+        # Mode: 'template' (Jinja2, ZERO kosztów AI) lub 'llm' (Claude rich, ~$4/scrape!).
+        # DEFAULT TERAZ TEMPLATE — auto-LLM przy każdym scrape generował 10 calli × $0.40 = $4
+        # tylko po to żeby user może je w ogóle nie obejrzał. Lepsze: szybkie templatki
+        # po scrape, plus PRZYCISK 'Generuj rich raport LLM' on-demand per lot w UI.
+        reports_mode = os.getenv("REPORTS_MODE", "template").lower()
         try:
             if reports_mode == "llm":
                 from report.llm_html_reports import render_client_report_llm, render_broker_report_llm
@@ -371,15 +395,23 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 render_client_fn = lambda it: render_client_report(it, criteria=criteria)
                 render_broker_fn = lambda it: render_broker_report(it, criteria=criteria, lots_scanned=len(all_lots))
 
-            # Generuj 2N raportów RÓWNOLEGLE przez asyncio.gather + to_thread
-            # (kazdy LLM call to ~30-60s, sekwencyjnie 10 calli = 5-10 min, parallel = 1-2 min)
+            # Generuj raporty z limitem concurrency — RouteAI ma per-user concurrent limit
+            # (zwykle 2-3), więc 10 calli równoległych = większość pada na 429.
+            # LLM_REPORTS_CONCURRENCY=2 znaczy max 2 LLM calle naraz, kolejne czekają.
+            llm_concurrency = int(os.getenv("LLM_REPORTS_CONCURRENCY", "2"))
+            llm_semaphore = asyncio.Semaphore(llm_concurrency)
+
+            async def _gen_with_semaphore(fn, item):
+                async with llm_semaphore:
+                    return await asyncio.to_thread(fn, item)
+
             async def gen_one(idx: int, item: AnalyzedLot) -> dict:
                 lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
                 title = f"{item.lot.year or ''} {item.lot.make or ''} {item.lot.model or ''} {item.lot.trim or ''}".strip()
-                links = {"title": title, "badge": f"score {item.analysis.score:.1f}", "client": None, "broker": None}
+                links = {"title": title, "badge": f"score {item.analysis.score:.1f} {item.analysis.recommendation}", "client": None, "broker": None}
 
-                client_task = asyncio.to_thread(render_client_fn, item)
-                broker_task = asyncio.to_thread(render_broker_fn, item)
+                client_task = _gen_with_semaphore(render_client_fn, item)
+                broker_task = _gen_with_semaphore(render_broker_fn, item)
                 results = await asyncio.gather(client_task, broker_task, return_exceptions=True)
 
                 if not isinstance(results[0], Exception):
@@ -1000,6 +1032,39 @@ async def generate_broker_html_report(request: ApproveReportRequest):
         lots_for_report[0],
         criteria=request.criteria,
         lots_scanned=len(request.approved_lots),
+    )
+    return HTMLResponse(content=html)
+
+
+@app.post("/report/client-llm")
+async def generate_client_llm_report(request: ApproveReportRequest):
+    """Rich raport klienta przez LLM (~$0.50 per call!). Tylko on-demand."""
+    from report.llm_html_reports import render_client_report_llm
+    from fastapi.responses import HTMLResponse
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów")
+
+    html = await asyncio.to_thread(render_client_report_llm, lots_for_report[0], request.criteria)
+    return HTMLResponse(content=html)
+
+
+@app.post("/report/broker-llm")
+async def generate_broker_llm_report(request: ApproveReportRequest):
+    """Rich raport brokerski przez LLM (~$1 per call!). Tylko on-demand."""
+    from report.llm_html_reports import render_broker_report_llm
+    from fastapi.responses import HTMLResponse
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów")
+
+    html = await asyncio.to_thread(
+        render_broker_report_llm,
+        lots_for_report[0],
+        request.criteria,
+        len(request.approved_lots),
     )
     return HTMLResponse(content=html)
 
