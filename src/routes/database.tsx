@@ -195,11 +195,29 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
 
 // ── Search Records Section ──
 
+function statusBadge(status: string | undefined) {
+  if (!status) return <Badge variant="outline" className="text-[10px]">—</Badge>;
+  switch (status) {
+    case "done":
+    case "new":
+      return <Badge variant="default" className="text-[10px]">✅ Ukończone</Badge>;
+    case "cancelled":
+      return <Badge variant="secondary" className="text-[10px]">⛔ Anulowane</Badge>;
+    case "error":
+      return <Badge variant="destructive" className="text-[10px]">❌ Błąd</Badge>;
+    case "interrupted":
+      return <Badge variant="outline" className="text-[10px]">⚠️ Przerwane</Badge>;
+    default:
+      return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
+  }
+}
+
 function RecordsSection() {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(50);
+  const [onlyCompleted, setOnlyCompleted] = useState(true);
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const fn = useServerFn(getBackendRecordsList);
@@ -231,11 +249,23 @@ function RecordsSection() {
     }
   };
 
+  const filtered = onlyCompleted
+    ? records.filter((r: any) => r.status === "done" || r.status === "new" || !r.status)
+    : records;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">📋 Search Records</CardTitle>
         <div className="flex items-center gap-2">
+          <Button
+            variant={onlyCompleted ? "default" : "outline"}
+            size="sm"
+            onClick={() => setOnlyCompleted(!onlyCompleted)}
+            className="text-xs"
+          >
+            {onlyCompleted ? "✅ Tylko ukończone" : "📋 Wszystkie"}
+          </Button>
           <Input
             placeholder="Szukaj…"
             value={query}
@@ -259,7 +289,7 @@ function RecordsSection() {
       <CardContent>
         {loading && records.length === 0 ? (
           <div className="flex justify-center py-6"><Spin /></div>
-        ) : records.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <EmptyState text="Brak rekordów" />
         ) : (
           <div className="max-h-[500px] overflow-auto rounded border">
@@ -270,20 +300,20 @@ function RecordsSection() {
                   <TableHead>Tytuł</TableHead>
                   <TableHead>Klient</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Info</TableHead>
                   <TableHead className="text-right">Lots</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((r: any) => (
+                {filtered.map((r: any) => (
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => openDetail(r.id)}>
                     <TableCell className="text-xs whitespace-nowrap">{fmtDate(r.created_at)}</TableCell>
                     <TableCell className="max-w-[200px] truncate text-xs">{r.title || "—"}</TableCell>
                     <TableCell className="text-xs">{r.client || "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant={r.status === "done" ? "default" : r.status === "error" ? "destructive" : "secondary"} className="text-[10px]">
-                        {r.status}
-                      </Badge>
+                    <TableCell>{statusBadge(r.status)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                      {r.analysis_notice || "—"}
                     </TableCell>
                     <TableCell className="text-right text-xs">{r.collected_count ?? "—"}</TableCell>
                     <TableCell>
@@ -710,7 +740,7 @@ function HtmlCacheSection() {
 // ── Model Normalizations Section ──
 
 function NormalizationsSection() {
-  const [items, setItems] = useState<any[]>([]);
+  const [data, setData] = useState<{ items: any[]; stats?: any } | null>(null);
   const [loading, setLoading] = useState(true);
   const fn = useServerFn(getModelNormalizations);
   const fnDelete = useServerFn(deleteModelNormalization);
@@ -719,7 +749,7 @@ function NormalizationsSection() {
     setLoading(true);
     try {
       const r = await fn();
-      setItems(r?.items ?? []);
+      setData(r ?? { items: [] });
     } catch {
       toast.error("Nie udało się pobrać normalizacji");
     } finally {
@@ -728,6 +758,9 @@ function NormalizationsSection() {
   }, [fn]);
 
   useEffect(() => { load(); }, []);
+
+  const items = data?.items ?? [];
+  const stats = data?.stats;
 
   const handleDelete = async (id: string | number) => {
     try {
@@ -742,7 +775,15 @@ function NormalizationsSection() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-base">🔤 Cache normalizacji modeli</CardTitle>
+        <CardTitle className="text-base">
+          🔤 Cache normalizacji modeli
+          {stats && (
+            <span className="text-xs text-muted-foreground ml-2 font-normal">
+              {stats.total ?? items.length} wpisów
+              {stats.by_make && ` · ${Object.keys(stats.by_make).join(", ")}`}
+            </span>
+          )}
+        </CardTitle>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           {loading ? <Spin /> : <RefreshCw className="h-3.5 w-3.5" />}
           <span className="ml-1.5">Refresh</span>
@@ -761,8 +802,8 @@ function NormalizationsSection() {
                   <TableHead>Make</TableHead>
                   <TableHead>Klient pisze</TableHead>
                   <TableHead>Copart/IAAI</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Verified</TableHead>
+                  <TableHead>Reason (Claude)</TableHead>
+                  <TableHead className="text-right">Verified</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -773,7 +814,7 @@ function NormalizationsSection() {
                     <TableCell className="font-mono text-xs">{n.original_text}</TableCell>
                     <TableCell className="font-semibold text-xs">{n.normalized_model}</TableCell>
                     <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{n.reason || "—"}</TableCell>
-                    <TableCell className="text-xs">×{n.verified_count ?? 0}</TableCell>
+                    <TableCell className="text-right text-xs">×{n.verified_count ?? 0}</TableCell>
                     <TableCell>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(n.id)}>
                         🗑️
