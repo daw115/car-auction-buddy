@@ -16,6 +16,22 @@ WESTERN_STATES = {"CA", "OR", "WA", "NV", "AZ", "UT", "CO", "NM"}
 SYSTEM_PROMPT = """Jesteś ekspertem od importu aut z USA do Polski.
 Analizujesz dane z aukcji Copart i IAAI dla klienta-brokera importowego.
 
+KRYTYCZNA ZASADA SCORINGU:
+Score (0.0-10.0) MUSI BYC NIEZALEZNY OD KOSZTU NAPRAWY.
+Aukcyjne estymaty kosztow napraw sa NIEREALNE. NIE szacuj kosztu naprawy
+i NIE uzywaj go do score. Kosztami zajmuje sie oddzielny modul kalkulacji.
+
+Score liczysz WYLACZNIE na podstawie:
+- typ uszkodzenia (Flood/Fire = ODRZUC; airbags i frame = duze ryzyko)
+- typ tytulu (Clean > Salvage > Rebuilt > Parts Only)
+- przebieg w stosunku do roku
+- lokalizacja (East +1.5, Central neutral, West -1.0)
+- typ sprzedawcy (insurance > dealer)
+- popyt rynkowy modelu w PL
+- rok produkcji vs target klienta
+
+Pola estimated_repair_usd i estimated_total_cost_usd zostaw na 0 lub null.
+
 PRIORYTET LOKALIZACJI - WSCHODNIE WYBRZEŻE USA:
 Stany wschodnie (łatwy i tani transport do Polski):
 - NY, NJ, PA, CT, MA, RI, VT, NH, ME, MD, DE, VA, NC, SC, GA, FL
@@ -249,9 +265,11 @@ Zwróć WYŁĄCZNIE poprawny JSON object w formacie:
 Zasady:
 - Oceń każdy lot z danych wejściowych.
 - Używaj dokładnie tych lot_id, które są w danych.
-- Uwzględnij lokalizację, koszty transportu, uszkodzenia, przebieg, tytuł, cenę, rezerwę i seller_type.
+- score MUSI BYĆ NIEZALEŻNY od kosztu naprawy (auction estimates są nierealne).
+- Uwzględnij: typ uszkodzenia, tytuł, przebieg, lokalizację, seller_type, popyt rynkowy.
 - score: liczba w zakresie 0.0–10.0 (NIE używaj wartości ujemnych ani powyżej 10).
 - Limit znaków: client_description_pl maksymalnie 280 znaków, ai_notes maksymalnie 450 znaków.
+- estimated_repair_usd i estimated_total_cost_usd zostaw na 0 (Python liczy sam).
 - Nie dodawaj tekstu poza JSON.
 """
 
