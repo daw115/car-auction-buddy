@@ -1287,6 +1287,7 @@ function Panel() {
     }
   }
 
+  async function callScraper() {
     if (!env?.SCRAPER_BASE_URL) {
       toast.error("SCRAPER_BASE_URL nie jest ustawiony.");
       return;
