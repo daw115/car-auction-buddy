@@ -659,6 +659,7 @@ function Panel() {
   const fnRunLotReports = useServerFn(runLotReports);
   const fnGetReportBundle = useServerFn(getReportBundle);
   const fnAddWatch = useServerFn(addToWatchlist);
+  const fnParseMessage = useServerFn(parseClientMessage);
 
   async function downloadReportBundle(recordId: string) {
     try {
