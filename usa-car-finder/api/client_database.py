@@ -58,6 +58,24 @@ def init_db() -> None:
             """
         )
 
+        # Migration: dodaj kolumnę job_id jeśli nie istnieje (do idempotent zapisywania
+        # rekordów dla tego samego joba bez duplikacji).
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(search_records)").fetchall()}
+        if "job_id" not in cols:
+            conn.execute("ALTER TABLE search_records ADD COLUMN job_id TEXT")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_search_records_job_id ON search_records(job_id)")
+
+
+def search_record_exists_for_job(job_id: str) -> bool:
+    """Sprawdza czy istnieje już search_record dla danego job_id (deduplikacja)."""
+    if not job_id:
+        return False
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM search_records WHERE job_id = ? LIMIT 1", (job_id,)
+        ).fetchone()
+    return row is not None
+
 
 def _clean_text(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -128,21 +146,31 @@ def save_search_record(
     collected_count: int,
     analysis_notice: Optional[str],
     notes: Optional[str] = None,
+    status: str = "new",
+    job_id: Optional[str] = None,
 ) -> int:
+    """Zapisuje rekord wyszukiwania.
+
+    status: 'new' (default — DONE z wynikami), 'cancelled', 'error', 'interrupted'.
+    job_id: ID powiązanego joba (jeśli pochodzi z queue) — dla traceability.
+    """
     now = _now()
     with _connect() as conn:
         response_data = dict(response_data or {})
+        if job_id and "job_id" not in response_data:
+            response_data["job_id"] = job_id
         cursor = conn.execute(
             """
             INSERT INTO search_records (
-                client_id, title, notes, criteria_json, request_json, response_json,
-                artifact_urls_json, collected_count, analysis_notice, created_at, updated_at
+                client_id, title, status, notes, criteria_json, request_json, response_json,
+                artifact_urls_json, collected_count, analysis_notice, job_id, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 client_id,
                 title,
+                status,
                 _clean_text(notes),
                 json.dumps(criteria, ensure_ascii=False),
                 json.dumps(request_data, ensure_ascii=False),
@@ -150,6 +178,7 @@ def save_search_record(
                 json.dumps(artifact_urls or {}, ensure_ascii=False),
                 int(collected_count or 0),
                 analysis_notice,
+                job_id,
                 now,
                 now,
             ),

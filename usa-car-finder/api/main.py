@@ -38,6 +38,55 @@ async def lifespan(app: FastAPI):
         orphans = job_db.mark_orphaned_running_as_interrupted()
         if orphans:
             logger.warning("[lifespan] Oznaczono %d zombi-jobów jako interrupted", orphans)
+
+        # Zapis search_records dla wszystkich terminalnych jobow (cancelled/error/interrupted)
+        # ktore jeszcze go nie maja. Dedupping przez job_id. Idempotentne — dziala przy
+        # kazdym starcie, no-op gdy wszystko juz zapisane.
+        try:
+            from api.client_database import (
+                init_db as _init_app_db, save_search_record, search_record_exists_for_job,
+            )
+            _init_app_db()
+            all_rows = job_db.load_all_rows()
+            backfilled = 0
+            for row in all_rows:
+                status = row.get("status")
+                if status not in ("interrupted", "cancelled", "error"):
+                    continue
+                job_id = row.get("id")
+                if not job_id or search_record_exists_for_job(job_id):
+                    continue
+                request_data = json.loads(row.get("request_json") or "{}")
+                crit = request_data.get("criteria") or {}
+                if not crit.get("make"):
+                    continue
+                parts = [crit.get("make", "?"), crit.get("model") or ""]
+                if crit.get("year_from"):
+                    parts.append(f"od {crit['year_from']}")
+                title = " ".join(p for p in parts if p).strip()
+                notice_map = {
+                    "interrupted": "Zadanie zostało przerwane (uvicorn restart przed ukończeniem)",
+                    "cancelled": "Zadanie zostało anulowane przez użytkownika",
+                    "error": row.get("error") or "Nieznany błąd",
+                }
+                save_search_record(
+                    client_id=None,
+                    title=title or "?",
+                    criteria=crit,
+                    request_data=request_data,
+                    response_data={"job_id": job_id, "status": status, "error": row.get("error")},
+                    artifact_urls={},
+                    collected_count=0,
+                    analysis_notice=notice_map.get(status, status),
+                    status=status,
+                    job_id=job_id,
+                )
+                backfilled += 1
+            if backfilled:
+                logger.info("[lifespan] Backfill: zapisano %d brakujacych terminalnych records", backfilled)
+        except Exception:
+            logger.exception("[lifespan] Backfill terminalnych records nieudany")
+
         loaded = jobs_store.hydrate_jobs_from_db()
         if loaded:
             logger.info("[lifespan] Wczytano %d persystowanych jobów z DB", loaded)
@@ -622,6 +671,8 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             collected_count=response_payload.collected_count,
             analysis_notice=response_payload.analysis_notice,
             notes=(client_payload or {}).get("notes") if client_payload else None,
+            status="done",
+            job_id=job.id,  # link do joba dla traceability
         )
         response_payload.record_id = record_id
         response_payload.client_id = client_id
@@ -661,6 +712,47 @@ def _heuristic_rank(lots):
     return top, ranked
 
 
+def _save_job_terminal_record(
+    request: SearchRequest,
+    job: jobs_store.Job,
+    status: str,
+    error: Optional[str] = None,
+) -> None:
+    """Zapisuje rekord w app.db.search_records dla joba ktory NIE doszedl do done.
+
+    Dla cancelled/error/interrupted: zapisujemy criteria + status + error,
+    bez wynikow scrape (request_data jako request_json, pusty response).
+
+    Dedupping: jesli rekord dla tego job_id juz istnieje, pomijamy (idempotent).
+    """
+    try:
+        from api.client_database import init_db, save_search_record, upsert_client, search_record_exists_for_job
+        init_db()
+        if search_record_exists_for_job(job.id):
+            logger.info("[record] Skip — rekord dla job %s juz istnieje", job.id)
+            return
+        client_payload = request.client.model_dump(mode="json") if request.client else None
+        client_id = upsert_client(client_payload)
+        request_dict = request.model_dump(mode="json")
+        save_search_record(
+            client_id=client_id,
+            title=search_title(request.criteria),
+            criteria=request.criteria.model_dump(mode="json"),
+            request_data=request_dict,
+            response_data={"job_id": job.id, "status": status, "error": error},
+            artifact_urls={},
+            collected_count=0,
+            analysis_notice=error,
+            notes=(client_payload or {}).get("notes") if client_payload else None,
+            status=status,
+            job_id=job.id,
+        )
+        logger.info("[record] Zapisano %s record dla joba %s (criteria: %s)",
+                    status, job.id, search_title(request.criteria))
+    except Exception:
+        logger.exception("[record] Failed to save terminal record for job %s", job.id)
+
+
 async def _run_job(request: SearchRequest, job: jobs_store.Job) -> None:
     try:
         await jobs_store.mark_running(job)
@@ -669,10 +761,14 @@ async def _run_job(request: SearchRequest, job: jobs_store.Job) -> None:
     except asyncio.CancelledError:
         logger.info("Search job %s cancelled", job.id)
         await jobs_store.mark_cancelled(job)
+        # Zapisz rekord nawet dla anulowanego joba — user musi widziec w Rekordach
+        await asyncio.to_thread(_save_job_terminal_record, request, job, "cancelled", "Anulowane przez uzytkownika")
         # nie podnosimy dalej — task ma się skończyć cicho
     except Exception as exc:
         logger.exception("Search job %s failed", job.id)
-        await jobs_store.mark_error(job, f"{exc.__class__.__name__}: {exc}")
+        error_msg = f"{exc.__class__.__name__}: {exc}"
+        await jobs_store.mark_error(job, error_msg)
+        await asyncio.to_thread(_save_job_terminal_record, request, job, "error", error_msg)
 
 
 def _compute_criteria_hash(request: SearchRequest) -> str:
