@@ -1150,13 +1150,19 @@ async def parse_client_message_endpoint(
     request: ParseClientMessageRequest,
     _auth: None = Depends(_require_bearer),
 ):
-    """LLM parser wiadomości klienta -> ClientCriteria + summary + warnings.
+    """LLM parser wiadomości klienta -> lista ClientCriteria + summary + warnings.
 
-    Body: {message: "Szukam BMW M5 z 2018-2020, budżet 30k USD..."}
-    Response: {criteria: {...}, summary: "...", warnings: [...]}
+    Body: {message: "Szukam BMW M5 z 2018-2020 lub Audi S5 2019-2023..."}
+    Response: {
+        criteria_list: [{...}, {...}],   # 1+ aut z wiadomości
+        criteria: {...},                  # backwards compat: criteria_list[0]
+        count: 2,
+        summary: "Klient wymienił 2 auta: BMW M5, Audi S5",
+        warnings: ["Brak budżetu dla wszystkich aut"]
+    }
 
     Errors:
-        400 — pusta wiadomość lub LLM nie wyłapał `make`
+        400 — pusta wiadomość lub żadnego auta nie wyłapano
         422 — sparsowane criteria nie przeszły walidacji Pydantic
         503 — wszyscy LLM providery padli
     """
@@ -1175,20 +1181,44 @@ async def parse_client_message_endpoint(
     summary = parsed.pop("_summary", "")
     warnings = parsed.pop("_warnings", []) or []
 
-    if not parsed.get("make") or not str(parsed.get("make", "")).strip():
+    # Multi-cars: parser zwraca {cars: [...], _summary, _warnings}
+    cars_raw = parsed.get("cars")
+    if not cars_raw:
+        # Backwards-compat: parser zwrocil flat criteria (stara wersja)
+        if parsed.get("make"):
+            cars_raw = [parsed]
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Nie udało się wyłapać żadnego auta z wiadomości. Klient musi podać markę.",
+            )
+
+    # Validate each car przez ClientCriteria
+    criteria_list: list[dict] = []
+    validation_errors: list[str] = []
+    for idx, car in enumerate(cars_raw):
+        if not car.get("make") or not str(car.get("make", "")).strip():
+            validation_errors.append(f"Auto #{idx+1}: brak marki — pominięte")
+            continue
+        try:
+            obj = ClientCriteria(**car)
+            criteria_list.append(obj.model_dump(mode="json"))
+        except Exception as exc:
+            validation_errors.append(f"Auto #{idx+1} ({car.get('make')}): {exc}")
+
+    if not criteria_list:
         raise HTTPException(
-            status_code=400,
-            detail="Nie udało się wyłapać marki (make) z wiadomości. Klient musi podać markę auta.",
+            status_code=422,
+            detail=f"Żadne auto nie przeszło walidacji: {'; '.join(validation_errors)}",
         )
 
-    # Walidacja przez ClientCriteria
-    try:
-        criteria_obj = ClientCriteria(**parsed)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Sparsowane criteria niepoprawne: {exc}") from exc
+    if validation_errors:
+        warnings = list(warnings) + validation_errors
 
     return {
-        "criteria": criteria_obj.model_dump(mode="json"),
+        "criteria_list": criteria_list,
+        "criteria": criteria_list[0],  # backwards compat dla single-car UI
+        "count": len(criteria_list),
         "summary": summary,
         "warnings": warnings,
     }
