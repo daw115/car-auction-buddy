@@ -147,7 +147,7 @@ def search_title(criteria: ClientCriteria) -> str:
         criteria.make,
         criteria.model or "",
         f"od {criteria.year_from}" if criteria.year_from else "",
-        f"do ${criteria.budget_usd:,.0f}",
+        f"do ${criteria.budget_usd:,.0f}" if criteria.budget_usd else "bez limitu budżetu",
     ]
     return " ".join(part for part in parts if part).replace("  ", " ")
 
@@ -374,17 +374,27 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     showcase_lot_ids = {r.lot.lot_id for r in showcase}
     for r in ranked_results:
         r.is_top_recommendation = r.lot.lot_id in showcase_lot_ids
-    # Synchronizuj też top_recommendations (response field)
-    top_recommendations = showcase
-    remaining_results = [r for r in ranked_results if r.lot.lot_id not in showcase_lot_ids][:5]
+
+    # MAX_FINAL_RESULTS: cap ostatecznej listy zwracanej do UI po scoringu (default 10).
+    # Showcase (auto-raporty) zawsze idzie pierwszy, potem dopełniamy najlepszymi z reszty.
+    max_final = int(os.getenv("MAX_FINAL_RESULTS", "10"))
+    top_recommendations = showcase[:max_final]
+    remaining_capacity = max_final - len(top_recommendations)
+    remaining_results = [r for r in ranked_results if r.lot.lot_id not in showcase_lot_ids][:remaining_capacity] if remaining_capacity > 0 else []
     all_results = top_recommendations + remaining_results
+
+    logger.info(
+        "Cap MAX_FINAL_RESULTS=%d: zwracam %d showcase + %d additional = %d total",
+        max_final, len(top_recommendations), len(remaining_results), len(all_results),
+    )
 
     if polecane and slug:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        budget_str = f"budżet ${criteria.budget_usd:,.0f}" if criteria.budget_usd else "bez limitu budżetu"
         search_query_str = (
             f"{criteria.make} {criteria.model or ''} "
             f"{criteria.year_from or ''}-{criteria.year_to or ''}, "
-            f"budżet ${criteria.budget_usd:,.0f}"
+            f"{budget_str}"
         ).strip()
 
         # Mode: 'hybrid' (Gemini darmowy + Otomoto, default), 'template' (Jinja2 zero LLM,
@@ -1128,6 +1138,60 @@ async def generate_broker_llm_report(request: ApproveReportRequest):
             render_broker_report_llm, lots_for_report[0], request.criteria, len(request.approved_lots),
         )
     return HTMLResponse(content=html)
+
+
+class ParseClientMessageRequest(BaseModel):
+    """Wiadomość od klienta do sparsowania na ClientCriteria."""
+    message: str
+
+
+@app.post("/api/parse-client-message")
+async def parse_client_message_endpoint(
+    request: ParseClientMessageRequest,
+    _auth: None = Depends(_require_bearer),
+):
+    """LLM parser wiadomości klienta -> ClientCriteria + summary + warnings.
+
+    Body: {message: "Szukam BMW M5 z 2018-2020, budżet 30k USD..."}
+    Response: {criteria: {...}, summary: "...", warnings: [...]}
+
+    Errors:
+        400 — pusta wiadomość lub LLM nie wyłapał `make`
+        422 — sparsowane criteria nie przeszły walidacji Pydantic
+        503 — wszyscy LLM providery padli
+    """
+    if not request.message or not request.message.strip():
+        raise HTTPException(status_code=400, detail="Wiadomość nie może być pusta")
+
+    from ai.message_parser import parse_client_message
+
+    try:
+        parsed = await asyncio.to_thread(parse_client_message, request.message)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"LLM niedostępny: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    summary = parsed.pop("_summary", "")
+    warnings = parsed.pop("_warnings", []) or []
+
+    if not parsed.get("make") or not str(parsed.get("make", "")).strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Nie udało się wyłapać marki (make) z wiadomości. Klient musi podać markę auta.",
+        )
+
+    # Walidacja przez ClientCriteria
+    try:
+        criteria_obj = ClientCriteria(**parsed)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Sparsowane criteria niepoprawne: {exc}") from exc
+
+    return {
+        "criteria": criteria_obj.model_dump(mode="json"),
+        "summary": summary,
+        "warnings": warnings,
+    }
 
 
 @app.get("/api/llm-cache/stats")

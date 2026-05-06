@@ -238,7 +238,7 @@ def _analysis_user_prompt(lots_data: list[dict], criteria: ClientCriteria) -> st
 Kryteria klienta:
 - Marka/model: {criteria.make} {criteria.model or '(dowolny)'}
 - Rocznik: {criteria.year_from or 'dowolny'}–{criteria.year_to or 'dowolny'}
-- Budżet maksymalny: {criteria.budget_usd} USD (łącznie z transportem i naprawą)
+- Budżet maksymalny: {f'{criteria.budget_usd} USD (łącznie z transportem i naprawą)' if criteria.budget_usd else 'bez limitu (klient nie podał)'}
 - Maksymalny przebieg: {criteria.max_odometer_mi or 'bez limitu'} mil
 - Wykluczone typy uszkodzeń: {', '.join(criteria.excluded_damage_types)}
 
@@ -568,7 +568,8 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
         transport_usd = lot.delivery_cost_estimate_usd or _location_transport_usd(state)
         estimated_total = int(round(bid_usd + repair_usd + transport_usd + 500))
 
-        if estimated_total > criteria.budget_usd:
+        # Budget filter: tylko gdy klient podał budżet
+        if criteria.budget_usd and estimated_total > criteria.budget_usd:
             red_flags.append("Szacunek powyżej budżetu")
             score -= 1.5
 
@@ -576,7 +577,7 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
         severe_flags = {"Flood/water damage", "Fire damage", "Parts only title"}
         if severe_flags.intersection(red_flags) or score < 4.0:
             recommendation = "ODRZUĆ"
-        elif score >= 7.0 and estimated_total <= criteria.budget_usd * 1.05:
+        elif score >= 7.0 and (criteria.budget_usd is None or estimated_total <= criteria.budget_usd * 1.05):
             recommendation = "POLECAM"
         else:
             recommendation = "RYZYKO"

@@ -58,7 +58,7 @@ class ClientCriteria(BaseModel):
     model: Optional[str] = None
     year_from: Optional[int] = None
     year_to: Optional[int] = None
-    budget_usd: float
+    budget_usd: Optional[float] = None  # Opcjonalny — niektorzy klienci nie podaja
     max_odometer_mi: Optional[int] = None
     allowed_damage_types: list[str] = Field(default_factory=list)
     excluded_damage_types: list[str] = Field(
@@ -77,9 +77,11 @@ class ClientCriteria(BaseModel):
 
     @field_validator("budget_usd")
     @classmethod
-    def budget_positive(cls, value: float) -> float:
+    def budget_positive(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return None
         if value <= 0:
-            raise ValueError("Budżet musi być większy od zera")
+            raise ValueError("Budżet musi być większy od zera (lub null)")
         return value
 
     @field_validator("max_results")

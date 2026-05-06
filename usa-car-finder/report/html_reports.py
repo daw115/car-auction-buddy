@@ -392,7 +392,8 @@ def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
             parts.append(f"od {criteria.year_from}")
         if criteria.year_to:
             parts.append(f"do {criteria.year_to}")
-        parts.append(f"budżet ${criteria.budget_usd:,.0f}")
+        if criteria.budget_usd:
+            parts.append(f"budżet ${criteria.budget_usd:,.0f}")
         criteria_summary = " ".join(p for p in parts if p)
 
     cost_rows = _build_cost_rows(costs) if costs else []
