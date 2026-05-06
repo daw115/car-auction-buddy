@@ -1904,6 +1904,11 @@ function Panel() {
         </div>
       </header>
 
+      {/* Sticky active jobs panel */}
+      <div className="px-4 pt-3">
+        <ActiveJobsPanel />
+      </div>
+
       <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         {/* ---- Clients column ---- */}
         <aside className="space-y-3">
