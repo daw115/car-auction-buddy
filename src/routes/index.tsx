@@ -884,7 +884,7 @@ function Panel() {
           report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
           // Python adapter zwraca już gotową analizę AI (POLECAM/RYZYKO/ODRZUĆ + score)
           // Dzięki temu TS NIE musi dublować callAI() przez runAnalysis (~50% mniej tokenów).
-          analyzed_lots?: Array<{ lot: CarLot; analysis: AIAnalysis; is_top_recommendation?: boolean }>;
+          analyzed_lots?: Array<{ lot: CarLot; analysis: AIAnalysis; is_top_recommendation?: boolean; auto_reports?: { client_hybrid_url?: string; broker_hybrid_url?: string } }>;
         };
         // Phase labels for toast notifications
         const PHASE_TOAST_LABELS: Record<string, string> = {
