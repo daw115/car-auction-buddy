@@ -740,7 +740,7 @@ function HtmlCacheSection() {
 // ── Model Normalizations Section ──
 
 function NormalizationsSection() {
-  const [items, setItems] = useState<any[]>([]);
+  const [data, setData] = useState<{ items: any[]; stats?: any } | null>(null);
   const [loading, setLoading] = useState(true);
   const fn = useServerFn(getModelNormalizations);
   const fnDelete = useServerFn(deleteModelNormalization);
@@ -749,7 +749,7 @@ function NormalizationsSection() {
     setLoading(true);
     try {
       const r = await fn();
-      setItems(r?.items ?? []);
+      setData(r ?? { items: [] });
     } catch {
       toast.error("Nie udało się pobrać normalizacji");
     } finally {
@@ -758,6 +758,9 @@ function NormalizationsSection() {
   }, [fn]);
 
   useEffect(() => { load(); }, []);
+
+  const items = data?.items ?? [];
+  const stats = data?.stats;
 
   const handleDelete = async (id: string | number) => {
     try {
@@ -772,7 +775,15 @@ function NormalizationsSection() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-base">🔤 Cache normalizacji modeli</CardTitle>
+        <CardTitle className="text-base">
+          🔤 Cache normalizacji modeli
+          {stats && (
+            <span className="text-xs text-muted-foreground ml-2 font-normal">
+              {stats.total ?? items.length} wpisów
+              {stats.by_make && ` · ${Object.keys(stats.by_make).join(", ")}`}
+            </span>
+          )}
+        </CardTitle>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           {loading ? <Spin /> : <RefreshCw className="h-3.5 w-3.5" />}
           <span className="ml-1.5">Refresh</span>
@@ -791,8 +802,8 @@ function NormalizationsSection() {
                   <TableHead>Make</TableHead>
                   <TableHead>Klient pisze</TableHead>
                   <TableHead>Copart/IAAI</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Verified</TableHead>
+                  <TableHead>Reason (Claude)</TableHead>
+                  <TableHead className="text-right">Verified</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -803,7 +814,7 @@ function NormalizationsSection() {
                     <TableCell className="font-mono text-xs">{n.original_text}</TableCell>
                     <TableCell className="font-semibold text-xs">{n.normalized_model}</TableCell>
                     <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{n.reason || "—"}</TableCell>
-                    <TableCell className="text-xs">×{n.verified_count ?? 0}</TableCell>
+                    <TableCell className="text-right text-xs">×{n.verified_count ?? 0}</TableCell>
                     <TableCell>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(n.id)}>
                         🗑️
