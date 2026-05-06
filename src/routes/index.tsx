@@ -2785,22 +2785,6 @@ function ScraperReportsSection({
                 Rich klient × {lotsToProcess.length}
               </Button>
             )}
-            {reportUrls.report_endpoints?.broker_llm && (
-              <Button
-                size="sm"
-                className="bg-amber-600 hover:bg-amber-700 text-white"
-                disabled={loadingEndpoint === "broker_llm"}
-                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.broker_llm!, "broker_llm")}
-                title="Gemini/Claude generuje rich raport brokerski — ~30s/lot (cache 24h)"
-              >
-                {loadingEndpoint === "broker_llm" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  "✨"
-                )}
-                Rich broker × {lotsToProcess.length}
-              </Button>
-            )}
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">Pierwsze wywołanie ~30–60s, ponowne &lt;1s (cache 24h)</p>
         </div>
