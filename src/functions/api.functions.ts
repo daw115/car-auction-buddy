@@ -1295,6 +1295,7 @@ export const listActiveScraperJobs = createServerFn({ method: "GET" })
           created_at: string;
           finished_at?: string | null;
           listings_count?: number;
+          analysis_notice?: string | null;
         }>;
         total: number;
       };
