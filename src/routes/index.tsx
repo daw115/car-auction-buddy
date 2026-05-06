@@ -945,6 +945,7 @@ function Panel() {
   const fnGetReportBundle = useServerFn(getReportBundle);
   const fnAddWatch = useServerFn(addToWatchlist);
   const fnParseMessage = useServerFn(parseClientMessage);
+  const fnBatchSearch = useServerFn(batchSearch);
 
   async function downloadReportBundle(recordId: string) {
     try {
