@@ -875,6 +875,9 @@ async def list_jobs(
             "finished_at": job.finished_at,
             "phase": latest_phase.name if latest_phase else None,
             "phase_status": latest_phase.status if latest_phase else None,
+            "phase_info": latest_phase.info if latest_phase else {},
+            # Pełna lista faz — UI renderuje live timeline w panelu Aktywnych Zadań
+            "phases": [p.to_dict() for p in job.phases],
             "cancel_requested": job.cancel_requested,
             "error": job.error,
             "listings_count": len((job.result or {}).get("all_results") or []) if job.status == "done" else 0,
