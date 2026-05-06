@@ -2113,11 +2113,9 @@ function Panel() {
               </Field>
             </div>
 
-            <Separator className="my-4" />
-
-            <ActiveJobsPanel />
 
             <Separator className="my-4" />
+
 
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
