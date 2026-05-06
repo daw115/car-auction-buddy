@@ -550,6 +550,25 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     if notice_extra:
         notice = (notice + " | " if notice else "") + " ".join(notice_extra)
 
+    # Zero / mało lotów — pomóż userowi zdiagnozować dlaczego.
+    if len(all_lots) == 0:
+        diag_hints = [
+            f"⚠️ 0 lotów dla {criteria.make} {criteria.model or ''}.",
+            "Możliwe przyczyny:",
+            f"(a) Nazwa modelu nietypowa — Copart/IAAI używa nazw bazowych. "
+            f"Spróbuj alternatyw (np. dla BMW: '4 Series' zamiast 'M440i', '8 Series' zamiast 'M850i').",
+            f"(b) Okno aukcji {request.auction_min_hours or 12}-{request.auction_max_hours or 120}h "
+            f"nie zawiera teraz tego modelu — rozszerz okno (env MAX_AUCTION_WINDOW_HOURS).",
+            "(c) Filtr seller_type=insurance ogranicza — wyłącz w env FILTER_SELLER_INSURANCE_ONLY=false.",
+        ]
+        notice = (notice + " | " if notice else "") + " ".join(diag_hints)
+    elif len(all_lots) <= 2:
+        notice = (notice + " | " if notice else "") + (
+            f"ℹ️ Tylko {len(all_lots)} loty/lotów dla {criteria.make} {criteria.model or ''}. "
+            "Sprawdź czy nazwa modelu jest poprawna (Copart/IAAI używa nazw bazowych — "
+            "np. '4 Series' zamiast 'M440i')."
+        )
+
     with_full_vin = sum(1 for lot in all_lots if lot.full_vin)
     vin_coverage = {"with_full_vin": with_full_vin, "total": len(all_lots)}
     if USE_EXTENSIONS and all_lots and with_full_vin < len(all_lots):
@@ -1297,16 +1316,40 @@ async def parse_client_message_endpoint(
                 detail="Nie udało się wyłapać żadnego auta z wiadomości. Klient musi podać markę.",
             )
 
-    # Validate each car przez ClientCriteria
+    # Validate each car przez ClientCriteria (wyciągnij original_text przed walidacją —
+    # Pydantic je odrzuci jako extra field).
     criteria_list: list[dict] = []
     validation_errors: list[str] = []
+    auto_warnings: list[str] = []
     for idx, car in enumerate(cars_raw):
         if not car.get("make") or not str(car.get("make", "")).strip():
             validation_errors.append(f"Auto #{idx+1}: brak marki — pominięte")
             continue
+
+        original_text = (car.pop("original_text", None) or "").strip()
+        normalized_model = str(car.get("model", "") or "").strip()
+
         try:
             obj = ClientCriteria(**car)
-            criteria_list.append(obj.model_dump(mode="json"))
+            criteria_dict = obj.model_dump(mode="json")
+            # Wbuduj original_text obok criteria — UI wyświetla obok normalized
+            if original_text:
+                criteria_dict["_original_text"] = original_text
+            criteria_list.append(criteria_dict)
+
+            # Wykryj normalizację: jeśli original_text zawiera słowa NIE w model,
+            # dodaj warning żeby user wiedział że Copart/IAAI używa innej nazwy.
+            if original_text and normalized_model:
+                low_orig = original_text.lower()
+                low_norm = normalized_model.lower()
+                # Sprawdź czy model w bazie różni się od original (np. "M440i" -> "4 Series")
+                if low_norm not in low_orig and not any(
+                    word in low_orig for word in low_norm.split()
+                ):
+                    auto_warnings.append(
+                        f"Auto #{idx+1}: '{original_text}' znormalizowano do '{car.get('make')} {normalized_model}' "
+                        f"(Copart/IAAI używa nazwy bazowej dla wyszukiwania)."
+                    )
         except Exception as exc:
             validation_errors.append(f"Auto #{idx+1} ({car.get('make')}): {exc}")
 
@@ -1318,6 +1361,8 @@ async def parse_client_message_endpoint(
 
     if validation_errors:
         warnings = list(warnings) + validation_errors
+    if auto_warnings:
+        warnings = list(warnings) + auto_warnings
 
     return {
         "criteria_list": criteria_list,
