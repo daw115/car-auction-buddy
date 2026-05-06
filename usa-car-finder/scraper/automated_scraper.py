@@ -190,7 +190,14 @@ class AutomatedScraper:
                 unknown_seller_count,
             )
 
-        all_lots.sort(key=self._damage_then_auction_sort_key)
+        # Sort: env-driven. 'auction_date_asc' (default) = najbliższe aukcje pierwsze
+        # (zgodnie z user request — broker decyduje szybko po aukcjach kończących się rychło).
+        # 'damage_severity' = stary porządek (lekkie szkody pierwsze).
+        list_sort_by = os.getenv("LIST_SORT_BY", "auction_date_asc").strip().lower()
+        if list_sort_by == "damage_severity":
+            all_lots.sort(key=self._damage_then_auction_sort_key)
+        else:
+            all_lots.sort(key=self._auction_sort_key)
 
         if (
             criteria.max_results
@@ -200,7 +207,7 @@ class AutomatedScraper:
             all_lots = all_lots[:criteria.max_results]
             logger.info("Ograniczam finalnie do %d lotów wg kryterium max_results", len(all_lots))
 
-        logger.info("Łącznie znaleziono %d lotów", len(all_lots))
+        logger.info("Łącznie znaleziono %d lotów (sort: %s)", len(all_lots), list_sort_by)
         return all_lots
 
     async def _run_source(

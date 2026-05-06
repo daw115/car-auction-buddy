@@ -139,6 +139,9 @@ class SearchResponse(BaseModel):
     artifact_urls: dict[str, str] = Field(default_factory=dict)  # Linki do pobrania artefaktów z UI
     client_reports_html: list[str] = Field(default_factory=list)  # Lista URL-ów per-lot raportów dla klienta (POLECAM)
     broker_reports_html: list[str] = Field(default_factory=list)  # Lista URL-ów per-lot raportów brokerskich (POLECAM)
+    # Per-lot mapping: lot_id -> {client_url, broker_url}
+    # UI używa tego do per-row download buttons (po naszym hybrid LLM auto-generate)
+    auto_reports_by_lot_id: dict[str, dict[str, str]] = Field(default_factory=dict)
     analysis_notice: Optional[str] = None
     collected_count: int = 0  # Ile lotów zebrano przed skróceniem odpowiedzi UI
     vin_coverage: dict[str, int] = Field(default_factory=dict)  # {"with_full_vin": N, "total": M}

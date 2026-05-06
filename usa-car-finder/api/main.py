@@ -340,46 +340,33 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     remaining_results = [r for r in ranked_results if not r.is_top_recommendation][:5]
     all_results = top_recommendations + remaining_results
 
-    # Auto-generuj raporty HTML po analizie AI — SHOWCASE 5 = TOP 3 POLECAM + 2 najlepsze RYZYKO:
-    # Klient widzi 3 najlepsze (jakość) + 2 alternatywy z większym ryzykiem (zabieg marketingowy
-    # — daje porównanie, klient ma poczucie wyboru). Sortowanie po score wewnątrz każdej kategorii.
+    # Auto-generuj raporty HTML po analizie AI — SHOWCASE = WSZYSTKIE POLECAM + 2 najlepsze RYZYKO:
+    # User wybiera wśród wszystkich lotów polecanych przez AI, plus 2 alternatywy ryzykowne.
+    # Sortowanie po auction_date ASC — najbliższe aukcje pierwsze (klient powinien decydować szybko).
     client_html_files: list[str] = []
     broker_html_files: list[str] = []
     index_file: Optional[str] = None
 
-    polecam_lots = sorted(
-        [r for r in ranked_results if r.analysis.recommendation == "POLECAM"],
-        key=lambda r: -r.analysis.score,
-    )
+    polecam_lots = [r for r in ranked_results if r.analysis.recommendation == "POLECAM"]
     ryzyko_lots = sorted(
         [r for r in ranked_results if r.analysis.recommendation == "RYZYKO"],
         key=lambda r: -r.analysis.score,
     )
 
-    SHOWCASE_TOP_POLECAM = int(os.getenv("SHOWCASE_TOP_POLECAM", "3"))
-    SHOWCASE_TOP_RYZYKO = int(os.getenv("SHOWCASE_TOP_RYZYKO", "2"))
-    SHOWCASE_TOTAL = SHOWCASE_TOP_POLECAM + SHOWCASE_TOP_RYZYKO
+    # Cap RYZYKO: zawsze 2 pierwsze (najlepsze score). POLECAM bez capa.
+    SHOWCASE_RYZYKO_LIMIT = int(os.getenv("SHOWCASE_RYZYKO_LIMIT", "2"))
 
-    showcase: list = list(polecam_lots[:SHOWCASE_TOP_POLECAM])
-    showcase += list(ryzyko_lots[:SHOWCASE_TOP_RYZYKO])
+    showcase: list = list(polecam_lots) + list(ryzyko_lots[:SHOWCASE_RYZYKO_LIMIT])
 
-    # Fallback: jeśli mniej niż 5 łącznie (np. brak POLECAM), uzupełnij z pozostałych RYZYKO
-    if len(showcase) < SHOWCASE_TOTAL:
-        used_ids = {r.lot.lot_id for r in showcase}
-        for candidate in ryzyko_lots[SHOWCASE_TOP_RYZYKO:] + polecam_lots[SHOWCASE_TOP_POLECAM:]:
-            if candidate.lot.lot_id not in used_ids:
-                showcase.append(candidate)
-                used_ids.add(candidate.lot.lot_id)
-                if len(showcase) >= SHOWCASE_TOTAL:
-                    break
+    # Sort showcase po auction_date ASC (najbliższa aukcja pierwsza)
+    showcase.sort(key=lambda r: r.lot.auction_date or "9999-12-31 23:59:59")
 
-    polecane = showcase  # zachowuję nazwę zmiennej żeby reszta kodu nie wymagała zmian
+    polecane = showcase
     logger.info(
-        "Showcase: %d POLECAM + %d RYZYKO (target %d+%d)",
+        "Showcase: %d POLECAM + %d RYZYKO (sort: auction_date ASC, RYZYKO limit %d)",
         sum(1 for r in showcase if r.analysis.recommendation == "POLECAM"),
         sum(1 for r in showcase if r.analysis.recommendation == "RYZYKO"),
-        SHOWCASE_TOP_POLECAM,
-        SHOWCASE_TOP_RYZYKO,
+        SHOWCASE_RYZYKO_LIMIT,
     )
 
     if polecane and slug:
@@ -390,13 +377,16 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             f"budżet ${criteria.budget_usd:,.0f}"
         ).strip()
 
-        # Mode: 'template' (Jinja2, ZERO kosztów AI) lub 'llm' (Claude rich, ~$4/scrape!).
-        # DEFAULT TERAZ TEMPLATE — auto-LLM przy każdym scrape generował 10 calli × $0.40 = $4
-        # tylko po to żeby user może je w ogóle nie obejrzał. Lepsze: szybkie templatki
-        # po scrape, plus PRZYCISK 'Generuj rich raport LLM' on-demand per lot w UI.
-        reports_mode = os.getenv("REPORTS_MODE", "template").lower()
+        # Mode: 'hybrid' (Gemini darmowy + Otomoto, default), 'template' (Jinja2 zero LLM,
+        # bez tłumaczenia/cen PL), 'llm' (full Claude rich, ~$4/scrape — drogie).
+        # Hybrid generuje per-lot raporty z polską terminologią + Otomoto market price.
+        reports_mode = os.getenv("REPORTS_MODE", "hybrid").lower()
         try:
-            if reports_mode == "llm":
+            if reports_mode == "hybrid":
+                from report.hybrid_reports import render_client_hybrid, render_broker_hybrid
+                render_client_fn = lambda it: render_client_hybrid(it, criteria=criteria)
+                render_broker_fn = lambda it: render_broker_hybrid(it, criteria=criteria, lots_scanned=len(all_lots))
+            elif reports_mode == "llm":
                 from report.llm_html_reports import render_client_report_llm, render_broker_report_llm
                 render_client_fn = lambda it: render_client_report_llm(it, criteria=criteria)
                 render_broker_fn = lambda it: render_broker_report_llm(it, criteria=criteria, lots_scanned=len(all_lots))
@@ -418,7 +408,13 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             async def gen_one(idx: int, item: AnalyzedLot) -> dict:
                 lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
                 title = f"{item.lot.year or ''} {item.lot.make or ''} {item.lot.model or ''} {item.lot.trim or ''}".strip()
-                links = {"title": title, "badge": f"score {item.analysis.score:.1f} {item.analysis.recommendation}", "client": None, "broker": None}
+                links = {
+                    "lot_id": item.lot.lot_id,
+                    "title": title,
+                    "badge": f"score {item.analysis.score:.1f} {item.analysis.recommendation}",
+                    "client": None,
+                    "broker": None,
+                }
 
                 client_task = _gen_with_semaphore(render_client_fn, item)
                 broker_task = _gen_with_semaphore(render_broker_fn, item)
@@ -492,6 +488,23 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     client_reports_html_urls = [artifact_url(f) for f in client_html_files if f]
     broker_reports_html_urls = [artifact_url(f) for f in broker_html_files if f]
 
+    # Per-lot mapping (lot_id -> {client_url, broker_url}) — UI dla per-row download buttons
+    auto_reports_by_lot_id: dict[str, dict[str, str]] = {}
+    try:
+        for ll in (lot_links if 'lot_links' in dir() else []):
+            lot_id = ll.get("lot_id")
+            if not lot_id:
+                continue
+            entry: dict[str, str] = {}
+            if ll.get("client"):
+                entry["client_url"] = artifact_url(str(SEARCH_ARTIFACT_DIR / ll["client"])) or ""
+            if ll.get("broker"):
+                entry["broker_url"] = artifact_url(str(SEARCH_ARTIFACT_DIR / ll["broker"])) or ""
+            if entry:
+                auto_reports_by_lot_id[lot_id] = entry
+    except Exception:
+        logger.exception("Building auto_reports_by_lot_id failed")
+
     notice = analysis_notice(force_local=request.demo)
     if notice_extra:
         notice = (notice + " | " if notice else "") + " ".join(notice_extra)
@@ -516,6 +529,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         artifact_urls={key: value for key, value in artifact_urls.items() if value},
         client_reports_html=client_reports_html_urls,
         broker_reports_html=broker_reports_html_urls,
+        auto_reports_by_lot_id=auto_reports_by_lot_id,
         analysis_notice=notice,
         collected_count=len(all_lots),
         vin_coverage=vin_coverage,
@@ -698,6 +712,7 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
     """
     listings: list = []
     analyzed_lots: list = []  # CarLot + AIAnalysis razem (zamiast TS robiło drugą AI analizę)
+    auto_reports_by_lot_id: dict = (job.result or {}).get("auto_reports_by_lot_id") or {}
     if job.result:
         for item in (job.result.get("all_results") or []):
             if not isinstance(item, dict):
@@ -705,12 +720,24 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
             lot = item.get("lot")
             if lot:
                 listings.append(lot)
+                lot_id = lot.get("lot_id")
                 # Pełen AnalyzedLot (lot + analysis + is_top_recommendation)
-                analyzed_lots.append({
+                analyzed_entry = {
                     "lot": lot,
                     "analysis": item.get("analysis"),
                     "is_top_recommendation": bool(item.get("is_top_recommendation")),
-                })
+                }
+                # Per-lot URLe auto-wygenerowanych raportów (klient + broker hybrid)
+                auto_reports = auto_reports_by_lot_id.get(lot_id) or {}
+                if auto_reports:
+                    # Przepisz na absolute URLs (client_url, broker_url)
+                    converted: dict = {}
+                    if auto_reports.get("client_url"):
+                        converted["client_hybrid_url"] = _absolute_artifact_url(auto_reports["client_url"])
+                    if auto_reports.get("broker_url"):
+                        converted["broker_hybrid_url"] = _absolute_artifact_url(auto_reports["broker_url"])
+                    analyzed_entry["auto_reports"] = converted
+                analyzed_lots.append(analyzed_entry)
 
     latest_phase = job.phases[-1] if job.phases else None
     phase_name = latest_phase.name if latest_phase else None
