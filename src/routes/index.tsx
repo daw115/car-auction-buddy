@@ -2228,12 +2228,16 @@ function Panel() {
                 <div className="mt-3 p-3 rounded-md bg-muted/50">
                   <div className="text-sm mb-2 italic">{lastParseResult.summary}</div>
                   {lastParseResult.warnings.length > 0 && (
-                    <div className="space-y-1">
+                    <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/40 rounded">
+                      <div className="text-xs font-semibold mb-1">⚠️ Normalizacja modeli:</div>
                       {lastParseResult.warnings.map((w, i) => (
-                        <div key={i} className="text-xs text-amber-600 dark:text-amber-400">
-                          ⚠️ {w}
-                        </div>
+                        <div key={i} className="text-xs text-amber-700 dark:text-amber-400">• {w}</div>
                       ))}
+                      <div className="text-xs text-muted-foreground mt-1 italic">
+                        Backend automatycznie znormalizował model do nazwy używanej przez Copart/IAAI
+                        (np. M440i → 4 Series). Cache zapisuje mapping żeby kolejne te same modele
+                        nie wymagały re-parsingu.
+                      </div>
                     </div>
                   )}
                   {parsedCars && parsedCars.criteria_list.length > 1 && (
