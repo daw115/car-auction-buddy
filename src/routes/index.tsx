@@ -1892,22 +1892,18 @@ function Panel() {
                   }
                 />
               </Field>
-              <Field label="Budżet USD *">
+              <Field label="Budżet USD">
                 <Input
                   type="number"
-                  min={1}
-                  value={criteria.budget_usd || ""}
-                  onChange={(e) => setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : 0 })}
-                  onBlur={(e) => {
-                    if (!e.target.value || +e.target.value < 1) {
-                      setCriteria((c) => ({ ...c, budget_usd: 15000 }));
-                    }
-                  }}
+                  placeholder="(opcjonalne)"
+                  value={criteria.budget_usd ?? ""}
+                  onChange={(e) => setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : null })}
                 />
               </Field>
               <Field label="Max przebieg (mil)">
                 <Input
                   type="number"
+                  placeholder="(opcjonalne)"
                   value={criteria.max_odometer_mi ?? ""}
                   onChange={(e) =>
                     setCriteria({ ...criteria, max_odometer_mi: e.target.value ? +e.target.value : null })
