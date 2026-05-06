@@ -949,6 +949,81 @@ async def _run_job_with_queue(request: SearchRequest, job: jobs_store.Job) -> No
         await _run_job(request, job)
 
 
+class BatchSearchRequest(BaseModel):
+    """Lista wyszukiwań do wykonania sekwencyjnie (Python kolejkuje przez Semaphore)."""
+    searches: list[SearchRequest]
+
+
+@app.post("/api/search/batch", status_code=202)
+async def dashboard_batch_search(
+    request: BatchSearchRequest,
+    _auth: None = Depends(_require_bearer),
+):
+    """Multi-car batch: tworzy N jobów na raz, Python kolejkuje przez Semaphore=1.
+
+    Body: { "searches": [SearchRequest, SearchRequest, ...] }
+    Response 202: {
+      "jobs": [
+        { "job_id": "abc", "status_url": "/search/jobs/abc", "stream_url": "/search/stream/abc",
+          "label": "BMW M5 2018-2020", "idempotent": false },
+        ...
+      ],
+      "queued_count": 4
+    }
+
+    Każdy element listy:
+    - Idempotency check: jeśli identyczny scrape leci/leciał w TTL → zwraca ten sam job_id (idempotent: true)
+    - Inaczej: tworzy nowy job, dodaje do kolejki Pythona
+
+    UI po otrzymaniu N jobIds poll'uje każdy osobno przez /api/jobs/{id}
+    (lub całość przez /api/jobs?active_only=true) i wyświetla live timeline.
+    """
+    if not request.searches:
+        raise HTTPException(status_code=400, detail="Lista searches nie może być pusta")
+    if len(request.searches) > 20:
+        raise HTTPException(status_code=400, detail="Maks. 20 wyszukiwań w batchu")
+
+    results = []
+    for sub_request in request.searches:
+        criteria = sub_request.criteria
+        label_parts = [criteria.make, criteria.model or ""]
+        if criteria.year_from:
+            label_parts.append(f"{criteria.year_from}-{criteria.year_to or '?'}")
+        label = " ".join(p for p in label_parts if p).strip()
+
+        criteria_hash = _compute_criteria_hash(sub_request)
+        reused = jobs_store.find_reusable_job(criteria_hash, IDEMPOTENCY_TTL_SECONDS)
+
+        if reused is not None and reused.status in ("running", "done"):
+            results.append({
+                "job_id": reused.id,
+                "status_url": f"/search/jobs/{reused.id}",
+                "stream_url": f"/search/stream/{reused.id}",
+                "cancel_url": f"/search/jobs/{reused.id}",
+                "label": label,
+                "idempotent": True,
+                "reused_status": reused.status,
+            })
+            continue
+
+        job = jobs_store.create_job(
+            criteria_hash=criteria_hash,
+            request_snapshot=sub_request.model_dump(mode="json"),
+        )
+        job.task = asyncio.create_task(_run_job_with_queue(sub_request, job))
+        results.append({
+            "job_id": job.id,
+            "status_url": f"/search/jobs/{job.id}",
+            "stream_url": f"/search/stream/{job.id}",
+            "cancel_url": f"/search/jobs/{job.id}",
+            "label": label,
+            "idempotent": False,
+        })
+
+    logger.info("Batch search: zakolejkowano %d jobów (z %d zaplanowanych)", len(results), len(request.searches))
+    return {"jobs": results, "queued_count": len(results)}
+
+
 @app.post("/search", status_code=202)
 async def search_cars(request: SearchRequest):
     criteria_hash = _compute_criteria_hash(request)
