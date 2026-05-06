@@ -2238,6 +2238,10 @@ export const getModelNormalizations = createServerFn({ method: "GET" }).handler(
         reason?: string;
         verified_count?: number;
       }>;
+      stats?: {
+        total: number;
+        by_make: Record<string, number>;
+      };
     }>;
   } catch {
     return { items: [] };
