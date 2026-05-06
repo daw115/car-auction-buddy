@@ -54,6 +54,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("[lifespan] Inicjalizacja llm_cache nieudana")
 
+    # Startup: init model normalization cache (BMW M440i -> 4 Series itp.)
+    try:
+        from ai import model_normalization
+        model_normalization.init_db()
+        st = model_normalization.stats()
+        logger.info("[lifespan] Model normalization cache: %d wpisów", st.get("total", 0))
+    except Exception:
+        logger.exception("[lifespan] Inicjalizacja model_normalization nieudana")
+
     yield
 
     try:
@@ -1317,7 +1326,9 @@ async def parse_client_message_endpoint(
             )
 
     # Validate each car przez ClientCriteria (wyciągnij original_text przed walidacją —
-    # Pydantic je odrzuci jako extra field).
+    # Pydantic je odrzuci jako extra field). Plus weryfikacja przez cache normalizacji.
+    from ai import model_normalization
+
     criteria_list: list[dict] = []
     validation_errors: list[str] = []
     auto_warnings: list[str] = []
@@ -1327,29 +1338,45 @@ async def parse_client_message_endpoint(
             continue
 
         original_text = (car.pop("original_text", None) or "").strip()
-        normalized_model = str(car.get("model", "") or "").strip()
+        llm_model = str(car.get("model", "") or "").strip()
+        make_raw = str(car.get("make", "")).strip()
+
+        # CACHE LOOKUP / VERIFY: dla każdej pary (make, original_text), sprawdzamy
+        # czy mamy zapisany mapping. Jeśli tak — używamy cache (deterministic, $0).
+        # Jeśli nie — Anthropic weryfikuje + zapisuje.
+        if original_text:
+            try:
+                norm_result = await asyncio.to_thread(
+                    model_normalization.normalize_with_cache,
+                    make_raw,
+                    original_text,
+                    llm_model,
+                )
+                if norm_result and norm_result.get("normalized_model"):
+                    # Override LLM-output cache'em jeśli się różnią (cache jest source of truth)
+                    cached_model = norm_result["normalized_model"]
+                    if cached_model.lower() != llm_model.lower():
+                        auto_warnings.append(
+                            f"Auto #{idx+1}: '{original_text}' → "
+                            f"'{make_raw} {cached_model}' (źródło: {norm_result['source']}; "
+                            f"LLM podał '{llm_model}', cache potwierdza '{cached_model}')"
+                        )
+                        car["model"] = cached_model
+                    elif norm_result.get("is_normalized"):
+                        auto_warnings.append(
+                            f"Auto #{idx+1}: '{original_text}' znormalizowano do "
+                            f"'{make_raw} {cached_model}' (źródło: {norm_result['source']}, "
+                            f"verified ×{norm_result.get('verified_count', 1)})"
+                        )
+            except Exception:
+                logger.exception("model_normalization.normalize_with_cache failed for %s", original_text)
 
         try:
             obj = ClientCriteria(**car)
             criteria_dict = obj.model_dump(mode="json")
-            # Wbuduj original_text obok criteria — UI wyświetla obok normalized
             if original_text:
                 criteria_dict["_original_text"] = original_text
             criteria_list.append(criteria_dict)
-
-            # Wykryj normalizację: jeśli original_text zawiera słowa NIE w model,
-            # dodaj warning żeby user wiedział że Copart/IAAI używa innej nazwy.
-            if original_text and normalized_model:
-                low_orig = original_text.lower()
-                low_norm = normalized_model.lower()
-                # Sprawdź czy model w bazie różni się od original (np. "M440i" -> "4 Series")
-                if low_norm not in low_orig and not any(
-                    word in low_orig for word in low_norm.split()
-                ):
-                    auto_warnings.append(
-                        f"Auto #{idx+1}: '{original_text}' znormalizowano do '{car.get('make')} {normalized_model}' "
-                        f"(Copart/IAAI używa nazwy bazowej dla wyszukiwania)."
-                    )
         except Exception as exc:
             validation_errors.append(f"Auto #{idx+1} ({car.get('make')}): {exc}")
 
@@ -1371,6 +1398,67 @@ async def parse_client_message_endpoint(
         "summary": summary,
         "warnings": warnings,
     }
+
+
+@app.get("/api/model-normalizations")
+async def model_normalizations_list(
+    make: Optional[str] = None,
+    limit: int = 100,
+    _auth: None = Depends(_require_bearer),
+):
+    """Lista wszystkich znanych normalizacji modeli (cache do nauki)."""
+    from ai import model_normalization
+    return {
+        "items": model_normalization.list_all(make=make, limit=limit),
+        "stats": model_normalization.stats(),
+    }
+
+
+@app.delete("/api/model-normalizations/{entry_id}")
+async def model_normalizations_delete(entry_id: int, _auth: None = Depends(_require_bearer)):
+    """Usuwa pojedynczy wpis cache (force re-verification przy następnym wystąpieniu)."""
+    from ai import model_normalization
+    ok = model_normalization.delete_entry(entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Entry {entry_id} nie znaleziony")
+    return {"removed": True, "id": entry_id}
+
+
+@app.post("/api/model-normalizations/verify")
+async def model_normalizations_verify(
+    request: dict,
+    _auth: None = Depends(_require_bearer),
+):
+    """Manual verify endpoint — body: {make, original_text, raw_model?}.
+
+    Force-wywoluje Anthropic Claude do weryfikacji modelu, niezależnie od cache.
+    Wynik zapisywany w bazie. Przydatne gdy user chce wymusic re-check.
+    """
+    from ai import model_normalization
+    make = (request.get("make") or "").strip()
+    original_text = (request.get("original_text") or "").strip()
+    raw_model = (request.get("raw_model") or "").strip() or None
+
+    if not make or not original_text:
+        raise HTTPException(status_code=400, detail="Wymagane pola: make, original_text")
+
+    verified = await asyncio.to_thread(
+        model_normalization.verify_with_anthropic, make, original_text, raw_model,
+    )
+    if not verified:
+        raise HTTPException(status_code=503, detail="LLM verify niedostępny")
+
+    if verified.get("normalized_model"):
+        await asyncio.to_thread(
+            model_normalization.store,
+            make=make,
+            original_text=original_text,
+            normalized_model=verified["normalized_model"],
+            reason=verified.get("reason"),
+            provider=verified.get("provider"),
+            llm_model=verified.get("llm_model"),
+        )
+    return {**verified, "make": make, "original_text": original_text}
 
 
 @app.get("/api/llm-cache/stats")
