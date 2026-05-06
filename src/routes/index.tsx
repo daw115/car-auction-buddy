@@ -1264,7 +1264,29 @@ function Panel() {
     }
   }
 
-  async function callScraper() {
+  async function handleParseMessage() {
+    if (!clientMessage.trim()) {
+      toast.error("Wpisz wiadomość od klienta");
+      return;
+    }
+    setParsing(true);
+    setLastParseResult(null);
+    try {
+      const result = await fnParseMessage({ data: { message: clientMessage } });
+      setCriteria({
+        ...DEFAULT_CRITERIA,
+        ...result.criteria,
+      });
+      setLastParseResult({ summary: result.summary, warnings: result.warnings });
+      toast.success(result.summary, { duration: 6000 });
+      result.warnings.forEach((w) => toast.warning(w, { duration: 8000 }));
+    } catch (e) {
+      toast.error(`Błąd parsowania: ${(e as Error).message}`);
+    } finally {
+      setParsing(false);
+    }
+  }
+
     if (!env?.SCRAPER_BASE_URL) {
       toast.error("SCRAPER_BASE_URL nie jest ustawiony.");
       return;
