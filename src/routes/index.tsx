@@ -35,6 +35,7 @@ import {
   getLlmCacheStats,
   clearLlmCache,
   parseClientMessage,
+  batchSearch,
 } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
