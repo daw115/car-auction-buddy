@@ -2156,6 +2156,18 @@ export const parseClientMessage = createServerFn({ method: "POST" })
         sources?: string[];
         max_results?: number;
       };
+      criteria_list?: Array<{
+        make: string;
+        model?: string | null;
+        year_from?: number | null;
+        year_to?: number | null;
+        budget_usd?: number | null;
+        max_odometer_mi?: number | null;
+        excluded_damage_types?: string[];
+        allowed_damage_types?: string[];
+        sources?: string[];
+        max_results?: number;
+      }>;
       summary: string;
       warnings: string[];
     }>;
