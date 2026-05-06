@@ -875,7 +875,7 @@ function BatchJobCard({
             const isActive = p.status === "running";
             const isDone = p.status === "done" || p.status === "completed";
             const isFailed = p.status === "error" || p.status === "failed";
-            const icon = PHASE_ICONS[p.name] ?? "⏳";
+            const icon = { scraping_list: "📋", scraping_details: "🔍", enriching: "🔧", analyzing: "🤖", generating_reports: "📝", done: "✅", error: "❌" }[p.name] ?? "⏳";
             return (
               <span
                 key={`${p.name}-${i}`}
