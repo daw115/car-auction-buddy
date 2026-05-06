@@ -160,6 +160,32 @@
     </table>
   </div>
 
+  {% if market_pl and market_pl.mean_pln %}
+  <!-- CENA RYNKOWA PL -->
+  <div class="section">
+    <h2>📈 Cena rynkowa PL (Otomoto)</h2>
+    <table>
+      <thead><tr><th>Zakres</th><th class="num">PLN</th><th class="num">USD ({{ cost.usd_pln }})</th></tr></thead>
+      <tbody>
+        <tr><td>Najtańsza oferta</td><td class="num">{{ "{:,}".format(market_pl.low_pln) }}</td><td class="num">${{ "{:,}".format((market_pl.low_pln / cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Mediana</td><td class="num">{{ "{:,}".format(market_pl.median_pln) }}</td><td class="num">${{ "{:,}".format((market_pl.median_pln / cost.usd_pln)|int) }}</td></tr>
+        <tr style="background:#0a0e14"><td><b>Średnia</b></td><td class="num"><b>{{ "{:,}".format(market_pl.mean_pln) }}</b></td><td class="num"><b>${{ "{:,}".format((market_pl.mean_pln / cost.usd_pln)|int) }}</b></td></tr>
+        <tr><td>Najdroższa oferta</td><td class="num">{{ "{:,}".format(market_pl.high_pln) }}</td><td class="num">${{ "{:,}".format((market_pl.high_pln / cost.usd_pln)|int) }}</td></tr>
+        <tr style="border-top:2px solid #2d3548"><td><b>Twój koszt całkowity</b></td><td class="num"><b>{{ "{:,}".format(cost.grand_total_pln) }}</b></td><td class="num"><b>${{ "{:,}".format(cost.grand_total_usd) }}</b></td></tr>
+        <tr style="background:{% if cost.grand_total_pln < market_pl.mean_pln %}#0d3a1f;color:#56d364{% else %}#3d2d00;color:#e3b341{% endif %}">
+          <td><b>Marża vs średnia</b></td>
+          <td class="num"><b>{% if cost.grand_total_pln < market_pl.mean_pln %}+{% endif %}{{ "{:,}".format((market_pl.mean_pln - cost.grand_total_pln)|int) }}</b></td>
+          <td class="num"><b>{% if cost.grand_total_pln < market_pl.mean_pln %}+{% endif %}${{ "{:,}".format(((market_pl.mean_pln - cost.grand_total_pln) / cost.usd_pln)|int) }}</b></td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px;font-size:11px;color:#6b7388">
+      Źródło: <a href="{{ market_pl.query_url or '#' }}" target="_blank" style="color:#a5b4fc">Otomoto.pl</a> ·
+      Próba: {{ market_pl.sample_size }} aktualnych ofert ({{ lot.year - 1 }}–{{ lot.year + 1 }})
+    </div>
+  </div>
+  {% endif %}
+
   {% if red_flags %}
   <!-- RED FLAGS -->
   <div class="section">

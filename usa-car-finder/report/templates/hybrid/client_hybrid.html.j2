@@ -92,12 +92,43 @@
       <div class="value">{{ "%.1f"|format(ai.score) }} / 10</div>
       <div class="hint">{{ ai.recommendation }}</div>
     </div>
+    {% if market_pl and market_pl.mean_pln %}
+    <div class="stat">
+      <div class="label">Średnia PL (Otomoto)</div>
+      <div class="value">{{ "{:,}".format(market_pl.mean_pln) }} PLN</div>
+      <div class="hint">{{ "{:,}".format(market_pl.low_pln) }}–{{ "{:,}".format(market_pl.high_pln) }} · próba {{ market_pl.sample_size }}</div>
+    </div>
+    {% else %}
     <div class="stat">
       <div class="label">Tytuł</div>
       <div class="value">{{ lot.title_type or '—' }}</div>
       <div class="hint">{{ lot.damage_primary or '' }}</div>
     </div>
+    {% endif %}
   </div>
+
+  {% if market_pl and market_pl.mean_pln %}
+  <!-- CENA RYNKOWA PL -->
+  <div class="section">
+    <h2>📈 Cena rynkowa w Polsce (Otomoto)</h2>
+    <div class="cost">
+      <div class="cost-row"><span class="k">Najtańsza oferta</span><span class="v">{{ "{:,}".format(market_pl.low_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Średnia</span><span class="v">{{ "{:,}".format(market_pl.mean_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Mediana</span><span class="v">{{ "{:,}".format(market_pl.median_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Najdroższa oferta</span><span class="v">{{ "{:,}".format(market_pl.high_pln) }} PLN</span></div>
+      <div class="cost-row total"><span class="k">Twój koszt importu (suma)</span><span class="v">{{ "{:,}".format(cost.grand_total_pln) }} PLN</span></div>
+    </div>
+    <div style="margin-top:14px;font-size:12px;color:#7d8590">
+      Źródło: <a href="{{ market_pl.query_url or '#' }}" target="_blank" rel="noopener" style="color:#58a6ff">Otomoto.pl</a> ·
+      Próba: {{ market_pl.sample_size }} ofert ·
+      {% if cost.grand_total_pln < market_pl.mean_pln %}
+        💚 Marża: {{ "{:,}".format((market_pl.mean_pln - cost.grand_total_pln)|int) }} PLN poniżej średniej rynkowej
+      {% else %}
+        ⚠️ Powyżej średniej rynku o {{ "{:,}".format((cost.grand_total_pln - market_pl.mean_pln)|int) }} PLN
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 
   <!-- STORY -->
   <div class="section">

@@ -27,6 +27,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from parser.models import AnalyzedLot, ClientCriteria
 from report import llm_cache
 from report.cost_calculator import calculate_full_cost
+from scraper.otomoto import lookup_market_price
 
 logger = logging.getLogger("report.hybrid_reports")
 
@@ -364,7 +365,7 @@ ZASADY:
 # Helper: lot data dla LLM (mały JSON, bez images)
 # ============================================================================
 
-def _lot_data_compact(item: AnalyzedLot, criteria: Optional[ClientCriteria], cost: dict) -> str:
+def _lot_data_compact(item: AnalyzedLot, criteria: Optional[ClientCriteria], cost: dict, market_pl: Optional[dict] = None) -> str:
     lot = item.lot
     ai = item.analysis
     payload = {
@@ -385,13 +386,20 @@ def _lot_data_compact(item: AnalyzedLot, criteria: Optional[ClientCriteria], cos
         "ai_score": ai.score,
         "ai_recommendation": ai.recommendation,
         "ai_red_flags": ai.red_flags or [],
-        "ai_repair_estimate_usd": ai.estimated_repair_usd,
-        "ai_total_cost_usd": ai.estimated_total_cost_usd,
         "ai_description": ai.client_description_pl,
         "ai_notes": ai.ai_notes,
         "total_cost_to_pl_pln": cost["grand_total_pln"],
         "total_cost_to_pl_usd": cost["grand_total_usd"],
     }
+    if market_pl:
+        payload["market_price_pl"] = {
+            "low_pln": market_pl.get("low_pln"),
+            "high_pln": market_pl.get("high_pln"),
+            "mean_pln": market_pl.get("mean_pln"),
+            "median_pln": market_pl.get("median_pln"),
+            "sample_size": market_pl.get("sample_size"),
+            "source": "Otomoto.pl",
+        }
     if criteria:
         payload["client_budget_usd"] = criteria.budget_usd
         payload["client_max_odometer_mi"] = criteria.max_odometer_mi
@@ -437,20 +445,35 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         repair_estimate_usd=ai.estimated_repair_usd,
     )
 
-    # 2) Mini-LLM call dla storytellingu (JSON)
-    user_prompt = CLIENT_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost))
+    # 2) Lookup ceny rynkowej PL z Otomoto (cache 7 dni, ~0ms HIT, ~8s MISS)
+    market_pl = None
+    try:
+        if lot.make and lot.model and os.getenv("OTOMOTO_LOOKUP_ENABLED", "true").lower() == "true":
+            market_pl = lookup_market_price(
+                make=lot.make,
+                model=lot.model,
+                year_from=(lot.year - 1) if lot.year else None,
+                year_to=(lot.year + 1) if lot.year else None,
+            )
+    except Exception:
+        logger.exception("[Hybrid] Otomoto lookup failed (non-fatal)")
+        market_pl = None
+
+    # 3) Mini-LLM call dla storytellingu (JSON)
+    user_prompt = CLIENT_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
     fragments = _call_llm_json(
         system=CLIENT_SYSTEM,
         user=user_prompt,
         max_tokens=int(os.getenv("HYBRID_CLIENT_MAX_TOKENS", "2500")),
     )
 
-    # 3) Render template
+    # 4) Render template
     template = _env().get_template("client_hybrid.html.j2")
     html = template.render(
         lot=lot,
         ai=ai,
         cost=cost,
+        market_pl=market_pl,
         tagline=fragments.get("tagline", ""),
         story_paragraphs=fragments.get("story_paragraphs", []),
         red_flags=fragments.get("red_flags", ai.red_flags or []),
@@ -463,7 +486,7 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
     )
 
-    # 4) Store in cache
+    # 5) Store in cache
     llm_cache.store(lot.lot_id, lot.source or "", "client_hybrid", fp, html, provider=_provider())
     return html
 
@@ -501,7 +524,21 @@ def render_broker_hybrid(
         repair_estimate_usd=ai.estimated_repair_usd,
     )
 
-    user_prompt = BROKER_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost))
+    # Lookup ceny rynkowej PL z Otomoto (cache 7 dni)
+    market_pl = None
+    try:
+        if lot.make and lot.model and os.getenv("OTOMOTO_LOOKUP_ENABLED", "true").lower() == "true":
+            market_pl = lookup_market_price(
+                make=lot.make,
+                model=lot.model,
+                year_from=(lot.year - 1) if lot.year else None,
+                year_to=(lot.year + 1) if lot.year else None,
+            )
+    except Exception:
+        logger.exception("[Hybrid] Otomoto lookup failed (non-fatal)")
+        market_pl = None
+
+    user_prompt = BROKER_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
     fragments = _call_llm_json(
         system=BROKER_SYSTEM,
         user=user_prompt,
@@ -523,6 +560,7 @@ def render_broker_hybrid(
         lot=lot,
         ai=ai,
         cost=cost,
+        market_pl=market_pl,
         lots_scanned=lots_scanned,
         budget_delta_pct=_budget_delta_pct(lot.current_bid_usd, criteria.budget_usd if criteria else None),
         scoring_breakdown=fragments.get("scoring_breakdown", []),
