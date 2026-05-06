@@ -2216,3 +2216,43 @@ export const batchSearch = createServerFn({ method: "POST" })
       queued_count: number;
     }>;
   });
+
+// ---------- Model Normalizations ----------
+
+export const getModelNormalizations = createServerFn({ method: "GET" }).handler(async () => {
+  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+  const token = process.env.SCRAPER_API_TOKEN;
+  if (!baseUrl || !token) return { items: [] };
+  try {
+    const res = await fetch(`${baseUrl}/api/model-normalizations`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return { items: [] };
+    return res.json() as Promise<{
+      items: Array<{
+        id: string | number;
+        make: string;
+        original_text: string;
+        normalized_model: string;
+        reason?: string;
+        verified_count?: number;
+      }>;
+    }>;
+  } catch {
+    return { items: [] };
+  }
+});
+
+export const deleteModelNormalization = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) throw new Error("Backend not configured");
+    const res = await fetch(`${baseUrl}/api/model-normalizations/${data.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { ok: true };
+  });
