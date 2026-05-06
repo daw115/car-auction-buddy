@@ -55,4 +55,10 @@ export type AIAnalysis = {
 export type AnalyzedLot = {
   lot: CarLot;
   analysis: AIAnalysis;
+  is_top_recommendation?: boolean;
+  included_in_report?: boolean;
+  auto_reports?: {
+    client_hybrid_url?: string;
+    broker_hybrid_url?: string;
+  };
 };
