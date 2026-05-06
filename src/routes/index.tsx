@@ -646,20 +646,37 @@ type ActiveJob = {
   created_at: string;
   finished_at?: string | null;
   listings_count?: number;
+  analysis_notice?: string | null;
 };
 
-const PHASE_ICONS: Record<string, string> = {
-  scraping_list: "📋",
-  scraping_details: "🔍",
-  enriching: "🔧",
-  analyzing: "🤖",
-  generating_reports: "📝",
-  done: "✅",
-  error: "❌",
+const PHASE_LABELS: Record<string, string> = {
+  copart: "Copart", iaai: "IAAI", filter: "Filtrowanie", enrich: "Wzbogacanie",
+  ai_analyze: "Analiza AI", reports_generate: "Generowanie raportów",
+  queued: "W kolejce",
 };
+
+function phaseLine(p: { name: string; status: string; info?: Record<string, any> }): string {
+  const i = p.info || {};
+  const label = PHASE_LABELS[p.name] || p.name;
+  if (p.name === "copart" || p.name === "iaai") {
+    if (i.count !== undefined) return `${label}: ${i.count} lotów`;
+    if (i.make) return `${label}: szukam ${i.make} ${i.model || ""}`;
+  }
+  if (p.name === "filter" && i.output !== undefined) return `${label}: ${i.input} → ${i.output} lotów`;
+  if (p.name === "ai_analyze") {
+    if (i.ranked) return `${label}: ${i.ranked} ocenione`;
+    if (i.lots) return `${label}: ${i.lots} lotów...`;
+  }
+  if (p.name === "reports_generate") {
+    if (i.generated) return `${label}: ${i.generated}/${i.total} gotowych`;
+    if (i.current) return `${label}: ${i.current}/${i.total}: ${i.lot || ""}`;
+  }
+  return label;
+}
 
 function ActiveJobsPanel() {
   const fnListActive = useServerFn(listActiveScraperJobs);
+  const fnCancel = useServerFn(cancelScraperJob);
 
   const { data: activeJobs } = useQuery({
     queryKey: ["active-jobs"],
@@ -671,86 +688,73 @@ function ActiveJobsPanel() {
 
   if (jobs.length === 0) return null;
 
+  const handleCancel = async (id: string) => {
+    try {
+      await fnCancel({ data: { jobId: id } });
+      toast.success("Job anulowany");
+    } catch (e) {
+      toast.error(`Anulowanie nie powiodło się: ${(e as Error).message}`);
+    }
+  };
+
   return (
-    <Card className="sticky top-2 z-50 p-3 mb-4 bg-primary/5 border-primary/30">
-      <h2 className="text-sm font-semibold flex items-center gap-2 mb-2">
-        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+    <Card className="sticky top-2 z-40 p-3 mb-4 bg-blue-500/5 border-blue-500/30 max-h-[400px] overflow-auto">
+      <h3 className="font-semibold mb-3">
         🔄 Aktywne zadania ({jobs.length})
-      </h2>
-      <div className="grid gap-2 sm:grid-cols-2">
+      </h3>
+      <div className="space-y-3">
         {jobs.map((job) => (
-          <ActiveJobCard key={job.id} job={job} />
+          <ActiveJobRow key={job.id} job={job} onCancel={handleCancel} />
         ))}
       </div>
     </Card>
   );
 }
 
-function ActiveJobCard({ job }: { job: ActiveJob }) {
-  const elapsed = job.finished_at
-    ? new Date(job.finished_at).getTime() - new Date(job.created_at).getTime()
-    : Date.now() - new Date(job.created_at).getTime();
-
-  const statusColor = {
-    queued: "bg-muted text-muted-foreground",
-    running: "bg-primary/10 text-primary border-primary/30",
-    done: "bg-[oklch(0.50_0.15_145)]/10 text-[oklch(0.50_0.15_145)]",
-    error: "bg-destructive/10 text-destructive",
-    cancelled: "bg-muted text-muted-foreground",
-    interrupted: "bg-muted text-muted-foreground",
-  }[job.status] ?? "bg-muted text-muted-foreground";
+function ActiveJobRow({ job, onCancel }: { job: ActiveJob; onCancel: (id: string) => void }) {
+  const isRunning = job.status === "running";
 
   return (
-    <Card className={`p-3 space-y-2 border ${job.status === "running" ? "border-primary/30" : ""}`}>
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2 min-w-0">
-          {job.status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-primary" />}
-          {job.status === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)]" />}
-          {job.status === "error" && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
-          <span className="font-medium truncate">{job.label}</span>
-          <Badge variant="outline" className={`text-[10px] ${statusColor}`}>
-            {job.status}
+    <div className={`p-2 rounded border ${
+      job.status === "running" ? "bg-blue-500/10 border-blue-500/40" :
+      job.status === "queued"  ? "bg-muted/30 border-border" :
+      job.status === "done"    ? "bg-green-500/5 border-green-500/30" :
+      job.status === "error"   ? "bg-destructive/5 border-destructive/30" :
+      "bg-muted/30 border-border"
+    }`}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-semibold text-sm">{job.label}</span>
+        <div className="flex items-center gap-2">
+          <Badge variant={job.status === "running" ? "default" : "outline"}>
+            {job.status === "queued" ? "⏳ w kolejce" :
+             job.status === "running" ? "🔄 w toku" :
+             job.status === "done" ? "✅ gotowe" :
+             job.status === "error" ? "❌ błąd" : job.status}
           </Badge>
+          {(isRunning || job.status === "queued") && (
+            <Button size="sm" variant="ghost" className="h-6 px-2"
+                    onClick={() => onCancel(job.id)}>⛔</Button>
+          )}
         </div>
-        <span className="text-muted-foreground shrink-0">{formatDuration(elapsed)}</span>
       </div>
 
-      {/* Phase timeline */}
       {job.phases && job.phases.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1">
-          {job.phases.map((p, i) => {
-            const isActive = p.status === "running";
-            const isDone = p.status === "done" || p.status === "completed";
-            const isFailed = p.status === "error" || p.status === "failed";
-            const icon = PHASE_ICONS[p.name] ?? "⏳";
-            return (
-              <span
-                key={`${p.name}-${i}`}
-                className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                  isFailed
-                    ? "bg-destructive/20 text-destructive ring-1 ring-destructive/30"
-                    : isActive
-                      ? "bg-primary/20 text-primary ring-1 ring-primary/30 animate-pulse"
-                      : isDone
-                        ? "bg-muted text-muted-foreground"
-                        : "bg-muted/50 text-muted-foreground/50"
-                }`}
-                title={p.info ? JSON.stringify(p.info) : undefined}
-              >
-                <span>{icon}</span>
-                <span>{p.name.replace(/_/g, " ")}</span>
-                {isDone && p.finished_at && p.started_at && (
-                  <span className="text-muted-foreground/70">
-                    ({formatDuration(new Date(p.finished_at).getTime() - new Date(p.started_at).getTime())})
-                  </span>
-                )}
-              </span>
-            );
-          })}
+        <div className="space-y-0.5 mt-1 text-xs font-mono text-muted-foreground">
+          {job.phases.map((p, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span>{
+                p.status === "done" ? "✅" :
+                p.status === "running" ? "🔄" :
+                p.status === "blocked" ? "🚫" :
+                p.status === "error" ? "❌" :
+                p.status === "skipped" ? "⏭" : "⏳"
+              }</span>
+              <span>{phaseLine(p)}</span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Fallback: single phase display if no phases array */}
       {(!job.phases || job.phases.length === 0) && job.phase && (
         <div className="text-[11px] text-muted-foreground">
           Faza: <span className="font-medium text-foreground">{job.phase}</span>
@@ -762,7 +766,16 @@ function ActiveJobCard({ job }: { job: ActiveJob }) {
           Znaleziono: <span className="font-medium text-foreground">{job.listings_count}</span> lotów
         </div>
       )}
-    </Card>
+
+      {job.status === "done" && job.listings_count != null && job.listings_count <= 2 && (
+        <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/40 rounded text-xs">
+          <div className="font-semibold text-amber-700 dark:text-amber-400">⚠️ Mało wyników ({job.listings_count} lotów)</div>
+          <div className="text-muted-foreground whitespace-pre-line mt-1">
+            {job.analysis_notice || "Sprawdź czy nazwa modelu jest poprawna."}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -862,7 +875,7 @@ function BatchJobCard({
             const isActive = p.status === "running";
             const isDone = p.status === "done" || p.status === "completed";
             const isFailed = p.status === "error" || p.status === "failed";
-            const icon = PHASE_ICONS[p.name] ?? "⏳";
+            const icon = { scraping_list: "📋", scraping_details: "🔍", enriching: "🔧", analyzing: "🤖", generating_reports: "📝", done: "✅", error: "❌" }[p.name] ?? "⏳";
             return (
               <span
                 key={`${p.name}-${i}`}
@@ -2215,12 +2228,16 @@ function Panel() {
                 <div className="mt-3 p-3 rounded-md bg-muted/50">
                   <div className="text-sm mb-2 italic">{lastParseResult.summary}</div>
                   {lastParseResult.warnings.length > 0 && (
-                    <div className="space-y-1">
+                    <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/40 rounded">
+                      <div className="text-xs font-semibold mb-1">⚠️ Normalizacja modeli:</div>
                       {lastParseResult.warnings.map((w, i) => (
-                        <div key={i} className="text-xs text-amber-600 dark:text-amber-400">
-                          ⚠️ {w}
-                        </div>
+                        <div key={i} className="text-xs text-amber-700 dark:text-amber-400">• {w}</div>
                       ))}
+                      <div className="text-xs text-muted-foreground mt-1 italic">
+                        Backend automatycznie znormalizował model do nazwy używanej przez Copart/IAAI
+                        (np. M440i → 4 Series). Cache zapisuje mapping żeby kolejne te same modele
+                        nie wymagały re-parsingu.
+                      </div>
                     </div>
                   )}
                   {parsedCars && parsedCars.criteria_list.length > 1 && (
