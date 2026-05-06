@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   persistScrapeJob,
   clearPersistedScrapeJob,
@@ -659,33 +660,29 @@ const PHASE_ICONS: Record<string, string> = {
 
 function ActiveJobsPanel() {
   const fnListActive = useServerFn(listActiveScraperJobs);
-  const [jobs, setJobs] = useState<ActiveJob[]>([]);
 
-  useEffect(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const r = await fnListActive();
-        if (alive) setJobs(r.jobs);
-      } catch { /* ignore */ }
-    };
-    poll();
-    const t = setInterval(poll, 2000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
+  const { data: activeJobs } = useQuery({
+    queryKey: ["active-jobs"],
+    queryFn: () => fnListActive(),
+    refetchInterval: 2000,
+  });
+
+  const jobs = activeJobs?.jobs ?? [];
 
   if (jobs.length === 0) return null;
 
   return (
-    <div className="mb-4 space-y-2">
-      <h2 className="text-sm font-semibold flex items-center gap-2">
+    <Card className="sticky top-2 z-50 p-3 mb-4 bg-primary/5 border-primary/30">
+      <h2 className="text-sm font-semibold flex items-center gap-2 mb-2">
         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
         🔄 Aktywne zadania ({jobs.length})
       </h2>
-      {jobs.map((job) => (
-        <ActiveJobCard key={job.id} job={job} />
-      ))}
-    </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {jobs.map((job) => (
+          <ActiveJobCard key={job.id} job={job} />
+        ))}
+      </div>
+    </Card>
   );
 }
 
