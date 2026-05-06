@@ -1062,6 +1062,8 @@ function Panel() {
   const [clientMessage, setClientMessage] = useState("");
   const [parsing, setParsing] = useState(false);
   const [lastParseResult, setLastParseResult] = useState<{ summary: string; warnings: string[] } | null>(null);
+  const [parsedCars, setParsedCars] = useState<ParsedCarsResult | null>(null);
+  const [batchJobs, setBatchJobs] = useState<BatchJobEntry[]>([]);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
