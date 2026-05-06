@@ -1893,6 +1893,7 @@ function Panel() {
               )}
             </Card>
 
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Kryteria
             </h3>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
