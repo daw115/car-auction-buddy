@@ -425,6 +425,8 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 async with llm_semaphore:
                     return await asyncio.to_thread(fn, item)
 
+            total_reports = len(polecane)
+
             async def gen_one(idx: int, item: AnalyzedLot) -> dict:
                 lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
                 title = f"{item.lot.year or ''} {item.lot.make or ''} {item.lot.model or ''} {item.lot.trim or ''}".strip()
@@ -435,6 +437,15 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     "client": None,
                     "broker": None,
                 }
+
+                # Live progress: który lot aktualnie generujemy
+                progress_cb("reports_generate", {
+                    "current": idx,
+                    "total": total_reports,
+                    "lot": title,
+                    "lot_id": item.lot.lot_id,
+                    "step": "generating",
+                })
 
                 client_task = _gen_with_semaphore(render_client_fn, item)
                 broker_task = _gen_with_semaphore(render_broker_fn, item)
@@ -458,8 +469,18 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 return links
 
             logger.info("Generuję %d raportów (klient+broker) w mode=%s, parallel...", len(polecane), reports_mode)
+            progress_cb("reports_generate", {
+                "total": len(polecane),
+                "mode": reports_mode,
+                "_status": "running",
+            })
             lot_links_all = await asyncio.gather(*[gen_one(i + 1, it) for i, it in enumerate(polecane)])
             lot_links: list[dict] = [ll for ll in lot_links_all if ll.get("client") or ll.get("broker")]
+            progress_cb("reports_generate", {
+                "total": len(polecane),
+                "generated": len(lot_links),
+                "_status": "done",
+            })
 
             # INDEX — jedna strona z buttonami "Klient" / "Broker" per polecony lot
             if lot_links:
@@ -777,6 +798,10 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
         k: _absolute_artifact_url(v) for k, v in raw_artifact_urls.items() if v
     }
 
+    # Pełna lista faz dla live progress UI (queue, current step, count per source itp.)
+    # Każda faza ma: name, status, info{}, started_at, finished_at
+    all_phases = [p.to_dict() for p in job.phases]
+
     return {
         "status": job.status,
         "listings": listings if job.status == "done" else None,
@@ -786,6 +811,7 @@ def _job_to_dashboard_dict(job: "jobs_store.Job") -> dict:
         "error": job.error,
         "progress": progress,
         "phase": phase_name,
+        "phases": all_phases,  # pełna historia faz (UI może wyświetlać live log)
         "step": phase_info.get("step"),
         "message": phase_info.get("message"),
         "current": current,
