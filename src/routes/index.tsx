@@ -34,6 +34,7 @@ import {
   checkHealth,
   getLlmCacheStats,
   clearLlmCache,
+  parseClientMessage,
 } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
@@ -146,8 +147,8 @@ const DEFAULT_CRITERIA: ClientCriteria = {
   model: "",
   year_from: 2015,
   year_to: 2024,
-  budget_usd: 20000,
-  max_odometer_mi: 120000,
+  budget_usd: null,
+  max_odometer_mi: null,
   excluded_damage_types: ["Flood", "Fire"],
   max_results: 30,
   sources: ["copart", "iaai"],
@@ -658,6 +659,7 @@ function Panel() {
   const fnRunLotReports = useServerFn(runLotReports);
   const fnGetReportBundle = useServerFn(getReportBundle);
   const fnAddWatch = useServerFn(addToWatchlist);
+  const fnParseMessage = useServerFn(parseClientMessage);
 
   async function downloadReportBundle(recordId: string) {
     try {
@@ -771,6 +773,9 @@ function Panel() {
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
   const [criteria, setCriteria] = useState<ClientCriteria>(DEFAULT_CRITERIA);
+  const [clientMessage, setClientMessage] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [lastParseResult, setLastParseResult] = useState<{ summary: string; warnings: string[] } | null>(null);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
@@ -1256,6 +1261,29 @@ function Panel() {
       toast.success(`Wczytano ${parsed.length} lotów z JSON`);
     } catch (e) {
       toast.error(`Błąd JSON: ${(e as Error).message}`);
+    }
+  }
+
+  async function handleParseMessage() {
+    if (!clientMessage.trim()) {
+      toast.error("Wpisz wiadomość od klienta");
+      return;
+    }
+    setParsing(true);
+    setLastParseResult(null);
+    try {
+      const result = await fnParseMessage({ data: { message: clientMessage } });
+      setCriteria({
+        ...DEFAULT_CRITERIA,
+        ...result.criteria,
+      });
+      setLastParseResult({ summary: result.summary, warnings: result.warnings });
+      toast.success(result.summary, { duration: 6000 });
+      result.warnings.forEach((w) => toast.warning(w, { duration: 8000 }));
+    } catch (e) {
+      toast.error(`Błąd parsowania: ${(e as Error).message}`);
+    } finally {
+      setParsing(false);
     }
   }
 
@@ -1828,6 +1856,43 @@ function Panel() {
               </div>
             </div>
 
+            <Card className="p-4 mb-4 border-primary/30 bg-primary/5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">📝</span>
+                <h3 className="font-semibold">Wiadomość od klienta</h3>
+                <span className="text-xs text-muted-foreground">
+                  AI wyciągnie filtry (make, model, rocznik, budżet, przebieg, etc.)
+                </span>
+              </div>
+              <Textarea
+                placeholder='np. "Szukam BMW M5 z 2018-2020, najlepiej East Coast, budżet 30k USD, do 60 tys mil"'
+                value={clientMessage}
+                onChange={(e) => setClientMessage(e.target.value)}
+                rows={3}
+                className="mb-3"
+              />
+              <div className="flex items-center gap-3">
+                <Button onClick={handleParseMessage} disabled={parsing || !clientMessage.trim()}>
+                  {parsing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <span className="mr-1">🤖</span>}
+                  {parsing ? "Parsuję..." : "Parsuj filtry"}
+                </Button>
+              </div>
+              {lastParseResult && (
+                <div className="mt-3 p-3 rounded-md bg-muted/50">
+                  <div className="text-sm mb-2 italic">{lastParseResult.summary}</div>
+                  {lastParseResult.warnings.length > 0 && (
+                    <div className="space-y-1">
+                      {lastParseResult.warnings.map((w, i) => (
+                        <div key={i} className="text-xs text-amber-600 dark:text-amber-400">
+                          ⚠️ {w}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Kryteria
             </h3>
@@ -1864,22 +1929,18 @@ function Panel() {
                   }
                 />
               </Field>
-              <Field label="Budżet USD *">
+              <Field label="Budżet USD">
                 <Input
                   type="number"
-                  min={1}
-                  value={criteria.budget_usd || ""}
-                  onChange={(e) => setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : 0 })}
-                  onBlur={(e) => {
-                    if (!e.target.value || +e.target.value < 1) {
-                      setCriteria((c) => ({ ...c, budget_usd: 15000 }));
-                    }
-                  }}
+                  placeholder="(opcjonalne)"
+                  value={criteria.budget_usd ?? ""}
+                  onChange={(e) => setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : null })}
                 />
               </Field>
               <Field label="Max przebieg (mil)">
                 <Input
                   type="number"
+                  placeholder="(opcjonalne)"
                   value={criteria.max_odometer_mi ?? ""}
                   onChange={(e) =>
                     setCriteria({ ...criteria, max_odometer_mi: e.target.value ? +e.target.value : null })

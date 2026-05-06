@@ -34,7 +34,7 @@ export type ClientCriteria = {
   model?: string | null;
   year_from?: number | null;
   year_to?: number | null;
-  budget_usd: number;
+  budget_usd?: number | null;
   max_odometer_mi?: number | null;
   excluded_damage_types?: string[];
   max_results?: number;
