@@ -369,6 +369,16 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         SHOWCASE_RYZYKO_LIMIT,
     )
 
+    # Nadpisz is_top_recommendation żeby odpowiadało showcase'owi (a nie default top_n=5
+    # z _rank_results po score). UI używa is_top_recommendation do filtrowania showcase tabeli.
+    showcase_lot_ids = {r.lot.lot_id for r in showcase}
+    for r in ranked_results:
+        r.is_top_recommendation = r.lot.lot_id in showcase_lot_ids
+    # Synchronizuj też top_recommendations (response field)
+    top_recommendations = showcase
+    remaining_results = [r for r in ranked_results if r.lot.lot_id not in showcase_lot_ids][:5]
+    all_results = top_recommendations + remaining_results
+
     if polecane and slug:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         search_query_str = (
