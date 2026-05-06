@@ -1996,7 +1996,7 @@ export const getBackendRecordsList = createServerFn({ method: "GET" })
   });
 
 export const getBackendRecordDetails = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ id: z.string().min(1) }).parse)
+  .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -2033,7 +2033,7 @@ export const listAllJobs = createServerFn({ method: "GET" })
   });
 
 export const getJobDetails = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ id: z.string().min(1) }).parse)
+  .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
