@@ -1559,12 +1559,21 @@ function Panel() {
     }
     setParsing(true);
     setLastParseResult(null);
+    setParsedCars(null);
     try {
       const result = await fnParseMessage({ data: { message: clientMessage } });
-      setCriteria({
-        ...DEFAULT_CRITERIA,
-        ...result.criteria,
-      });
+      // If backend returns criteria_list (multi-car), store for batch search
+      if (result.criteria_list && result.criteria_list.length > 1) {
+        setParsedCars({
+          criteria_list: result.criteria_list,
+          summary: result.summary,
+          warnings: result.warnings,
+        });
+        // Also fill first car into the form
+        setCriteria({ ...DEFAULT_CRITERIA, ...result.criteria_list[0] });
+      } else {
+        setCriteria({ ...DEFAULT_CRITERIA, ...result.criteria });
+      }
       setLastParseResult({ summary: result.summary, warnings: result.warnings });
       toast.success(result.summary, { duration: 6000 });
       result.warnings.forEach((w) => toast.warning(w, { duration: 8000 }));
@@ -1574,6 +1583,41 @@ function Panel() {
       setParsing(false);
     }
   }
+
+  async function handleBatchSearch() {
+    if (!parsedCars) return;
+
+    try {
+      const r = await fnBatchSearch({
+        data: {
+          searches: parsedCars.criteria_list.map((c) => ({ criteria: c as unknown as Record<string, unknown> })),
+        },
+      });
+
+      setBatchJobs(
+        r.jobs.map((j) => ({
+          jobId: j.job_id,
+          label: j.label,
+          criteria:
+            parsedCars.criteria_list.find(
+              (c) => `${c.make} ${c.model || ""}`.trim().toLowerCase() === j.label.toLowerCase(),
+            ) ?? parsedCars.criteria_list[0],
+          status: j.idempotent ? "running" as const : "queued" as const,
+        })),
+      );
+
+      setParsedCars(null);
+      toast.success(`Zakolejkowano ${r.queued_count} wyszukiwań`);
+    } catch (e) {
+      toast.error(`Błąd batch search: ${(e as Error).message}`);
+    }
+  }
+
+  const handleBatchJobUpdate = useCallback((jobId: string, update: Partial<BatchJobEntry>) => {
+    setBatchJobs((prev) =>
+      prev.map((j) => (j.jobId === jobId ? { ...j, ...update } : j)),
+    );
+  }, []);
 
   async function callScraper() {
     if (!env?.SCRAPER_BASE_URL) {
