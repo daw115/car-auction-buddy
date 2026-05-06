@@ -1280,15 +1280,20 @@ export const listActiveScraperJobs = createServerFn({ method: "GET" })
       return (await res.json()) as {
         jobs: Array<{
           id: string;
-          status: string;
           label: string;
-          criteria: Record<string, string | number | boolean | null>;
+          status: "queued" | "running" | "done" | "error" | "cancelled" | "interrupted";
+          phase?: string | null;
+          phase_info?: Record<string, any>;
+          phases?: Array<{
+            name: string;
+            status: string;
+            info?: Record<string, any>;
+            started_at: string;
+            finished_at?: string | null;
+          }>;
+          criteria?: Record<string, any>;
           created_at: string;
           finished_at?: string | null;
-          phase?: string | null;
-          phase_status?: string | null;
-          cancel_requested?: boolean;
-          error?: string | null;
           listings_count?: number;
         }>;
         total: number;

@@ -626,6 +626,148 @@ function AnalysisProgress({ job }: { job: AnalysisJobState }) {
   );
 }
 
+// ---- Active Jobs types ----
+type ActiveJob = {
+  id: string;
+  label: string;
+  status: "queued" | "running" | "done" | "error" | "cancelled" | "interrupted";
+  phase?: string | null;
+  phase_info?: Record<string, any>;
+  phases?: Array<{
+    name: string;
+    status: string;
+    info?: Record<string, any>;
+    started_at: string;
+    finished_at?: string | null;
+  }>;
+  criteria?: Record<string, any>;
+  created_at: string;
+  finished_at?: string | null;
+  listings_count?: number;
+};
+
+const PHASE_ICONS: Record<string, string> = {
+  scraping_list: "📋",
+  scraping_details: "🔍",
+  enriching: "🔧",
+  analyzing: "🤖",
+  generating_reports: "📝",
+  done: "✅",
+  error: "❌",
+};
+
+function ActiveJobsPanel() {
+  const fnListActive = useServerFn(listActiveScraperJobs);
+  const [jobs, setJobs] = useState<ActiveJob[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await fnListActive();
+        if (alive) setJobs(r.jobs);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const t = setInterval(poll, 2000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  if (jobs.length === 0) return null;
+
+  return (
+    <div className="mb-4 space-y-2">
+      <h2 className="text-sm font-semibold flex items-center gap-2">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+        🔄 Aktywne zadania ({jobs.length})
+      </h2>
+      {jobs.map((job) => (
+        <ActiveJobCard key={job.id} job={job} />
+      ))}
+    </div>
+  );
+}
+
+function ActiveJobCard({ job }: { job: ActiveJob }) {
+  const elapsed = job.finished_at
+    ? new Date(job.finished_at).getTime() - new Date(job.created_at).getTime()
+    : Date.now() - new Date(job.created_at).getTime();
+
+  const statusColor = {
+    queued: "bg-muted text-muted-foreground",
+    running: "bg-primary/10 text-primary border-primary/30",
+    done: "bg-[oklch(0.50_0.15_145)]/10 text-[oklch(0.50_0.15_145)]",
+    error: "bg-destructive/10 text-destructive",
+    cancelled: "bg-muted text-muted-foreground",
+    interrupted: "bg-muted text-muted-foreground",
+  }[job.status] ?? "bg-muted text-muted-foreground";
+
+  return (
+    <Card className={`p-3 space-y-2 border ${job.status === "running" ? "border-primary/30" : ""}`}>
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          {job.status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-primary" />}
+          {job.status === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)]" />}
+          {job.status === "error" && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+          <span className="font-medium truncate">{job.label}</span>
+          <Badge variant="outline" className={`text-[10px] ${statusColor}`}>
+            {job.status}
+          </Badge>
+        </div>
+        <span className="text-muted-foreground shrink-0">{formatDuration(elapsed)}</span>
+      </div>
+
+      {/* Phase timeline */}
+      {job.phases && job.phases.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {job.phases.map((p, i) => {
+            const isActive = p.status === "running";
+            const isDone = p.status === "done" || p.status === "completed";
+            const isFailed = p.status === "error" || p.status === "failed";
+            const icon = PHASE_ICONS[p.name] ?? "⏳";
+            return (
+              <span
+                key={`${p.name}-${i}`}
+                className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  isFailed
+                    ? "bg-destructive/20 text-destructive ring-1 ring-destructive/30"
+                    : isActive
+                      ? "bg-primary/20 text-primary ring-1 ring-primary/30 animate-pulse"
+                      : isDone
+                        ? "bg-muted text-muted-foreground"
+                        : "bg-muted/50 text-muted-foreground/50"
+                }`}
+                title={p.info ? JSON.stringify(p.info) : undefined}
+              >
+                <span>{icon}</span>
+                <span>{p.name.replace(/_/g, " ")}</span>
+                {isDone && p.finished_at && p.started_at && (
+                  <span className="text-muted-foreground/70">
+                    ({formatDuration(new Date(p.finished_at).getTime() - new Date(p.started_at).getTime())})
+                  </span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Fallback: single phase display if no phases array */}
+      {(!job.phases || job.phases.length === 0) && job.phase && (
+        <div className="text-[11px] text-muted-foreground">
+          Faza: <span className="font-medium text-foreground">{job.phase}</span>
+        </div>
+      )}
+
+      {job.listings_count != null && (
+        <div className="text-[11px] text-muted-foreground">
+          Znaleziono: <span className="font-medium text-foreground">{job.listings_count}</span> lotów
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
@@ -1762,6 +1904,11 @@ function Panel() {
         </div>
       </header>
 
+      {/* Sticky active jobs panel */}
+      <div className="px-4 pt-3">
+        <ActiveJobsPanel />
+      </div>
+
       <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         {/* ---- Clients column ---- */}
         <aside className="space-y-3">
@@ -1971,11 +2118,9 @@ function Panel() {
               </Field>
             </div>
 
-            <Separator className="my-4" />
-
-            <ActiveJobsPanel />
 
             <Separator className="my-4" />
+
 
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -3212,113 +3357,5 @@ function ConnectionStatusPanel() {
         </div>
       )}
     </Card>
-  );
-}
-
-// Panel aktywnych zadań — pokazuje running + queued jobs z buttonem cancel.
-// Polluje co 3s. Widać job_id, status, kryteria, progress.
-function ActiveJobsPanel() {
-  const fnList = useServerFn(listActiveScraperJobs);
-  const fnCancel = useServerFn(cancelScraperJob);
-  const [jobs, setJobs] = useState<Array<{
-    id: string;
-    status: string;
-    label: string;
-    created_at: string;
-    phase?: string | null;
-    cancel_requested?: boolean;
-  }>>([]);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    let stop = false;
-    const tick = async () => {
-      try {
-        const r = (await fnList()) as { jobs: typeof jobs };
-        if (!stop) setJobs(r.jobs ?? []);
-      } catch {
-        if (!stop) setJobs([]);
-      }
-    };
-    tick();
-    const t = setInterval(tick, 3000);
-    return () => {
-      stop = true;
-      clearInterval(t);
-    };
-  }, [fnList]);
-
-  if (jobs.length === 0) return null;
-
-  const cancel = async (jobId: string) => {
-    setBusy(jobId);
-    try {
-      await fnCancel({ data: { jobId } });
-      toast.success(`Anulowano #${jobId.slice(0, 8)}`);
-      setJobs((js) => js.filter((j) => j.id !== jobId));
-    } catch (e) {
-      toast.error(`Nie udało się anulować: ${(e as Error).message}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const formatElapsed = (iso: string): string => {
-    const ms = Date.now() - new Date(iso + (iso.includes("Z") || iso.includes("+") ? "" : "Z")).getTime();
-    if (ms < 0) return "0s";
-    const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}s`;
-    return `${Math.floor(s / 60)}m ${s % 60}s`;
-  };
-
-  const statusBadge = (status: string) => {
-    if (status === "queued") return <Badge variant="outline" className="text-xs">⏸ W kolejce</Badge>;
-    if (status === "running") return <Badge variant="default" className="text-xs">▶ Działa</Badge>;
-    return <Badge variant="secondary" className="text-xs">{status}</Badge>;
-  };
-
-  return (
-    <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-      <div className="flex items-center justify-between mb-2">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-2 text-sm font-semibold text-primary"
-        >
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Aktywne zadania ({jobs.length})
-          <span className="text-xs text-muted-foreground">{collapsed ? "▼" : "▲"}</span>
-        </button>
-      </div>
-      {!collapsed && (
-        <div className="space-y-1.5">
-          {jobs.map((j) => (
-            <div
-              key={j.id}
-              className="flex items-center justify-between gap-2 rounded bg-background/60 px-3 py-2 text-sm"
-            >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                {statusBadge(j.status)}
-                <span className="font-mono text-xs text-muted-foreground">#{j.id.slice(0, 8)}</span>
-                <span className="font-medium truncate">{j.label}</span>
-                {j.phase && j.status === "running" && (
-                  <span className="text-xs text-muted-foreground">· {j.phase}</span>
-                )}
-                <span className="text-xs text-muted-foreground ml-auto">{formatElapsed(j.created_at)}</span>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy === j.id || j.cancel_requested}
-                onClick={() => cancel(j.id)}
-                className="h-7 px-2 text-xs"
-              >
-                {busy === j.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Anuluj"}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
