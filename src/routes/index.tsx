@@ -35,6 +35,7 @@ import {
   getLlmCacheStats,
   clearLlmCache,
   parseClientMessage,
+  batchSearch,
 } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
@@ -768,6 +769,148 @@ function ActiveJobCard({ job }: { job: ActiveJob }) {
   );
 }
 
+// ---------- Batch search types + card ----------
+
+type BatchJobEntry = {
+  jobId: string;
+  label: string;
+  criteria: ClientCriteria;
+  status: "queued" | "running" | "done" | "error" | "cancelled";
+  phase?: string | null;
+  phases?: Array<{
+    name: string;
+    status: string;
+    info?: Record<string, any>;
+    started_at: string;
+    finished_at?: string | null;
+  }>;
+  listings_count?: number;
+  errorMessage?: string;
+  reportUrls?: ScraperReportUrls;
+};
+
+type ParsedCarsResult = {
+  criteria_list: ClientCriteria[];
+  summary: string;
+  warnings: string[];
+};
+
+function BatchJobCard({
+  job,
+  onPollUpdate,
+}: {
+  job: BatchJobEntry;
+  onPollUpdate: (jobId: string, update: Partial<BatchJobEntry>) => void;
+}) {
+  const fnPoll = useServerFn(pollScraperJob);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (job.status === "done" || job.status === "error" || job.status === "cancelled") return;
+
+    const poll = async () => {
+      try {
+        const r = (await fnPoll({ data: { jobId: job.jobId } })) as any;
+        const update: Partial<BatchJobEntry> = {
+          status: r.status ?? job.status,
+          phase: r.phase ?? null,
+          phases: r.phases ?? undefined,
+          listings_count: r.listings_count ?? undefined,
+          reportUrls: r.report_urls ?? r.reportUrls ?? undefined,
+        };
+        if (r.error) update.errorMessage = r.error;
+        onPollUpdate(job.jobId, update);
+
+        if (r.status === "done" || r.status === "error" || r.status === "cancelled") {
+          if (pollRef.current) clearInterval(pollRef.current);
+        }
+      } catch {
+        // silent — retry on next tick
+      }
+    };
+
+    poll();
+    pollRef.current = setInterval(poll, 2000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [job.jobId, job.status]);
+
+  const statusColor = {
+    queued: "bg-muted text-muted-foreground",
+    running: "bg-primary/10 text-primary border-primary/30",
+    done: "bg-[oklch(0.50_0.15_145)]/10 text-[oklch(0.50_0.15_145)]",
+    error: "bg-destructive/10 text-destructive",
+    cancelled: "bg-muted text-muted-foreground",
+  }[job.status] ?? "bg-muted text-muted-foreground";
+
+  return (
+    <Card className={`p-3 space-y-2 border ${job.status === "running" ? "border-primary/30" : ""}`}>
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          {job.status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-primary" />}
+          {job.status === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.50_0.15_145)]" />}
+          {job.status === "error" && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+          {job.status === "queued" && <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
+          <span className="font-medium truncate">{job.label}</span>
+          <Badge variant="outline" className={`text-[10px] ${statusColor}`}>
+            {job.status}
+          </Badge>
+        </div>
+      </div>
+
+      {job.phases && job.phases.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {job.phases.map((p, i) => {
+            const isActive = p.status === "running";
+            const isDone = p.status === "done" || p.status === "completed";
+            const isFailed = p.status === "error" || p.status === "failed";
+            const icon = PHASE_ICONS[p.name] ?? "⏳";
+            return (
+              <span
+                key={`${p.name}-${i}`}
+                className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  isFailed
+                    ? "bg-destructive/20 text-destructive ring-1 ring-destructive/30"
+                    : isActive
+                      ? "bg-primary/20 text-primary ring-1 ring-primary/30 animate-pulse"
+                      : isDone
+                        ? "bg-muted text-muted-foreground"
+                        : "bg-muted/50 text-muted-foreground/50"
+                }`}
+              >
+                <span>{icon}</span>
+                <span>{p.name.replace(/_/g, " ")}</span>
+                {isDone && p.finished_at && p.started_at && (
+                  <span className="text-muted-foreground/70">
+                    ({formatDuration(new Date(p.finished_at).getTime() - new Date(p.started_at).getTime())})
+                  </span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {(!job.phases || job.phases.length === 0) && job.phase && (
+        <div className="text-[11px] text-muted-foreground">
+          Faza: <span className="font-medium text-foreground">{job.phase}</span>
+        </div>
+      )}
+
+      {job.listings_count != null && (
+        <div className="text-[11px] text-muted-foreground">
+          Znaleziono: <span className="font-medium text-foreground">{job.listings_count}</span> lotów
+        </div>
+      )}
+
+      {job.errorMessage && (
+        <div className="text-[11px] text-destructive truncate">{job.errorMessage}</div>
+      )}
+    </Card>
+  );
+}
+
 function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
@@ -802,6 +945,7 @@ function Panel() {
   const fnGetReportBundle = useServerFn(getReportBundle);
   const fnAddWatch = useServerFn(addToWatchlist);
   const fnParseMessage = useServerFn(parseClientMessage);
+  const fnBatchSearch = useServerFn(batchSearch);
 
   async function downloadReportBundle(recordId: string) {
     try {
@@ -918,6 +1062,8 @@ function Panel() {
   const [clientMessage, setClientMessage] = useState("");
   const [parsing, setParsing] = useState(false);
   const [lastParseResult, setLastParseResult] = useState<{ summary: string; warnings: string[] } | null>(null);
+  const [parsedCars, setParsedCars] = useState<ParsedCarsResult | null>(null);
+  const [batchJobs, setBatchJobs] = useState<BatchJobEntry[]>([]);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
@@ -1413,12 +1559,21 @@ function Panel() {
     }
     setParsing(true);
     setLastParseResult(null);
+    setParsedCars(null);
     try {
       const result = await fnParseMessage({ data: { message: clientMessage } });
-      setCriteria({
-        ...DEFAULT_CRITERIA,
-        ...result.criteria,
-      });
+      // If backend returns criteria_list (multi-car), store for batch search
+      if (result.criteria_list && result.criteria_list.length > 1) {
+        setParsedCars({
+          criteria_list: result.criteria_list,
+          summary: result.summary,
+          warnings: result.warnings,
+        });
+        // Also fill first car into the form
+        setCriteria({ ...DEFAULT_CRITERIA, ...result.criteria_list[0] });
+      } else {
+        setCriteria({ ...DEFAULT_CRITERIA, ...result.criteria });
+      }
       setLastParseResult({ summary: result.summary, warnings: result.warnings });
       toast.success(result.summary, { duration: 6000 });
       result.warnings.forEach((w) => toast.warning(w, { duration: 8000 }));
@@ -1428,6 +1583,41 @@ function Panel() {
       setParsing(false);
     }
   }
+
+  async function handleBatchSearch() {
+    if (!parsedCars) return;
+
+    try {
+      const r = await fnBatchSearch({
+        data: {
+          searches: parsedCars.criteria_list.map((c) => ({ criteria: c as unknown as Record<string, unknown> })),
+        },
+      });
+
+      setBatchJobs(
+        r.jobs.map((j) => ({
+          jobId: j.job_id,
+          label: j.label,
+          criteria:
+            parsedCars.criteria_list.find(
+              (c) => `${c.make} ${c.model || ""}`.trim().toLowerCase() === j.label.toLowerCase(),
+            ) ?? parsedCars.criteria_list[0],
+          status: j.idempotent ? "running" as const : "queued" as const,
+        })),
+      );
+
+      setParsedCars(null);
+      toast.success(`Zakolejkowano ${r.queued_count} wyszukiwań`);
+    } catch (e) {
+      toast.error(`Błąd batch search: ${(e as Error).message}`);
+    }
+  }
+
+  const handleBatchJobUpdate = useCallback((jobId: string, update: Partial<BatchJobEntry>) => {
+    setBatchJobs((prev) =>
+      prev.map((j) => (j.jobId === jobId ? { ...j, ...update } : j)),
+    );
+  }, []);
 
   async function callScraper() {
     if (!env?.SCRAPER_BASE_URL) {
@@ -2036,9 +2226,50 @@ function Panel() {
                       ))}
                     </div>
                   )}
+                  {parsedCars && parsedCars.criteria_list.length > 1 && (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        Wykryto <span className="font-bold text-foreground">{parsedCars.criteria_list.length}</span> aut:{" "}
+                        {parsedCars.criteria_list.map((c, i) => (
+                          <Badge key={i} variant="outline" className="mr-1 text-[10px]">
+                            {c.make} {c.model || ""} {c.year_from ? `${c.year_from}` : ""}{c.year_to ? `-${c.year_to}` : ""}
+                          </Badge>
+                        ))}
+                      </div>
+                      <Button onClick={handleBatchSearch} size="sm">
+                        <Search className="h-4 w-4 mr-1" />
+                        Wyszukaj wszystkie ({parsedCars.criteria_list.length})
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
+
+            {/* Batch jobs panel */}
+            {batchJobs.length > 0 && (
+              <Card className="p-4 mb-4 border-primary/30">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📦</span>
+                    <h3 className="font-semibold">Batch wyszukiwanie</h3>
+                    <Badge variant="outline" className="text-[10px]">
+                      {batchJobs.filter((j) => j.status === "done").length}/{batchJobs.length} gotowe
+                    </Badge>
+                  </div>
+                  {batchJobs.every((j) => j.status === "done" || j.status === "error" || j.status === "cancelled") && (
+                    <Button size="sm" variant="ghost" onClick={() => setBatchJobs([])}>
+                      <X className="h-3.5 w-3.5 mr-1" /> Zamknij
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {batchJobs.map((job) => (
+                    <BatchJobCard key={job.jobId} job={job} onPollUpdate={handleBatchJobUpdate} />
+                  ))}
+                </div>
+              </Card>
+            )}
 
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Kryteria

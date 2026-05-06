@@ -2156,7 +2156,63 @@ export const parseClientMessage = createServerFn({ method: "POST" })
         sources?: string[];
         max_results?: number;
       };
+      criteria_list?: Array<{
+        make: string;
+        model?: string | null;
+        year_from?: number | null;
+        year_to?: number | null;
+        budget_usd?: number | null;
+        max_odometer_mi?: number | null;
+        excluded_damage_types?: string[];
+        allowed_damage_types?: string[];
+        sources?: string[];
+        max_results?: number;
+      }>;
       summary: string;
       warnings: string[];
+    }>;
+  });
+
+// ---------- Batch Search ----------
+
+export const batchSearch = createServerFn({ method: "POST" })
+  .inputValidator(
+    z
+      .object({
+        searches: z
+          .array(z.object({ criteria: z.record(z.unknown()) }))
+          .min(1)
+          .max(20),
+      })
+      .parse,
+  )
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) throw new Error("Backend not configured");
+
+    const res = await fetch(`${baseUrl}/api/search/batch`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      throw new Error(`Batch HTTP ${res.status}: ${err.slice(0, 300)}`);
+    }
+
+    return res.json() as Promise<{
+      jobs: Array<{
+        job_id: string;
+        label: string;
+        stream_url: string;
+        idempotent: boolean;
+        reused_status?: string;
+      }>;
+      queued_count: number;
     }>;
   });
