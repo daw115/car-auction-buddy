@@ -707,6 +707,89 @@ function HtmlCacheSection() {
   );
 }
 
+// ── Model Normalizations Section ──
+
+function NormalizationsSection() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const fn = useServerFn(getModelNormalizations);
+  const fnDelete = useServerFn(deleteModelNormalization);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fn();
+      setItems(r?.items ?? []);
+    } catch {
+      toast.error("Nie udało się pobrać normalizacji");
+    } finally {
+      setLoading(false);
+    }
+  }, [fn]);
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: string | number) => {
+    try {
+      await fnDelete({ data: { id: String(id) } });
+      toast.success("Normalizacja usunięta");
+      load();
+    } catch {
+      toast.error("Nie udało się usunąć");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardTitle className="text-base">🔤 Cache normalizacji modeli</CardTitle>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          {loading ? <Spin /> : <RefreshCw className="h-3.5 w-3.5" />}
+          <span className="ml-1.5">Refresh</span>
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading && items.length === 0 ? (
+          <div className="flex justify-center py-6"><Spin /></div>
+        ) : items.length === 0 ? (
+          <EmptyState text="Brak normalizacji" />
+        ) : (
+          <div className="max-h-[500px] overflow-auto rounded border">
+            <Table>
+              <TableHeader className="sticky top-0 bg-card z-10">
+                <TableRow>
+                  <TableHead>Make</TableHead>
+                  <TableHead>Klient pisze</TableHead>
+                  <TableHead>Copart/IAAI</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Verified</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((n: any) => (
+                  <TableRow key={n.id}>
+                    <TableCell className="text-xs">{n.make}</TableCell>
+                    <TableCell className="font-mono text-xs">{n.original_text}</TableCell>
+                    <TableCell className="font-semibold text-xs">{n.normalized_model}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{n.reason || "—"}</TableCell>
+                    <TableCell className="text-xs">×{n.verified_count ?? 0}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(n.id)}>
+                        🗑️
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ──
 
 function DatabasePage() {
@@ -735,6 +818,7 @@ function DatabasePage() {
         <JobsSection />
         <LlmCacheSection />
         <HtmlCacheSection />
+        <NormalizationsSection />
       </main>
     </div>
   );
