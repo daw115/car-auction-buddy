@@ -1345,61 +1345,32 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
             })}
           </div>
 
-          {/* STICKY BAR for bundle + rich reports */}
+          {/* STICKY BAR for bundle reports */}
           {selectedLotIds.size > 0 && (
-            <div className="sticky bottom-2 mt-4 p-3 rounded-md border bg-card">
+            <div className="sticky bottom-2 mt-4 p-3 rounded-md border border-amber-500/40 bg-amber-500/5">
               <div className="text-xs font-semibold mb-2">
-                📦 Raporty zbiorcze ({selectedLotIds.size} {selectedLotIds.size === 1 ? "auto" : "aut"})
+                ✨ Rich raporty zbiorcze ({selectedLotIds.size} {selectedLotIds.size === 1 ? "auto" : "aut"})
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* KLIENT */}
-                <Card className="p-3 border-green-500/30 bg-green-500/5">
-                  <div className="text-xs font-semibold mb-2">📄 Klient (storytelling, ceny PLN)</div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="default"
-                            onClick={() => openBundleHtml("client", "hybrid")}>
-                      ✨ Hybrid (Gemini, ~30s/lot)
-                    </Button>
-                    <Button size="sm" variant="outline"
-                            onClick={() => openBundleHtml("client", "template")}>
-                      ⚡ Szybki template (1s)
-                    </Button>
-                  </div>
-                </Card>
-
-                {/* BROKER */}
-                <Card className="p-3 border-blue-500/30 bg-blue-500/5">
-                  <div className="text-xs font-semibold mb-2">📋 Broker (scoring, koszty, bid strategy)</div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="default"
-                            onClick={() => openBundleHtml("broker", "hybrid")}>
-                      ✨ Hybrid (Gemini, ~30s/lot)
-                    </Button>
-                    <Button size="sm" variant="outline"
-                            onClick={() => openBundleHtml("broker", "template")}>
-                      ⚡ Szybki template (1s)
-                    </Button>
-                  </div>
-                </Card>
+              <div className="text-xs text-muted-foreground mb-2">
+                Hybrid Gemini + Otomoto market_pl + tłumaczenie PL. ~30s/lot pierwszy raz,
+                potem cache 24h (instant). Otrzymujesz JEDEN plik HTML z TOC.
               </div>
-
-              {/* Per-lot rich reports */}
-              <div className="mt-3 pt-3 border-t flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-xs">
-                  <strong>🔥 Per-lot rich raporty</strong> (Gemini / Anthropic)
-                  <div className="text-muted-foreground mt-0.5">
-                    ~30s/lot, potem cache 24h
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => generateRichClientReports(
-                    allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id))
-                  )}
-                >
-                  ✨ Rich klient × {selectedLotIds.size}
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="default" size="sm"
+                        onClick={() => openBundleHtml("client", "hybrid")}>
+                  ✨ Rich klient (1 plik × {selectedLotIds.size})
+                </Button>
+                <Button variant="default" size="sm"
+                        onClick={() => openBundleHtml("broker", "hybrid")}>
+                  ✨ Rich broker (1 plik × {selectedLotIds.size})
+                </Button>
+                <Button variant="outline" size="sm"
+                        onClick={() => openBundleHtml("client", "template")}>
+                  ⚡ Szybki klient (template)
+                </Button>
+                <Button variant="outline" size="sm"
+                        onClick={() => openBundleHtml("broker", "template")}>
+                  ⚡ Szybki broker (template)
                 </Button>
               </div>
             </div>
