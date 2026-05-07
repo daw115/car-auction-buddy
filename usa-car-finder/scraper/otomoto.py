@@ -79,6 +79,74 @@ def _build_url(make: str, model: Optional[str], year_from: Optional[int],
     return base + ("?" + "&".join(qs) if qs else "")
 
 
+def _parse_offers_from_html(html: str) -> list[dict]:
+    """Wyciąga listę OGŁOSZEŃ z HTML Otomoto (title, price, year, mileage, url).
+
+    Używa BeautifulSoup do parsowania <article> z search results.
+    Pomija reklamy/promocje (article bez linku do oferty).
+
+    Returns: list[{title, price_pln, year, mileage_km, url}]
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.warning("[Otomoto] bs4 not available — falling back to price-only")
+        return []
+
+    soup = BeautifulSoup(html, "lxml")
+    offers: list[dict] = []
+
+    articles = soup.select("article")
+    for a in articles:
+        title_el = a.select_one('h2 a, h3 a')
+        if not title_el or "otomoto.pl/osobowe/oferta" not in (title_el.get("href") or ""):
+            continue
+
+        title = title_el.get_text(strip=True)
+        url = title_el.get("href")
+
+        # Price z <h3> zawierającym digit pattern
+        price = None
+        for h in a.select("h3"):
+            txt = h.get_text(strip=True).replace("\xa0", " ")
+            m = re.match(r"^([\d\s]{4,12})$", txt)
+            if m:
+                try:
+                    price = int(m.group(1).replace(" ", ""))
+                    if 1000 <= price <= 5_000_000:
+                        break
+                    price = None
+                except ValueError:
+                    pass
+
+        # Parameters (rok, przebieg, fuel, gearbox)
+        params_el = a.select('dl dd, [data-testid="ad-parameters"] dd')
+        year = None
+        mileage_km = None
+        for p in params_el:
+            txt = p.get_text(strip=True).replace("\xa0", " ")
+            if re.match(r"^\d{4}$", txt):
+                year = int(txt)
+            elif "km" in txt.lower():
+                m = re.match(r"^([\d\s]+)\s*km$", txt)
+                if m:
+                    try:
+                        mileage_km = int(m.group(1).replace(" ", ""))
+                    except ValueError:
+                        pass
+
+        if title and price:
+            offers.append({
+                "title": title,
+                "price_pln": price,
+                "year": year,
+                "mileage_km": mileage_km,
+                "url": url,
+            })
+
+    return offers
+
+
 def _parse_prices_from_html(html: str) -> list[int]:
     """Wyciąga ceny PLN z HTML strony listingu Otomoto.
 
@@ -138,8 +206,50 @@ def _parse_prices_from_html(html: str) -> list[int]:
     return prices
 
 
+def _aggregate_offers(offers: list[dict]) -> dict:
+    """Liczy statystyki ze szczegółowych ofert (cena, rok, przebieg)."""
+    if not offers:
+        return {
+            "low_pln": None, "high_pln": None, "mean_pln": None, "median_pln": None,
+            "sample_size": 0, "avg_mileage_km": None, "avg_year": None,
+            "top_offers": [],
+        }
+
+    prices = [o["price_pln"] for o in offers if o.get("price_pln")]
+    mileages = [o["mileage_km"] for o in offers if o.get("mileage_km")]
+    years = [o["year"] for o in offers if o.get("year")]
+
+    if not prices:
+        return {
+            "low_pln": None, "high_pln": None, "mean_pln": None, "median_pln": None,
+            "sample_size": 0, "avg_mileage_km": None, "avg_year": None,
+            "top_offers": [],
+        }
+
+    # Trim 5% outlierów cen
+    sorted_p = sorted(prices)
+    n = len(sorted_p)
+    if n >= 10:
+        trim = int(n * 0.05)
+        sorted_p = sorted_p[trim:n - trim] if trim else sorted_p
+
+    # Top 5 najtańszych ofert (broker analizuje konkurencję)
+    top_offers = sorted(offers, key=lambda o: o.get("price_pln") or float("inf"))[:5]
+
+    return {
+        "low_pln": sorted_p[0],
+        "high_pln": sorted_p[-1],
+        "mean_pln": int(statistics.mean(sorted_p)),
+        "median_pln": int(statistics.median(sorted_p)),
+        "sample_size": len(sorted_p),
+        "avg_mileage_km": int(statistics.mean(mileages)) if mileages else None,
+        "avg_year": round(statistics.mean(years), 1) if years else None,
+        "top_offers": top_offers,
+    }
+
+
 def _aggregate(prices: list[int]) -> dict:
-    """Liczy low/high/mean/median z odrzuceniem skrajnych outlierów."""
+    """[Legacy] Liczy low/high/mean/median z odrzuceniem skrajnych outlierów."""
     if not prices:
         return {"low_pln": None, "high_pln": None, "mean_pln": None,
                 "median_pln": None, "sample_size": 0}
@@ -243,20 +353,31 @@ def lookup_market_price(
         )
         return None
 
-    prices = _parse_prices_from_html(html)
-    if not prices:
-        logger.info("[Otomoto] Brak cen w HTML (%d KB) — negative cache", len(html) // 1024)
-        market_price_cache.store(
-            make, model, year_from, year_to, damaged_only,
-            query_url=url, error="no_prices_parsed",
-        )
-        return None
+    # Próbuj najpierw structured (z title/year/mileage) — daje detail dla broker
+    offers = _parse_offers_from_html(html)
 
-    # Limit do OTOMOTO_MAX_LISTINGS (najnowszych)
-    prices = prices[:OTOMOTO_MAX_LISTINGS]
-    agg = _aggregate(prices)
-    agg["query_url"] = url
-    agg["cached"] = False
+    if not offers:
+        # Fallback: tylko ceny
+        prices = _parse_prices_from_html(html)
+        if not prices:
+            logger.info("[Otomoto] Brak cen w HTML (%d KB) — negative cache", len(html) // 1024)
+            market_price_cache.store(
+                make, model, year_from, year_to, damaged_only,
+                query_url=url, error="no_prices_parsed",
+            )
+            return None
+        prices = prices[:OTOMOTO_MAX_LISTINGS]
+        agg = _aggregate(prices)
+        agg["query_url"] = url
+        agg["cached"] = False
+        agg["top_offers"] = []
+        agg["avg_mileage_km"] = None
+        agg["avg_year"] = None
+    else:
+        offers = offers[:OTOMOTO_MAX_LISTINGS]
+        agg = _aggregate_offers(offers)
+        agg["query_url"] = url
+        agg["cached"] = False
 
     market_price_cache.store(
         make, model, year_from, year_to, damaged_only,

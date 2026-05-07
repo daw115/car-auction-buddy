@@ -163,7 +163,7 @@
   {% if market_pl and market_pl.mean_pln %}
   <!-- CENA RYNKOWA PL -->
   <div class="section">
-    <h2>📈 Cena rynkowa PL (Otomoto)</h2>
+    <h2>📈 Analiza rynku PL (Otomoto.pl)</h2>
     <table>
       <thead><tr><th>Zakres</th><th class="num">PLN</th><th class="num">USD ({{ cost.usd_pln }})</th></tr></thead>
       <tbody>
@@ -179,9 +179,65 @@
         </tr>
       </tbody>
     </table>
+
+    {% if market_pl.avg_mileage_km or market_pl.avg_year %}
+    <!-- Statystyki przebiegu/rocznika z próby Otomoto -->
+    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+      {% if market_pl.avg_mileage_km %}
+      <div style="padding:10px;background:#0a0e14;border:1px solid #2d3548;border-radius:6px">
+        <div style="font-size:10px;color:#6b7388;text-transform:uppercase;letter-spacing:1px">Średni przebieg w PL</div>
+        <div style="font-size:18px;color:#e3e9f5;font-weight:700">{{ "{:,}".format(market_pl.avg_mileage_km) }} km</div>
+        {% if lot.odometer_mi %}
+        {% set lot_km = (lot.odometer_mi * 1.609)|int %}
+        <div style="font-size:11px;margin-top:4px;color:{% if lot_km < market_pl.avg_mileage_km %}#56d364{% else %}#e3b341{% endif %}">
+          Twój lot: {{ "{:,}".format(lot_km) }} km
+          ({% if lot_km < market_pl.avg_mileage_km %}-{% else %}+{% endif %}{{ "{:,}".format((lot_km - market_pl.avg_mileage_km)|abs) }} km vs PL)
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if market_pl.avg_year %}
+      <div style="padding:10px;background:#0a0e14;border:1px solid #2d3548;border-radius:6px">
+        <div style="font-size:10px;color:#6b7388;text-transform:uppercase;letter-spacing:1px">Średni rocznik w PL</div>
+        <div style="font-size:18px;color:#e3e9f5;font-weight:700">{{ market_pl.avg_year }}</div>
+        {% if lot.year %}
+        <div style="font-size:11px;margin-top:4px;color:{% if lot.year >= market_pl.avg_year %}#56d364{% else %}#e3b341{% endif %}">
+          Twój lot: {{ lot.year }}
+          ({% if lot.year >= market_pl.avg_year %}+{% else %}-{% endif %}{{ "%.1f"|format(market_pl.avg_year - lot.year if lot.year < market_pl.avg_year else lot.year - market_pl.avg_year) }})
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if market_pl.top_offers and market_pl.top_offers|length > 0 %}
+    <!-- Top 5 najtańszych konkurencyjnych ofert PL -->
+    <div style="margin-top:18px">
+      <div style="font-size:12px;color:#a5b4fc;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
+        🏆 Top {{ market_pl.top_offers|length }} najtańszych konkurencyjnych ofert PL
+      </div>
+      <table style="font-size:11px">
+        <thead><tr><th>Tytuł</th><th class="num">Cena</th><th class="num">Rok</th><th class="num">Przebieg</th><th></th></tr></thead>
+        <tbody>
+          {% for o in market_pl.top_offers %}
+          <tr>
+            <td style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ o.title }}">{{ o.title }}</td>
+            <td class="num"><b>{{ "{:,}".format(o.price_pln) }} PLN</b></td>
+            <td class="num">{{ o.year or '—' }}</td>
+            <td class="num">{% if o.mileage_km %}{{ "{:,}".format(o.mileage_km) }} km{% else %}—{% endif %}</td>
+            <td><a href="{{ o.url }}" target="_blank" style="color:#a5b4fc;font-size:10px">→</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
     <div style="margin-top:10px;font-size:11px;color:#6b7388">
       Źródło: <a href="{{ market_pl.query_url or '#' }}" target="_blank" style="color:#a5b4fc">Otomoto.pl</a> ·
-      Próba: {{ market_pl.sample_size }} aktualnych ofert ({{ lot.year - 1 }}–{{ lot.year + 1 }})
+      Próba: {{ market_pl.sample_size }} aktualnych ofert
+      {% if lot.year %}({{ lot.year - 1 }}–{{ lot.year + 1 }}){% endif %}
     </div>
   </div>
   {% endif %}
