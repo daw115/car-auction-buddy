@@ -2641,6 +2641,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
           {openedBackendRecordId !== null ? (
             <RecordDetailView recordId={openedBackendRecordId} onClose={() => setOpenedBackendRecordId(null)} />
           ) : (
+          <>
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
