@@ -1292,12 +1292,21 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
       {/* LISTA LOTÓW */}
       {allResults.length > 0 ? (
         <Card className="p-3">
-          <div className="mb-3">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Sortuj:</span>
+              <Button size="sm" variant={sortBy === "auction_date" ? "default" : "outline"} onClick={() => setSortBy("auction_date")}>
+                ⏰ Czas do aukcji
+              </Button>
+              <Button size="sm" variant={sortBy === "score" ? "default" : "outline"} onClick={() => setSortBy("score")}>
+                🎯 AI Score
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">
-            {allResults.map((al: any) => {
+            {sortedResults.map((al: any) => {
               const lot = al.lot;
               const ai = al.analysis;
               const reports = autoReports[lot.lot_id] || {};
