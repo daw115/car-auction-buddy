@@ -3203,6 +3203,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
               </Button>
             </div>
           </Card>
+          </>
           )}
         </section>
       </main>
