@@ -2165,6 +2165,22 @@ export const fetchAuthPostHtml = createServerFn({ method: "POST" })
     }
     return res.text();
   });
+export const regenerateBundles = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    recordId: z.number().int(),
+    engine: z.enum(["template", "hybrid"]).optional().default("template"),
+  }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) throw new Error("Backend not configured");
+    const res = await fetch(
+      `${baseUrl}/api/records/${data.recordId}/regenerate-bundles?engine=${data.engine}`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) throw new Error(`Regen HTTP ${res.status}`);
+    return res.json();
+  });
 
 // ---------- Parse client message ----------
 

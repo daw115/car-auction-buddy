@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   persistScrapeJob,
   clearPersistedScrapeJob,
@@ -40,6 +40,7 @@ import {
   getBackendRecordsList,
   getBackendRecordDetails,
   fetchAuthPostHtml,
+  regenerateBundles,
 } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
@@ -1125,6 +1126,8 @@ function BackendRecordDetail({ record }: { record: any }) {
 function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(getBackendRecordDetails);
   const fnFetchAuthPost = useServerFn(fetchAuthPostHtml);
+  const fnRegenerateBundles = useServerFn(regenerateBundles);
+  const queryClient = useQueryClient();
 
   const { data: record, isLoading } = useQuery({
     queryKey: ["backend-record-detail", recordId],
@@ -1225,6 +1228,14 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                 </a>
               </Button>
             )}
+            <Button variant="ghost" size="sm" onClick={async () => {
+              toast.info("Odświeżam bundle...");
+              await fnRegenerateBundles({ data: { recordId: (record as any).id, engine: "template" } });
+              toast.success("Bundle odświeżony — refresh strony");
+              queryClient.invalidateQueries({ queryKey: ["backend-record-detail", recordId] });
+            }}>
+              🔄 Odśwież layout bundle
+            </Button>
           </div>
         </Card>
       )}
