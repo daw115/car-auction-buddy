@@ -997,7 +997,7 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
   );
 }
 
-function BackendRecordRow({ record, onClick }: { record: BackendRecord; onClick: () => void }) {
+function BackendRecordRow({ record, isActive, onClick }: { record: BackendRecord; isActive?: boolean; onClick: () => void }) {
   const statusIcon: Record<string, string> = {
     done: "✅", new: "✅", cancelled: "⛔", error: "❌", interrupted: "⚠️",
   };
@@ -1007,7 +1007,7 @@ function BackendRecordRow({ record, onClick }: { record: BackendRecord; onClick:
   return (
     <button
       onClick={onClick}
-      className="w-full p-2 rounded border hover:bg-muted/50 transition-colors text-left"
+      className={`w-full p-2 rounded border transition-colors text-left ${isActive ? "border-primary bg-accent" : "hover:bg-muted/50"}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium truncate flex-1">{record.title}</span>
