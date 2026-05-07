@@ -418,6 +418,9 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     # Sortowanie po auction_date ASC — najbliższe aukcje pierwsze (klient powinien decydować szybko).
     client_html_files: list[str] = []
     broker_html_files: list[str] = []
+    # Auto-raport krótki klienta (template Jinja2 — szybki, bez LLM, bez Otomoto)
+    client_short_html_files: list[str] = []
+    client_short_urls_by_lot_id: dict[str, str] = {}
     index_file: Optional[str] = None
     # Auto-zbiorcze bundle (1 plik klient + 1 plik broker dla wszystkich showcase'ów)
     client_bundle_file: Optional[str] = None
@@ -558,6 +561,29 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 "_status": "done",
             })
 
+            # AUTO-RAPORT KRÓTKI KLIENT (template Jinja2 — bez LLM, ~50ms/lot)
+            # Dla kazdego showcase lota generujemy 'krotka' wersje raportu klienta
+            # — uzywa render_client_report (template) zamiast hybrid (Gemini+Otomoto).
+            # Klient/broker moze otworzyc szybsza wersje gdy nie ma czasu na rich.
+            try:
+                from report.html_reports import render_client_report
+                for idx, item in enumerate(polecane, 1):
+                    try:
+                        lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
+                        html = render_client_report(item, criteria=criteria)
+                        fname = f"{slug}_{ts}_top{idx}_{lot_id_safe}_klient_krotki.html"
+                        fpath = SEARCH_ARTIFACT_DIR / fname
+                        fpath.write_text(html, encoding="utf-8")
+                        client_short_html_files.append(str(fpath))
+                        if item.lot.lot_id:
+                            client_short_urls_by_lot_id[item.lot.lot_id] = artifact_url(str(fpath))
+                    except Exception:
+                        logger.exception("Short client report failed for lot %s", item.lot.lot_id)
+                logger.info("Generated %d short client reports (template, ~%dms/lot)",
+                            len(client_short_html_files), 50)
+            except Exception:
+                logger.exception("Short client reports generation failed")
+
             # AUTO-BUNDLE: 1 plik klient + 1 plik broker dla wszystkich showcase
             # Skleja juz wygenerowane per-lot HTMLs przez _bundle_html() helper.
             if client_html_files or broker_html_files:
@@ -690,7 +716,11 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     client_reports_html_urls = [artifact_url(f) for f in client_html_files if f]
     broker_reports_html_urls = [artifact_url(f) for f in broker_html_files if f]
 
-    # Per-lot mapping (lot_id -> {client_url, broker_url}) — UI dla per-row download buttons
+    # Per-lot mapping (lot_id -> {client_url, client_short_url, broker_url})
+    # UI dla per-row download buttons. 3 typy raportów per lot:
+    #   - client_url        = pełny (hybrid Gemini + Otomoto + storytelling)
+    #   - client_short_url  = krótki (template Jinja2, szybki, podstawowy)
+    #   - broker_url        = pełny brokerski (hybrid)
     auto_reports_by_lot_id: dict[str, dict[str, str]] = {}
     try:
         for ll in (lot_links if 'lot_links' in dir() else []):
@@ -702,8 +732,17 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 entry["client_url"] = artifact_url(str(SEARCH_ARTIFACT_DIR / ll["client"])) or ""
             if ll.get("broker"):
                 entry["broker_url"] = artifact_url(str(SEARCH_ARTIFACT_DIR / ll["broker"])) or ""
+            # Krótka wersja klienta (template, niezależna od gen_one)
+            short_url = client_short_urls_by_lot_id.get(lot_id)
+            if short_url:
+                entry["client_short_url"] = short_url
             if entry:
                 auto_reports_by_lot_id[lot_id] = entry
+
+        # Loty które miały TYLKO client_short (np. gdy gen_one padł dla nich)
+        for lot_id, short_url in client_short_urls_by_lot_id.items():
+            if lot_id not in auto_reports_by_lot_id:
+                auto_reports_by_lot_id[lot_id] = {"client_short_url": short_url}
     except Exception:
         logger.exception("Building auto_reports_by_lot_id failed")
 
@@ -1674,14 +1713,61 @@ async def regenerate_record_bundles(
             generated.append(f"broker ({len(htmls_b)} lotów, {len(bundle)//1024} KB)")
             logger.info("[regen] broker bundle for record #%d -> %s", record_id, fname)
 
-    if not result_urls:
-        raise HTTPException(status_code=502, detail="Re-render się nie udał (nie wygenerowano żadnego bundle)")
+    # PER-LOT KRÓTKI KLIENT (template Jinja2, ~13ms/lot) — zawsze re-renderuje
+    # niezależnie od engine bo to oddzielny typ raportu (krótki vs pełny).
+    try:
+        from report.html_reports import render_client_report
+        from api.client_database import get_record as _get_record
+        rec = _get_record(record_id)
+        existing_auto = (rec.get("response") or {}).get("auto_reports_by_lot_id") or {}
+        short_count = 0
+        for idx, item in enumerate(showcase, 1):
+            try:
+                html = await asyncio.to_thread(render_client_report, item, criteria)
+                lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
+                # Spróbuj zachować istniejącą nazwę pliku (z artifact_urls)
+                fname = f"{(criteria.make or 'rec').lower()}_regen_{record_id}_top{idx}_{lot_id_safe}_klient_krotki.html"
+                fpath = SEARCH_ARTIFACT_DIR / fname
+                fpath.write_text(html, encoding="utf-8")
+                short_url = _absolute_artifact_url(f"/artifacts/{fname}")
+                # Zaktualizuj auto_reports w response (zostawi inne URLe)
+                if item.lot.lot_id:
+                    if item.lot.lot_id not in existing_auto:
+                        existing_auto[item.lot.lot_id] = {}
+                    existing_auto[item.lot.lot_id]["client_short_url"] = "/artifacts/" + fname
+                short_count += 1
+            except Exception:
+                logger.exception("Regen short client report failed for lot %s", item.lot.lot_id)
+        if short_count:
+            generated.append(f"client_short ({short_count} lotów, template)")
+            logger.info("[regen] client_short for record #%d: %d lotów", record_id, short_count)
+            # Update response_json z nowymi short_urls (auto_reports_by_lot_id)
+            try:
+                from api.client_database import _connect, _now
+                import json as _j
+                with _connect() as conn:
+                    row = conn.execute("SELECT response_json FROM search_records WHERE id = ?", (record_id,)).fetchone()
+                    if row:
+                        resp = _j.loads(row["response_json"] or "{}")
+                        resp["auto_reports_by_lot_id"] = existing_auto
+                        conn.execute(
+                            "UPDATE search_records SET response_json = ?, updated_at = ? WHERE id = ?",
+                            (_j.dumps(resp, ensure_ascii=False), _now(), record_id),
+                        )
+            except Exception:
+                logger.exception("Failed to update auto_reports_by_lot_id in DB")
+    except Exception:
+        logger.exception("Regen client_short batch failed")
+
+    if not result_urls and not generated:
+        raise HTTPException(status_code=502, detail="Re-render się nie udał (nie wygenerowano żadnego bundle ani short)")
 
     # Update artifact_urls w bazie (relatywne URLe — _make_artifact_urls_absolute zrobi z nich abs przy GET)
     relative_urls = {}
     for k, v in result_urls.items():
         relative_urls[k] = "/artifacts/" + v.split("/artifacts/")[-1] if v else None
-    update_artifact_urls(record_id, relative_urls)
+    if relative_urls:
+        update_artifact_urls(record_id, relative_urls)
 
     return {
         "record_id": record_id,
