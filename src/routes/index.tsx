@@ -1179,7 +1179,32 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
     }
   }
 
-  return (
+  async function openBundleHtml(kind: "client" | "broker", engine: "hybrid" | "template") {
+    const selected = allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id));
+    if (!selected.length) {
+      toast.error("Zaznacz przynajmniej jeden lot");
+      return;
+    }
+    const total = selected.length;
+    const eta = engine === "hybrid" ? `~${total * 30}s` : "~2s";
+    toast.info(`Generuję ${kind} bundle (${total} aut, ${engine}, ${eta})...`, { duration: 5000 });
+    try {
+      const html = await fnFetchAuthPost({
+        data: {
+          path: `/report/${kind}-bundle?engine=${engine}`,
+          body: { criteria, approved_lots: selected },
+        },
+      });
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      toast.success(`✅ ${kind} bundle gotowy (${total} aut)`);
+    } catch (e) {
+      toast.error(`Bundle failed: ${(e as Error).message}`);
+    }
+  }
+
     <Card className="p-4">
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
