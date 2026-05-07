@@ -419,6 +419,9 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     client_html_files: list[str] = []
     broker_html_files: list[str] = []
     index_file: Optional[str] = None
+    # Auto-zbiorcze bundle (1 plik klient + 1 plik broker dla wszystkich showcase'ów)
+    client_bundle_file: Optional[str] = None
+    broker_bundle_file: Optional[str] = None
 
     polecam_lots = [r for r in ranked_results if r.analysis.recommendation == "POLECAM"]
     ryzyko_lots = sorted(
@@ -555,6 +558,65 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 "_status": "done",
             })
 
+            # AUTO-BUNDLE: 1 plik klient + 1 plik broker dla wszystkich showcase
+            # Skleja juz wygenerowane per-lot HTMLs przez _bundle_html() helper.
+            if client_html_files or broker_html_files:
+                progress_cb("bundle_generate", {"_status": "running"})
+                try:
+                    title_meta = f"{criteria.make}"
+                    if criteria.model:
+                        title_meta += f" {criteria.model}"
+
+                    if client_html_files:
+                        client_htmls = []
+                        for fp in client_html_files:
+                            try:
+                                fp_path = Path(fp)
+                                content = fp_path.read_text(encoding="utf-8")
+                                # Wyciagnij label z linksow (lot_id w nazwie pliku)
+                                lot_id_from_name = fp_path.stem.split("_")[-2] if "_klient" in fp_path.stem else fp_path.stem
+                                # Znajdz odpowiadajacy lot_links entry
+                                ll = next((l for l in lot_links if l.get("lot_id") and l["lot_id"] in fp_path.stem), None)
+                                label = ll["title"] if ll else lot_id_from_name
+                                client_htmls.append((label, content))
+                            except Exception:
+                                logger.exception("Failed to read client HTML %s", fp)
+                        if client_htmls:
+                            bundle_title = f"Raport zbiorczy klienta — {len(client_htmls)} aut ({title_meta})"
+                            bundle_html = _bundle_html(client_htmls, bundle_title)
+                            bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_klient.html"
+                            bundle_path.write_text(bundle_html, encoding="utf-8")
+                            client_bundle_file = str(bundle_path)
+                            logger.info("Auto-bundle klient: %s (%d KB)", bundle_path.name, len(bundle_html) // 1024)
+
+                    if broker_html_files:
+                        broker_htmls = []
+                        for fp in broker_html_files:
+                            try:
+                                fp_path = Path(fp)
+                                content = fp_path.read_text(encoding="utf-8")
+                                ll = next((l for l in lot_links if l.get("lot_id") and l["lot_id"] in fp_path.stem), None)
+                                label = ll["title"] if ll else fp_path.stem
+                                broker_htmls.append((label, content))
+                            except Exception:
+                                logger.exception("Failed to read broker HTML %s", fp)
+                        if broker_htmls:
+                            bundle_title = f"Raport brokerski zbiorczy — {len(broker_htmls)} aut ({title_meta})"
+                            bundle_html = _bundle_html(broker_htmls, bundle_title)
+                            bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_broker.html"
+                            bundle_path.write_text(bundle_html, encoding="utf-8")
+                            broker_bundle_file = str(bundle_path)
+                            logger.info("Auto-bundle broker: %s (%d KB)", bundle_path.name, len(bundle_html) // 1024)
+
+                    progress_cb("bundle_generate", {
+                        "_status": "done",
+                        "client_bundle": bool(client_bundle_file),
+                        "broker_bundle": bool(broker_bundle_file),
+                    })
+                except Exception:
+                    logger.exception("Auto-bundle generation failed")
+                    progress_cb("bundle_generate", {"_status": "error"})
+
             # INDEX — jedna strona z buttonami "Klient" / "Broker" per polecony lot
             if lot_links:
                 index_html = (
@@ -598,6 +660,9 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         "client_report": artifact_url(client_report_file),
         # Index linkujący wszystkie POLECANE oferty (klient + broker per lot)
         "polecane_index": artifact_url(index_file),
+        # Auto-zbiorcze bundle: 1 plik klient i 1 plik broker dla wszystkich showcase
+        "client_bundle": artifact_url(client_bundle_file),
+        "broker_bundle": artifact_url(broker_bundle_file),
     }
     client_reports_html_urls = [artifact_url(f) for f in client_html_files if f]
     broker_reports_html_urls = [artifact_url(f) for f in broker_html_files if f]
