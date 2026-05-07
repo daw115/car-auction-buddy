@@ -2446,6 +2446,290 @@ async def html_cache_serve(source: str, filename: str, _auth: None = Depends(_re
     return HTMLResponse(content=target.read_text(encoding="utf-8", errors="ignore"))
 
 
+def _resolve_log_file() -> Optional[Path]:
+    """Znajduje aktualny plik loga uvicorn.
+
+    Searches:
+    1. env LOG_FILE_PATH (jeśli ustawione)
+    2. /tmp/uvicorn-restart*.log (najnowszy)
+    3. data/logs/api.log (jeśli istnieje)
+    """
+    custom = os.getenv("LOG_FILE_PATH", "").strip()
+    if custom:
+        p = Path(custom).expanduser()
+        if p.exists():
+            return p
+
+    # Auto-detect: najnowszy /tmp/uvicorn-restart*.log
+    tmp = Path("/tmp")
+    candidates = sorted(tmp.glob("uvicorn-restart*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if candidates:
+        return candidates[0]
+
+    # Fallback: data/logs/api.log
+    data_log = Path("./data/logs/api.log").resolve()
+    if data_log.exists():
+        return data_log
+
+    return None
+
+
+@app.get("/api/logs/tail")
+async def logs_tail(
+    lines: int = 200,
+    grep: Optional[str] = None,
+    _auth: None = Depends(_require_bearer),
+):
+    """Zwraca ostatnie N linii z logu serwera.
+
+    Query:
+        ?lines=200       — ile ostatnich linii (max 5000)
+        ?grep=pattern    — filtruj tylko linie zawierające pattern (case-insensitive)
+    """
+    log_file = _resolve_log_file()
+    if not log_file:
+        raise HTTPException(status_code=404, detail="Brak pliku loga (LOG_FILE_PATH lub /tmp/uvicorn-restart*.log)")
+
+    lines = max(1, min(int(lines), 5000))
+    try:
+        # Efektywnie: czytaj ostatnie N linii (deque)
+        from collections import deque
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            tail = deque(f, maxlen=lines)
+        result_lines = list(tail)
+        if grep:
+            grep_low = grep.lower()
+            result_lines = [l for l in result_lines if grep_low in l.lower()]
+        return {
+            "log_file": str(log_file),
+            "size_kb": log_file.stat().st_size // 1024,
+            "lines": result_lines,
+            "count": len(result_lines),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}") from exc
+
+
+@app.get("/api/logs/stream")
+async def logs_stream(
+    grep: Optional[str] = None,
+    _auth: None = Depends(_require_bearer),
+):
+    """SSE stream — live tail logu (tail -f equivalent).
+
+    Query:
+        ?grep=pattern    — tylko linie zawierające pattern
+
+    Klient (przeglądarka) używa EventSource:
+        const es = new EventSource('/api/logs/stream?token=...');
+        es.addEventListener('line', e => console.log(e.data));
+
+    Backend ma keep-alive co 15s żeby Cloudflare nie zerwało połączenia.
+    """
+    log_file = _resolve_log_file()
+    if not log_file:
+        raise HTTPException(status_code=404, detail="Brak pliku loga")
+
+    from fastapi.responses import StreamingResponse
+
+    async def event_generator():
+        # Pokaż ostatnie 50 linii na start
+        try:
+            from collections import deque
+            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                last_50 = deque(f, maxlen=50)
+            for line in last_50:
+                line = line.rstrip("\n")
+                if grep and grep.lower() not in line.lower():
+                    continue
+                yield f"event: line\ndata: {line}\n\n"
+        except Exception:
+            logger.exception("Initial tail read failed")
+
+        # Tail -f loop
+        last_size = log_file.stat().st_size
+        keep_alive_counter = 0
+        try:
+            while True:
+                await asyncio.sleep(0.5)
+                keep_alive_counter += 1
+
+                try:
+                    current_size = log_file.stat().st_size
+                except FileNotFoundError:
+                    yield f"event: error\ndata: log_file_disappeared\n\n"
+                    break
+
+                if current_size < last_size:
+                    # Rotacja albo truncate — re-open od początku
+                    last_size = 0
+
+                if current_size > last_size:
+                    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                        f.seek(last_size)
+                        new_data = f.read()
+                    last_size = current_size
+                    for line in new_data.splitlines():
+                        if grep and grep.lower() not in line.lower():
+                            continue
+                        yield f"event: line\ndata: {line}\n\n"
+
+                # Keep-alive co ~15s
+                if keep_alive_counter >= 30:
+                    yield ": keep-alive\n\n"
+                    keep_alive_counter = 0
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.get("/api/logs/viewer", response_class=None)
+async def logs_viewer(_auth: None = Depends(_require_bearer)):
+    """Prosty HTML viewer — otwórz w przeglądarce żeby oglądać logi live.
+
+    Konwencja URL z auth: dla SSE Bearer auth nie działa w EventSource (browser
+    nie pozwala custom headers). Zamiast tego viewer wbudowuje token w fetch.
+    """
+    from fastapi.responses import HTMLResponse
+    token = SCRAPER_API_TOKEN or ""
+    public_base = PUBLIC_BASE_URL or ""
+
+    # HTML viewer z fetch + ReadableStream
+    html = """<!DOCTYPE html>
+<html lang='pl'><head>
+<meta charset='UTF-8'><title>📡 Logi serwera (live)</title>
+<style>
+  body{margin:0;background:#0a0e14;color:#c9d1d9;font-family:'SF Mono',Menlo,monospace;font-size:12px}
+  .header{padding:10px 16px;background:#161b22;border-bottom:1px solid #30363d;display:flex;gap:12px;align-items:center}
+  .header h1{margin:0;font-size:14px;color:#a5b4fc}
+  .header input{flex:1;padding:6px 10px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;font-family:inherit;font-size:12px}
+  .header button{padding:6px 12px;background:#1f2937;color:#e6edf3;border:1px solid #30363d;border-radius:4px;cursor:pointer;font-size:12px}
+  .header button:hover{background:#374151}
+  .header button.active{background:#22c55e;border-color:#22c55e;color:#0a0e14}
+  .status{padding:4px 10px;border-radius:99px;background:#0d3a1f;color:#56d364;font-size:11px}
+  .status.disconnected{background:#3d0c0c;color:#ff7b72}
+  #logs{padding:8px 16px;overflow-y:auto;max-height:calc(100vh - 60px);white-space:pre-wrap;word-break:break-all}
+  .line{padding:2px 0;border-bottom:1px solid rgba(48,54,61,0.3)}
+  .line.error{color:#ff7b72}
+  .line.warning{color:#e3b341}
+  .line.info{color:#56d364}
+  .line.http{color:#7d8590}
+</style>
+</head><body>
+<div class='header'>
+  <h1>📡 Logi serwera</h1>
+  <span class='status' id='status'>Łączę...</span>
+  <input id='filter' placeholder='Filtr (regex, np. error|429)' value=''>
+  <button onclick='clearLogs()'>Wyczyść</button>
+  <button id='autoscroll' class='active' onclick='toggleAutoscroll()'>Auto-scroll</button>
+  <button id='pause' onclick='togglePause()'>Pauza</button>
+</div>
+<div id='logs'></div>
+<script>
+const TOKEN = '__TOKEN__';
+const BASE = '__BASE__';
+let autoscroll = true;
+let paused = false;
+let abortCtl = null;
+const logsEl = document.getElementById('logs');
+const statusEl = document.getElementById('status');
+const filterEl = document.getElementById('filter');
+
+function classifyLine(line) {
+  const low = line.toLowerCase();
+  if (/\\b(error|exception|traceback|fail|critical)\\b/i.test(line)) return 'error';
+  if (/\\b(warn|warning|deprecat)\\b/i.test(line)) return 'warning';
+  if (/\\b(GET|POST|PUT|DELETE|PATCH) \\//i.test(line)) return 'http';
+  if (/\\b(info|done|ok)\\b/i.test(line)) return 'info';
+  return '';
+}
+
+function appendLine(text) {
+  if (paused) return;
+  const filter = filterEl.value;
+  if (filter) {
+    try {
+      if (!new RegExp(filter, 'i').test(text)) return;
+    } catch(e) { /* invalid regex — show all */ }
+  }
+  const div = document.createElement('div');
+  div.className = 'line ' + classifyLine(text);
+  div.textContent = text;
+  logsEl.appendChild(div);
+  // Limit do 5000 linii (FIFO)
+  while (logsEl.children.length > 5000) logsEl.removeChild(logsEl.firstChild);
+  if (autoscroll) logsEl.scrollTop = logsEl.scrollHeight;
+}
+
+async function connect() {
+  if (abortCtl) abortCtl.abort();
+  abortCtl = new AbortController();
+  statusEl.textContent = 'Łączę...';
+  statusEl.classList.add('disconnected');
+  try {
+    const res = await fetch(BASE + '/api/logs/stream', {
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+      signal: abortCtl.signal,
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    statusEl.textContent = '🟢 Połączono';
+    statusEl.classList.remove('disconnected');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // Parsuj SSE events: blok kończy się \\n\\n
+      let idx;
+      while ((idx = buf.indexOf('\\n\\n')) >= 0) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        // Każdy event może mieć "event: X" + "data: Y"
+        const dataLines = block.split('\\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart());
+        if (dataLines.length) appendLine(dataLines.join('\\n'));
+      }
+    }
+    statusEl.textContent = '🔌 Rozłączono';
+    statusEl.classList.add('disconnected');
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error(e);
+      statusEl.textContent = '❌ ' + e.message;
+      statusEl.classList.add('disconnected');
+      setTimeout(connect, 3000);  // auto-reconnect
+    }
+  }
+}
+
+function clearLogs() { logsEl.innerHTML = ''; }
+function toggleAutoscroll() {
+  autoscroll = !autoscroll;
+  document.getElementById('autoscroll').classList.toggle('active', autoscroll);
+}
+function togglePause() {
+  paused = !paused;
+  document.getElementById('pause').classList.toggle('active', paused);
+}
+filterEl.addEventListener('input', () => {});  // dynamiczny filtr działa od następnej linii
+
+connect();
+</script>
+</body></html>"""
+    html = html.replace("__TOKEN__", token).replace("__BASE__", public_base or "")
+    return HTMLResponse(content=html)
+
+
 @app.get("/health")
 async def health():
     return {
