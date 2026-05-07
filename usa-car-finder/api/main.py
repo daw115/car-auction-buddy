@@ -1410,6 +1410,45 @@ async def stream_search_job(job_id: str):
     )
 
 
+def _make_artifact_urls_absolute(record: dict) -> dict:
+    """Konwertuje relatywne /artifacts/... URLe w rekordzie na absolutne.
+
+    Backend zapisuje URLe jako '/artifacts/<filename>' w bazie. UI Lovable
+    klei to do SWOJEJ domeny → 404. Po stronie API zwracamy absolutne URLe
+    (tak jak robi _absolute_artifact_url() w /api/jobs/).
+    """
+    if not record:
+        return record
+    # Top-level artifact_urls
+    aurls = record.get("artifact_urls")
+    if isinstance(aurls, dict):
+        record["artifact_urls"] = {
+            k: _absolute_artifact_url(v) if v else v for k, v in aurls.items()
+        }
+    # response.artifact_urls (jeśli zagnieżdżone)
+    resp = record.get("response")
+    if isinstance(resp, dict):
+        nested = resp.get("artifact_urls")
+        if isinstance(nested, dict):
+            resp["artifact_urls"] = {
+                k: _absolute_artifact_url(v) if v else v for k, v in nested.items()
+            }
+        # client_reports_html / broker_reports_html (listy URLi per lot)
+        for key in ("client_reports_html", "broker_reports_html"):
+            urls = resp.get(key)
+            if isinstance(urls, list):
+                resp[key] = [_absolute_artifact_url(u) for u in urls if u]
+        # auto_reports_by_lot_id (dict {lot_id: {client_url, broker_url}})
+        auto = resp.get("auto_reports_by_lot_id")
+        if isinstance(auto, dict):
+            for lot_id, urls in auto.items():
+                if isinstance(urls, dict):
+                    auto[lot_id] = {
+                        k: _absolute_artifact_url(v) if v else v for k, v in urls.items()
+                    }
+    return record
+
+
 @app.get("/records")
 async def list_client_records(
     query: Optional[str] = None,
@@ -1421,6 +1460,7 @@ async def list_client_records(
     records = list_records(query=query, limit=limit)
     if status:
         records = [r for r in records if (r.get("status") or "").lower() == status.lower()]
+    records = [_make_artifact_urls_absolute(r) for r in records]
     return {"records": records}
 
 
@@ -1433,18 +1473,13 @@ async def api_list_client_records(
 ):
     """Główny endpoint dla UI dashboardu (Bearer auth).
 
-    Zwraca rekordy WSZYSTKICH wyszukiwań:
-    - status='new' / 'done' — ukończone (z wynikami)
-    - status='cancelled'    — anulowane przez użytkownika
-    - status='error'        — padło z błędem
-    - status='interrupted'  — przerwane (uvicorn restart)
-
-    Query params: ?query=BMW&limit=50&status=done (filter optional)
+    Zwraca rekordy WSZYSTKICH wyszukiwań z ABSOLUTNYMI URLami artifacts.
     """
     from api.client_database import list_records
     records = list_records(query=query, limit=limit)
     if status:
         records = [r for r in records if (r.get("status") or "").lower() == status.lower()]
+    records = [_make_artifact_urls_absolute(r) for r in records]
     return {"records": records, "total": len(records)}
 
 
@@ -1455,17 +1490,17 @@ async def get_client_record(record_id: int):
     record = get_record(record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Nie znaleziono rekordu")
-    return record
+    return _make_artifact_urls_absolute(record)
 
 
 @app.get("/api/records/{record_id}")
 async def api_get_client_record(record_id: int, _auth: None = Depends(_require_bearer)):
-    """Szczegóły pojedynczego rekordu (Bearer auth)."""
+    """Szczegóły pojedynczego rekordu (Bearer auth) z absolutnymi URLami."""
     from api.client_database import get_record
     record = get_record(record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Nie znaleziono rekordu")
-    return record
+    return _make_artifact_urls_absolute(record)
 
 
 class ApproveReportRequest(BaseModel):
