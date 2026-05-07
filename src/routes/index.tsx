@@ -1334,7 +1334,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                           </a>
                         )}
                       </div>
-                    </div>
                   </div>
                 </div>
               );
