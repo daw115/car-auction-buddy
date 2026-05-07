@@ -2159,7 +2159,10 @@ export const fetchAuthPostHtml = createServerFn({ method: "POST" })
       },
       body: JSON.stringify(data.body),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}: ${err.slice(0, 300)}`);
+    }
     return res.text();
   });
 
