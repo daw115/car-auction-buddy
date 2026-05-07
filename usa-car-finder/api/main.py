@@ -1489,6 +1489,159 @@ async def generate_broker_html_report(request: ApproveReportRequest):
     return HTMLResponse(content=html)
 
 
+def _bundle_html(htmls: list[tuple], title: str) -> str:
+    """Skleja N raportów HTML w jeden zbiorczy z TOC.
+
+    Args:
+        htmls: lista tuples (lot_label, html_string)
+        title: tytuł całego bundla (np. "Raport zbiorczy klient — 5 aut")
+
+    Returns:
+        Pełny HTML z <head><body> + spis treści + każdy raport oddzielony page-break.
+    """
+    import re as _re
+    parts = [
+        "<!DOCTYPE html>",
+        "<html lang='pl'>",
+        "<head>",
+        "<meta charset='UTF-8'>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>",
+        f"<title>{title}</title>",
+        "<style>",
+        "  @media print { .lot-section { page-break-before: always; } .toc { page-break-after: always; } }",
+        "  body { margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; }",
+        "  .toc { background: #0d1117; color: #e6edf3; padding: 32px; }",
+        "  .toc h1 { font-size: 26px; margin-bottom: 8px; color: #fff; }",
+        "  .toc .meta { font-size: 13px; color: #7d8590; margin-bottom: 20px; }",
+        "  .toc ol { line-height: 1.9; }",
+        "  .toc a { color: #58a6ff; text-decoration: none; font-size: 14px; }",
+        "  .toc a:hover { text-decoration: underline; }",
+        "  .lot-section { padding: 0; }",
+        "</style>",
+        "</head>",
+        "<body>",
+        "<div class='toc'>",
+        f"<h1>📋 {title}</h1>",
+        f"<div class='meta'>Wygenerowano: {datetime.now().strftime('%Y-%m-%d %H:%M')} · Liczba aut: {len(htmls)}</div>",
+        "<ol>",
+    ]
+    for idx, (label, _html) in enumerate(htmls, 1):
+        parts.append(f"<li><a href='#lot-{idx}'>{label}</a></li>")
+    parts.append("</ol></div>")
+
+    for idx, (label, html) in enumerate(htmls, 1):
+        # Wyciągnij body z każdego raportu (bez <html><head>)
+        body_match = _re.search(r"<body[^>]*>(.*?)</body>", html, _re.DOTALL | _re.IGNORECASE)
+        body_content = body_match.group(1) if body_match else html
+
+        # Wyciągnij <style> z head — żeby zachować CSS oryginalnego raportu
+        style_match = _re.search(r"<style[^>]*>(.*?)</style>", html, _re.DOTALL | _re.IGNORECASE)
+        # Scoped style do tej sekcji (każdy raport ma własne klasy więc niesko­licznie się gryzą)
+        scoped_style = ""
+        if style_match:
+            scoped_style = f"<style>\n{style_match.group(1)}\n</style>"
+
+        parts.append(
+            f"<div id='lot-{idx}' class='lot-section'>{scoped_style}{body_content}</div>"
+        )
+
+    parts.append("</body></html>")
+    return "\n".join(parts)
+
+
+@app.post("/report/client-bundle")
+async def generate_client_bundle_report(
+    request: ApproveReportRequest,
+    engine: str = "hybrid",
+):
+    """Zbiorczy raport HTML klienta — wszystkie zatwierdzone loty w jednym pliku.
+
+    Query: ?engine=hybrid (default, Gemini+Otomoto+market_pl) | template (szybki Jinja2 bez LLM)
+
+    Body: { approved_lots: [...], criteria: {...} }
+    Response: HTML (text/html) — z TOC u góry + każdy lot jako sekcja, page-break dla druku.
+    """
+    from fastapi.responses import HTMLResponse
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu — wszystkie odznaczone")
+
+    eng = (engine or "hybrid").lower()
+    if eng == "hybrid":
+        from report.hybrid_reports import render_client_hybrid
+        renderer = lambda item: render_client_hybrid(item, request.criteria)
+    else:
+        from report.html_reports import render_client_report
+        renderer = lambda item: render_client_report(item, request.criteria)
+
+    htmls = []
+    for item in lots_for_report:
+        try:
+            html = await asyncio.to_thread(renderer, item)
+            label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
+            htmls.append((label, html))
+        except Exception:
+            logger.exception("Bundle render failed for lot %s", item.lot.lot_id)
+
+    if not htmls:
+        raise HTTPException(status_code=502, detail="Wszystkie raporty nie udały się")
+
+    title = f"Raport zbiorczy klienta — {len(htmls)} aut"
+    if request.criteria and request.criteria.make:
+        title += f" ({request.criteria.make}{' ' + request.criteria.model if request.criteria.model else ''})"
+
+    bundle = _bundle_html(htmls, title)
+    return HTMLResponse(content=bundle)
+
+
+@app.post("/report/broker-bundle")
+async def generate_broker_bundle_report(
+    request: ApproveReportRequest,
+    engine: str = "hybrid",
+):
+    """Zbiorczy raport HTML brokera — wszystkie zatwierdzone loty w jednym pliku.
+
+    Query: ?engine=hybrid (default, z Otomoto + scoring + bid_thresholds) | template
+    """
+    from fastapi.responses import HTMLResponse
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu")
+
+    eng = (engine or "hybrid").lower()
+    if eng == "hybrid":
+        from report.hybrid_reports import render_broker_hybrid
+        renderer = lambda item: render_broker_hybrid(
+            item, criteria=request.criteria, lots_scanned=len(request.approved_lots),
+        )
+    else:
+        from report.html_reports import render_broker_report
+        renderer = lambda item: render_broker_report(
+            item, criteria=request.criteria, lots_scanned=len(request.approved_lots),
+        )
+
+    htmls = []
+    for item in lots_for_report:
+        try:
+            html = await asyncio.to_thread(renderer, item)
+            label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
+            htmls.append((label, html))
+        except Exception:
+            logger.exception("Bundle render failed for lot %s", item.lot.lot_id)
+
+    if not htmls:
+        raise HTTPException(status_code=502, detail="Wszystkie raporty nie udały się")
+
+    title = f"Raport brokerski zbiorczy — {len(htmls)} aut"
+    if request.criteria and request.criteria.make:
+        title += f" ({request.criteria.make}{' ' + request.criteria.model if request.criteria.model else ''})"
+
+    bundle = _bundle_html(htmls, title)
+    return HTMLResponse(content=bundle)
+
+
 def _llm_engine() -> str:
     """'hybrid' (domyślne, ~30× taniej) lub 'legacy' (full HTML LLM)."""
     return (os.getenv("LLM_REPORTS_ENGINE", "hybrid") or "hybrid").lower()
