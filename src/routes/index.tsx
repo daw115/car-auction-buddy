@@ -39,7 +39,7 @@ import {
   batchSearch,
   getBackendRecordsList,
   getBackendRecordDetails,
-  fetchAuthPostHtml,
+  
   regenerateBundles,
 } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
@@ -57,7 +57,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Sheet,
@@ -1130,7 +1130,7 @@ function BackendRecordDetail({ record }: { record: any }) {
 
 function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(getBackendRecordDetails);
-  const fnFetchAuthPost = useServerFn(fetchAuthPostHtml);
+  
   const fnRegenerateBundles = useServerFn(regenerateBundles);
   const queryClient = useQueryClient();
 
@@ -1139,7 +1139,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
     queryFn: () => fnDetailBackend({ data: { id: String(recordId) } }),
   });
 
-  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
 
   if (isLoading || !record) {
     return (
@@ -1168,31 +1167,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
 
   const artifactUrls = (record as any).artifact_urls || {};
 
-  async function openBundleHtml(kind: "client" | "broker", engine: "hybrid" | "template") {
-    const selected = allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id));
-    if (!selected.length) {
-      toast.error("Zaznacz przynajmniej jeden lot");
-      return;
-    }
-    const total = selected.length;
-    const eta = engine === "hybrid" ? `~${total * 30}s (pierwszy raz, cache 24h)` : "~2s";
-    toast.info(`Generuję ${kind} bundle (${total} ${total === 1 ? "auto" : "aut"}, ${engine}, ${eta})...`, { duration: 5000 });
-    try {
-      const html = await fnFetchAuthPost({
-        data: {
-          path: `/report/${kind}-bundle?engine=${engine}`,
-          body: { criteria, approved_lots: selected },
-        },
-      });
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 120_000);
-      toast.success(`✅ ${kind} bundle gotowy (${total} aut)`);
-    } catch (e) {
-      toast.error(`Bundle failed: ${(e as Error).message}`);
-    }
-  }
 
   return (
     <Card className="p-4">
