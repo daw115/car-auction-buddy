@@ -357,32 +357,47 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         ranked_results: list = []
         ai_input_file = ai_prompt_file = analysis_file = client_report_file = None
     else:
+        # PRE-RANK heurystyczny: zbieramy WSZYSTKIE loty z scrape'a, ale do AI
+        # przekazujemy tylko top N (default 10) najbardziej obiecujących.
+        # Oszczędność: 36 lotów -> AI ocenia 10 = 3.6× mniej tokenów.
+        ai_top_n = int(os.getenv("AI_ANALYSIS_TOP_N", "10"))
+        progress_cb("pre_rank", {
+            "input": len(all_lots),
+            "top_n": ai_top_n,
+            "_status": "running",
+        })
+        lots_for_ai = _pre_rank_lots_for_ai(all_lots, top_n=ai_top_n)
+        progress_cb("pre_rank", {
+            "input": len(all_lots),
+            "output": len(lots_for_ai),
+            "_status": "done",
+        })
+
         ai_input_file, ai_prompt_file, slug = write_ai_artifacts(
             criteria=criteria,
-            lots=all_lots,
+            lots=lots_for_ai,  # tylko top N (zgodne z tym co AI faktycznie analizuje)
             auction_min_hours=request.auction_min_hours,
             auction_max_hours=request.auction_max_hours,
         )
 
-        progress_cb("ai_analyze", {"lots": len(all_lots)})
+        progress_cb("ai_analyze", {"lots": len(lots_for_ai), "from_total": len(all_lots)})
         try:
             from ai.analyzer import analyze_lots
 
-            # asyncio.to_thread bo analyze_lots jest sync z time.sleep w retry
-            # (Gemini 429 backoff może 60s) — bez tego blokuje cały event loop
+            # AI analizuje TYLKO top N (heurystycznie wybrane)
             top_recommendations, ranked_results = await asyncio.to_thread(
                 analyze_lots,
-                all_lots,
+                lots_for_ai,
                 criteria,
-                5,  # top_n
-                request.demo,  # force_local
+                5,  # top_n dla _rank_results (legacy, nadpiszemy showcase'em)
+                request.demo,
             )
             progress_cb("ai_analyze", {"_status": "done", "ranked": len(ranked_results)})
         except Exception as exc:
             logger.exception("AI analysis failed; falling back to heuristic ordering")
             progress_cb("ai_analyze", {"_status": "error", "reason": str(exc)})
             notice_extra.append(f"AI niedostępne ({exc.__class__.__name__}); ranking heurystyczny.")
-            top_recommendations, ranked_results = _heuristic_rank(all_lots)
+            top_recommendations, ranked_results = _heuristic_rank(lots_for_ai)
 
         from report.client_artifacts import write_client_artifacts
 
@@ -680,6 +695,116 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         logger.exception("Persisting search record failed")
 
     return response_payload
+
+
+def _pre_rank_lots_for_ai(lots: list, top_n: int = 10) -> list:
+    """Heurystyczny pre-ranking PRZED AI — wybiera top N najbardziej obiecujących lotów.
+
+    Cel: oszczędność tokenów AI. Zamiast wysyłać do Claude'a wszystkie 36 lotów,
+    dajemy mu tylko 10 najlepszych po heurystycznym scoringu (damage type, title,
+    location, mileage, seller). AI robi pogłębioną analizę tylko tych 10.
+
+    Heuristic NIE używa repair_cost (per user request — auction estimates są nierealne).
+    Bazuje na: damage_primary, title_type, location_state, mileage/year, seller_type,
+    keys, airbags_deployed.
+
+    Zwraca: posortowana lista CarLot[] (najlepsze pierwsze), maks top_n elementów.
+    """
+    from parser.models import CarLot
+
+    EASTERN = {"NY", "NJ", "PA", "CT", "MA", "RI", "VT", "NH", "ME", "MD", "DE",
+               "VA", "NC", "SC", "GA", "FL"}
+    WESTERN = {"CA", "OR", "WA", "NV", "AZ", "UT", "CO", "NM"}
+
+    def lot_score(lot: CarLot) -> float:
+        s = 5.0  # base
+        damage = (lot.damage_primary or "").lower()
+        damage_sec = (lot.damage_secondary or "").lower()
+        title = (lot.title_type or "").lower()
+
+        # Damage primary — Flood/Fire = auto-reject (very low score, never in top)
+        if "flood" in damage or "water" in damage or "flood" in title:
+            return -1000
+        if "fire" in damage:
+            return -1000
+
+        # Damage severity
+        if "frame" in damage or "structural" in damage:
+            s -= 2.0
+        elif "mechanical" in damage:
+            s -= 1.5
+        elif "front" in damage:
+            s -= 0.3
+        elif "rear" in damage:
+            s -= 0.2
+        elif "side" in damage:
+            s -= 0.3
+        elif "hail" in damage:
+            s += 0.5  # hail is cheap to fix
+        elif "minor" in damage or "scratch" in damage or "dent" in damage:
+            s += 0.8
+        elif "vandalism" in damage:
+            s -= 0.4
+
+        # Secondary damage = additional penalty
+        if damage_sec and "no" not in damage_sec[:10]:
+            s -= 0.2
+
+        # Title type
+        if "parts" in title:
+            return -1000  # parts only — reject
+        elif "clean" in title:
+            s += 1.5
+        elif "salvage" in title:
+            s -= 0.5
+        elif "rebuilt" in title:
+            s -= 1.5
+
+        # Location (transport cost proxy)
+        state = (lot.location_state or "").upper()
+        if state in EASTERN:
+            s += 1.5
+        elif state in WESTERN:
+            s -= 1.0
+
+        # Seller type — insurance preferowany (lepsze ceny i dokumentacja)
+        if lot.seller_type == "insurance":
+            s += 0.5
+        elif lot.seller_type == "dealer":
+            s -= 0.3
+
+        # Year vs mileage (low mileage = plus)
+        if lot.year and lot.odometer_mi:
+            age = max(1, 2026 - lot.year)
+            avg_per_year = lot.odometer_mi / age
+            if avg_per_year < 8000:
+                s += 1.0
+            elif avg_per_year < 12000:
+                s += 0.3
+            elif avg_per_year > 20000:
+                s -= 0.5
+
+        # Keys + airbags
+        if lot.keys is True:
+            s += 0.3
+        elif lot.keys is False:
+            s -= 0.4
+        if lot.airbags_deployed is True:
+            s -= 0.5
+
+        return s
+
+    scored = [(lot_score(l), l) for l in lots]
+    scored.sort(key=lambda x: -x[0])  # desc — najlepsze pierwsze
+    top = [l for s, l in scored[:top_n] if s > -100]  # filtr out auto-reject
+
+    logger.info(
+        "[pre_rank] %d lots -> top %d (best score: %.1f, worst: %.1f)",
+        len(lots), len(top),
+        scored[0][0] if scored else 0,
+        scored[len(top) - 1][0] if top else 0,
+    )
+    return top
 
 
 def _heuristic_rank(lots):
