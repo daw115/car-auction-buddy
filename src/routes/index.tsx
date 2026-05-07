@@ -1521,24 +1521,9 @@ function Panel() {
   const [batchJobs, setBatchJobs] = useState<BatchJobEntry[]>([]);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
-  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+  
   const [openedBackendRecordId, setOpenedBackendRecordId] = useState<number | null>(null);
 
-  const toggleLotSelection = useCallback((lotId: string) => {
-    setSelectedLotIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(lotId)) next.delete(lotId);
-      else next.add(lotId);
-      return next;
-    });
-  }, []);
-
-  const toggleAllSelection = useCallback(() => {
-    setSelectedLotIds((prev) => {
-      if (prev.size === listings.length) return new Set();
-      return new Set(listings.map((l) => l.lot_id));
-    });
-  }, [listings]);
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
   const [aiMeta, setAiMeta] = useState<AiMeta | null>(null);
   const [aiInput, setAiInput] = useState<unknown>(null);
