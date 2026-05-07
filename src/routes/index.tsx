@@ -39,7 +39,7 @@ import {
   batchSearch,
   getBackendRecordsList,
   getBackendRecordDetails,
-  fetchAuthPostHtml,
+  
   regenerateBundles,
 } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
@@ -57,7 +57,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Sheet,
@@ -1130,7 +1130,7 @@ function BackendRecordDetail({ record }: { record: any }) {
 
 function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(getBackendRecordDetails);
-  const fnFetchAuthPost = useServerFn(fetchAuthPostHtml);
+  
   const fnRegenerateBundles = useServerFn(regenerateBundles);
   const queryClient = useQueryClient();
 
@@ -1139,7 +1139,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
     queryFn: () => fnDetailBackend({ data: { id: String(recordId) } }),
   });
 
-  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
 
   if (isLoading || !record) {
     return (
@@ -1168,31 +1167,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
 
   const artifactUrls = (record as any).artifact_urls || {};
 
-  async function openBundleHtml(kind: "client" | "broker", engine: "hybrid" | "template") {
-    const selected = allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id));
-    if (!selected.length) {
-      toast.error("Zaznacz przynajmniej jeden lot");
-      return;
-    }
-    const total = selected.length;
-    const eta = engine === "hybrid" ? `~${total * 30}s (pierwszy raz, cache 24h)` : "~2s";
-    toast.info(`Generuję ${kind} bundle (${total} ${total === 1 ? "auto" : "aut"}, ${engine}, ${eta})...`, { duration: 5000 });
-    try {
-      const html = await fnFetchAuthPost({
-        data: {
-          path: `/report/${kind}-bundle?engine=${engine}`,
-          body: { criteria, approved_lots: selected },
-        },
-      });
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 120_000);
-      toast.success(`✅ ${kind} bundle gotowy (${total} aut)`);
-    } catch (e) {
-      toast.error(`Bundle failed: ${(e as Error).message}`);
-    }
-  }
 
   return (
     <Card className="p-4">
@@ -1287,22 +1261,11 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
         </Alert>
       )}
 
-      {/* LISTA LOTÓW z checkboxami */}
+      {/* LISTA LOTÓW */}
       {allResults.length > 0 ? (
         <Card className="p-3">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3">
             <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                Zaznaczono: {selectedLotIds.size}/{allResults.length}
-              </span>
-              <Button size="sm" variant="ghost" onClick={() => {
-                if (selectedLotIds.size === allResults.length) setSelectedLotIds(new Set());
-                else setSelectedLotIds(new Set(allResults.map((al: any) => al.lot.lot_id)));
-              }}>
-                {selectedLotIds.size === allResults.length ? "Odznacz" : "Zaznacz wszystkie"}
-              </Button>
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -1310,25 +1273,14 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
               const lot = al.lot;
               const ai = al.analysis;
               const reports = autoReports[lot.lot_id] || {};
-              const isSelected = selectedLotIds.has(lot.lot_id);
               const isShowcase = al.is_top_recommendation;
 
               return (
                 <div key={lot.lot_id} className={`p-3 rounded border transition-colors ${
-                  isSelected ? "bg-primary/5 border-primary/40" :
                   isShowcase ? "bg-[oklch(0.95_0.05_145)]/50 border-[oklch(0.80_0.10_145)]/30" :
                   "border-border"
                 }`}>
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(c) => {
-                        const next = new Set(selectedLotIds);
-                        if (c) next.add(lot.lot_id); else next.delete(lot.lot_id);
-                        setSelectedLotIds(next);
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="font-semibold text-sm">
                           {lot.year} {lot.make} {lot.model} {lot.trim || ""}
@@ -1371,54 +1323,33 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                             🔗 Aukcja
                           </a>
                         )}
+                        {reports.client_short_url && (
+                          <a href={reports.client_short_url} target="_blank" rel="noopener"
+                             className="text-xs px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                             title="Krótki — szybki Jinja2, podstawowe dane">
+                            📄 Auto-raport krótki klient
+                          </a>
+                        )}
                         {reports.client_url && (
-                          <a href={reports.client_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.95_0.05_145)] hover:bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]">
-                            📄 Auto-raport klient
+                          <a href={reports.client_url} target="_blank" rel="noopener"
+                             className="text-xs px-2 py-1 rounded bg-green-500/10 hover:bg-green-500/20 text-green-700 dark:text-green-400"
+                             title="Pełny — Gemini+Otomoto+storytelling">
+                            📄 Auto-raport pełny klient
                           </a>
                         )}
                         {reports.broker_url && (
-                          <a href={reports.broker_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.92_0.06_250)] hover:bg-[oklch(0.88_0.10_250)] text-[oklch(0.30_0.14_250)]">
+                          <a href={reports.broker_url} target="_blank" rel="noopener"
+                             className="text-xs px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-400"
+                             title="Pełny brokerski — scoring + bid + market">
                             📋 Auto-raport broker
                           </a>
                         )}
                       </div>
-                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
-
-          {/* STICKY BAR for bundle reports */}
-          {selectedLotIds.size > 0 && (
-            <div className="sticky bottom-2 mt-4 p-3 rounded-md border border-amber-500/40 bg-amber-500/5">
-              <div className="text-xs font-semibold mb-2">
-                ✨ Rich raporty zbiorcze ({selectedLotIds.size} {selectedLotIds.size === 1 ? "auto" : "aut"})
-              </div>
-              <div className="text-xs text-muted-foreground mb-2">
-                Hybrid Gemini + Otomoto market_pl + tłumaczenie PL. ~30s/lot pierwszy raz,
-                potem cache 24h (instant). Otrzymujesz JEDEN plik HTML z TOC.
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <Button variant="default" size="sm"
-                        onClick={() => openBundleHtml("client", "hybrid")}>
-                  ✨ Rich klient (1 plik × {selectedLotIds.size})
-                </Button>
-                <Button variant="default" size="sm"
-                        onClick={() => openBundleHtml("broker", "hybrid")}>
-                  ✨ Rich broker (1 plik × {selectedLotIds.size})
-                </Button>
-                <Button variant="outline" size="sm"
-                        onClick={() => openBundleHtml("client", "template")}>
-                  ⚡ Szybki klient (template)
-                </Button>
-                <Button variant="outline" size="sm"
-                        onClick={() => openBundleHtml("broker", "template")}>
-                  ⚡ Szybki broker (template)
-                </Button>
-              </div>
-            </div>
-          )}
         </Card>
       ) : (
         <div className="p-6 text-center text-sm text-muted-foreground">
@@ -1590,24 +1521,9 @@ function Panel() {
   const [batchJobs, setBatchJobs] = useState<BatchJobEntry[]>([]);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
-  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+  
   const [openedBackendRecordId, setOpenedBackendRecordId] = useState<number | null>(null);
 
-  const toggleLotSelection = useCallback((lotId: string) => {
-    setSelectedLotIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(lotId)) next.delete(lotId);
-      else next.add(lotId);
-      return next;
-    });
-  }, []);
-
-  const toggleAllSelection = useCallback(() => {
-    setSelectedLotIds((prev) => {
-      if (prev.size === listings.length) return new Set();
-      return new Set(listings.map((l) => l.lot_id));
-    });
-  }, [listings]);
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
   const [aiMeta, setAiMeta] = useState<AiMeta | null>(null);
   const [aiInput, setAiInput] = useState<unknown>(null);
@@ -2966,9 +2882,6 @@ function Panel() {
             {listings.length > 0 && (
               <ListingsTable
                 listings={listings}
-                selectedIds={selectedLotIds}
-                onToggle={toggleLotSelection}
-                onToggleAll={toggleAllSelection}
               />
             )}
 
@@ -2977,7 +2890,6 @@ function Panel() {
                 reportUrls={scrapeJob.reportUrls}
                 listings={listings}
                 criteria={criteria}
-                selectedLotIds={selectedLotIds}
               />
             )}
 
@@ -3300,21 +3212,12 @@ function ScraperReportsSection({
   reportUrls,
   listings,
   criteria,
-  selectedLotIds,
 }: {
   reportUrls: ScraperReportUrls;
   listings: CarLot[];
   criteria: ClientCriteria;
-  selectedLotIds?: Set<string>;
 }) {
   const [loadingEndpoint, setLoadingEndpoint] = useState<string | null>(null);
-  const [cacheStats, setCacheStats] = useState<{ enabled: boolean; total: number; fresh: number; ttl_hours: number; by_kind: Record<string, number> } | null>(null);
-  const [clearingCache, setClearingCache] = useState(false);
-
-  // Fetch cache stats on mount
-  useEffect(() => {
-    getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
-  }, []);
 
   const hasAny =
     reportUrls.client_report_url ||
@@ -3326,11 +3229,6 @@ function ScraperReportsSection({
     reportUrls.report_endpoints?.broker_html;
 
   if (!hasAny) return null;
-
-  const selectedCount = selectedLotIds?.size ?? 0;
-  const lotsToProcess = selectedCount > 0
-    ? listings.filter((l) => selectedLotIds!.has(l.lot_id))
-    : listings.slice(0, 1);
 
   async function openHtmlReport(endpoint: string, label: string) {
     setLoadingEndpoint(label);
@@ -3356,74 +3254,6 @@ function ScraperReportsSection({
     }
   }
 
-  async function openRichLlmForSelected(endpoint: string, label: string) {
-    if (lotsToProcess.length === 0) {
-      toast.error("Brak lotów — zaznacz przynajmniej jeden checkbox w tabeli");
-      return;
-    }
-    const total = lotsToProcess.length;
-    const confirmMsg = `Wygenerujesz rich raport (Gemini → Anthropic fallback) dla ${total} ${total === 1 ? "lota" : "lotów"}.\n\nPierwszy raz: ~30s/lot. Potem cache 24h (instant).\nKontynuować?`;
-    if (!window.confirm(confirmMsg)) return;
-
-    setLoadingEndpoint(label);
-    let successCount = 0;
-    try {
-      for (let i = 0; i < lotsToProcess.length; i++) {
-        const lot = lotsToProcess[i];
-        toast.info(`Generuję ${i + 1}/${total}: ${lot.year} ${lot.make} ${lot.model}...`);
-        try {
-          const approvedLots = [{ ...lot, included_in_report: true }];
-          const t0 = Date.now();
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ criteria, approved_lots: approvedLots }),
-          });
-          const elapsedMs = Date.now() - t0;
-          if (!res.ok) {
-            const errText = await res.text().catch(() => "");
-            throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
-          }
-          const html = await res.text();
-          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          window.open(url, "_blank");
-          setTimeout(() => URL.revokeObjectURL(url), 120_000);
-          successCount++;
-          // Cache hit/miss feedback
-          if (elapsedMs < 1500) {
-            toast.success(`${lot.year} ${lot.make} ${lot.model} — cache HIT (${elapsedMs}ms)`);
-          } else {
-            toast.success(`${lot.year} ${lot.make} ${lot.model} — wygenerowano (${(elapsedMs / 1000).toFixed(1)}s)`);
-          }
-        } catch (e) {
-          toast.error(`Lot ${lot.lot_id}: ${(e as Error).message}`);
-        }
-      }
-      if (successCount > 0) {
-        toast.success(`Wygenerowano ${successCount}/${total} raportów`);
-        // Refresh cache stats
-        getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
-      }
-    } finally {
-      setLoadingEndpoint(null);
-    }
-  }
-
-  async function handleClearCache() {
-    setClearingCache(true);
-    try {
-      const result = await clearLlmCache();
-      toast.success(`Wyczyszczono cache: ${result.removed} wpisów`);
-      setCacheStats(null);
-      getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
-    } catch {
-      toast.error("Błąd czyszczenia cache");
-    } finally {
-      setClearingCache(false);
-    }
-  }
-
   return (
     <Card className="mt-4 p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -3432,124 +3262,57 @@ function ScraperReportsSection({
       </div>
       <div className="flex flex-wrap gap-2">
         {reportUrls.polecane_index_url && (
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => window.open(reportUrls.polecane_index_url, "_blank")}
-          >
+          <Button variant="default" size="sm"
+            onClick={() => window.open(reportUrls.polecane_index_url, "_blank")}>
             <ExternalLink className="h-3.5 w-3.5" />
             🎯 Polecane oferty (klient + broker)
           </Button>
         )}
         {(reportUrls.client_reports_html?.length ?? 0) > 0 && reportUrls.client_reports_html!.map((url, i) => (
-          <Button
-            key={`client-${i}`}
-            variant="outline"
-            size="sm"
-            onClick={() => window.open(url, "_blank")}
-          >
+          <Button key={`client-${i}`} variant="outline" size="sm"
+            onClick={() => window.open(url, "_blank")}>
             <ExternalLink className="h-3.5 w-3.5" />
             📄 Klient #{i + 1}
           </Button>
         ))}
         {(reportUrls.broker_reports_html?.length ?? 0) > 0 && reportUrls.broker_reports_html!.map((url, i) => (
-          <Button
-            key={`broker-${i}`}
-            variant="outline"
-            size="sm"
-            onClick={() => window.open(url, "_blank")}
-          >
+          <Button key={`broker-${i}`} variant="outline" size="sm"
+            onClick={() => window.open(url, "_blank")}>
             <ExternalLink className="h-3.5 w-3.5" />
             📊 Broker #{i + 1}
           </Button>
         ))}
         {reportUrls.client_report_url && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.open(reportUrls.client_report_url, "_blank")}
-          >
+          <Button variant="outline" size="sm"
+            onClick={() => window.open(reportUrls.client_report_url, "_blank")}>
             <Download className="h-3.5 w-3.5" />
             Pobierz raport klienta (Markdown)
           </Button>
         )}
         {reportUrls.artifact_urls?.analysis_json && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.open(reportUrls.artifact_urls!.analysis_json, "_blank")}
-          >
+          <Button variant="outline" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.analysis_json, "_blank")}>
             <Download className="h-3.5 w-3.5" />
             Pobierz pełną analizę (JSON)
           </Button>
         )}
         {reportUrls.report_endpoints?.client_html && (
-          <Button
-            variant="outline"
-            size="sm"
+          <Button variant="outline" size="sm"
             disabled={loadingEndpoint === "client"}
-            onClick={() => openHtmlReport(reportUrls.report_endpoints!.client_html!, "client")}
-          >
+            onClick={() => openHtmlReport(reportUrls.report_endpoints!.client_html!, "client")}>
             {loadingEndpoint === "client" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
             Generuj raport HTML klienta
           </Button>
         )}
         {reportUrls.report_endpoints?.broker_html && (
-          <Button
-            variant="outline"
-            size="sm"
+          <Button variant="outline" size="sm"
             disabled={loadingEndpoint === "broker"}
-            onClick={() => openHtmlReport(reportUrls.report_endpoints!.broker_html!, "broker")}
-          >
+            onClick={() => openHtmlReport(reportUrls.report_endpoints!.broker_html!, "broker")}>
             {loadingEndpoint === "broker" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
             Generuj raport HTML brokera
           </Button>
         )}
       </div>
-      {(reportUrls.report_endpoints?.client_llm || reportUrls.report_endpoints?.broker_llm) && (
-        <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
-          <div className="flex items-center gap-2 mb-2 text-xs">
-            <span className="font-semibold text-amber-700 dark:text-amber-400">✨ Rich LLM (Gemini darmowy / Claude fallback)</span>
-            <span className="text-muted-foreground">
-              {selectedCount > 0
-                ? `Zaznaczono ${selectedCount} ${selectedCount === 1 ? "lot" : "loty"} w tabeli`
-                : "Zaznacz loty checkboxami w tabeli (lub kliknij — domyślnie pierwszy)"}
-            </span>
-          </div>
-          {cacheStats && (
-            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-              <span>💾 Cache: {cacheStats.fresh} świeżych (TTL {cacheStats.ttl_hours}h)</span>
-              <button
-                type="button"
-                className="underline hover:text-foreground transition-colors disabled:opacity-50"
-                disabled={clearingCache}
-                onClick={handleClearCache}
-              >
-                {clearingCache ? "Czyszczę..." : "Wyczyść"}
-              </button>
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {reportUrls.report_endpoints?.client_llm && (
-              <Button
-                size="sm"
-                className="bg-amber-600 hover:bg-amber-700 text-white"
-                disabled={loadingEndpoint === "client_llm"}
-                onClick={() => openRichLlmForSelected(reportUrls.report_endpoints!.client_llm!, "client_llm")}
-                title="Gemini/Claude generuje rich raport klienta — ~30s/lot (cache 24h)"
-              >
-                {loadingEndpoint === "client_llm" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  "✨"
-                )}
-                Rich klient × {lotsToProcess.length}
-              </Button>
-            )}
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">Pierwsze wywołanie ~30–60s, ponowne &lt;1s (cache 24h)</p>
-        </div>
-      )}
     </Card>
   );
 }
