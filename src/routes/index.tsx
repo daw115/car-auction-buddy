@@ -1311,18 +1311,31 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
               const ai = al.analysis;
               const reports = autoReports[lot.lot_id] || {};
               const isShowcase = al.is_top_recommendation;
+              const auctionInfo = formatTimeUntilAuction(lot.auction_date);
 
               return (
                 <div key={lot.lot_id} className={`p-3 rounded border transition-colors ${
-                  isShowcase ? "bg-[oklch(0.95_0.05_145)]/50 border-[oklch(0.80_0.10_145)]/30" :
+                  isShowcase ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/40 text-foreground" :
                   "border-border"
                 }`}>
                   <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="font-semibold text-sm">
                           {lot.year} {lot.make} {lot.model} {lot.trim || ""}
-                          {isShowcase && <Badge variant="default" className="ml-2 text-xs">🎯 Showcase</Badge>}
                         </span>
+                        {isShowcase && <Badge variant="default" className="text-xs">🎯 Showcase</Badge>}
+                        {auctionInfo && (
+                          <Badge
+                            variant={auctionInfo.variant === "danger" ? "destructive" : auctionInfo.variant === "warning" ? "secondary" : "outline"}
+                            className={
+                              auctionInfo.variant === "danger" ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40" :
+                              auctionInfo.variant === "warning" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/40" :
+                              "text-muted-foreground"
+                            }
+                          >
+                            {auctionInfo.text}
+                          </Badge>
+                        )}
                         {ai?.recommendation && (
                           <Badge variant={
                             ai.recommendation === "POLECAM" ? "default" :
