@@ -1323,13 +1323,24 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                             🔗 Aukcja
                           </a>
                         )}
+                        {reports.client_short_url && (
+                          <a href={reports.client_short_url} target="_blank" rel="noopener"
+                             className="text-xs px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                             title="Krótki — szybki Jinja2, podstawowe dane">
+                            📄 Auto-raport krótki klient
+                          </a>
+                        )}
                         {reports.client_url && (
-                          <a href={reports.client_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.95_0.05_145)] hover:bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]">
-                            📄 Auto-raport klient
+                          <a href={reports.client_url} target="_blank" rel="noopener"
+                             className="text-xs px-2 py-1 rounded bg-green-500/10 hover:bg-green-500/20 text-green-700 dark:text-green-400"
+                             title="Pełny — Gemini+Otomoto+storytelling">
+                            📄 Auto-raport pełny klient
                           </a>
                         )}
                         {reports.broker_url && (
-                          <a href={reports.broker_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.92_0.06_250)] hover:bg-[oklch(0.88_0.10_250)] text-[oklch(0.30_0.14_250)]">
+                          <a href={reports.broker_url} target="_blank" rel="noopener"
+                             className="text-xs px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-400"
+                             title="Pełny brokerski — scoring + bid + market">
                             📋 Auto-raport broker
                           </a>
                         )}
