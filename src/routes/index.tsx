@@ -2882,9 +2882,6 @@ function Panel() {
             {listings.length > 0 && (
               <ListingsTable
                 listings={listings}
-                selectedIds={selectedLotIds}
-                onToggle={toggleLotSelection}
-                onToggleAll={toggleAllSelection}
               />
             )}
 
