@@ -2309,7 +2309,7 @@ function Panel() {
         <ActiveJobsPanel />
       </div>
 
-      <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
+      <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* ---- Clients column ---- */}
         <aside className="space-y-3">
           <Card className="p-3">
