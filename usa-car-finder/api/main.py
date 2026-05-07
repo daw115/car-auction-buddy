@@ -1526,6 +1526,171 @@ async def api_get_client_record(record_id: int, _auth: None = Depends(_require_b
     return _make_artifact_urls_absolute(record)
 
 
+@app.post("/api/records/{record_id}/regenerate-bundles")
+async def regenerate_record_bundles(
+    record_id: int,
+    engine: str = "template",
+    kinds: Optional[str] = None,
+    _auth: None = Depends(_require_bearer),
+):
+    """Re-renderuje zbiorcze bundle (klient + broker) dla istniejącego rekordu.
+
+    Przydatne gdy zmieniliśmy layout `_bundle_html` (np. dodaliśmy sidebar)
+    i chcemy przebudować bundle dla starych rekordów BEZ ponownego scrape'a.
+
+    Query:
+        ?engine=template (default — szybki Jinja2 ~1s)
+              =hybrid (Gemini+Otomoto, ~30s/lot lub cache HIT)
+        ?kinds=client,broker (default oba)
+
+    Process:
+    1. Pobiera rekord z app.db.search_records
+    2. Wyciąga showcase loty (is_top_recommendation=true) z response_json
+    3. Per kind (client/broker): renderuje per-lot przez engine + buduje bundle
+       z nowym _bundle_html() (sidebar layout)
+    4. Nadpisuje istniejące pliki bundle na dysku (lub tworzy nowe)
+    5. Aktualizuje artifact_urls w bazie
+
+    Returns: { client_bundle: url, broker_bundle: url, generated: [...] }
+    """
+    from api.client_database import get_record, update_artifact_urls
+    from parser.models import AnalyzedLot, ClientCriteria
+
+    record = get_record(record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono rekordu")
+
+    response = record.get("response") or {}
+    all_results_raw = response.get("all_results") or []
+    showcase_raw = [al for al in all_results_raw if al.get("is_top_recommendation")]
+    if not showcase_raw:
+        raise HTTPException(status_code=400, detail="Rekord nie ma showcase'ów (is_top_recommendation=true)")
+
+    # Zrekonstruuj AnalyzedLot z dict
+    try:
+        showcase = [AnalyzedLot(**al) for al in showcase_raw]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Niepoprawny showcase data: {exc}") from exc
+
+    criteria_dict = record.get("criteria") or {}
+    try:
+        criteria = ClientCriteria(**criteria_dict) if criteria_dict.get("make") else None
+    except Exception:
+        criteria = None
+
+    eng = (engine or "template").lower()
+    requested_kinds = set((kinds or "client,broker").lower().split(","))
+
+    title_meta = (criteria.make if criteria else "")
+    if criteria and criteria.model:
+        title_meta += f" {criteria.model}"
+
+    result_urls: dict[str, str] = {}
+    generated: list[str] = []
+
+    # Wyznacz slug + ts dla nazwy pliku — z istniejących artifact_urls jeśli są
+    existing_urls = record.get("artifact_urls") or {}
+    existing_client = existing_urls.get("client_bundle") or ""
+    existing_broker = existing_urls.get("broker_bundle") or ""
+
+    def _filename_from_url(url: str, kind: str) -> str:
+        """Wyciąga nazwę pliku z URL (jeśli była). Else generuje nową."""
+        if url:
+            try:
+                return url.split("/artifacts/")[-1].split("?")[0]
+            except Exception:
+                pass
+        # Fallback: nowa nazwa
+        slug = (criteria.make.lower() if criteria else "rec") + "_regen"
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{slug}_{record_id}_{ts}_zbiorczy_{kind}.html"
+
+    # KLIENT
+    if "client" in requested_kinds:
+        if eng == "hybrid":
+            from report.hybrid_reports import render_client_hybrid
+            renderer = lambda item: render_client_hybrid(item, criteria)
+        else:
+            from report.html_reports import render_client_report
+            renderer = lambda item: render_client_report(item, criteria)
+
+        htmls = []
+        for item in showcase:
+            try:
+                html = await asyncio.to_thread(renderer, item)
+                label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
+                meta = {
+                    "recommendation": item.analysis.recommendation,
+                    "score": item.analysis.score,
+                    "lot_id": item.lot.lot_id,
+                }
+                htmls.append((label, html, meta))
+            except Exception:
+                logger.exception("Regen client failed for lot %s", item.lot.lot_id)
+        if htmls:
+            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+            htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
+            bundle_title = f"Raport zbiorczy klienta — {len(htmls)} aut ({title_meta})"
+            bundle = _bundle_html(htmls, bundle_title)
+            fname = _filename_from_url(existing_client, "klient")
+            fpath = SEARCH_ARTIFACT_DIR / fname
+            fpath.write_text(bundle, encoding="utf-8")
+            result_urls["client_bundle"] = _absolute_artifact_url(f"/artifacts/{fname}")
+            generated.append(f"client ({len(htmls)} lotów, {len(bundle)//1024} KB)")
+            logger.info("[regen] client bundle for record #%d -> %s", record_id, fname)
+
+    # BROKER
+    if "broker" in requested_kinds:
+        lots_scanned = response.get("collected_count") or len(all_results_raw)
+        if eng == "hybrid":
+            from report.hybrid_reports import render_broker_hybrid
+            renderer_b = lambda item: render_broker_hybrid(item, criteria, lots_scanned=lots_scanned)
+        else:
+            from report.html_reports import render_broker_report
+            renderer_b = lambda item: render_broker_report(item, criteria, lots_scanned=lots_scanned)
+
+        htmls_b = []
+        for item in showcase:
+            try:
+                html = await asyncio.to_thread(renderer_b, item)
+                label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
+                meta = {
+                    "recommendation": item.analysis.recommendation,
+                    "score": item.analysis.score,
+                    "lot_id": item.lot.lot_id,
+                }
+                htmls_b.append((label, html, meta))
+            except Exception:
+                logger.exception("Regen broker failed for lot %s", item.lot.lot_id)
+        if htmls_b:
+            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+            htmls_b.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
+            bundle_title = f"Raport brokerski zbiorczy — {len(htmls_b)} aut ({title_meta})"
+            bundle = _bundle_html(htmls_b, bundle_title)
+            fname = _filename_from_url(existing_broker, "broker")
+            fpath = SEARCH_ARTIFACT_DIR / fname
+            fpath.write_text(bundle, encoding="utf-8")
+            result_urls["broker_bundle"] = _absolute_artifact_url(f"/artifacts/{fname}")
+            generated.append(f"broker ({len(htmls_b)} lotów, {len(bundle)//1024} KB)")
+            logger.info("[regen] broker bundle for record #%d -> %s", record_id, fname)
+
+    if not result_urls:
+        raise HTTPException(status_code=502, detail="Re-render się nie udał (nie wygenerowano żadnego bundle)")
+
+    # Update artifact_urls w bazie (relatywne URLe — _make_artifact_urls_absolute zrobi z nich abs przy GET)
+    relative_urls = {}
+    for k, v in result_urls.items():
+        relative_urls[k] = "/artifacts/" + v.split("/artifacts/")[-1] if v else None
+    update_artifact_urls(record_id, relative_urls)
+
+    return {
+        "record_id": record_id,
+        "engine": eng,
+        "generated": generated,
+        **result_urls,  # client_bundle / broker_bundle (absolute URLs)
+    }
+
+
 class ApproveReportRequest(BaseModel):
     """Zatwierdzony raport - tylko wybrane loty"""
     approved_lots: list[AnalyzedLot]

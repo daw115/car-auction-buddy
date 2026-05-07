@@ -66,6 +66,25 @@ def init_db() -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_search_records_job_id ON search_records(job_id)")
 
 
+def update_artifact_urls(record_id: int, new_urls: dict) -> bool:
+    """Aktualizuje artifact_urls_json dla rekordu (merge z istniejącymi)."""
+    init_db()
+    now = _now()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT artifact_urls_json FROM search_records WHERE id = ?", (record_id,)
+        ).fetchone()
+        if not row:
+            return False
+        existing = json.loads(row["artifact_urls_json"] or "{}")
+        merged = {**existing, **{k: v for k, v in new_urls.items() if v}}
+        conn.execute(
+            "UPDATE search_records SET artifact_urls_json = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(merged, ensure_ascii=False), now, record_id),
+        )
+        return True
+
+
 def search_record_exists_for_job(job_id: str) -> bool:
     """Sprawdza czy istnieje już search_record dla danego job_id (deduplikacja)."""
     if not job_id:
