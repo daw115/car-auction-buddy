@@ -1128,6 +1128,22 @@ function BackendRecordDetail({ record }: { record: any }) {
 
 // ---------- Record Detail View (center panel) ----------
 
+function formatTimeUntilAuction(auctionDate?: string | null): { text: string; variant: "default" | "warning" | "danger" | "muted" } | null {
+  if (!auctionDate) return null;
+  const dt = new Date(auctionDate.replace(" ", "T") + "Z");
+  if (isNaN(dt.getTime())) return null;
+  const diffMs = dt.getTime() - Date.now();
+  if (diffMs < 0) return { text: "🏁 zakończona", variant: "muted" };
+  const totalMins = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMins / 1440);
+  const hours = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
+  if (totalMins < 60) return { text: `⚠️ za ${totalMins}min`, variant: "danger" };
+  if (totalMins < 24 * 60) return { text: `⏰ za ${hours}h ${mins}min`, variant: "danger" };
+  if (days < 3) return { text: `⏰ za ${days}d ${hours}h`, variant: "warning" };
+  return { text: `⏰ za ${days} dni`, variant: "default" };
+}
+
 function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(getBackendRecordDetails);
   
