@@ -1158,26 +1158,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   const aiAnalyzedCount = allResults.length;
   const showcaseCount = showcase.length;
 
-  async function generateRichClientReports(approvedLots: any[]) {
-    for (let i = 0; i < approvedLots.length; i++) {
-      const al = approvedLots[i];
-      toast.info(`Generuję ${i + 1}/${approvedLots.length}: ${al.lot.year} ${al.lot.make} ${al.lot.model}...`);
-      try {
-        const html = await fnFetchAuthPost({
-          data: {
-            path: "/report/client-llm",
-            body: { criteria, approved_lots: [{ ...al, included_in_report: true }] },
-          },
-        });
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 120000);
-      } catch (e) {
-        toast.error(`Lot ${al.lot.lot_id}: ${(e as Error).message}`);
-      }
-    }
-  }
+  const artifactUrls = (record as any).artifact_urls || {};
 
   async function openBundleHtml(kind: "client" | "broker", engine: "hybrid" | "template") {
     const selected = allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id));
