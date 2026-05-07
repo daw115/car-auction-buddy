@@ -1273,25 +1273,14 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
               const lot = al.lot;
               const ai = al.analysis;
               const reports = autoReports[lot.lot_id] || {};
-              const isSelected = selectedLotIds.has(lot.lot_id);
               const isShowcase = al.is_top_recommendation;
 
               return (
                 <div key={lot.lot_id} className={`p-3 rounded border transition-colors ${
-                  isSelected ? "bg-primary/5 border-primary/40" :
                   isShowcase ? "bg-[oklch(0.95_0.05_145)]/50 border-[oklch(0.80_0.10_145)]/30" :
                   "border-border"
                 }`}>
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(c) => {
-                        const next = new Set(selectedLotIds);
-                        if (c) next.add(lot.lot_id); else next.delete(lot.lot_id);
-                        setSelectedLotIds(next);
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="font-semibold text-sm">
                           {lot.year} {lot.make} {lot.model} {lot.trim || ""}
