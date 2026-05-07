@@ -1158,26 +1158,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   const aiAnalyzedCount = allResults.length;
   const showcaseCount = showcase.length;
 
-  async function generateRichClientReports(approvedLots: any[]) {
-    for (let i = 0; i < approvedLots.length; i++) {
-      const al = approvedLots[i];
-      toast.info(`Generuję ${i + 1}/${approvedLots.length}: ${al.lot.year} ${al.lot.make} ${al.lot.model}...`);
-      try {
-        const html = await fnFetchAuthPost({
-          data: {
-            path: "/report/client-llm",
-            body: { criteria, approved_lots: [{ ...al, included_in_report: true }] },
-          },
-        });
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 120000);
-      } catch (e) {
-        toast.error(`Lot ${al.lot.lot_id}: ${(e as Error).message}`);
-      }
-    }
-  }
+  const artifactUrls = (record as any).artifact_urls || {};
 
   async function openBundleHtml(kind: "client" | "broker", engine: "hybrid" | "template") {
     const selected = allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id));
@@ -1186,8 +1167,8 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
       return;
     }
     const total = selected.length;
-    const eta = engine === "hybrid" ? `~${total * 30}s` : "~2s";
-    toast.info(`Generuję ${kind} bundle (${total} aut, ${engine}, ${eta})...`, { duration: 5000 });
+    const eta = engine === "hybrid" ? `~${total * 30}s (pierwszy raz, cache 24h)` : "~2s";
+    toast.info(`Generuję ${kind} bundle (${total} ${total === 1 ? "auto" : "aut"}, ${engine}, ${eta})...`, { duration: 5000 });
     try {
       const html = await fnFetchAuthPost({
         data: {
@@ -1219,6 +1200,34 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
         </div>
         <Button variant="ghost" onClick={onClose}>← Wróć do nowej sesji</Button>
       </div>
+
+      {/* AUTO-BUNDLE REPORTS */}
+      {(artifactUrls.client_bundle || artifactUrls.broker_bundle) && (
+        <Card className="p-3 mb-4 border-amber-500/30 bg-amber-500/5">
+          <div className="text-sm font-semibold mb-2">
+            📦 Auto-zbiorcze raporty (wszystkie showcase loty)
+          </div>
+          <div className="text-xs text-muted-foreground mb-2">
+            Wygenerowane podczas scrape (Gemini darmowy + Otomoto). 1 plik = wszystkie auta z TOC.
+          </div>
+          <div className="flex gap-2">
+            {artifactUrls.client_bundle && (
+              <Button variant="default" size="sm" asChild>
+                <a href={artifactUrls.client_bundle} target="_blank" rel="noopener">
+                  📄 Zbiorczy klient
+                </a>
+              </Button>
+            )}
+            {artifactUrls.broker_bundle && (
+              <Button variant="default" size="sm" asChild>
+                <a href={artifactUrls.broker_bundle} target="_blank" rel="noopener">
+                  📋 Zbiorczy broker
+                </a>
+              </Button>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* PIPELINE FUNNEL */}
       <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1364,61 +1373,32 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
             })}
           </div>
 
-          {/* STICKY BAR for bundle + rich reports */}
+          {/* STICKY BAR for bundle reports */}
           {selectedLotIds.size > 0 && (
-            <div className="sticky bottom-2 mt-4 p-3 rounded-md border bg-card">
+            <div className="sticky bottom-2 mt-4 p-3 rounded-md border border-amber-500/40 bg-amber-500/5">
               <div className="text-xs font-semibold mb-2">
-                📦 Raporty zbiorcze ({selectedLotIds.size} {selectedLotIds.size === 1 ? "auto" : "aut"})
+                ✨ Rich raporty zbiorcze ({selectedLotIds.size} {selectedLotIds.size === 1 ? "auto" : "aut"})
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* KLIENT */}
-                <Card className="p-3 border-green-500/30 bg-green-500/5">
-                  <div className="text-xs font-semibold mb-2">📄 Klient (storytelling, ceny PLN)</div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="default"
-                            onClick={() => openBundleHtml("client", "hybrid")}>
-                      ✨ Hybrid (Gemini, ~30s/lot)
-                    </Button>
-                    <Button size="sm" variant="outline"
-                            onClick={() => openBundleHtml("client", "template")}>
-                      ⚡ Szybki template (1s)
-                    </Button>
-                  </div>
-                </Card>
-
-                {/* BROKER */}
-                <Card className="p-3 border-blue-500/30 bg-blue-500/5">
-                  <div className="text-xs font-semibold mb-2">📋 Broker (scoring, koszty, bid strategy)</div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="default"
-                            onClick={() => openBundleHtml("broker", "hybrid")}>
-                      ✨ Hybrid (Gemini, ~30s/lot)
-                    </Button>
-                    <Button size="sm" variant="outline"
-                            onClick={() => openBundleHtml("broker", "template")}>
-                      ⚡ Szybki template (1s)
-                    </Button>
-                  </div>
-                </Card>
+              <div className="text-xs text-muted-foreground mb-2">
+                Hybrid Gemini + Otomoto market_pl + tłumaczenie PL. ~30s/lot pierwszy raz,
+                potem cache 24h (instant). Otrzymujesz JEDEN plik HTML z TOC.
               </div>
-
-              {/* Per-lot rich reports */}
-              <div className="mt-3 pt-3 border-t flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-xs">
-                  <strong>🔥 Per-lot rich raporty</strong> (Gemini / Anthropic)
-                  <div className="text-muted-foreground mt-0.5">
-                    ~30s/lot, potem cache 24h
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => generateRichClientReports(
-                    allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id))
-                  )}
-                >
-                  ✨ Rich klient × {selectedLotIds.size}
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="default" size="sm"
+                        onClick={() => openBundleHtml("client", "hybrid")}>
+                  ✨ Rich klient (1 plik × {selectedLotIds.size})
+                </Button>
+                <Button variant="default" size="sm"
+                        onClick={() => openBundleHtml("broker", "hybrid")}>
+                  ✨ Rich broker (1 plik × {selectedLotIds.size})
+                </Button>
+                <Button variant="outline" size="sm"
+                        onClick={() => openBundleHtml("client", "template")}>
+                  ⚡ Szybki klient (template)
+                </Button>
+                <Button variant="outline" size="sm"
+                        onClick={() => openBundleHtml("broker", "template")}>
+                  ⚡ Szybki broker (template)
                 </Button>
               </div>
             </div>
