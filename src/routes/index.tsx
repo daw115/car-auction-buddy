@@ -40,6 +40,7 @@ import {
   getBackendRecordsList,
   getBackendRecordDetails,
   fetchAuthPostHtml,
+  regenerateBundles,
 } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
