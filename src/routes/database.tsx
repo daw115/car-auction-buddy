@@ -227,7 +227,7 @@ function RecordsSection() {
     setLoading(true);
     try {
       const r = await fn({ data: { query: query || undefined, limit } });
-      setRecords(r ?? []);
+      setRecords(r?.records ?? []);
     } catch {
       toast.error("Nie udało się pobrać rekordów");
     } finally {
