@@ -1985,7 +1985,7 @@ export const getBackendRecordsList = createServerFn({ method: "GET" })
       const params = new URLSearchParams();
       if (data.query) params.set("query", data.query);
       if (data.limit) params.set("limit", String(data.limit));
-      const res = await fetch(`${baseUrl}/records?${params}`, {
+      const res = await fetch(`${baseUrl}/api/records?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return [];
@@ -2003,7 +2003,7 @@ export const getBackendRecordDetails = createServerFn({ method: "GET" })
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl || !token) return null;
     try {
-      const res = await fetch(`${baseUrl}/records/${data.id}`, {
+      const res = await fetch(`${baseUrl}/api/records/${data.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
