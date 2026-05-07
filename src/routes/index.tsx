@@ -3237,29 +3237,6 @@ function ScraperReportsSection({
   criteria: ClientCriteria;
 }) {
   const [loadingEndpoint, setLoadingEndpoint] = useState<string | null>(null);
-  const [cacheStats, setCacheStats] = useState<{ enabled: boolean; total: number; fresh: number; ttl_hours: number; by_kind: Record<string, number> } | null>(null);
-  const [clearingCache, setClearingCache] = useState(false);
-
-  // Fetch cache stats on mount
-  useEffect(() => {
-    getLlmCacheStats().then((s) => setCacheStats(s)).catch(() => {});
-  }, []);
-
-  const hasAny =
-    reportUrls.client_report_url ||
-    reportUrls.polecane_index_url ||
-    (reportUrls.client_reports_html?.length ?? 0) > 0 ||
-    (reportUrls.broker_reports_html?.length ?? 0) > 0 ||
-    reportUrls.artifact_urls?.analysis_json ||
-    reportUrls.report_endpoints?.client_html ||
-    reportUrls.report_endpoints?.broker_html;
-
-  if (!hasAny) return null;
-
-  const selectedCount = selectedLotIds?.size ?? 0;
-  const lotsToProcess = selectedCount > 0
-    ? listings.filter((l) => selectedLotIds!.has(l.lot_id))
-    : listings.slice(0, 1);
 
   async function openHtmlReport(endpoint: string, label: string) {
     setLoadingEndpoint(label);
