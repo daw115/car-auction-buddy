@@ -1088,13 +1088,18 @@ function BackendRecordDetail({ record }: { record: any }) {
                         🔗 Aukcja
                       </a>
                     )}
-                    {reports.client_hybrid_url && (
-                      <a href={reports.client_hybrid_url} target="_blank" rel="noreferrer" className="text-[10px] text-green-500 hover:underline">
-                        📄 Raport klient
+                    {(reports.client_url || reports.client_hybrid_url) && (
+                      <a href={reports.client_url || reports.client_hybrid_url} target="_blank" rel="noreferrer" className="text-[10px] text-green-500 hover:underline">
+                        📄 Pełny klient
                       </a>
                     )}
-                    {reports.broker_hybrid_url && (
-                      <a href={reports.broker_hybrid_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                    {reports.client_short_url && (
+                      <a href={reports.client_short_url} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-500 hover:underline">
+                        📄 Krótki klient
+                      </a>
+                    )}
+                    {(reports.broker_url || reports.broker_hybrid_url) && (
+                      <a href={reports.broker_url || reports.broker_hybrid_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
                         📋 Raport broker
                       </a>
                     )}

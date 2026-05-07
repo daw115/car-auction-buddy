@@ -59,6 +59,9 @@ export type AnalyzedLot = {
   included_in_report?: boolean;
   auto_reports?: {
     client_hybrid_url?: string;
+    client_url?: string;
+    client_short_url?: string;
     broker_hybrid_url?: string;
+    broker_url?: string;
   };
 };
