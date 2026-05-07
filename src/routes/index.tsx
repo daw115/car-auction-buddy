@@ -2383,6 +2383,9 @@ function Panel() {
 
         {/* ---- Workspace ---- */}
         <section className="min-w-0 space-y-4">
+          {openedBackendRecordId !== null ? (
+            <RecordDetailView recordId={openedBackendRecordId} onClose={() => setOpenedBackendRecordId(null)} />
+          ) : (
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
