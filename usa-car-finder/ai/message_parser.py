@@ -120,6 +120,63 @@ def _strip_json(text: str) -> str:
     return text.strip()
 
 
+def _sanitize_llm_json(raw: str) -> str:
+    """Sanityzuje typowe błędy LLM w JSON (leading +, trailing commas, // comments)."""
+    import re as _re
+    raw = _re.sub(r'([:\[,]\s*)\+(\d)', r'\1\2', raw)  # +1 -> 1
+    raw = _re.sub(r",(\s*[}\]])", r"\1", raw)  # trailing commas
+    raw = _re.sub(r"//[^\n]*", "", raw)  # // comments
+    return raw
+
+
+def _parse_json_loose(raw: str) -> dict:
+    """Tolerantny parser JSON od LLM-ów: strip ```, sanityzacja, balanced extract."""
+    raw = _strip_json(raw)
+    sanitized = _sanitize_llm_json(raw)
+
+    # 1. Bezpośrednio
+    try:
+        return json.loads(sanitized)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Extract first balanced {...}
+    start = sanitized.find("{")
+    if start >= 0:
+        depth = 0
+        in_str = False
+        escape = False
+        for i in range(start, len(sanitized)):
+            c = sanitized[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = sanitized[start:i+1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
+
+    # 3. Last resort: surowy raw
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"JSON parse failed (loose): {e}; sanitized[:200]={sanitized[:200]!r}")
+
+
 def _call_gemini(message: str) -> dict:
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -153,7 +210,7 @@ def _call_gemini(message: str) -> dict:
     text = "".join(p.get("text", "") for p in parts if p.get("text"))
     if not text:
         raise RuntimeError(f"Gemini empty (finish={candidates[0].get('finishReason')})")
-    return json.loads(_strip_json(text))
+    return _parse_json_loose(text)
 
 
 def _call_anthropic(message: str) -> dict:
@@ -173,7 +230,7 @@ def _call_anthropic(message: str) -> dict:
         messages=[{"role": "user", "content": f"Wiadomość od klienta:\n\n{message}"}],
     )
     chunks = [b.text for b in resp.content if b.type == "text"]
-    return json.loads(_strip_json("".join(chunks)))
+    return _parse_json_loose("".join(chunks))
 
 
 def parse_client_message(message: str) -> dict:
