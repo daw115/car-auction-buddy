@@ -1975,24 +1975,43 @@ export const listBackendClients = createServerFn({ method: "GET" }).handler(asyn
   }
 });
 
+export type BackendRecord = {
+  id: number;
+  title: string;
+  status: "new" | "done" | "cancelled" | "error" | "interrupted";
+  notes?: string | null;
+  client?: { name?: string; email?: string; phone?: string } | null;
+  collected_count: number;
+  analysis_notice?: string | null;
+  artifact_urls?: Record<string, string>;
+  job_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export const getBackendRecordsList = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ query: z.string().optional(), limit: z.number().optional() }).parse)
+  .inputValidator(z.object({
+    query: z.string().optional(),
+    status: z.string().optional(),
+    limit: z.number().optional(),
+  }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
-    if (!baseUrl || !token) return [];
+    if (!baseUrl || !token) return { records: [] as BackendRecord[], total: 0 };
     try {
       const params = new URLSearchParams();
       if (data.query) params.set("query", data.query);
+      if (data.status) params.set("status", data.status);
       if (data.limit) params.set("limit", String(data.limit));
-      const res = await fetch(`${baseUrl}/records?${params}`, {
+      const res = await fetch(`${baseUrl}/api/records?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return json.records ?? [];
+      if (!res.ok) return { records: [] as BackendRecord[], total: 0 };
+      const json = await res.json() as { records: BackendRecord[]; total: number };
+      return { records: json.records ?? [], total: json.total ?? 0 };
     } catch {
-      return [];
+      return { records: [] as BackendRecord[], total: 0 };
     }
   });
 
@@ -2003,7 +2022,7 @@ export const getBackendRecordDetails = createServerFn({ method: "GET" })
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl || !token) return null;
     try {
-      const res = await fetch(`${baseUrl}/records/${data.id}`, {
+      const res = await fetch(`${baseUrl}/api/records/${data.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
