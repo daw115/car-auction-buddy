@@ -1126,6 +1126,8 @@ function BackendRecordDetail({ record }: { record: any }) {
 function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(getBackendRecordDetails);
   const fnFetchAuthPost = useServerFn(fetchAuthPostHtml);
+  const fnRegenerateBundles = useServerFn(regenerateBundles);
+  const queryClient = useQueryClient();
 
   const { data: record, isLoading } = useQuery({
     queryKey: ["backend-record-detail", recordId],
