@@ -1276,6 +1276,7 @@ function Panel() {
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+  const [openedBackendRecordId, setOpenedBackendRecordId] = useState<number | null>(null);
 
   const toggleLotSelection = useCallback((lotId: string) => {
     setSelectedLotIds((prev) => {
