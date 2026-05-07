@@ -567,21 +567,33 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     if criteria.model:
                         title_meta += f" {criteria.model}"
 
+                    # Zbuduj mapę lot_id -> AnalyzedLot (do meta: recommendation, score)
+                    showcase_by_lot_id = {al.lot.lot_id: al for al in polecane}
+
                     if client_html_files:
                         client_htmls = []
                         for fp in client_html_files:
                             try:
                                 fp_path = Path(fp)
                                 content = fp_path.read_text(encoding="utf-8")
-                                # Wyciagnij label z linksow (lot_id w nazwie pliku)
-                                lot_id_from_name = fp_path.stem.split("_")[-2] if "_klient" in fp_path.stem else fp_path.stem
-                                # Znajdz odpowiadajacy lot_links entry
                                 ll = next((l for l in lot_links if l.get("lot_id") and l["lot_id"] in fp_path.stem), None)
-                                label = ll["title"] if ll else lot_id_from_name
-                                client_htmls.append((label, content))
+                                label = ll["title"] if ll else fp_path.stem
+                                lot_id = (ll or {}).get("lot_id")
+                                al = showcase_by_lot_id.get(lot_id) if lot_id else None
+                                meta = {}
+                                if al:
+                                    meta = {
+                                        "recommendation": al.analysis.recommendation,
+                                        "score": al.analysis.score,
+                                        "lot_id": al.lot.lot_id,
+                                    }
+                                client_htmls.append((label, content, meta))
                             except Exception:
                                 logger.exception("Failed to read client HTML %s", fp)
                         if client_htmls:
+                            # Sortuj: POLECAM pierwsze, potem RYZYKO (lepsze wrażenie sidebar)
+                            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+                            client_htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
                             bundle_title = f"Raport zbiorczy klienta — {len(client_htmls)} aut ({title_meta})"
                             bundle_html = _bundle_html(client_htmls, bundle_title)
                             bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_klient.html"
@@ -597,10 +609,21 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                                 content = fp_path.read_text(encoding="utf-8")
                                 ll = next((l for l in lot_links if l.get("lot_id") and l["lot_id"] in fp_path.stem), None)
                                 label = ll["title"] if ll else fp_path.stem
-                                broker_htmls.append((label, content))
+                                lot_id = (ll or {}).get("lot_id")
+                                al = showcase_by_lot_id.get(lot_id) if lot_id else None
+                                meta = {}
+                                if al:
+                                    meta = {
+                                        "recommendation": al.analysis.recommendation,
+                                        "score": al.analysis.score,
+                                        "lot_id": al.lot.lot_id,
+                                    }
+                                broker_htmls.append((label, content, meta))
                             except Exception:
                                 logger.exception("Failed to read broker HTML %s", fp)
                         if broker_htmls:
+                            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+                            broker_htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
                             bundle_title = f"Raport brokerski zbiorczy — {len(broker_htmls)} aut ({title_meta})"
                             bundle_html = _bundle_html(broker_htmls, bundle_title)
                             bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_broker.html"
@@ -1590,16 +1613,45 @@ async def generate_broker_html_report(request: ApproveReportRequest):
 
 
 def _bundle_html(htmls: list[tuple], title: str) -> str:
-    """Skleja N raportów HTML w jeden zbiorczy z TOC.
+    """Skleja N raportów HTML w jeden zbiorczy z LEFT SIDEBAR (sticky) + TAB view.
+
+    Layout:
+    - Lewy sidebar (sticky, scrollable) — lista aut z badge'em recommendation
+    - Prawy panel — pokazuje TYLKO 1 raport na raz (klik w sidebar = przełącza)
+    - POLECAM = zielony badge, RYZYKO = żółty, ODRZUĆ = czerwony, ? = szary
+    - Print: wszystkie sekcje na osobnych stronach (page-break)
 
     Args:
-        htmls: lista tuples (lot_label, html_string)
-        title: tytuł całego bundla (np. "Raport zbiorczy klient — 5 aut")
+        htmls: lista tuples (label, html, meta_dict_optional)
+            - label: str — wyświetlana nazwa np. "2024 Honda CR-V EX (#45069439)"
+            - html: str — pełny HTML raportu (z <html>...<body>...)
+            - meta: dict (opcjonalnie) — {recommendation: 'POLECAM'|..., score: float, lot_id: str}
+        title: tytuł całego bundla
 
     Returns:
-        Pełny HTML z <head><body> + spis treści + każdy raport oddzielony page-break.
+        Pełny HTML z layoutem aplikacyjnym (sidebar + main content).
     """
     import re as _re
+
+    # Normalizacja: wszystkie elementy do tuple (label, html, meta)
+    normalized = []
+    for entry in htmls:
+        if len(entry) == 2:
+            normalized.append((entry[0], entry[1], {}))
+        elif len(entry) >= 3:
+            normalized.append((entry[0], entry[1], entry[2] or {}))
+
+    def _badge_color(rec: str) -> tuple[str, str]:
+        """Zwraca (background-color, label) dla recommendation."""
+        rec_low = (rec or "").upper()
+        if "POLECAM" in rec_low:
+            return ("#22c55e", "✅ POLECAM")
+        if "RYZYKO" in rec_low:
+            return ("#eab308", "⚠️ RYZYKO")
+        if "ODRZUĆ" in rec_low or "ODRZUC" in rec_low:
+            return ("#ef4444", "❌ ODRZUĆ")
+        return ("#6b7280", "?")
+
     parts = [
         "<!DOCTYPE html>",
         "<html lang='pl'>",
@@ -1608,42 +1660,101 @@ def _bundle_html(htmls: list[tuple], title: str) -> str:
         "<meta name='viewport' content='width=device-width, initial-scale=1.0'>",
         f"<title>{title}</title>",
         "<style>",
-        "  @media print { .lot-section { page-break-before: always; } .toc { page-break-after: always; } }",
-        "  body { margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; }",
-        "  .toc { background: #0d1117; color: #e6edf3; padding: 32px; }",
-        "  .toc h1 { font-size: 26px; margin-bottom: 8px; color: #fff; }",
-        "  .toc .meta { font-size: 13px; color: #7d8590; margin-bottom: 20px; }",
-        "  .toc ol { line-height: 1.9; }",
-        "  .toc a { color: #58a6ff; text-decoration: none; font-size: 14px; }",
-        "  .toc a:hover { text-decoration: underline; }",
-        "  .lot-section { padding: 0; }",
+        # Reset + globalne
+        "  * { box-sizing: border-box; }",
+        "  body { margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; background: #0d1117; }",
+        # Layout: flex sidebar + main
+        "  .bundle-app { display: flex; min-height: 100vh; }",
+        # Sidebar
+        "  .bundle-sidebar { width: 320px; flex-shrink: 0; background: #161b22; color: #e6edf3;",
+        "    border-right: 1px solid #30363d; height: 100vh; position: sticky; top: 0;",
+        "    overflow-y: auto; padding: 24px 18px; }",
+        "  .bundle-sidebar h1 { font-size: 18px; margin: 0 0 6px; color: #fff; line-height: 1.3; }",
+        "  .bundle-sidebar .meta { font-size: 11px; color: #7d8590; margin-bottom: 20px; }",
+        "  .bundle-sidebar .nav-list { list-style: none; padding: 0; margin: 0; }",
+        "  .bundle-sidebar .nav-item { padding: 10px 12px; border-radius: 8px; cursor: pointer;",
+        "    margin-bottom: 6px; transition: background 0.15s; border: 1px solid transparent; }",
+        "  .bundle-sidebar .nav-item:hover { background: #1f2937; }",
+        "  .bundle-sidebar .nav-item.active { background: rgba(88,166,255,0.15); border-color: #58a6ff; }",
+        "  .bundle-sidebar .nav-num { font-size: 10px; color: #7d8590; margin-bottom: 2px; }",
+        "  .bundle-sidebar .nav-label { font-size: 13px; color: #e6edf3; line-height: 1.35; }",
+        "  .bundle-sidebar .nav-badge { display: inline-block; padding: 2px 8px; border-radius: 99px;",
+        "    font-size: 10px; font-weight: 700; color: #fff; margin-top: 4px; letter-spacing: 0.5px; }",
+        # Main content
+        "  .bundle-main { flex: 1; min-width: 0; }",
+        "  .lot-section { display: none; }",
+        "  .lot-section.active { display: block; }",
+        # Print mode — pokazuj wszystko, ukryj sidebar
+        "  @media print {",
+        "    .bundle-sidebar { display: none !important; }",
+        "    .lot-section { display: block !important; page-break-before: always; }",
+        "    .lot-section:first-of-type { page-break-before: auto; }",
+        "    .bundle-app { display: block; }",
+        "  }",
         "</style>",
         "</head>",
         "<body>",
-        "<div class='toc'>",
+        "<div class='bundle-app'>",
+        # Sidebar
+        "<aside class='bundle-sidebar'>",
         f"<h1>📋 {title}</h1>",
-        f"<div class='meta'>Wygenerowano: {datetime.now().strftime('%Y-%m-%d %H:%M')} · Liczba aut: {len(htmls)}</div>",
-        "<ol>",
+        f"<div class='meta'>Wygenerowano: {datetime.now().strftime('%Y-%m-%d %H:%M')} · {len(normalized)} aut</div>",
+        "<ul class='nav-list'>",
     ]
-    for idx, (label, _html) in enumerate(htmls, 1):
-        parts.append(f"<li><a href='#lot-{idx}'>{label}</a></li>")
-    parts.append("</ol></div>")
 
-    for idx, (label, html) in enumerate(htmls, 1):
-        # Wyciągnij body z każdego raportu (bez <html><head>)
+    for idx, (label, _html, meta) in enumerate(normalized, 1):
+        rec = meta.get("recommendation", "")
+        score = meta.get("score")
+        bg_color, badge_label = _badge_color(rec)
+        score_str = f" · {score:.1f}/10" if score is not None else ""
+        active_cls = " active" if idx == 1 else ""
+
+        parts.append(
+            f"<li class='nav-item{active_cls}' data-lot-idx='{idx}' onclick=\"showLot({idx})\">"
+            f"<div class='nav-num'>#{idx}</div>"
+            f"<div class='nav-label'>{label}</div>"
+            f"<span class='nav-badge' style='background:{bg_color}'>{badge_label}{score_str}</span>"
+            f"</li>"
+        )
+
+    parts.append("</ul></aside>")
+
+    # Main content area
+    parts.append("<main class='bundle-main'>")
+    for idx, (label, html, _meta) in enumerate(normalized, 1):
         body_match = _re.search(r"<body[^>]*>(.*?)</body>", html, _re.DOTALL | _re.IGNORECASE)
         body_content = body_match.group(1) if body_match else html
 
-        # Wyciągnij <style> z head — żeby zachować CSS oryginalnego raportu
         style_match = _re.search(r"<style[^>]*>(.*?)</style>", html, _re.DOTALL | _re.IGNORECASE)
-        # Scoped style do tej sekcji (każdy raport ma własne klasy więc niesko­licznie się gryzą)
-        scoped_style = ""
-        if style_match:
-            scoped_style = f"<style>\n{style_match.group(1)}\n</style>"
+        scoped_style = f"<style>\n{style_match.group(1)}\n</style>" if style_match else ""
 
+        active_cls = " active" if idx == 1 else ""
         parts.append(
-            f"<div id='lot-{idx}' class='lot-section'>{scoped_style}{body_content}</div>"
+            f"<section id='lot-{idx}' class='lot-section{active_cls}'>{scoped_style}{body_content}</section>"
         )
+    parts.append("</main>")
+    parts.append("</div>")  # bundle-app
+
+    # JavaScript do przełączania
+    parts.append("""
+<script>
+function showLot(idx) {
+  document.querySelectorAll('.lot-section').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const target = document.getElementById('lot-' + idx);
+  const nav = document.querySelector(`.nav-item[data-lot-idx="${idx}"]`);
+  if (target) target.classList.add('active');
+  if (nav) nav.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Update URL hash dla bookmarkable links
+  history.replaceState(null, '', '#lot-' + idx);
+}
+// Init: jeśli URL ma #lot-N, otwórz tę sekcję
+window.addEventListener('DOMContentLoaded', () => {
+  const m = (window.location.hash || '').match(/^#lot-(\\d+)$/);
+  if (m) showLot(parseInt(m[1], 10));
+});
+</script>""")
 
     parts.append("</body></html>")
     return "\n".join(parts)
@@ -1680,9 +1791,17 @@ async def generate_client_bundle_report(
         try:
             html = await asyncio.to_thread(renderer, item)
             label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-            htmls.append((label, html))
+            meta = {
+                "recommendation": item.analysis.recommendation,
+                "score": item.analysis.score,
+                "lot_id": item.lot.lot_id,
+            }
+            htmls.append((label, html, meta))
         except Exception:
             logger.exception("Bundle render failed for lot %s", item.lot.lot_id)
+    # Sort: POLECAM > RYZYKO > ODRZUĆ, w obrębie kategorii po score desc
+    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+    htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
 
     if not htmls:
         raise HTTPException(status_code=502, detail="Wszystkie raporty nie udały się")
@@ -1727,9 +1846,17 @@ async def generate_broker_bundle_report(
         try:
             html = await asyncio.to_thread(renderer, item)
             label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-            htmls.append((label, html))
+            meta = {
+                "recommendation": item.analysis.recommendation,
+                "score": item.analysis.score,
+                "lot_id": item.lot.lot_id,
+            }
+            htmls.append((label, html, meta))
         except Exception:
             logger.exception("Bundle render failed for lot %s", item.lot.lot_id)
+    # Sort: POLECAM > RYZYKO > ODRZUĆ, w obrębie kategorii po score desc
+    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+    htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
 
     if not htmls:
         raise HTTPException(status_code=502, detail="Wszystkie raporty nie udały się")
