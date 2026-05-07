@@ -158,6 +158,36 @@ def parse_iaai_html(html_file: Path) -> Optional[CarLot]:
             attr("Synonyms"),
         )
 
+        # BLACKLIST: tracking pixele, logos, ikony — NIE są zdjęciami auta
+        IMAGE_BLACKLIST_HOSTS = (
+            "bat.bing.com", "googletagmanager.com", "google-analytics.com",
+            "doubleclick.net", "facebook.com", "fbcdn.net",
+            "seal-chicago.bbb.org", "seal-akron.bbb.org",  # BBB credit logos
+            "bbb.org/seals", "trustpilot.com", "trustarc.com",
+            "linkedin.com", "twitter.com", "instagram.com",
+            "iaai.com/dimensions",  # /dimensions tylko rozmiary, NIE zdjęcia
+        )
+
+        def _is_real_lot_image(url: str) -> bool:
+            """True jeśli URL to faktyczne zdjęcie auta (nie tracking/logo)."""
+            if not url or not url.startswith("http"):
+                return False
+            low = url.lower()
+            if any(host in low for host in IMAGE_BLACKLIST_HOSTS):
+                return False
+            # Whitelist faktycznych źródeł zdjęć IAAI/Copart
+            if "vis.iaai.com/resizer" in low:
+                return True
+            if "cs.copart.com" in low or "copart.com/v1/auth" in low:
+                return True
+            # Inne *.jpg/png/webp na cdn-like hostach
+            if any(ext in low.split("?")[0] for ext in (".jpg", ".jpeg", ".png", ".webp")):
+                # Wyklucz logo, ikony, sprite'y
+                if any(t in low for t in ("/logo", "/icon", "sprite", "loading", "placeholder", "favicon")):
+                    return False
+                return True
+            return False
+
         images = []
         for img in soup.select("img[src], img[data-src], img[data-lazy], img[data-original]"):
             src = (
@@ -167,7 +197,7 @@ def parse_iaai_html(html_file: Path) -> Optional[CarLot]:
                 or img.get("data-original")
                 or ""
             ).strip()
-            if src.startswith("http"):
+            if _is_real_lot_image(src):
                 images.append(src)
 
         regex_urls = re.findall(
@@ -175,18 +205,22 @@ def parse_iaai_html(html_file: Path) -> Optional[CarLot]:
             html_content,
             flags=re.IGNORECASE,
         )
-        images.extend(regex_urls)
+        for u in regex_urls:
+            if _is_real_lot_image(u):
+                images.append(u)
 
-        vis_urls = re.findall(
-            r"https?://vis\.iaai\.com/dimensions\?imageKeys=[^\"'\\\s]+",
+        # FAKTYCZNE zdjęcia IAAI: vis.iaai.com/resizer?imageKeys=... (NIE /dimensions)
+        resizer_urls = re.findall(
+            r"https?://vis\.iaai\.com/resizer\?imageKeys=[^\"'\\\s]+",
             html_content,
             flags=re.IGNORECASE,
         )
-        images.extend(vis_urls)
+        images.extend(resizer_urls)
 
+        # Wyciagamy keys z JSON i budujemy resizer URL (pelny obraz)
         image_keys = re.findall(r'"k":"([^"]+~I\d+[^"]*)"', html_content)
         for key in image_keys[:12]:
-            images.append(f"https://vis.iaai.com/dimensions?imageKeys={key}")
+            images.append(f"https://vis.iaai.com/resizer?imageKeys={key}&width=845&height=633")
 
         for script in soup.select("script[type='application/ld+json']"):
             raw = script.get_text(strip=True)
@@ -199,25 +233,31 @@ def parse_iaai_html(html_file: Path) -> Optional[CarLot]:
             nodes = payload if isinstance(payload, list) else [payload]
             for node in nodes:
                 image_field = node.get("image") if isinstance(node, dict) else None
-                if isinstance(image_field, str) and image_field.startswith("http"):
+                if isinstance(image_field, str) and _is_real_lot_image(image_field):
                     images.append(image_field)
                 elif isinstance(image_field, list):
                     for img_url in image_field:
-                        if isinstance(img_url, str) and img_url.startswith("http"):
+                        if isinstance(img_url, str) and _is_real_lot_image(img_url):
                             images.append(img_url)
 
         deduped = []
         seen = set()
         for url in images:
-            normalized = url.split("?", 1)[0].lower()
+            # Dedup po imageKey (jeśli IAAI resizer) lub po pełnym URL
+            if "imageKeys=" in url:
+                key_match = re.search(r"imageKeys=([^&]+)", url)
+                normalized = f"key:{key_match.group(1)}" if key_match else url
+            else:
+                normalized = url.split("?", 1)[0].lower()
             if normalized in seen:
                 continue
             seen.add(normalized)
             deduped.append(url)
 
+        # Priorytet: faktyczne zdjęcia IAAI/Copart
         priority = [
             u for u in deduped
-            if any(token in u.lower() for token in ("iaai", "vehicle", "lot", "image", "photo"))
+            if "vis.iaai.com/resizer" in u.lower() or "cs.copart.com" in u.lower()
         ]
         images = (priority + [u for u in deduped if u not in priority])[:10]
 

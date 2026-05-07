@@ -26,6 +26,37 @@ def parse_odometer(text: str) -> Tuple[Optional[int], Optional[int]]:
     return mi, round(mi * 1.60934)
 
 
+_IMAGE_BLACKLIST_HOSTS = (
+    "bat.bing.com", "googletagmanager.com", "google-analytics.com",
+    "doubleclick.net", "facebook.com", "fbcdn.net",
+    "seal-chicago.bbb.org", "seal-akron.bbb.org",
+    "bbb.org/seals", "trustpilot.com", "trustarc.com",
+    "linkedin.com", "twitter.com", "instagram.com",
+)
+
+
+def _is_real_lot_image(url: str) -> bool:
+    """True jeśli URL to faktyczne zdjęcie auta (nie tracking pixel/logo)."""
+    if not url or not url.startswith("http"):
+        return False
+    low = url.lower()
+    if any(host in low for host in _IMAGE_BLACKLIST_HOSTS):
+        return False
+    # Whitelist faktycznych źródeł zdjęć
+    if "cs.copart.com" in low:
+        return True
+    if "copart.com/v1/auth" in low or "copart-cdn" in low:
+        return True
+    if "vis.iaai.com/resizer" in low:
+        return True
+    # Inne *.jpg/png/webp ale wykluczamy logo/icon/sprite
+    if any(ext in low.split("?")[0] for ext in (".jpg", ".jpeg", ".png", ".webp")):
+        if any(t in low for t in ("/logo", "/icon", "sprite", "loading", "placeholder", "favicon")):
+            return False
+        return True
+    return False
+
+
 def _extract_image_urls(soup: BeautifulSoup, html_content: str) -> list[str]:
     candidates: list[str] = []
 
@@ -38,7 +69,7 @@ def _extract_image_urls(soup: BeautifulSoup, html_content: str) -> list[str]:
             or img.get("data-original")
             or ""
         ).strip()
-        if src.startswith("http"):
+        if _is_real_lot_image(src):
             candidates.append(src)
 
     # 2) URL-e obrazów ukryte w JS/JSON.
@@ -47,7 +78,9 @@ def _extract_image_urls(soup: BeautifulSoup, html_content: str) -> list[str]:
         html_content,
         flags=re.IGNORECASE,
     )
-    candidates.extend(regex_urls)
+    for u in regex_urls:
+        if _is_real_lot_image(u):
+            candidates.append(u)
 
     # 3) JSON-LD z polem image.
     for script in soup.select("script[type='application/ld+json']"):
@@ -62,11 +95,11 @@ def _extract_image_urls(soup: BeautifulSoup, html_content: str) -> list[str]:
         nodes = payload if isinstance(payload, list) else [payload]
         for node in nodes:
             image_field = node.get("image") if isinstance(node, dict) else None
-            if isinstance(image_field, str) and image_field.startswith("http"):
+            if isinstance(image_field, str) and _is_real_lot_image(image_field):
                 candidates.append(image_field)
             elif isinstance(image_field, list):
                 for img_url in image_field:
-                    if isinstance(img_url, str) and img_url.startswith("http"):
+                    if isinstance(img_url, str) and _is_real_lot_image(img_url):
                         candidates.append(img_url)
 
     # Uporządkuj i ogranicz do najbardziej prawdopodobnych zdjęć lotu.
@@ -81,7 +114,7 @@ def _extract_image_urls(soup: BeautifulSoup, html_content: str) -> list[str]:
 
     priority = [
         u for u in unique
-        if any(token in u.lower() for token in ("copart", "vehicle", "lot", "image", "photo"))
+        if any(token in u.lower() for token in ("cs.copart.com", "vis.iaai.com", "vehicle", "lot/image", "/photo"))
     ]
     fallback = [u for u in unique if u not in priority]
     return (priority + fallback)[:10]
