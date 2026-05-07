@@ -39,6 +39,7 @@ import {
   batchSearch,
   getBackendRecordsList,
   getBackendRecordDetails,
+  fetchAuthPostHtml,
 } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
@@ -55,6 +56,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Sheet,
   SheetContent,
@@ -933,22 +936,14 @@ function BatchJobCard({
 
 // ---------- Backend Records Panel ----------
 
-function BackendRecordsPanel() {
+function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordId: number | null; onSelectRecord: (id: number) => void }) {
   const fnListBackend = useServerFn(getBackendRecordsList);
-  const fnDetailBackend = useServerFn(getBackendRecordDetails);
   const [statusFilter, setStatusFilter] = useState("");
-  const [detailId, setDetailId] = useState<number | null>(null);
 
   const { data: recordsData, isLoading, refetch } = useQuery({
     queryKey: ["backend-records", statusFilter],
     queryFn: () => fnListBackend({ data: { limit: 100, status: statusFilter || undefined } }),
     refetchInterval: 30000,
-  });
-
-  const { data: detail } = useQuery({
-    queryKey: ["backend-record", detailId],
-    queryFn: () => fnDetailBackend({ data: { id: String(detailId!) } }),
-    enabled: detailId !== null,
   });
 
   const records = recordsData?.records ?? [];
@@ -963,59 +958,46 @@ function BackendRecordsPanel() {
   ];
 
   return (
-    <>
-      <Card className="p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Wszystkie rekordy ({total})</h2>
-          <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+    <Card className="p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">📂 Rekordy backendu ({total})</h2>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1 mb-2">
+        {filters.map((f) => (
+          <Button
+            key={f.value}
+            size="sm"
+            variant={statusFilter === f.value ? "default" : "ghost"}
+            className="h-6 px-2 text-[10px]"
+            onClick={() => setStatusFilter(f.value)}
+          >
+            {f.label}
           </Button>
-        </div>
-        <div className="flex flex-wrap gap-1 mb-2">
-          {filters.map((f) => (
-            <Button
-              key={f.value}
-              size="sm"
-              variant={statusFilter === f.value ? "default" : "ghost"}
-              className="h-6 px-2 text-[10px]"
-              onClick={() => setStatusFilter(f.value)}
-            >
-              {f.label}
-            </Button>
-          ))}
-        </div>
-        <div className="max-h-[600px] overflow-auto space-y-1">
-          {!records.length && !isLoading && (
-            <div className="text-sm text-muted-foreground italic py-8 text-center">
-              Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}.
-            </div>
-          )}
-          {records.map((r) => (
-            <BackendRecordRow key={r.id} record={r} onClick={() => setDetailId(r.id)} />
-          ))}
-        </div>
-      </Card>
-
-      <Dialog open={detailId !== null} onOpenChange={(o) => !o && setDetailId(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>{detail?.title ?? "Szczegóły rekordu"}</DialogTitle>
-            <DialogDescription>
-              <span className="text-xs">{detail?.created_at ? new Date(detail.created_at).toLocaleString("pl-PL") : ""}</span>
-            </DialogDescription>
-          </DialogHeader>
-          {detail ? (
-            <BackendRecordDetail record={detail} />
-          ) : (
-            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+        ))}
+      </div>
+      <div className="max-h-[600px] overflow-auto space-y-1">
+        {!records.length && !isLoading && (
+          <div className="text-sm text-muted-foreground italic py-8 text-center">
+            Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}.
+          </div>
+        )}
+        {records.map((r) => (
+          <BackendRecordRow
+            key={r.id}
+            record={r}
+            isActive={activeRecordId === r.id}
+            onClick={() => onSelectRecord(r.id)}
+          />
+        ))}
+      </div>
+    </Card>
   );
 }
 
-function BackendRecordRow({ record, onClick }: { record: BackendRecord; onClick: () => void }) {
+function BackendRecordRow({ record, isActive, onClick }: { record: BackendRecord; isActive?: boolean; onClick: () => void }) {
   const statusIcon: Record<string, string> = {
     done: "✅", new: "✅", cancelled: "⛔", error: "❌", interrupted: "⚠️",
   };
@@ -1025,7 +1007,7 @@ function BackendRecordRow({ record, onClick }: { record: BackendRecord; onClick:
   return (
     <button
       onClick={onClick}
-      className="w-full p-2 rounded border hover:bg-muted/50 transition-colors text-left"
+      className={`w-full p-2 rounded border transition-colors text-left ${isActive ? "border-primary bg-accent" : "hover:bg-muted/50"}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium truncate flex-1">{record.title}</span>
@@ -1137,6 +1119,262 @@ function BackendRecordDetail({ record }: { record: any }) {
     </div>
   );
 }
+
+// ---------- Record Detail View (center panel) ----------
+
+function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
+  const fnDetailBackend = useServerFn(getBackendRecordDetails);
+  const fnFetchAuthPost = useServerFn(fetchAuthPostHtml);
+
+  const { data: record, isLoading } = useQuery({
+    queryKey: ["backend-record-detail", recordId],
+    queryFn: () => fnDetailBackend({ data: { id: String(recordId) } }),
+  });
+
+  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+
+  if (isLoading || !record) {
+    return (
+      <Card className="p-4 flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </Card>
+    );
+  }
+
+  const criteria = (() => {
+    try { return typeof record.criteria === "string" ? JSON.parse(record.criteria) : (record.criteria ?? {}); } catch { return {}; }
+  })();
+  const response = (() => {
+    try {
+      const r = (record as any).response ?? (record as any).response_json;
+      return typeof r === "string" ? JSON.parse(r) : (r ?? {});
+    } catch { return {}; }
+  })();
+  const allResults: any[] = response.all_results || [];
+  const showcase = allResults.filter((al: any) => al.is_top_recommendation);
+  const autoReports: Record<string, any> = response.auto_reports_by_lot_id || {};
+
+  const collectedCount = (record as any).collected_count || 0;
+  const aiAnalyzedCount = allResults.length;
+  const showcaseCount = showcase.length;
+
+  async function generateRichClientReports(approvedLots: any[]) {
+    for (let i = 0; i < approvedLots.length; i++) {
+      const al = approvedLots[i];
+      toast.info(`Generuję ${i + 1}/${approvedLots.length}: ${al.lot.year} ${al.lot.make} ${al.lot.model}...`);
+      try {
+        const html = await fnFetchAuthPost({
+          data: {
+            path: "/report/client-llm",
+            body: { criteria, approved_lots: [{ ...al, included_in_report: true }] },
+          },
+        });
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+      } catch (e) {
+        toast.error(`Lot ${al.lot.lot_id}: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      {/* HEADER */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-xl font-bold">{(record as any).title ?? `Rekord #${recordId}`}</h2>
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+            <Badge>{(record as any).status}</Badge>
+            <span>{new Date((record as any).created_at).toLocaleString("pl-PL")}</span>
+            {(record as any).client?.name && <span>· {(record as any).client.name}</span>}
+          </div>
+        </div>
+        <Button variant="ghost" onClick={onClose}>← Wróć do nowej sesji</Button>
+      </div>
+
+      {/* PIPELINE FUNNEL */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">🔍 Zescrapowane</div>
+          <div className="text-2xl font-bold">{collectedCount}</div>
+          <div className="text-xs text-muted-foreground">Copart + IAAI po filtrach</div>
+        </Card>
+        <Card className="p-3 border-blue-500/40">
+          <div className="text-xs text-muted-foreground">🤖 Analiza AI</div>
+          <div className="text-2xl font-bold">{aiAnalyzedCount}</div>
+          <div className="text-xs text-muted-foreground">Top {aiAnalyzedCount} po pre-rank → AI ocenia</div>
+        </Card>
+        <Card className="p-3 border-green-500/40">
+          <div className="text-xs text-muted-foreground">🎯 Showcase</div>
+          <div className="text-2xl font-bold">{showcaseCount}</div>
+          <div className="text-xs text-muted-foreground">Wszystkie POLECAM + 2 RYZYKO</div>
+        </Card>
+      </div>
+
+      {/* KRYTERIA */}
+      <Card className="p-3 mb-4 bg-muted/30">
+        <h3 className="text-sm font-semibold mb-2">📋 Kryteria wyszukiwania</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+          <div>Marka: <strong>{criteria.make}</strong></div>
+          <div>Model: <strong>{criteria.model || "—"}</strong></div>
+          <div>Rocznik: {criteria.year_from || "?"}–{criteria.year_to || "?"}</div>
+          <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
+          <div>Max przebieg: {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}</div>
+          <div>Źródła: {(criteria.sources || []).join(", ")}</div>
+          <div>Wyklucz: {(criteria.excluded_damage_types || []).join(", ")}</div>
+        </div>
+      </Card>
+
+      {/* NOTATKA DIAGNOSTYCZNA */}
+      {(record as any).analysis_notice && collectedCount <= 2 && (
+        <Alert className="mb-4 border-amber-500/40">
+          <AlertDescription className="text-xs whitespace-pre-line">
+            {(record as any).analysis_notice}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* LISTA LOTÓW z checkboxami */}
+      {allResults.length > 0 ? (
+        <Card className="p-3">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                Zaznaczono: {selectedLotIds.size}/{allResults.length}
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => {
+                if (selectedLotIds.size === allResults.length) setSelectedLotIds(new Set());
+                else setSelectedLotIds(new Set(allResults.map((al: any) => al.lot.lot_id)));
+              }}>
+                {selectedLotIds.size === allResults.length ? "Odznacz" : "Zaznacz wszystkie"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {allResults.map((al: any) => {
+              const lot = al.lot;
+              const ai = al.analysis;
+              const reports = autoReports[lot.lot_id] || {};
+              const isSelected = selectedLotIds.has(lot.lot_id);
+              const isShowcase = al.is_top_recommendation;
+
+              return (
+                <div key={lot.lot_id} className={`p-3 rounded border transition-colors ${
+                  isSelected ? "bg-primary/5 border-primary/40" :
+                  isShowcase ? "bg-[oklch(0.95_0.05_145)]/50 border-[oklch(0.80_0.10_145)]/30" :
+                  "border-border"
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(c) => {
+                        const next = new Set(selectedLotIds);
+                        if (c) next.add(lot.lot_id); else next.delete(lot.lot_id);
+                        setSelectedLotIds(next);
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-semibold text-sm">
+                          {lot.year} {lot.make} {lot.model} {lot.trim || ""}
+                          {isShowcase && <Badge variant="default" className="ml-2 text-xs">🎯 Showcase</Badge>}
+                        </span>
+                        {ai?.recommendation && (
+                          <Badge variant={
+                            ai.recommendation === "POLECAM" ? "default" :
+                            ai.recommendation === "RYZYKO" ? "secondary" :
+                            "destructive"
+                          } className="text-xs shrink-0">
+                            {ai.recommendation} · {ai.score?.toFixed(1)}/10
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground mb-2">
+                        <span>{lot.source}/{lot.lot_id}</span>
+                        <span>{lot.damage_primary}</span>
+                        <span>{lot.title_type}</span>
+                        <span>{lot.location_state}</span>
+                        {lot.odometer_mi && <span>{lot.odometer_mi.toLocaleString()} mi</span>}
+                        {lot.current_bid_usd && <span>${lot.current_bid_usd.toLocaleString()}</span>}
+                        {lot.seller_type && <Badge variant="outline" className="text-xs">{lot.seller_type}</Badge>}
+                      </div>
+
+                      {ai?.client_description_pl && (
+                        <div className="text-xs mt-1 italic">{ai.client_description_pl}</div>
+                      )}
+
+                      {ai?.red_flags && ai.red_flags.length > 0 && (
+                        <div className="text-xs mt-1 text-amber-600">
+                          ⚠️ {ai.red_flags.join(" · ")}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {lot.url && (
+                          <a href={lot.url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80">
+                            🔗 Aukcja
+                          </a>
+                        )}
+                        {reports.client_url && (
+                          <a href={reports.client_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.95_0.05_145)] hover:bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]">
+                            📄 Auto-raport klient
+                          </a>
+                        )}
+                        {reports.broker_url && (
+                          <a href={reports.broker_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.92_0.06_250)] hover:bg-[oklch(0.88_0.10_250)] text-[oklch(0.30_0.14_250)]">
+                            📋 Auto-raport broker
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* STICKY BAR for rich reports */}
+          {selectedLotIds.size > 0 && (
+            <div className="sticky bottom-2 mt-4 p-3 rounded-md border border-amber-500/40 bg-amber-500/5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-xs">
+                  <strong>🔥 Rich raporty</strong> (Gemini darmowy / Anthropic fallback)
+                  <div className="text-muted-foreground mt-0.5">
+                    Zaznaczono {selectedLotIds.size} {selectedLotIds.size === 1 ? "lot" : "lotów"} ·
+                    pierwszy raz ~30s/lot, potem cache 24h
+                  </div>
+                </div>
+                <Button
+                  variant="default"
+                  onClick={() => generateRichClientReports(
+                    allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id))
+                  )}
+                >
+                  ✨ Rich klient × {selectedLotIds.size}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <div className="p-6 text-center text-sm text-muted-foreground">
+          Brak lotów do wyświetlenia (status: {(record as any).status})
+          {(record as any).analysis_notice && (
+            <div className="text-xs mt-2 italic whitespace-pre-line">
+              {(record as any).analysis_notice}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 
 function Panel() {
   // ---- server fn handles
@@ -1294,6 +1532,7 @@ function Panel() {
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+  const [openedBackendRecordId, setOpenedBackendRecordId] = useState<number | null>(null);
 
   const toggleLotSelection = useCallback((lotId: string) => {
     setSelectedLotIds((prev) => {
@@ -2326,7 +2565,7 @@ function Panel() {
         <ActiveJobsPanel />
       </div>
 
-      <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
+      <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* ---- Clients column ---- */}
         <aside className="space-y-3">
           <Card className="p-3">
@@ -2394,12 +2633,16 @@ function Panel() {
               ))}
             </div>
           </Card>
-          <BackendRecordsPanel />
+          <BackendRecordsPanel activeRecordId={openedBackendRecordId} onSelectRecord={setOpenedBackendRecordId} />
           <ConnectionStatusPanel />
         </aside>
 
         {/* ---- Workspace ---- */}
         <section className="min-w-0 space-y-4">
+          {openedBackendRecordId !== null ? (
+            <RecordDetailView recordId={openedBackendRecordId} onClose={() => setOpenedBackendRecordId(null)} />
+          ) : (
+          <>
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -2961,219 +3204,9 @@ function Panel() {
               </Button>
             </div>
           </Card>
+          </>
+          )}
         </section>
-
-        {/* ---- Records column ---- */}
-        <aside>
-          <Card className="p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">
-                {activeClient ? `Rekordy: ${activeClient.name}` : "Wszystkie rekordy"}
-              </h2>
-              <Button variant="ghost" size="sm" onClick={() => void refreshRecords(activeClientId)}>
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <div className="max-h-[80vh] space-y-1 overflow-y-auto">
-              {records.length === 0 && (
-                <p className="px-1 py-2 text-xs text-muted-foreground">Brak rekordów.</p>
-              )}
-              {records.map((r) => {
-                const am = r.artifacts_meta;
-                const analysisStatusLabel: Record<string, { text: string; color: string }> = {
-                  done: { text: "Gotowe", color: "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]" },
-                  failed: { text: "Błąd", color: "bg-destructive/15 text-destructive" },
-                  cancelled: { text: "Anulowano", color: "bg-muted text-muted-foreground" },
-                  analyzing: { text: "Analizuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
-                  rendering: { text: "Renderuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
-                  saving: { text: "Zapisuje…", color: "bg-[oklch(0.92_0.08_250)] text-[oklch(0.30_0.10_250)]" },
-                  queued: { text: "W kolejce", color: "bg-muted text-muted-foreground" },
-                };
-                // Show "retrying" when this record is actively being re-analyzed
-                const isRetrying = activeRecordId === r.id && busy === "ai" && (r.analysis_status === "failed" || r.analysis_status === "cancelled");
-                const aStatus = isRetrying
-                  ? { text: "Ponawianie…", color: "bg-[oklch(0.92_0.08_60)] text-[oklch(0.35_0.12_60)]", spinning: true }
-                  : r.analysis_status
-                    ? analysisStatusLabel[r.analysis_status] ? { ...analysisStatusLabel[r.analysis_status], spinning: false } : null
-                    : null;
-
-                return (
-                  <div
-                    key={r.id}
-                    className={`group flex flex-col gap-1 rounded-md border px-2 py-1.5 text-sm cursor-pointer ${
-                      activeRecordId === r.id ? "border-primary bg-accent" : "border-transparent hover:bg-muted"
-                    }`}
-                    onClick={() => void openRecord(r.id)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{r.title || "(bez tytułu)"}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(r.created_at).toLocaleString("pl-PL")} · {r.status}
-                        </div>
-                      </div>
-                      <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "report_html"); }}
-                          title="Pobierz raport HTML"
-                          disabled={!am?.report_html}
-                          className="disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <FileText className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "ai_input"); }}
-                          title="Pobierz AI input (JSON)"
-                          disabled={!am?.ai_input}
-                          className="disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "ai_prompt"); }}
-                          title="Pobierz prompt AI (TXT)"
-                          disabled={!am?.ai_prompt}
-                          className="disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Brain className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void downloadRecordArtifact(r.id, "analysis"); }}
-                          title="Pobierz wynik analizy AI (JSON)"
-                          disabled={!am?.analysis}
-                          className="disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <FlaskConical className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void downloadRecordStatusJson(r.id); }}
-                          title="Pobierz status analizy + artifacts_meta (JSON)"
-                          className="disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Eye className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void downloadReportBundle(r.id); }}
-                          title="Pobierz pakiet raportu (ZIP)"
-                          disabled={r.status !== "analyzed"}
-                          className="disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                        </button>
-                        {(r.analysis_status === "failed" || r.analysis_status === "cancelled") && (
-                          (() => {
-                            const limitReached = r.retry_count >= r.max_retries;
-                            return (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); void retryAnalysis(r.id); }}
-                                title={limitReached ? `Wyczerpano limit ${r.max_retries} prób` : "Ponów analizę AI"}
-                                className="disabled:opacity-30 disabled:cursor-not-allowed"
-                                disabled={busy !== null || limitReached}
-                              >
-                                <RotateCcw className={`h-3.5 w-3.5 ${limitReached ? "text-muted-foreground/40" : "text-muted-foreground hover:text-primary"}`} />
-                              </button>
-                            );
-                          })()
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void removeRecord(r.id); }}
-                          title="Usuń"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Analysis status + artifact badges */}
-                    {(aStatus || am) && (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {aStatus && (
-                          <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${aStatus.color}`}>
-                            {aStatus.spinning && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
-                            {aStatus.text}
-                          </span>
-                        )}
-                        {am?.report_html && (
-                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`HTML ${(am.report_html.size / 1024).toFixed(0)} KB`}>
-                            HTML
-                          </span>
-                        )}
-                        {am?.analysis && (
-                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`${am.analysis.lots_count} lotów`}>
-                            AI:{am.analysis.lots_count}
-                          </span>
-                        )}
-                        {am?.ai_input && (
-                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`Input ${(am.ai_input.size / 1024).toFixed(0)} KB`}>
-                            IN
-                          </span>
-                        )}
-                        {am?.ai_prompt && (
-                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground" title={`Prompt ${(am.ai_prompt.size / 1024).toFixed(0)} KB`}>
-                            PR
-                          </span>
-                        )}
-                        {am?.mail_html && (
-                          <span className="inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                            MAIL
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {r.analysis_status === "failed" && (
-                      <div className="rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive space-y-1">
-                        <div className="flex items-center gap-1 font-medium">
-                          <AlertCircle className="h-3 w-3 shrink-0" />
-                          Błąd analizy
-                          {r.retry_count > 0 && (
-                            <span className="text-muted-foreground font-normal ml-1">
-                              (próba {r.retry_count}/{r.max_retries})
-                            </span>
-                          )}
-                        </div>
-                        {r.analysis_error && (
-                          <p className="line-clamp-3 break-all">{r.analysis_error}</p>
-                        )}
-                        {r.next_retry_at && new Date(r.next_retry_at) > new Date() && (
-                          <p className="text-[10px] text-muted-foreground">
-                            <RefreshCw className="h-2.5 w-2.5 inline mr-0.5" />
-                            Następna próba: {new Date(r.next_retry_at).toLocaleTimeString("pl-PL")}
-                          </p>
-                        )}
-                        {r.retry_count >= r.max_retries && (
-                          <div className="text-[10px] font-medium space-y-0.5">
-                            <p>🚫 Wyczerpano limit {r.max_retries} prób — ponowienie zablokowane</p>
-                            {r.analysis_error && (
-                              <p className="font-normal text-muted-foreground">Powód: {humanizeError(r.analysis_error)}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {r.analysis_status === "cancelled" && (
-                      <div className="rounded bg-muted border border-border px-2 py-1 text-[11px] text-muted-foreground space-y-1">
-                        <div className="flex items-center gap-1 font-medium">
-                          <X className="h-3 w-3 shrink-0" />
-                          Anulowano przez użytkownika
-                        </div>
-                        {r.analysis_completed_at && (
-                          <p className="text-[10px]">
-                            {new Date(r.analysis_completed_at).toLocaleString("pl-PL")}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-          <LogsPanel
-            clientId={activeClientId}
-            recordId={activeRecordId}
-            records={records}
-            onOpenRecord={(id) => void openRecord(id)}
-          />
-        </aside>
       </main>
     </div>
   );

@@ -2140,6 +2140,29 @@ export const fetchAuthHtml = createServerFn({ method: "POST" })
     return res.text();
   });
 
+// ---------- Fetch auth POST (for rich reports) ----------
+
+export const fetchAuthPostHtml = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ path: z.string().min(1).max(500), body: z.any() }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) throw new Error("Backend not configured");
+    if (!data.path.startsWith("/report/")) {
+      throw new Error("Forbidden path");
+    }
+    const res = await fetch(`${baseUrl}${data.path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data.body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  });
+
 // ---------- Parse client message ----------
 
 export const parseClientMessage = createServerFn({ method: "POST" })
