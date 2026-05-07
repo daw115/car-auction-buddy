@@ -1340,37 +1340,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
               );
             })}
           </div>
-
-          {/* STICKY BAR for bundle reports */}
-          {selectedLotIds.size > 0 && (
-            <div className="sticky bottom-2 mt-4 p-3 rounded-md border border-amber-500/40 bg-amber-500/5">
-              <div className="text-xs font-semibold mb-2">
-                ✨ Rich raporty zbiorcze ({selectedLotIds.size} {selectedLotIds.size === 1 ? "auto" : "aut"})
-              </div>
-              <div className="text-xs text-muted-foreground mb-2">
-                Hybrid Gemini + Otomoto market_pl + tłumaczenie PL. ~30s/lot pierwszy raz,
-                potem cache 24h (instant). Otrzymujesz JEDEN plik HTML z TOC.
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <Button variant="default" size="sm"
-                        onClick={() => openBundleHtml("client", "hybrid")}>
-                  ✨ Rich klient (1 plik × {selectedLotIds.size})
-                </Button>
-                <Button variant="default" size="sm"
-                        onClick={() => openBundleHtml("broker", "hybrid")}>
-                  ✨ Rich broker (1 plik × {selectedLotIds.size})
-                </Button>
-                <Button variant="outline" size="sm"
-                        onClick={() => openBundleHtml("client", "template")}>
-                  ⚡ Szybki klient (template)
-                </Button>
-                <Button variant="outline" size="sm"
-                        onClick={() => openBundleHtml("broker", "template")}>
-                  ⚡ Szybki broker (template)
-                </Button>
-              </div>
-            </div>
-          )}
         </Card>
       ) : (
         <div className="p-6 text-center text-sm text-muted-foreground">
