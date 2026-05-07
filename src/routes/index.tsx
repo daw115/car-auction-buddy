@@ -37,7 +37,10 @@ import {
   clearLlmCache,
   parseClientMessage,
   batchSearch,
+  getBackendRecordsList,
+  getBackendRecordDetails,
 } from "@/functions/api.functions";
+import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
 import { LogsPanel } from "@/components/LogsPanel";
