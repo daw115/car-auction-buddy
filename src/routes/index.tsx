@@ -1376,6 +1376,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
 }
 
 
+function Panel() {
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
   const fnCreateClient = useServerFn(createClient);
