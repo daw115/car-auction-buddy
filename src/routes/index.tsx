@@ -2373,6 +2373,211 @@ function Panel() {
               </Field>
             </div>
 
+// ---------- Backend Records Panel ----------
+
+function BackendRecordsPanel() {
+  const fnListBackend = useServerFn(getBackendRecordsList);
+  const fnDetailBackend = useServerFn(getBackendRecordDetails);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [detailId, setDetailId] = useState<number | null>(null);
+
+  const { data: recordsData, isLoading, refetch } = useQuery({
+    queryKey: ["backend-records", statusFilter],
+    queryFn: () => fnListBackend({ data: { limit: 100, status: statusFilter || undefined } }),
+    refetchInterval: 30000,
+  });
+
+  const { data: detail } = useQuery({
+    queryKey: ["backend-record", detailId],
+    queryFn: () => fnDetailBackend({ data: { id: String(detailId!) } }),
+    enabled: detailId !== null,
+  });
+
+  const records = recordsData?.records ?? [];
+  const total = recordsData?.total ?? 0;
+
+  const filters = [
+    { value: "", label: "Wszystkie" },
+    { value: "done", label: "✅ Ukończone" },
+    { value: "cancelled", label: "⛔ Anulowane" },
+    { value: "error", label: "❌ Błędy" },
+    { value: "interrupted", label: "⚠️ Przerwane" },
+  ];
+
+  return (
+    <>
+      <Card className="p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Wszystkie rekordy ({total})</h2>
+          <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {filters.map((f) => (
+            <Button
+              key={f.value}
+              size="sm"
+              variant={statusFilter === f.value ? "default" : "ghost"}
+              className="h-6 px-2 text-[10px]"
+              onClick={() => setStatusFilter(f.value)}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
+        <div className="max-h-[600px] overflow-auto space-y-1">
+          {!records.length && !isLoading && (
+            <div className="text-sm text-muted-foreground italic py-8 text-center">
+              Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}.
+            </div>
+          )}
+          {records.map((r) => (
+            <BackendRecordRow key={r.id} record={r} onClick={() => setDetailId(r.id)} />
+          ))}
+        </div>
+      </Card>
+
+      <Dialog open={detailId !== null} onOpenChange={(o) => !o && setDetailId(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>{detail?.title ?? "Szczegóły rekordu"}</DialogTitle>
+            <DialogDescription>
+              <span className="text-xs">{detail?.created_at ? new Date(detail.created_at).toLocaleString("pl-PL") : ""}</span>
+            </DialogDescription>
+          </DialogHeader>
+          {detail ? (
+            <BackendRecordDetail record={detail} />
+          ) : (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function BackendRecordRow({ record, onClick }: { record: BackendRecord; onClick: () => void }) {
+  const statusIcon: Record<string, string> = {
+    done: "✅", new: "✅", cancelled: "⛔", error: "❌", interrupted: "⚠️",
+  };
+  const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    done: "default", new: "default", cancelled: "secondary", error: "destructive", interrupted: "outline",
+  };
+  return (
+    <button
+      onClick={onClick}
+      className="w-full p-2 rounded border hover:bg-muted/50 transition-colors text-left"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium truncate flex-1">{record.title}</span>
+        <Badge variant={statusVariant[record.status] ?? "outline"} className="text-[10px] shrink-0">
+          {statusIcon[record.status] ?? "?"} {record.status}
+        </Badge>
+      </div>
+      <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+        <span>{new Date(record.created_at).toLocaleString("pl-PL")}</span>
+        {record.collected_count > 0 && <span>· {record.collected_count} lotów</span>}
+        {record.client?.name && <span>· {record.client.name}</span>}
+      </div>
+      {record.analysis_notice && (
+        <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 truncate">
+          {record.analysis_notice}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function BackendRecordDetail({ record }: { record: any }) {
+  const criteria = (() => {
+    try { return JSON.parse(record.criteria_json || "{}"); } catch { return {}; }
+  })();
+  const response = (() => {
+    try { return JSON.parse(record.response_json || "{}"); } catch { return {}; }
+  })();
+  const analyzedLots: any[] = response.all_results || [];
+  const autoReportsByLot: Record<string, any> = response.auto_reports_by_lot_id || {};
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-3">
+        <h3 className="text-sm font-semibold mb-2">📋 Kryteria</h3>
+        <div className="text-xs grid grid-cols-2 gap-2">
+          <div>Marka: <strong>{criteria.make || "—"}</strong></div>
+          <div>Model: <strong>{criteria.model || "—"}</strong></div>
+          <div>Rocznik: {criteria.year_from || "?"}–{criteria.year_to || "?"}</div>
+          <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
+        </div>
+      </Card>
+
+      {analyzedLots.length > 0 && (
+        <Card className="p-3">
+          <h3 className="text-sm font-semibold mb-2">🚗 Loty z analizą AI ({analyzedLots.length})</h3>
+          <div className="space-y-2">
+            {analyzedLots.map((al: any) => {
+              const lot = al.lot || {};
+              const ai = al.analysis || {};
+              const reports = autoReportsByLot[lot.lot_id] || {};
+              return (
+                <div key={lot.lot_id || Math.random()} className="p-3 border rounded">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">
+                      {lot.year} {lot.make} {lot.model} {lot.trim || ""}
+                    </span>
+                    <Badge variant={
+                      ai.recommendation === "POLECAM" ? "default" :
+                      ai.recommendation === "RYZYKO" ? "secondary" : "outline"
+                    } className="text-[10px]">
+                      {ai.recommendation} · {ai.score?.toFixed(1)}/10
+                    </Badge>
+                  </div>
+                  <div className="text-[10px] mt-1 text-muted-foreground">
+                    {lot.damage_primary} · {lot.title_type} · {lot.location_state}
+                    {lot.current_bid_usd ? ` · $${lot.current_bid_usd}` : ""}
+                  </div>
+                  {ai.client_description_pl && (
+                    <div className="text-[10px] mt-1">{ai.client_description_pl}</div>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    {lot.url && (
+                      <a href={lot.url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                        🔗 Aukcja
+                      </a>
+                    )}
+                    {reports.client_hybrid_url && (
+                      <a href={reports.client_hybrid_url} target="_blank" rel="noreferrer" className="text-[10px] text-green-500 hover:underline">
+                        📄 Raport klient
+                      </a>
+                    )}
+                    {reports.broker_hybrid_url && (
+                      <a href={reports.broker_hybrid_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                        📋 Raport broker
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {record.analysis_notice && (
+        <div className="rounded border px-3 py-2 text-xs text-amber-600 dark:text-amber-400 whitespace-pre-line">
+          {record.analysis_notice}
+        </div>
+      )}
+
+      {analyzedLots.length === 0 && (
+        <pre className="text-[10px] bg-muted p-3 rounded overflow-auto max-h-[40vh] whitespace-pre-wrap">
+          {JSON.stringify(record, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 
             <Separator className="my-4" />
 
