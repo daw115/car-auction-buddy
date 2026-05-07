@@ -1390,6 +1390,34 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   );
 }
 
+      {/* AUTO-BUNDLE REPORTS */}
+      {(artifactUrls.client_bundle || artifactUrls.broker_bundle) && (
+        <Card className="p-3 mb-4 border-amber-500/30 bg-amber-500/5">
+          <div className="text-sm font-semibold mb-2">
+            📦 Auto-zbiorcze raporty (wszystkie showcase loty)
+          </div>
+          <div className="text-xs text-muted-foreground mb-2">
+            Wygenerowane podczas scrape (Gemini darmowy + Otomoto). 1 plik = wszystkie auta z TOC.
+          </div>
+          <div className="flex gap-2">
+            {artifactUrls.client_bundle && (
+              <Button variant="default" size="sm" asChild>
+                <a href={artifactUrls.client_bundle} target="_blank" rel="noopener">
+                  📄 Zbiorczy klient
+                </a>
+              </Button>
+            )}
+            {artifactUrls.broker_bundle && (
+              <Button variant="default" size="sm" asChild>
+                <a href={artifactUrls.broker_bundle} target="_blank" rel="noopener">
+                  📋 Zbiorczy broker
+                </a>
+              </Button>
+            )}
+          </div>
+        </Card>
+      )}
+
 
 function Panel() {
   // ---- server fn handles
