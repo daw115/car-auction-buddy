@@ -1120,7 +1120,262 @@ function BackendRecordDetail({ record }: { record: any }) {
   );
 }
 
-function Panel() {
+// ---------- Record Detail View (center panel) ----------
+
+function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
+  const fnDetailBackend = useServerFn(getBackendRecordDetails);
+  const fnFetchAuthPost = useServerFn(fetchAuthPostHtml);
+
+  const { data: record, isLoading } = useQuery({
+    queryKey: ["backend-record-detail", recordId],
+    queryFn: () => fnDetailBackend({ data: { id: String(recordId) } }),
+  });
+
+  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(new Set());
+
+  if (isLoading || !record) {
+    return (
+      <Card className="p-4 flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </Card>
+    );
+  }
+
+  const criteria = (() => {
+    try { return typeof record.criteria === "string" ? JSON.parse(record.criteria) : (record.criteria ?? {}); } catch { return {}; }
+  })();
+  const response = (() => {
+    try {
+      const r = (record as any).response ?? (record as any).response_json;
+      return typeof r === "string" ? JSON.parse(r) : (r ?? {});
+    } catch { return {}; }
+  })();
+  const allResults: any[] = response.all_results || [];
+  const showcase = allResults.filter((al: any) => al.is_top_recommendation);
+  const autoReports: Record<string, any> = response.auto_reports_by_lot_id || {};
+
+  const collectedCount = (record as any).collected_count || 0;
+  const aiAnalyzedCount = allResults.length;
+  const showcaseCount = showcase.length;
+
+  async function generateRichClientReports(approvedLots: any[]) {
+    for (let i = 0; i < approvedLots.length; i++) {
+      const al = approvedLots[i];
+      toast.info(`Generuję ${i + 1}/${approvedLots.length}: ${al.lot.year} ${al.lot.make} ${al.lot.model}...`);
+      try {
+        const html = await fnFetchAuthPost({
+          data: {
+            path: "/report/client-llm",
+            body: { criteria, approved_lots: [{ ...al, included_in_report: true }] },
+          },
+        });
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+      } catch (e) {
+        toast.error(`Lot ${al.lot.lot_id}: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      {/* HEADER */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-xl font-bold">{(record as any).title ?? `Rekord #${recordId}`}</h2>
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+            <Badge>{(record as any).status}</Badge>
+            <span>{new Date((record as any).created_at).toLocaleString("pl-PL")}</span>
+            {(record as any).client?.name && <span>· {(record as any).client.name}</span>}
+          </div>
+        </div>
+        <Button variant="ghost" onClick={onClose}>← Wróć do nowej sesji</Button>
+      </div>
+
+      {/* PIPELINE FUNNEL */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">🔍 Zescrapowane</div>
+          <div className="text-2xl font-bold">{collectedCount}</div>
+          <div className="text-xs text-muted-foreground">Copart + IAAI po filtrach</div>
+        </Card>
+        <Card className="p-3 border-blue-500/40">
+          <div className="text-xs text-muted-foreground">🤖 Analiza AI</div>
+          <div className="text-2xl font-bold">{aiAnalyzedCount}</div>
+          <div className="text-xs text-muted-foreground">Top {aiAnalyzedCount} po pre-rank → AI ocenia</div>
+        </Card>
+        <Card className="p-3 border-green-500/40">
+          <div className="text-xs text-muted-foreground">🎯 Showcase</div>
+          <div className="text-2xl font-bold">{showcaseCount}</div>
+          <div className="text-xs text-muted-foreground">Wszystkie POLECAM + 2 RYZYKO</div>
+        </Card>
+      </div>
+
+      {/* KRYTERIA */}
+      <Card className="p-3 mb-4 bg-muted/30">
+        <h3 className="text-sm font-semibold mb-2">📋 Kryteria wyszukiwania</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+          <div>Marka: <strong>{criteria.make}</strong></div>
+          <div>Model: <strong>{criteria.model || "—"}</strong></div>
+          <div>Rocznik: {criteria.year_from || "?"}–{criteria.year_to || "?"}</div>
+          <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
+          <div>Max przebieg: {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}</div>
+          <div>Źródła: {(criteria.sources || []).join(", ")}</div>
+          <div>Wyklucz: {(criteria.excluded_damage_types || []).join(", ")}</div>
+        </div>
+      </Card>
+
+      {/* NOTATKA DIAGNOSTYCZNA */}
+      {(record as any).analysis_notice && collectedCount <= 2 && (
+        <Alert className="mb-4 border-amber-500/40">
+          <AlertDescription className="text-xs whitespace-pre-line">
+            {(record as any).analysis_notice}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* LISTA LOTÓW z checkboxami */}
+      {allResults.length > 0 ? (
+        <Card className="p-3">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                Zaznaczono: {selectedLotIds.size}/{allResults.length}
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => {
+                if (selectedLotIds.size === allResults.length) setSelectedLotIds(new Set());
+                else setSelectedLotIds(new Set(allResults.map((al: any) => al.lot.lot_id)));
+              }}>
+                {selectedLotIds.size === allResults.length ? "Odznacz" : "Zaznacz wszystkie"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {allResults.map((al: any) => {
+              const lot = al.lot;
+              const ai = al.analysis;
+              const reports = autoReports[lot.lot_id] || {};
+              const isSelected = selectedLotIds.has(lot.lot_id);
+              const isShowcase = al.is_top_recommendation;
+
+              return (
+                <div key={lot.lot_id} className={`p-3 rounded border transition-colors ${
+                  isSelected ? "bg-primary/5 border-primary/40" :
+                  isShowcase ? "bg-[oklch(0.95_0.05_145)]/50 border-[oklch(0.80_0.10_145)]/30" :
+                  "border-border"
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(c) => {
+                        const next = new Set(selectedLotIds);
+                        if (c) next.add(lot.lot_id); else next.delete(lot.lot_id);
+                        setSelectedLotIds(next);
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-semibold text-sm">
+                          {lot.year} {lot.make} {lot.model} {lot.trim || ""}
+                          {isShowcase && <Badge variant="default" className="ml-2 text-xs">🎯 Showcase</Badge>}
+                        </span>
+                        {ai?.recommendation && (
+                          <Badge variant={
+                            ai.recommendation === "POLECAM" ? "default" :
+                            ai.recommendation === "RYZYKO" ? "secondary" :
+                            "destructive"
+                          } className="text-xs shrink-0">
+                            {ai.recommendation} · {ai.score?.toFixed(1)}/10
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground mb-2">
+                        <span>{lot.source}/{lot.lot_id}</span>
+                        <span>{lot.damage_primary}</span>
+                        <span>{lot.title_type}</span>
+                        <span>{lot.location_state}</span>
+                        {lot.odometer_mi && <span>{lot.odometer_mi.toLocaleString()} mi</span>}
+                        {lot.current_bid_usd && <span>${lot.current_bid_usd.toLocaleString()}</span>}
+                        {lot.seller_type && <Badge variant="outline" className="text-xs">{lot.seller_type}</Badge>}
+                      </div>
+
+                      {ai?.client_description_pl && (
+                        <div className="text-xs mt-1 italic">{ai.client_description_pl}</div>
+                      )}
+
+                      {ai?.red_flags && ai.red_flags.length > 0 && (
+                        <div className="text-xs mt-1 text-amber-600">
+                          ⚠️ {ai.red_flags.join(" · ")}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {lot.url && (
+                          <a href={lot.url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80">
+                            🔗 Aukcja
+                          </a>
+                        )}
+                        {reports.client_url && (
+                          <a href={reports.client_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.95_0.05_145)] hover:bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]">
+                            📄 Auto-raport klient
+                          </a>
+                        )}
+                        {reports.broker_url && (
+                          <a href={reports.broker_url} target="_blank" rel="noopener" className="text-xs px-2 py-1 rounded bg-[oklch(0.92_0.06_250)] hover:bg-[oklch(0.88_0.10_250)] text-[oklch(0.30_0.14_250)]">
+                            📋 Auto-raport broker
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* STICKY BAR for rich reports */}
+          {selectedLotIds.size > 0 && (
+            <div className="sticky bottom-2 mt-4 p-3 rounded-md border border-amber-500/40 bg-amber-500/5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-xs">
+                  <strong>🔥 Rich raporty</strong> (Gemini darmowy / Anthropic fallback)
+                  <div className="text-muted-foreground mt-0.5">
+                    Zaznaczono {selectedLotIds.size} {selectedLotIds.size === 1 ? "lot" : "lotów"} ·
+                    pierwszy raz ~30s/lot, potem cache 24h
+                  </div>
+                </div>
+                <Button
+                  variant="default"
+                  onClick={() => generateRichClientReports(
+                    allResults.filter((al: any) => selectedLotIds.has(al.lot.lot_id))
+                  )}
+                >
+                  ✨ Rich klient × {selectedLotIds.size}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <div className="p-6 text-center text-sm text-muted-foreground">
+          Brak lotów do wyświetlenia (status: {(record as any).status})
+          {(record as any).analysis_notice && (
+            <div className="text-xs mt-2 italic whitespace-pre-line">
+              {(record as any).analysis_notice}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+
   // ---- server fn handles
   const fnListClients = useServerFn(listClients);
   const fnCreateClient = useServerFn(createClient);
