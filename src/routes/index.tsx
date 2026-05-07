@@ -1228,6 +1228,14 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                 </a>
               </Button>
             )}
+            <Button variant="ghost" size="sm" onClick={async () => {
+              toast.info("Odświeżam bundle...");
+              await fnRegenerateBundles({ data: { recordId: (record as any).id, engine: "template" } });
+              toast.success("Bundle odświeżony — refresh strony");
+              queryClient.invalidateQueries({ queryKey: ["backend-record-detail", recordId] });
+            }}>
+              🔄 Odśwież layout bundle
+            </Button>
           </div>
         </Card>
       )}
