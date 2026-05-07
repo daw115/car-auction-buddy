@@ -1128,6 +1128,22 @@ function BackendRecordDetail({ record }: { record: any }) {
 
 // ---------- Record Detail View (center panel) ----------
 
+function formatTimeUntilAuction(auctionDate?: string | null): { text: string; variant: "default" | "warning" | "danger" | "muted" } | null {
+  if (!auctionDate) return null;
+  const dt = new Date(auctionDate.replace(" ", "T") + "Z");
+  if (isNaN(dt.getTime())) return null;
+  const diffMs = dt.getTime() - Date.now();
+  if (diffMs < 0) return { text: "🏁 zakończona", variant: "muted" };
+  const totalMins = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMins / 1440);
+  const hours = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
+  if (totalMins < 60) return { text: `⚠️ za ${totalMins}min`, variant: "danger" };
+  if (totalMins < 24 * 60) return { text: `⏰ za ${hours}h ${mins}min`, variant: "danger" };
+  if (days < 3) return { text: `⏰ za ${days}d ${hours}h`, variant: "warning" };
+  return { text: `⏰ za ${days} dni`, variant: "default" };
+}
+
 function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(getBackendRecordDetails);
   
@@ -1164,6 +1180,27 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   const collectedCount = (record as any).collected_count || 0;
   const aiAnalyzedCount = allResults.length;
   const showcaseCount = showcase.length;
+
+  const [sortBy, setSortBy] = useState<"score" | "auction_date">("auction_date");
+  const sortedResults = useMemo(() => {
+    const arr = [...allResults];
+    if (sortBy === "score") {
+      const order: Record<string, number> = { POLECAM: 0, RYZYKO: 1, "ODRZUĆ": 2 };
+      arr.sort((a, b) => {
+        const ra = order[a.analysis?.recommendation] ?? 99;
+        const rb = order[b.analysis?.recommendation] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return (b.analysis?.score || 0) - (a.analysis?.score || 0);
+      });
+    } else {
+      arr.sort((a, b) => {
+        const da = a.lot?.auction_date || "9999-12-31";
+        const db = b.lot?.auction_date || "9999-12-31";
+        return da.localeCompare(db);
+      });
+    }
+    return arr;
+  }, [allResults, sortBy]);
 
   const artifactUrls = (record as any).artifact_urls || {};
 
@@ -1271,34 +1308,56 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
       {/* LISTA LOTÓW */}
       {allResults.length > 0 ? (
         <Card className="p-3">
-          <div className="mb-3">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Sortuj:</span>
+              <Button size="sm" variant={sortBy === "auction_date" ? "default" : "outline"} onClick={() => setSortBy("auction_date")}>
+                ⏰ Czas do aukcji
+              </Button>
+              <Button size="sm" variant={sortBy === "score" ? "default" : "outline"} onClick={() => setSortBy("score")}>
+                🎯 AI Score
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">
-            {allResults.map((al: any) => {
+            {sortedResults.map((al: any) => {
               const lot = al.lot;
               const ai = al.analysis;
               const reports = autoReports[lot.lot_id] || {};
               const isShowcase = al.is_top_recommendation;
+              const auctionInfo = formatTimeUntilAuction(lot.auction_date);
 
               return (
                 <div key={lot.lot_id} className={`p-3 rounded border transition-colors ${
-                  isShowcase ? "bg-[oklch(0.95_0.05_145)]/50 border-[oklch(0.80_0.10_145)]/30" :
+                  isShowcase ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/40 text-foreground" :
                   "border-border"
                 }`}>
                   <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="font-semibold text-sm">
                           {lot.year} {lot.make} {lot.model} {lot.trim || ""}
-                          {isShowcase && <Badge variant="default" className="ml-2 text-xs">🎯 Showcase</Badge>}
                         </span>
+                        {isShowcase && <Badge variant="default" className="text-xs">🎯 Showcase</Badge>}
+                        {auctionInfo && (
+                          <Badge
+                            variant={auctionInfo.variant === "danger" ? "destructive" : auctionInfo.variant === "warning" ? "secondary" : "outline"}
+                            className={
+                              auctionInfo.variant === "danger" ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40" :
+                              auctionInfo.variant === "warning" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/40" :
+                              "text-muted-foreground"
+                            }
+                          >
+                            {auctionInfo.text}
+                          </Badge>
+                        )}
                         {ai?.recommendation && (
                           <Badge variant={
                             ai.recommendation === "POLECAM" ? "default" :
                             ai.recommendation === "RYZYKO" ? "secondary" :
                             "destructive"
-                          } className="text-xs shrink-0">
+                          } className="text-xs shrink-0 ml-auto">
                             {ai.recommendation} · {ai.score?.toFixed(1)}/10
                           </Badge>
                         )}
