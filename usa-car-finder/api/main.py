@@ -597,6 +597,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     showcase_by_lot_id = {al.lot.lot_id: al for al in polecane}
 
                     if client_html_files:
+                        # ZBIORCZY KLIENT: tylko POLECAM (klient nie powinien widziec RYZYKO/ODRZUC)
                         client_htmls = []
                         for fp in client_html_files:
                             try:
@@ -606,6 +607,11 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                                 label = ll["title"] if ll else fp_path.stem
                                 lot_id = (ll or {}).get("lot_id")
                                 al = showcase_by_lot_id.get(lot_id) if lot_id else None
+
+                                # FILTR: pomijamy nie-POLECAM dla zbiorczego klienta
+                                if al and al.analysis.recommendation != "POLECAM":
+                                    continue
+
                                 meta = {}
                                 if al:
                                     meta = {
@@ -617,15 +623,15 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                             except Exception:
                                 logger.exception("Failed to read client HTML %s", fp)
                         if client_htmls:
-                            # Sortuj: POLECAM pierwsze, potem RYZYKO (lepsze wrażenie sidebar)
-                            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
-                            client_htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
-                            bundle_title = f"Raport zbiorczy klienta — {len(client_htmls)} aut ({title_meta})"
+                            # Sortuj po score desc (najlepsze POLECAM pierwsze)
+                            client_htmls.sort(key=lambda x: -(x[2].get("score") or 0))
+                            bundle_title = f"Raport zbiorczy klienta — {len(client_htmls)} aut POLECAM ({title_meta})"
                             bundle_html = _bundle_html(client_htmls, bundle_title)
                             bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_klient.html"
                             bundle_path.write_text(bundle_html, encoding="utf-8")
                             client_bundle_file = str(bundle_path)
-                            logger.info("Auto-bundle klient: %s (%d KB)", bundle_path.name, len(bundle_html) // 1024)
+                            logger.info("Auto-bundle klient (POLECAM only): %s (%d KB, %d lotów)",
+                                        bundle_path.name, len(bundle_html) // 1024, len(client_htmls))
 
                     if broker_html_files:
                         broker_htmls = []
@@ -1644,8 +1650,11 @@ async def regenerate_record_bundles(
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{slug}_{record_id}_{ts}_zbiorczy_{kind}.html"
 
-    # KLIENT
+    # KLIENT — tylko POLECAM (filtr biznesowy: klient nie widzi RYZYKO/ODRZUĆ)
     if "client" in requested_kinds:
+        # Filtr POLECAM przed renderem (oszczędza calle do Otomoto/LLM)
+        showcase_polecam = [item for item in showcase if item.analysis.recommendation == "POLECAM"]
+
         if eng == "hybrid":
             from report.hybrid_reports import render_client_hybrid
             renderer = lambda item: render_client_hybrid(item, criteria)
@@ -1654,7 +1663,7 @@ async def regenerate_record_bundles(
             renderer = lambda item: render_client_report(item, criteria)
 
         htmls = []
-        for item in showcase:
+        for item in showcase_polecam:
             try:
                 html = await asyncio.to_thread(renderer, item)
                 label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
@@ -1667,16 +1676,15 @@ async def regenerate_record_bundles(
             except Exception:
                 logger.exception("Regen client failed for lot %s", item.lot.lot_id)
         if htmls:
-            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
-            htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
-            bundle_title = f"Raport zbiorczy klienta — {len(htmls)} aut ({title_meta})"
+            htmls.sort(key=lambda x: -(x[2].get("score") or 0))
+            bundle_title = f"Raport zbiorczy klienta — {len(htmls)} aut POLECAM ({title_meta})"
             bundle = _bundle_html(htmls, bundle_title)
             fname = _filename_from_url(existing_client, "klient")
             fpath = SEARCH_ARTIFACT_DIR / fname
             fpath.write_text(bundle, encoding="utf-8")
             result_urls["client_bundle"] = _absolute_artifact_url(f"/artifacts/{fname}")
-            generated.append(f"client ({len(htmls)} lotów, {len(bundle)//1024} KB)")
-            logger.info("[regen] client bundle for record #%d -> %s", record_id, fname)
+            generated.append(f"client ({len(htmls)} lotów POLECAM, {len(bundle)//1024} KB)")
+            logger.info("[regen] client bundle (POLECAM only) for record #%d -> %s", record_id, fname)
 
     # BROKER
     if "broker" in requested_kinds:
@@ -2011,113 +2019,11 @@ window.addEventListener('DOMContentLoaded', () => {
     return "\n".join(parts)
 
 
-@app.post("/report/client-bundle")
-async def generate_client_bundle_report(
-    request: ApproveReportRequest,
-    engine: str = "hybrid",
-):
-    """Zbiorczy raport HTML klienta — wszystkie zatwierdzone loty w jednym pliku.
-
-    Query: ?engine=hybrid (default, Gemini+Otomoto+market_pl) | template (szybki Jinja2 bez LLM)
-
-    Body: { approved_lots: [...], criteria: {...} }
-    Response: HTML (text/html) — z TOC u góry + każdy lot jako sekcja, page-break dla druku.
-    """
-    from fastapi.responses import HTMLResponse
-
-    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
-    if not lots_for_report:
-        raise HTTPException(status_code=400, detail="Brak lotów do raportu — wszystkie odznaczone")
-
-    eng = (engine or "hybrid").lower()
-    if eng == "hybrid":
-        from report.hybrid_reports import render_client_hybrid
-        renderer = lambda item: render_client_hybrid(item, request.criteria)
-    else:
-        from report.html_reports import render_client_report
-        renderer = lambda item: render_client_report(item, request.criteria)
-
-    htmls = []
-    for item in lots_for_report:
-        try:
-            html = await asyncio.to_thread(renderer, item)
-            label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-            meta = {
-                "recommendation": item.analysis.recommendation,
-                "score": item.analysis.score,
-                "lot_id": item.lot.lot_id,
-            }
-            htmls.append((label, html, meta))
-        except Exception:
-            logger.exception("Bundle render failed for lot %s", item.lot.lot_id)
-    # Sort: POLECAM > RYZYKO > ODRZUĆ, w obrębie kategorii po score desc
-    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
-    htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
-
-    if not htmls:
-        raise HTTPException(status_code=502, detail="Wszystkie raporty nie udały się")
-
-    title = f"Raport zbiorczy klienta — {len(htmls)} aut"
-    if request.criteria and request.criteria.make:
-        title += f" ({request.criteria.make}{' ' + request.criteria.model if request.criteria.model else ''})"
-
-    bundle = _bundle_html(htmls, title)
-    return HTMLResponse(content=bundle)
-
-
-@app.post("/report/broker-bundle")
-async def generate_broker_bundle_report(
-    request: ApproveReportRequest,
-    engine: str = "hybrid",
-):
-    """Zbiorczy raport HTML brokera — wszystkie zatwierdzone loty w jednym pliku.
-
-    Query: ?engine=hybrid (default, z Otomoto + scoring + bid_thresholds) | template
-    """
-    from fastapi.responses import HTMLResponse
-
-    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
-    if not lots_for_report:
-        raise HTTPException(status_code=400, detail="Brak lotów do raportu")
-
-    eng = (engine or "hybrid").lower()
-    if eng == "hybrid":
-        from report.hybrid_reports import render_broker_hybrid
-        renderer = lambda item: render_broker_hybrid(
-            item, criteria=request.criteria, lots_scanned=len(request.approved_lots),
-        )
-    else:
-        from report.html_reports import render_broker_report
-        renderer = lambda item: render_broker_report(
-            item, criteria=request.criteria, lots_scanned=len(request.approved_lots),
-        )
-
-    htmls = []
-    for item in lots_for_report:
-        try:
-            html = await asyncio.to_thread(renderer, item)
-            label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-            meta = {
-                "recommendation": item.analysis.recommendation,
-                "score": item.analysis.score,
-                "lot_id": item.lot.lot_id,
-            }
-            htmls.append((label, html, meta))
-        except Exception:
-            logger.exception("Bundle render failed for lot %s", item.lot.lot_id)
-    # Sort: POLECAM > RYZYKO > ODRZUĆ, w obrębie kategorii po score desc
-    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
-    htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
-
-    if not htmls:
-        raise HTTPException(status_code=502, detail="Wszystkie raporty nie udały się")
-
-    title = f"Raport brokerski zbiorczy — {len(htmls)} aut"
-    if request.criteria and request.criteria.make:
-        title += f" ({request.criteria.make}{' ' + request.criteria.model if request.criteria.model else ''})"
-
-    bundle = _bundle_html(htmls, title)
-    return HTMLResponse(content=bundle)
+# USUNIETE w 2026-05-07: /report/client-bundle i /report/broker-bundle (Rich on-demand)
+# Per user decision — broker dostaje zbiorczy auto (zawiera wszystkie showcase),
+# nie trzeba on-demand z wybranych. Klient dostaje zbiorczy auto z TYLKO POLECAM.
+# Workflow: scrape -> auto-bundle -> broker przegląda -> wysyła klientowi link
+# do auto-bundle klienta (już wyfiltrowany do POLECAM).
 
 
 def _llm_engine() -> str:
