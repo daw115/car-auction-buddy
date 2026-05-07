@@ -1357,7 +1357,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                             ai.recommendation === "POLECAM" ? "default" :
                             ai.recommendation === "RYZYKO" ? "secondary" :
                             "destructive"
-                          } className="text-xs shrink-0">
+                          } className="text-xs shrink-0 ml-auto">
                             {ai.recommendation} · {ai.score?.toFixed(1)}/10
                           </Badge>
                         )}
