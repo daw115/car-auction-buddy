@@ -422,8 +422,9 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     client_short_html_files: list[str] = []
     client_short_urls_by_lot_id: dict[str, str] = {}
     index_file: Optional[str] = None
-    # Auto-zbiorcze bundle (1 plik klient + 1 plik broker dla wszystkich showcase'ów)
+    # Auto-zbiorcze bundle (klient pełny + klient krótki + broker dla wszystkich showcase)
     client_bundle_file: Optional[str] = None
+    client_short_bundle_file: Optional[str] = None
     broker_bundle_file: Optional[str] = None
 
     polecam_lots = [r for r in ranked_results if r.analysis.recommendation == "POLECAM"]
@@ -633,6 +634,49 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                             logger.info("Auto-bundle klient (POLECAM only): %s (%d KB, %d lotów)",
                                         bundle_path.name, len(bundle_html) // 1024, len(client_htmls))
 
+                    # ZBIORCZY KRÓTKI KLIENT (sklejka per-lot template, też tylko POLECAM)
+                    if client_short_html_files:
+                        client_short_htmls = []
+                        for fp in client_short_html_files:
+                            try:
+                                fp_path = Path(fp)
+                                content = fp_path.read_text(encoding="utf-8")
+                                # nazwa: {slug}_{ts}_top{idx}_{lot_id}_klient_krotki.html
+                                # wyciągnij lot_id ze stem
+                                stem_parts = fp_path.stem.split("_")
+                                lot_id = None
+                                for part in stem_parts:
+                                    if part in showcase_by_lot_id:
+                                        lot_id = part
+                                        break
+                                al = showcase_by_lot_id.get(lot_id) if lot_id else None
+                                # Filtr: tylko POLECAM (analogicznie do pełnego)
+                                if al and al.analysis.recommendation != "POLECAM":
+                                    continue
+                                label = (
+                                    f"{al.lot.year or '?'} {al.lot.make or ''} {al.lot.model or ''} (#{al.lot.lot_id})".strip()
+                                    if al else fp_path.stem
+                                )
+                                meta = {}
+                                if al:
+                                    meta = {
+                                        "recommendation": al.analysis.recommendation,
+                                        "score": al.analysis.score,
+                                        "lot_id": al.lot.lot_id,
+                                    }
+                                client_short_htmls.append((label, content, meta))
+                            except Exception:
+                                logger.exception("Failed to read client_short HTML %s", fp)
+                        if client_short_htmls:
+                            client_short_htmls.sort(key=lambda x: -(x[2].get("score") or 0))
+                            bundle_title = f"Raport krótki zbiorczy klienta — {len(client_short_htmls)} aut POLECAM ({title_meta})"
+                            bundle_html = _bundle_html(client_short_htmls, bundle_title)
+                            bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_klient_krotki.html"
+                            bundle_path.write_text(bundle_html, encoding="utf-8")
+                            client_short_bundle_file = str(bundle_path)
+                            logger.info("Auto-bundle klient KRÓTKI (POLECAM only): %s (%d KB, %d lotów)",
+                                        bundle_path.name, len(bundle_html) // 1024, len(client_short_htmls))
+
                     if broker_html_files:
                         broker_htmls = []
                         for fp in broker_html_files:
@@ -715,8 +759,9 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         "client_report": artifact_url(client_report_file),
         # Index linkujący wszystkie POLECANE oferty (klient + broker per lot)
         "polecane_index": artifact_url(index_file),
-        # Auto-zbiorcze bundle: 1 plik klient i 1 plik broker dla wszystkich showcase
+        # Auto-zbiorcze bundle: 1 plik klient (pełny) + 1 klient krótki + 1 broker
         "client_bundle": artifact_url(client_bundle_file),
+        "client_short_bundle": artifact_url(client_short_bundle_file),
         "broker_bundle": artifact_url(broker_bundle_file),
     }
     client_reports_html_urls = [artifact_url(f) for f in client_html_files if f]
@@ -1636,6 +1681,7 @@ async def regenerate_record_bundles(
     # Wyznacz slug + ts dla nazwy pliku — z istniejących artifact_urls jeśli są
     existing_urls = record.get("artifact_urls") or {}
     existing_client = existing_urls.get("client_bundle") or ""
+    existing_client_short = existing_urls.get("client_short_bundle") or ""
     existing_broker = existing_urls.get("broker_bundle") or ""
 
     def _filename_from_url(url: str, kind: str) -> str:
@@ -1685,6 +1731,32 @@ async def regenerate_record_bundles(
             result_urls["client_bundle"] = _absolute_artifact_url(f"/artifacts/{fname}")
             generated.append(f"client ({len(htmls)} lotów POLECAM, {len(bundle)//1024} KB)")
             logger.info("[regen] client bundle (POLECAM only) for record #%d -> %s", record_id, fname)
+
+        # ZBIORCZY KRÓTKI KLIENT (template Jinja2, niezależnie od engine — zawsze szybki)
+        from report.html_reports import render_client_report as _render_client_template
+        short_htmls = []
+        for item in showcase_polecam:
+            try:
+                html = await asyncio.to_thread(_render_client_template, item, criteria)
+                label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
+                meta = {
+                    "recommendation": item.analysis.recommendation,
+                    "score": item.analysis.score,
+                    "lot_id": item.lot.lot_id,
+                }
+                short_htmls.append((label, html, meta))
+            except Exception:
+                logger.exception("Regen client_short failed for lot %s", item.lot.lot_id)
+        if short_htmls:
+            short_htmls.sort(key=lambda x: -(x[2].get("score") or 0))
+            bundle_title = f"Raport krótki zbiorczy klienta — {len(short_htmls)} aut POLECAM ({title_meta})"
+            bundle = _bundle_html(short_htmls, bundle_title)
+            fname = _filename_from_url(existing_client_short, "klient_krotki")
+            fpath = SEARCH_ARTIFACT_DIR / fname
+            fpath.write_text(bundle, encoding="utf-8")
+            result_urls["client_short_bundle"] = _absolute_artifact_url(f"/artifacts/{fname}")
+            generated.append(f"client_short_bundle ({len(short_htmls)} lotów POLECAM, {len(bundle)//1024} KB)")
+            logger.info("[regen] client_short_bundle for record #%d -> %s", record_id, fname)
 
     # BROKER
     if "broker" in requested_kinds:
