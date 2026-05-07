@@ -1205,6 +1205,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
     }
   }
 
+  return (
     <Card className="p-4">
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
