@@ -3231,12 +3231,10 @@ function ScraperReportsSection({
   reportUrls,
   listings,
   criteria,
-  selectedLotIds,
 }: {
   reportUrls: ScraperReportUrls;
   listings: CarLot[];
   criteria: ClientCriteria;
-  selectedLotIds?: Set<string>;
 }) {
   const [loadingEndpoint, setLoadingEndpoint] = useState<string | null>(null);
   const [cacheStats, setCacheStats] = useState<{ enabled: boolean; total: number; fresh: number; ttl_hours: number; by_kind: Record<string, number> } | null>(null);
