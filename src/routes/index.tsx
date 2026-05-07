@@ -2394,6 +2394,7 @@ function Panel() {
               ))}
             </div>
           </Card>
+          <BackendRecordsPanel />
           <ConnectionStatusPanel />
         </aside>
 
