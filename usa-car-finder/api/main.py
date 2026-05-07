@@ -1346,16 +1346,57 @@ async def stream_search_job(job_id: str):
 
 
 @app.get("/records")
-async def list_client_records(query: Optional[str] = None, limit: int = 50):
+async def list_client_records(
+    query: Optional[str] = None,
+    limit: int = 50,
+    status: Optional[str] = None,
+):
+    """Lista rekordów wyszukiwań (legacy alias bez auth dla starych klientów)."""
     from api.client_database import list_records
+    records = list_records(query=query, limit=limit)
+    if status:
+        records = [r for r in records if (r.get("status") or "").lower() == status.lower()]
+    return {"records": records}
 
-    return {"records": list_records(query=query, limit=limit)}
+
+@app.get("/api/records")
+async def api_list_client_records(
+    query: Optional[str] = None,
+    limit: int = 50,
+    status: Optional[str] = None,
+    _auth: None = Depends(_require_bearer),
+):
+    """Główny endpoint dla UI dashboardu (Bearer auth).
+
+    Zwraca rekordy WSZYSTKICH wyszukiwań:
+    - status='new' / 'done' — ukończone (z wynikami)
+    - status='cancelled'    — anulowane przez użytkownika
+    - status='error'        — padło z błędem
+    - status='interrupted'  — przerwane (uvicorn restart)
+
+    Query params: ?query=BMW&limit=50&status=done (filter optional)
+    """
+    from api.client_database import list_records
+    records = list_records(query=query, limit=limit)
+    if status:
+        records = [r for r in records if (r.get("status") or "").lower() == status.lower()]
+    return {"records": records, "total": len(records)}
 
 
 @app.get("/records/{record_id}")
 async def get_client_record(record_id: int):
     from api.client_database import get_record
 
+    record = get_record(record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono rekordu")
+    return record
+
+
+@app.get("/api/records/{record_id}")
+async def api_get_client_record(record_id: int, _auth: None = Depends(_require_bearer)):
+    """Szczegóły pojedynczego rekordu (Bearer auth)."""
+    from api.client_database import get_record
     record = get_record(record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Nie znaleziono rekordu")
