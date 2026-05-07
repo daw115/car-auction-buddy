@@ -936,22 +936,14 @@ function BatchJobCard({
 
 // ---------- Backend Records Panel ----------
 
-function BackendRecordsPanel() {
+function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordId: number | null; onSelectRecord: (id: number) => void }) {
   const fnListBackend = useServerFn(getBackendRecordsList);
-  const fnDetailBackend = useServerFn(getBackendRecordDetails);
   const [statusFilter, setStatusFilter] = useState("");
-  const [detailId, setDetailId] = useState<number | null>(null);
 
   const { data: recordsData, isLoading, refetch } = useQuery({
     queryKey: ["backend-records", statusFilter],
     queryFn: () => fnListBackend({ data: { limit: 100, status: statusFilter || undefined } }),
     refetchInterval: 30000,
-  });
-
-  const { data: detail } = useQuery({
-    queryKey: ["backend-record", detailId],
-    queryFn: () => fnDetailBackend({ data: { id: String(detailId!) } }),
-    enabled: detailId !== null,
   });
 
   const records = recordsData?.records ?? [];
@@ -966,55 +958,42 @@ function BackendRecordsPanel() {
   ];
 
   return (
-    <>
-      <Card className="p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Wszystkie rekordy ({total})</h2>
-          <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+    <Card className="p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">📂 Rekordy backendu ({total})</h2>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1 mb-2">
+        {filters.map((f) => (
+          <Button
+            key={f.value}
+            size="sm"
+            variant={statusFilter === f.value ? "default" : "ghost"}
+            className="h-6 px-2 text-[10px]"
+            onClick={() => setStatusFilter(f.value)}
+          >
+            {f.label}
           </Button>
-        </div>
-        <div className="flex flex-wrap gap-1 mb-2">
-          {filters.map((f) => (
-            <Button
-              key={f.value}
-              size="sm"
-              variant={statusFilter === f.value ? "default" : "ghost"}
-              className="h-6 px-2 text-[10px]"
-              onClick={() => setStatusFilter(f.value)}
-            >
-              {f.label}
-            </Button>
-          ))}
-        </div>
-        <div className="max-h-[600px] overflow-auto space-y-1">
-          {!records.length && !isLoading && (
-            <div className="text-sm text-muted-foreground italic py-8 text-center">
-              Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}.
-            </div>
-          )}
-          {records.map((r) => (
-            <BackendRecordRow key={r.id} record={r} onClick={() => setDetailId(r.id)} />
-          ))}
-        </div>
-      </Card>
-
-      <Dialog open={detailId !== null} onOpenChange={(o) => !o && setDetailId(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>{detail?.title ?? "Szczegóły rekordu"}</DialogTitle>
-            <DialogDescription>
-              <span className="text-xs">{detail?.created_at ? new Date(detail.created_at).toLocaleString("pl-PL") : ""}</span>
-            </DialogDescription>
-          </DialogHeader>
-          {detail ? (
-            <BackendRecordDetail record={detail} />
-          ) : (
-            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+        ))}
+      </div>
+      <div className="max-h-[600px] overflow-auto space-y-1">
+        {!records.length && !isLoading && (
+          <div className="text-sm text-muted-foreground italic py-8 text-center">
+            Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}.
+          </div>
+        )}
+        {records.map((r) => (
+          <BackendRecordRow
+            key={r.id}
+            record={r}
+            isActive={activeRecordId === r.id}
+            onClick={() => onSelectRecord(r.id)}
+          />
+        ))}
+      </div>
+    </Card>
   );
 }
 
