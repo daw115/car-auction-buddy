@@ -1168,7 +1168,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
     }
     const total = selected.length;
     const eta = engine === "hybrid" ? `~${total * 30}s (pierwszy raz, cache 24h)` : "~2s";
-    toast.info(`Generuję ${kind} bundle (${total} aut, ${engine}, ${eta})...`, { duration: 5000 });
+    toast.info(`Generuję ${kind} bundle (${total} ${total === 1 ? "auto" : "aut"}, ${engine}, ${eta})...`, { duration: 5000 });
     try {
       const html = await fnFetchAuthPost({
         data: {
