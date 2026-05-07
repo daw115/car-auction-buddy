@@ -2908,7 +2908,6 @@ function Panel() {
                 reportUrls={scrapeJob.reportUrls}
                 listings={listings}
                 criteria={criteria}
-                selectedLotIds={selectedLotIds}
               />
             )}
 
