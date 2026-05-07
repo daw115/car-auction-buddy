@@ -1165,6 +1165,27 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   const aiAnalyzedCount = allResults.length;
   const showcaseCount = showcase.length;
 
+  const [sortBy, setSortBy] = useState<"score" | "auction_date">("auction_date");
+  const sortedResults = useMemo(() => {
+    const arr = [...allResults];
+    if (sortBy === "score") {
+      const order: Record<string, number> = { POLECAM: 0, RYZYKO: 1, "ODRZUĆ": 2 };
+      arr.sort((a, b) => {
+        const ra = order[a.analysis?.recommendation] ?? 99;
+        const rb = order[b.analysis?.recommendation] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return (b.analysis?.score || 0) - (a.analysis?.score || 0);
+      });
+    } else {
+      arr.sort((a, b) => {
+        const da = a.lot?.auction_date || "9999-12-31";
+        const db = b.lot?.auction_date || "9999-12-31";
+        return da.localeCompare(db);
+      });
+    }
+    return arr;
+  }, [allResults, sortBy]);
+
   const artifactUrls = (record as any).artifact_urls || {};
 
 
