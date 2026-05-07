@@ -2377,7 +2377,7 @@ function Panel() {
               ))}
             </div>
           </Card>
-          <BackendRecordsPanel />
+          <BackendRecordsPanel activeRecordId={openedBackendRecordId} onSelectRecord={setOpenedBackendRecordId} />
           <ConnectionStatusPanel />
         </aside>
 
