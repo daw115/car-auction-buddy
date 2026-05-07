@@ -1261,22 +1261,11 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
         </Alert>
       )}
 
-      {/* LISTA LOTÓW z checkboxami */}
+      {/* LISTA LOTÓW */}
       {allResults.length > 0 ? (
         <Card className="p-3">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3">
             <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                Zaznaczono: {selectedLotIds.size}/{allResults.length}
-              </span>
-              <Button size="sm" variant="ghost" onClick={() => {
-                if (selectedLotIds.size === allResults.length) setSelectedLotIds(new Set());
-                else setSelectedLotIds(new Set(allResults.map((al: any) => al.lot.lot_id)));
-              }}>
-                {selectedLotIds.size === allResults.length ? "Odznacz" : "Zaznacz wszystkie"}
-              </Button>
-            </div>
           </div>
 
           <div className="space-y-2">
