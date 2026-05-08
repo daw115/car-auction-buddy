@@ -1155,6 +1155,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
     queryFn: () => fnDetailBackend({ data: { id: String(recordId) } }),
   });
 
+  const [sortBy, setSortBy] = useState<"score" | "auction_date">("auction_date");
 
   if (isLoading || !record) {
     return (
@@ -1180,8 +1181,6 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   const collectedCount = (record as any).collected_count || 0;
   const aiAnalyzedCount = allResults.length;
   const showcaseCount = showcase.length;
-
-  const [sortBy, setSortBy] = useState<"score" | "auction_date">("auction_date");
   const sortedResults = useMemo(() => {
     const arr = [...allResults];
     if (sortBy === "score") {
