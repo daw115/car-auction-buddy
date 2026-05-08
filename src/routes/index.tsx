@@ -1157,32 +1157,33 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
 
   const [sortBy, setSortBy] = useState<"score" | "auction_date">("auction_date");
 
-  if (isLoading || !record) {
-    return (
-      <Card className="p-4 flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </Card>
-    );
-  }
+  const parsedData = useMemo(() => {
+    if (!record) return null;
+    const crit = (() => {
+      try { return typeof record.criteria === "string" ? JSON.parse(record.criteria) : (record.criteria ?? {}); } catch { return {}; }
+    })();
+    const resp = (() => {
+      try {
+        const r = (record as any).response ?? (record as any).response_json;
+        return typeof r === "string" ? JSON.parse(r) : (r ?? {});
+      } catch { return {}; }
+    })();
+    const all: any[] = resp.all_results || [];
+    return {
+      criteria: crit,
+      response: resp,
+      allResults: all,
+      showcase: all.filter((al: any) => al.is_top_recommendation),
+      autoReports: (resp.auto_reports_by_lot_id || {}) as Record<string, any>,
+      collectedCount: (record as any).collected_count || 0,
+      aiAnalyzedCount: all.length,
+      showcaseCount: all.filter((al: any) => al.is_top_recommendation).length,
+    };
+  }, [record]);
 
-  const criteria = (() => {
-    try { return typeof record.criteria === "string" ? JSON.parse(record.criteria) : (record.criteria ?? {}); } catch { return {}; }
-  })();
-  const response = (() => {
-    try {
-      const r = (record as any).response ?? (record as any).response_json;
-      return typeof r === "string" ? JSON.parse(r) : (r ?? {});
-    } catch { return {}; }
-  })();
-  const allResults: any[] = response.all_results || [];
-  const showcase = allResults.filter((al: any) => al.is_top_recommendation);
-  const autoReports: Record<string, any> = response.auto_reports_by_lot_id || {};
-
-  const collectedCount = (record as any).collected_count || 0;
-  const aiAnalyzedCount = allResults.length;
-  const showcaseCount = showcase.length;
   const sortedResults = useMemo(() => {
-    const arr = [...allResults];
+    if (!parsedData) return [];
+    const arr = [...parsedData.allResults];
     if (sortBy === "score") {
       const order: Record<string, number> = { POLECAM: 0, RYZYKO: 1, "ODRZUĆ": 2 };
       arr.sort((a, b) => {
@@ -1199,7 +1200,17 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
       });
     }
     return arr;
-  }, [allResults, sortBy]);
+  }, [parsedData, sortBy]);
+
+  if (isLoading || !record || !parsedData) {
+    return (
+      <Card className="p-4 flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </Card>
+    );
+  }
+
+  const { criteria, response, allResults, showcase, autoReports, collectedCount, aiAnalyzedCount, showcaseCount } = parsedData;
 
   const artifactUrls = (record as any).artifact_urls || {};
 
