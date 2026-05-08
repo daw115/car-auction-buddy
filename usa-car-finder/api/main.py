@@ -112,7 +112,35 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("[lifespan] Inicjalizacja model_normalization nieudana")
 
+    # Startup: Telegram bot polling (multi-user broadcast notifications)
+    telegram_task = None
+    try:
+        from notify import telegram as _tg
+        from notify.telegram_bot import polling_loop as _tg_polling
+        from api import telegram_database as _tdb
+        _tdb.init_db()
+        if _tg.is_configured():
+            telegram_task = asyncio.create_task(_tg_polling(), name="telegram-bot-polling")
+            stats_t = _tdb.stats()
+            logger.info(
+                "[lifespan] Telegram bot polling uruchomiony (subskrybentów: %d aktywnych / %d total)",
+                stats_t.get("active", 0), stats_t.get("total", 0),
+            )
+        else:
+            logger.info("[lifespan] TELEGRAM_BOT_TOKEN nie ustawiony — bot disabled")
+    except Exception:
+        logger.exception("[lifespan] Telegram polling startup nieudany")
+
     yield
+
+    # Shutdown: stop Telegram polling task
+    if telegram_task is not None:
+        telegram_task.cancel()
+        try:
+            await telegram_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        logger.info("[lifespan] Telegram polling stopped")
 
     try:
         from scraper.browser_context import close_shared_extension_context
@@ -871,6 +899,47 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         response_payload.client_id = client_id
     except Exception:
         logger.exception("Persisting search record failed")
+        record_id = None
+
+    # Telegram broadcast — powiadom wszystkich aktywnych subskrybentów
+    try:
+        from notify.telegram import notify_job_completion, is_configured as _tg_configured
+        if _tg_configured():
+            polecam_count = sum(
+                1 for r in (response_payload.all_results or [])
+                if (getattr(r.analysis, "recommendation", "") == "POLECAM")
+            )
+            ryzyko_count = sum(
+                1 for r in (response_payload.all_results or [])
+                if (getattr(r.analysis, "recommendation", "") == "RYZYKO")
+            )
+            duration_s: Optional[float] = None
+            try:
+                if getattr(job, "created_at", None):
+                    created = datetime.fromisoformat(job.created_at)
+                    duration_s = max(0.0, (datetime.now() - created).total_seconds())
+            except Exception:
+                duration_s = None
+
+            bundle_paths = {
+                "client_short_bundle": client_short_bundle_file,
+                "client_bundle": client_bundle_file,
+                "broker_bundle": broker_bundle_file,
+            }
+            await asyncio.to_thread(
+                notify_job_completion,
+                status="done",
+                title=search_title(criteria),
+                record_id=record_id,
+                job_id=job.id,
+                collected_count=response_payload.collected_count,
+                polecam_count=polecam_count,
+                ryzyko_count=ryzyko_count,
+                duration_seconds=duration_s,
+                bundle_paths={k: v for k, v in bundle_paths.items() if v},
+            )
+    except Exception:
+        logger.exception("Telegram broadcast (done) failed — pominięte")
 
     return response_payload
 
@@ -1054,6 +1123,19 @@ def _save_job_terminal_record(
                     status, job.id, search_title(request.criteria))
     except Exception:
         logger.exception("[record] Failed to save terminal record for job %s", job.id)
+
+    # Telegram broadcast (cancelled/error/interrupted) — best-effort
+    try:
+        from notify.telegram import notify_job_completion, is_configured as _tg_configured
+        if _tg_configured():
+            notify_job_completion(
+                status=status,
+                title=search_title(request.criteria),
+                job_id=job.id,
+                error=error,
+            )
+    except Exception:
+        logger.exception("[record] Telegram broadcast (%s) failed", status)
 
 
 async def _run_job(request: SearchRequest, job: jobs_store.Job) -> None:
@@ -2395,6 +2477,62 @@ async def llm_cache_delete_entry(cache_key: str, _auth: None = Depends(_require_
     cur = conn.execute("DELETE FROM llm_reports WHERE cache_key=?", (cache_key,))
     conn.commit()
     return {"removed": cur.rowcount or 0}
+
+
+@app.get("/api/telegram/status")
+async def telegram_status(_auth: None = Depends(_require_bearer)):
+    """Status bota + lista subskrybentów (admin)."""
+    from notify import telegram as _tg
+    from api import telegram_database as _tdb
+    info: dict = {
+        "configured": _tg.is_configured(),
+        "invite_code_set": bool(os.getenv("TELEGRAM_INVITE_CODE", "").strip()),
+        "ui_base_url": os.getenv("TELEGRAM_UI_BASE_URL", "").strip() or None,
+        "stats": _tdb.stats(),
+    }
+    if _tg.is_configured():
+        try:
+            me = _tg.get_me()
+            info["bot"] = {
+                "id": me.get("id"),
+                "username": me.get("username"),
+                "first_name": me.get("first_name"),
+            }
+        except Exception as exc:
+            info["bot_error"] = str(exc)
+    info["subscribers"] = _tdb.list_all_subscribers()
+    return info
+
+
+@app.post("/api/telegram/test")
+async def telegram_test(payload: dict, _auth: None = Depends(_require_bearer)):
+    """Wysyła testowe powiadomienie do wszystkich aktywnych subskrybentów (admin)."""
+    from notify.telegram import notify_job_completion, is_configured as _tg_configured
+    if not _tg_configured():
+        raise HTTPException(503, "TELEGRAM_BOT_TOKEN nie ustawiony")
+    title = (payload or {}).get("title") or "Test BMW M5 (2020-2022)"
+    res = await asyncio.to_thread(
+        notify_job_completion,
+        status="done",
+        title=title,
+        record_id=(payload or {}).get("record_id"),
+        collected_count=int((payload or {}).get("collected_count") or 47),
+        polecam_count=int((payload or {}).get("polecam_count") or 5),
+        ryzyko_count=int((payload or {}).get("ryzyko_count") or 2),
+        duration_seconds=float((payload or {}).get("duration_seconds") or 272),
+        bundle_paths=(payload or {}).get("bundle_paths") or {},
+    )
+    return {"broadcast_result": res}
+
+
+@app.delete("/api/telegram/subscribers/{chat_id}")
+async def telegram_unsubscribe(chat_id: int, _auth: None = Depends(_require_bearer)):
+    """Admin może wymusić deaktywację subskrybenta."""
+    from api import telegram_database as _tdb
+    ok = _tdb.deactivate(chat_id)
+    if not ok:
+        raise HTTPException(404, f"Subscriber {chat_id} not found")
+    return {"deactivated": chat_id}
 
 
 @app.get("/api/clients")
