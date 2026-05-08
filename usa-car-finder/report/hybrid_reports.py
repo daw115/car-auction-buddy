@@ -327,6 +327,62 @@ ZASADY (TWARDE):
 - Nie kłam, nie marketinguj nadmiernie"""
 
 
+PAIR_SYSTEM = """Jesteś ekspertem importu aut z USA. Generujesz JEDNOCZEŚNIE fragmenty raportu dla:
+- KLIENTA polskiego (emocjonalny storytelling, verdict)
+- BROKERA (decyzje bidowania, scoring techniczny)
+
+Zwracasz WYŁĄCZNIE poprawny JSON z dwoma sekcjami {"client": {...}, "broker": {...}}, bez markdown."""
+
+PAIR_USER_TEMPLATE = """Dla auta poniżej wygeneruj OBA zestawy fragmentów PO POLSKU. Zwróć JSON:
+{{
+  "client": {{
+    "tagline": "MAX 140 znaków — 1 hook'owe zdanie",
+    "story_paragraphs": [
+      "MAX 350 znaków — kontekst auta",
+      "MAX 400 znaków — stan techniczny",
+      "MAX 350 znaków — szansa rynkowa w PL"
+    ],
+    "red_flags": ["MAX 120 znaków każdy", "max 4"],
+    "verdict_color": "green | amber | red",
+    "verdict_headline": "MAX 80 znaków",
+    "verdict_pl": "MAX 350 znaków — 2-3 zdania"
+  }},
+  "broker": {{
+    "scoring_breakdown": [
+      {{"category": "Damage", "points": -2, "reason": "krótkie"}},
+      {{"category": "Title", "points": 0, "reason": "..."}},
+      {{"category": "Odometer", "points": 1, "reason": "..."}},
+      {{"category": "Location", "points": -1, "reason": "..."}},
+      {{"category": "Seller type", "points": 2, "reason": "..."}},
+      {{"category": "Market fit", "points": 1, "reason": "..."}}
+    ],
+    "red_flags": [
+      {{"severity": "HIGH | MID | LOW", "text": "max 150 znaków"}}
+    ],
+    "bid_thresholds": {{
+      "entry_usd": 8000,
+      "target_usd": 10000,
+      "walkaway_usd": 12500
+    }},
+    "bidding_strategy": "3-4 zdania konkretnej strategii (kiedy wejść, kiedy odpuścić), max 600 znaków",
+    "checklist": [
+      {{"label": "VIN check (Carfax/Autocheck)", "status": "ok | warn | bad", "note": "max 80"}},
+      {{"label": "Inspection report", "status": "warn", "note": "..."}}
+    ],
+    "notes_pl": "3-5 zdań notatek strategicznych, max 700 znaków"
+  }}
+}}
+
+DANE AUTA + KOSZTY:
+{lot_data}
+
+ZASADY:
+- KLIENT: każde pole w limicie. verdict_color: green=POLECAM(>=7), amber=RYZYKO(4-7), red=ODRZUĆ(<4)
+- BROKER: 6 kategorii scoring (-3 do +3), 4-7 checklist, entry < target < walkaway
+- Spójność między sekcjami: client.verdict_color musi pasować do AI score
+- Bez markdown, bez ```json```. Zwróć od razu otwarte {{ ... }}"""
+
+
 BROKER_SYSTEM = """Jesteś ekspertem brokerskim importu aut z USA. Generujesz fragmenty briefa technicznego dla brokera (decyzje bidowania).
 Zwracasz WYŁĄCZNIE poprawny JSON, bez markdown."""
 
@@ -601,3 +657,141 @@ def render_broker_hybrid(
     else:
         llm_cache.store(lot.lot_id, lot.source or "", "broker_hybrid", fp, html, provider=_provider())
     return html
+
+
+# ============================================================================
+# Faza 3F: Combined client+broker w 1 LLM call (50% mniej calli)
+# ============================================================================
+
+def render_pair_hybrid(
+    item: AnalyzedLot,
+    criteria: Optional[ClientCriteria] = None,
+    lots_scanned: int = 0,
+) -> tuple[str, str]:
+    """Renderuje (client_html, broker_html) z 1 LLM call zamiast 2.
+
+    Single prompt zwraca {"client": {...}, "broker": {...}} → split → render obu
+    template Jinja2. Cache strategy: kind="pair_hybrid" trzyma combined skeleton;
+    jeśli HIT → 0 LLM, tylko 2× Jinja2.
+
+    Backward compat: render_client_hybrid / render_broker_hybrid wciąż działają
+    osobno (regen single-kind, manual on-demand). Główny scrape pipeline używa
+    render_pair_hybrid dla 50% redukcji LLM RPM.
+    """
+    lot = item.lot
+    ai = item.analysis
+
+    fingerprint_payload = {
+        "ai_score": ai.score, "ai_recommendation": ai.recommendation,
+        "current_bid_usd": lot.current_bid_usd, "buy_now_price_usd": lot.buy_now_price_usd,
+        "ai_estimated_repair_usd": ai.estimated_repair_usd,
+        "damage_primary": lot.damage_primary, "damage_secondary": lot.damage_secondary,
+        "title_type": lot.title_type, "odometer_mi": lot.odometer_mi,
+        "year": lot.year, "make": lot.make, "model": lot.model,
+        "lots_scanned": lots_scanned,
+        "_kind": "pair_hybrid_v1",
+    }
+    fp = llm_cache.make_fingerprint(fingerprint_payload)
+
+    # Koszty + Otomoto (raz, shared dla obu HTMLi)
+    engine_l = _engine_liters_from_trim(lot.trim, lot.make, lot.model)
+    cost = calculate_full_cost(
+        bid_usd=lot.current_bid_usd or lot.buy_now_price_usd or 0,
+        engine_liters=engine_l,
+        location_state=lot.location_state,
+        repair_estimate_usd=ai.estimated_repair_usd,
+    )
+    market_pl = None
+    try:
+        if lot.make and lot.model and os.getenv("OTOMOTO_LOOKUP_ENABLED", "true").lower() == "true":
+            market_pl = lookup_market_price(
+                make=lot.make,
+                model=lot.model,
+                year_from=(lot.year - 1) if lot.year else None,
+                year_to=(lot.year + 1) if lot.year else None,
+            )
+    except Exception:
+        logger.exception("[Hybrid pair] Otomoto lookup failed (non-fatal)")
+        market_pl = None
+
+    # Skeleton cache check
+    pair_fragments = llm_cache.get_cached_skeleton(lot.lot_id, lot.source or "", "pair_hybrid", fp)
+    if pair_fragments is None:
+        # Single LLM call dla obu sekcji
+        user_prompt = PAIR_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
+        max_tokens = int(os.getenv("HYBRID_PAIR_MAX_TOKENS", "6000"))
+        pair_fragments = _call_llm_json(
+            system=PAIR_SYSTEM,
+            user=user_prompt,
+            max_tokens=max_tokens,
+        )
+        skeleton_was_cached = False
+    else:
+        skeleton_was_cached = True
+
+    client_frag = pair_fragments.get("client") or {}
+    broker_frag = pair_fragments.get("broker") or {}
+
+    # Walk-away fallback dla broker bid_thresholds
+    bt = broker_frag.get("bid_thresholds") or {}
+    bid_now = int(lot.current_bid_usd or lot.buy_now_price_usd or 0)
+    if not bt.get("entry_usd") or bt["entry_usd"] <= 0:
+        bt = {
+            "entry_usd": int(bid_now * 0.85) if bid_now else 5000,
+            "target_usd": int(bid_now * 1.0) if bid_now else 7500,
+            "walkaway_usd": int(bid_now * 1.25) if bid_now else 10000,
+        }
+
+    # Render KLIENT
+    client_template = _env().get_template("client_hybrid.html.j2")
+    client_html = client_template.render(
+        lot=lot, ai=ai, cost=cost, market_pl=market_pl,
+        tagline=client_frag.get("tagline", ""),
+        story_paragraphs=client_frag.get("story_paragraphs", []),
+        red_flags=client_frag.get("red_flags", ai.red_flags or []),
+        verdict_color=client_frag.get("verdict_color", "amber"),
+        verdict_headline=client_frag.get("verdict_headline", ""),
+        verdict_pl=client_frag.get("verdict_pl", ai.client_description_pl or ""),
+        today=datetime.utcnow().strftime("%Y-%m-%d"),
+        provider=_provider(),
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
+        generated_at=datetime.utcnow().isoformat(timespec="seconds"),
+    )
+
+    # Render BROKER
+    broker_template = _env().get_template("broker_hybrid.html.j2")
+    broker_html = broker_template.render(
+        lot=lot, ai=ai, cost=cost, market_pl=market_pl,
+        lots_scanned=lots_scanned,
+        budget_delta_pct=_budget_delta_pct(lot.current_bid_usd, criteria.budget_usd if criteria else None),
+        scoring_breakdown=broker_frag.get("scoring_breakdown", []),
+        red_flags=broker_frag.get("red_flags", []),
+        bid_thresholds=bt,
+        bidding_strategy=broker_frag.get("bidding_strategy", ai.ai_notes or ""),
+        checklist=broker_frag.get("checklist", []),
+        notes_pl=broker_frag.get("notes_pl", ai.ai_notes or ai.client_description_pl or ""),
+        provider=_provider(),
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
+        generated_at=datetime.utcnow().isoformat(timespec="seconds"),
+        cache_status="HIT" if skeleton_was_cached else "MISS",
+    )
+
+    # Cache: pair skeleton (i — opcjonalnie — populuje cache osobnych kindów dla single-kind regen).
+    if not skeleton_was_cached:
+        llm_cache.store_skeleton(lot.lot_id, lot.source or "", "pair_hybrid", fp, pair_fragments,
+                                 html="", provider=_provider())  # html="" bo trzymamy oba osobno
+        # Bonus: zapisz też kindy single-kind żeby regen klient-only / broker-only też miał HIT
+        try:
+            single_fp_client = llm_cache.make_fingerprint({**fingerprint_payload, "_kind": "client_hybrid_v1"})
+            single_fp_broker = llm_cache.make_fingerprint({**fingerprint_payload, "_kind": "broker_hybrid_v1"})
+            llm_cache.store_skeleton(lot.lot_id, lot.source or "", "client_hybrid", single_fp_client,
+                                     client_frag, html=client_html, provider=_provider())
+            llm_cache.store_skeleton(lot.lot_id, lot.source or "", "broker_hybrid", single_fp_broker,
+                                     broker_frag, html=broker_html, provider=_provider())
+        except Exception:
+            logger.exception("[Hybrid pair] failed to mirror to single-kind cache (non-fatal)")
+    else:
+        llm_cache.store(lot.lot_id, lot.source or "", "client_hybrid", fp, client_html, provider=_provider())
+        llm_cache.store(lot.lot_id, lot.source or "", "broker_hybrid", fp, broker_html, provider=_provider())
+
+    return client_html, broker_html

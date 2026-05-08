@@ -509,11 +509,42 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         # bez tłumaczenia/cen PL), 'llm' (full Claude rich, ~$4/scrape — drogie).
         # Hybrid generuje per-lot raporty z polską terminologią + Otomoto market price.
         reports_mode = os.getenv("REPORTS_MODE", "hybrid").lower()
+        # render_pair_fn = item -> (client_html, broker_html). Faza 3F: w hybrid
+        # mode 1 LLM call zamiast 2 (50% redukcja calli + RPM oszczędność).
+        render_pair_fn = None
         try:
             if reports_mode == "hybrid":
-                from report.hybrid_reports import render_client_hybrid, render_broker_hybrid
+                from report.hybrid_reports import render_client_hybrid, render_broker_hybrid, render_pair_hybrid
                 render_client_fn = lambda it: render_client_hybrid(it, criteria=criteria)
                 render_broker_fn = lambda it: render_broker_hybrid(it, criteria=criteria, lots_scanned=len(all_lots))
+                render_pair_fn = lambda it: render_pair_hybrid(it, criteria=criteria, lots_scanned=len(all_lots))
+
+                # Faza 3E: Pre-warm Otomoto cache batch — w 1 wątku każde unique (make,model,year_range)
+                # zamiast 2× per-lot (raz dla client, raz dla broker) sekwencyjnie. Eliminuje cold-miss
+                # penalty (8-15s × N unique lookups) z critical path LLM fan-out.
+                if os.getenv("OTOMOTO_LOOKUP_ENABLED", "true").lower() == "true":
+                    try:
+                        from scraper.otomoto import lookup_market_price
+                        unique_lookups = {
+                            (p.lot.make, p.lot.model,
+                             (p.lot.year - 1) if p.lot.year else None,
+                             (p.lot.year + 1) if p.lot.year else None)
+                            for p in polecane if p.lot.make and p.lot.model
+                        }
+                        if unique_lookups:
+                            from concurrent.futures import ThreadPoolExecutor as _TPE
+                            logger.info("[otomoto_prewarm] %d unique lookups, fan-out parallel", len(unique_lookups))
+                            def _warm(args):
+                                try:
+                                    lookup_market_price(*args)
+                                except Exception:
+                                    pass  # non-fatal — hybrid_reports ma try/except wewnątrz
+                            await asyncio.to_thread(
+                                lambda: list(_TPE(max_workers=4).map(_warm, unique_lookups))
+                            )
+                            logger.info("[otomoto_prewarm] done")
+                    except Exception:
+                        logger.exception("[otomoto_prewarm] failed (non-fatal)")
             elif reports_mode == "llm":
                 from report.llm_html_reports import render_client_report_llm, render_broker_report_llm
                 render_client_fn = lambda it: render_client_report_llm(it, criteria=criteria)
@@ -555,9 +586,19 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     "step": "generating",
                 })
 
-                client_task = _gen_with_semaphore(render_client_fn, item)
-                broker_task = _gen_with_semaphore(render_broker_fn, item)
-                results = await asyncio.gather(client_task, broker_task, return_exceptions=True)
+                # Faza 3F: w hybrid mode 1 LLM call zwraca (client, broker). W innych
+                # trybach (template/llm) zostają 2 osobne calle.
+                if render_pair_fn is not None:
+                    try:
+                        async with llm_semaphore:
+                            pair = await asyncio.to_thread(render_pair_fn, item)
+                        results = list(pair)  # [client_html, broker_html]
+                    except Exception as exc:
+                        results = [exc, exc]
+                else:
+                    client_task = _gen_with_semaphore(render_client_fn, item)
+                    broker_task = _gen_with_semaphore(render_broker_fn, item)
+                    results = await asyncio.gather(client_task, broker_task, return_exceptions=True)
 
                 if not isinstance(results[0], Exception):
                     fname = f"{slug}_{ts}_top{idx}_{lot_id_safe}_klient.html"
