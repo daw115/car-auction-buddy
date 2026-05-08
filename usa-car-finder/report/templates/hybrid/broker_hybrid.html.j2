@@ -6,54 +6,84 @@
 <title>BROKER — {{ lot.year }} {{ lot.make }} {{ lot.model }} #{{ lot.lot_id }}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'SF Mono','Menlo',Consolas,monospace;background:#0a0e14;color:#b3b9c5;line-height:1.55;font-size:13px}
+  html,body{max-width:100%;overflow-x:hidden}
+  body{font-family:'SF Mono','Menlo',Consolas,monospace;background:#0a0e14;color:#b3b9c5;line-height:1.55;font-size:13px;-webkit-text-size-adjust:100%;word-wrap:break-word;overflow-wrap:break-word}
   .container{max-width:1100px;margin:0 auto;padding:24px}
   .header{background:linear-gradient(135deg,#1a1f2e 0%,#252b3d 100%);padding:24px 28px;border-radius:10px;border:1px solid #2d3548;margin-bottom:20px}
-  .header h1{font-size:22px;color:#e3e9f5;margin-bottom:6px;font-weight:700}
-  .header .meta{color:#8b94a8;font-size:12px}
+  .header h1{font-size:22px;color:#e3e9f5;margin-bottom:6px;font-weight:700;word-break:break-word}
+  .header .meta{color:#8b94a8;font-size:12px;word-break:break-all}
   .header .verdict{display:inline-block;margin-top:12px;padding:5px 14px;border-radius:5px;font-weight:700;font-size:11px;letter-spacing:1.2px}
   .verdict.polecam{background:#0d3a1f;color:#56d364;border:1px solid #2ea043}
   .verdict.ryzyko{background:#3d2d00;color:#e3b341;border:1px solid #d29922}
   .verdict.odrzuc{background:#3d0c0c;color:#ff7b72;border:1px solid #f85149}
   .grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px}
-  .card{background:#10141f;border:1px solid #2d3548;border-radius:8px;padding:16px}
+  .card{background:#10141f;border:1px solid #2d3548;border-radius:8px;padding:16px;min-width:0}
   .card .label{font-size:10px;color:#6b7388;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
-  .card .value{font-size:18px;color:#e3e9f5;font-weight:700}
+  .card .value{font-size:18px;color:#e3e9f5;font-weight:700;word-break:break-word}
   .card .delta{font-size:11px;margin-top:4px}
   .delta.pos{color:#56d364}
   .delta.neg{color:#ff7b72}
-  .section{background:#10141f;border:1px solid #2d3548;border-radius:8px;padding:20px;margin-bottom:18px}
+  .section{background:#10141f;border:1px solid #2d3548;border-radius:8px;padding:20px;margin-bottom:18px;min-width:0}
   .section h2{color:#a5b4fc;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #2d3548}
+  .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{width:100%;border-collapse:collapse;font-size:12px}
-  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #1f2638}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #1f2638;word-break:break-word}
   th{color:#6b7388;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.8px}
   td{color:#c9d1d9}
-  td.num{text-align:right;font-feature-settings:"tnum";color:#e3e9f5}
-  .scoring-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;padding:8px 14px;border-bottom:1px solid #1f2638;font-size:12px}
+  td.num{text-align:right;font-feature-settings:"tnum";color:#e3e9f5;white-space:nowrap}
+  .scoring-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #1f2638;font-size:12px;min-width:0}
+  .scoring-row > span:first-child{min-width:0;word-break:break-word}
   .scoring-row .pts.pos{color:#56d364}
   .scoring-row .pts.neg{color:#ff7b72}
   .scoring-row .pts.zero{color:#6b7388}
-  .scoring-row .pts{font-weight:700;text-align:right;min-width:60px}
-  .scoring-row .reason{color:#8b94a8;font-size:11px;margin-left:14px}
-  .red-flag{padding:11px 14px;background:rgba(248,81,73,0.07);border-left:3px solid #f85149;margin-bottom:8px;border-radius:0 4px 4px 0}
+  .scoring-row .pts{font-weight:700;text-align:right;min-width:60px;flex-shrink:0;white-space:nowrap}
+  .scoring-row .reason{color:#8b94a8;font-size:11px;margin-left:14px;display:inline-block}
+  .red-flag{padding:11px 14px;background:rgba(248,81,73,0.07);border-left:3px solid #f85149;margin-bottom:8px;border-radius:0 4px 4px 0;word-break:break-word}
   .red-flag .severity{display:inline-block;padding:2px 7px;background:#3d0c0c;color:#ff7b72;border-radius:3px;font-size:10px;letter-spacing:0.8px;margin-right:8px}
   .strategy-box{padding:16px;background:rgba(102,126,234,0.07);border:1px solid #4c63b6;border-radius:6px;margin-top:12px}
   .strategy-box .title{color:#a5b4fc;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px}
-  .strategy-box .body{color:#c9d1d9;font-size:13px;line-height:1.65}
-  .bid-thresholds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
-  .threshold{padding:10px;background:#0a0e14;border:1px solid #2d3548;border-radius:5px;text-align:center}
+  .strategy-box .body{color:#c9d1d9;font-size:13px;line-height:1.65;word-break:break-word}
+  .bid-thresholds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}
+  .threshold{padding:10px;background:#0a0e14;border:1px solid #2d3548;border-radius:5px;text-align:center;min-width:0}
   .threshold .label{color:#6b7388;font-size:10px;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px}
-  .threshold .value{color:#e3e9f5;font-weight:700;font-size:14px}
+  .threshold .value{color:#e3e9f5;font-weight:700;font-size:14px;word-break:break-word}
   .photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px}
-  .photo-grid img{width:100%;height:130px;object-fit:cover;border-radius:5px;background:#1a1f2e}
+  .photo-grid img{width:100%;height:130px;object-fit:cover;border-radius:5px;background:#1a1f2e;display:block}
   .checklist{display:grid;gap:6px}
-  .check-item{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;padding:7px 0;border-bottom:1px dashed #1f2638;font-size:12px}
+  .check-item{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;padding:7px 0;border-bottom:1px dashed #1f2638;font-size:12px;min-width:0}
+  .check-item > div:last-child{min-width:0;word-break:break-word}
   .check-item .dot{width:14px;height:14px;border-radius:50%;margin-top:3px;background:#2d3548}
   .check-item .dot.ok{background:#238636}
   .check-item .dot.warn{background:#d29922}
   .check-item .dot.bad{background:#f85149}
-  .footer{text-align:center;color:#6b7388;font-size:11px;padding:16px}
+  .footer{text-align:center;color:#6b7388;font-size:11px;padding:16px;word-break:break-word}
   .footer code{background:#1a1f2e;padding:2px 6px;border-radius:3px;color:#a5b4fc}
+  @media (max-width:600px){
+    .container{padding:12px}
+    body{font-size:12px}
+    .header{padding:18px 16px;border-radius:8px;margin-bottom:14px}
+    .header h1{font-size:17px}
+    .header .meta{font-size:11px}
+    .grid-3{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}
+    .card{padding:12px}
+    .card .value{font-size:15px}
+    .section{padding:14px;margin-bottom:12px}
+    .section h2{font-size:11px;margin-bottom:10px}
+    table{font-size:11px}
+    th,td{padding:6px 8px}
+    .scoring-row{padding:7px 10px;font-size:11px}
+    .scoring-row .reason{display:block;margin-left:0;margin-top:3px}
+    .bid-thresholds{grid-template-columns:1fr;gap:6px}
+    .threshold{padding:9px}
+    .threshold .value{font-size:13px}
+    .strategy-box{padding:12px}
+    .strategy-box .body{font-size:12px}
+    .red-flag{padding:9px 12px;font-size:12px}
+    .photo-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+    .photo-grid img{height:110px}
+    .check-item{grid-template-columns:20px 1fr;font-size:11px}
+    .footer{font-size:10px;padding:12px 8px}
+  }
 </style>
 </head>
 <body>
@@ -106,6 +136,7 @@
   <!-- DANE LOTU -->
   <div class="section">
     <h2>📋 Dane lotu</h2>
+    <div class="table-wrap">
     <table>
       <tr><td style="width:30%;color:#6b7388">Source / Lot</td><td>{{ lot.source }} / <a href="{{ lot.url }}" target="_blank" style="color:#a5b4fc">{{ lot.lot_id }}</a></td></tr>
       <tr><td style="color:#6b7388">VIN</td><td><code>{{ lot.full_vin or lot.vin or '—' }}</code></td></tr>
@@ -118,6 +149,7 @@
       <tr><td style="color:#6b7388">Keys / Airbags</td><td>{% if lot.keys is sameas true %}✓ KEYS{% elif lot.keys is sameas false %}✗ NO KEYS{% else %}? KEYS{% endif %} · {% if lot.airbags_deployed is sameas true %}AIRBAGS DEPLOYED{% elif lot.airbags_deployed is sameas false %}AIRBAGS OK{% else %}AIRBAGS ?{% endif %}</td></tr>
       <tr><td style="color:#6b7388">Seller type</td><td>{{ lot.seller_type or '—' }}</td></tr>
     </table>
+    </div>
   </div>
 
   <!-- SCORING -->
@@ -138,6 +170,7 @@
   <!-- KOSZTY DETAL -->
   <div class="section">
     <h2>💰 Pełna kalkulacja kosztów (USA → PL)</h2>
+    <div class="table-wrap">
     <table>
       <thead><tr><th>Pozycja</th><th class="num">USD</th><th class="num">PLN ({{ cost.usd_pln }})</th></tr></thead>
       <tbody>
@@ -158,12 +191,14 @@
         <tr style="background:#0d3a1f;color:#56d364"><td><b>SUMA</b></td><td class="num"><b>${{ "{:,}".format(cost.grand_total_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.grand_total_pln) }}</b></td></tr>
       </tbody>
     </table>
+    </div>
   </div>
 
   {% if market_pl and market_pl.mean_pln %}
   <!-- CENA RYNKOWA PL -->
   <div class="section">
     <h2>📈 Analiza rynku PL (Otomoto.pl)</h2>
+    <div class="table-wrap">
     <table>
       <thead><tr><th>Zakres</th><th class="num">PLN</th><th class="num">USD ({{ cost.usd_pln }})</th></tr></thead>
       <tbody>
@@ -179,6 +214,7 @@
         </tr>
       </tbody>
     </table>
+    </div>
 
     {% if market_pl.avg_mileage_km or market_pl.avg_year %}
     <!-- Statystyki przebiegu/rocznika z próby Otomoto -->
@@ -217,7 +253,8 @@
       <div style="font-size:12px;color:#a5b4fc;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
         🏆 Top {{ market_pl.top_offers|length }} najtańszych konkurencyjnych ofert PL
       </div>
-      <table style="font-size:11px">
+      <div class="table-wrap">
+      <table style="font-size:11px;min-width:520px">
         <thead><tr><th>Tytuł</th><th class="num">Cena</th><th class="num">Rok</th><th class="num">Przebieg</th><th></th></tr></thead>
         <tbody>
           {% for o in market_pl.top_offers %}
@@ -231,6 +268,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
     {% endif %}
 
