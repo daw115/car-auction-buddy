@@ -2519,6 +2519,23 @@ async def llm_cache_delete_entry(cache_key: str, _auth: None = Depends(_require_
     return {"removed": cur.rowcount or 0}
 
 
+@app.delete("/api/llm-cache/html-only")
+async def llm_cache_clear_html_only(_auth: None = Depends(_require_bearer)):
+    """Czyści tylko rendered HTML (zostawia json_skeleton z LLM).
+
+    Po CSS/template change używaj zamiast `DELETE /api/llm-cache`:
+    - następny render przejdzie przez Jinja2 z cached JSON skeleton (~50ms/lot)
+    - bez kosztu LLM call ($0)
+    - całkowity regen rekordu z 6 lotami: ~5s zamiast ~42s
+
+    Pełen `clear_all` używaj tylko gdy zmieniłeś prompts (CLIENT_USER_TEMPLATE,
+    BROKER_USER_TEMPLATE) — wtedy JSON skeleton też jest stale.
+    """
+    from report import llm_cache
+    cleared = llm_cache.clear_html_only()
+    return {"html_cleared": cleared, "json_skeleton_preserved": True}
+
+
 @app.get("/api/telegram/status")
 async def telegram_status(_auth: None = Depends(_require_bearer)):
     """Status bota + lista subskrybentów (admin)."""

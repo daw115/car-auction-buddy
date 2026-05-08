@@ -37,7 +37,12 @@ def _enabled() -> bool:
 
 
 def init_db(db_path: Optional[Path] = None) -> None:
-    """Tworzy plik DB + tabelę jeśli nie istnieje. Idempotentne."""
+    """Tworzy plik DB + tabelę jeśli nie istnieje. Idempotentne.
+
+    Schema v2: dodano kolumnę `json_skeleton` (storage dla LLM JSON output)
+    obok `html` (rendered final). Pozwala invalidować HTML cache (po CSS change)
+    bez odpalania ponownie drogiego LLM call — Jinja2 re-renderuje z cached JSON.
+    """
     global _db_path, _initialized
     with _lock:
         _db_path = (db_path or _default_db_path()).resolve()
@@ -62,6 +67,14 @@ def init_db(db_path: Optional[Path] = None) -> None:
                     ON llm_reports(lot_id, source, kind, generated_at);
                 """
             )
+            # Idempotent migration: dodaj json_skeleton jeśli nie istnieje
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(llm_reports)").fetchall()}
+            if "json_skeleton" not in cols:
+                try:
+                    conn.execute("ALTER TABLE llm_reports ADD COLUMN json_skeleton TEXT")
+                    logger.info("[llm_cache] Dodano kolumnę json_skeleton (split cache v2)")
+                except Exception:
+                    logger.exception("[llm_cache] Failed to add json_skeleton column")
         _initialized = True
         logger.info("[llm_cache] Zainicjalizowano %s", _db_path)
 
@@ -187,6 +200,120 @@ def store(
         logger.info("[llm_cache] STORE %s::%s::%s (%d chars)", source, lot_id, kind, len(html))
     except Exception:
         logger.exception("[llm_cache] store failed")
+
+
+def get_cached_skeleton(
+    lot_id: str,
+    source: str,
+    kind: str,
+    fingerprint: str,
+) -> Optional[dict]:
+    """Zwraca dict (LLM JSON output) z cache jeśli świeży. Pozwala re-renderować
+    HTML z aktualnymi danymi (cost/market_pl/today) bez odpalania LLM."""
+    if not _enabled():
+        return None
+    if not _initialized and not _ensure_init():
+        return None
+    if not lot_id or not kind:
+        return None
+
+    cache_key = _cache_key(lot_id, source or "", kind, fingerprint)
+    cutoff = (datetime.utcnow() - timedelta(seconds=_ttl_seconds())).isoformat(timespec="seconds")
+
+    try:
+        with _lock, _connect() as conn:
+            row = conn.execute(
+                "SELECT json_skeleton, generated_at FROM llm_reports "
+                "WHERE cache_key = ? AND generated_at >= ? AND json_skeleton IS NOT NULL",
+                (cache_key, cutoff),
+            ).fetchone()
+    except Exception:
+        logger.exception("[llm_cache] get_cached_skeleton failed")
+        return None
+
+    if not row:
+        return None
+    try:
+        import json as _json
+        result = _json.loads(row["json_skeleton"])
+        logger.info("[llm_cache] HIT skeleton %s::%s::%s (gen %s)", source, lot_id, kind, row["generated_at"])
+        return result
+    except Exception:
+        logger.exception("[llm_cache] json_skeleton decode failed")
+        return None
+
+
+def store_skeleton(
+    lot_id: str,
+    source: str,
+    kind: str,
+    fingerprint: str,
+    skeleton: dict,
+    html: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+) -> None:
+    """Upsert: zapisuje JSON skeleton (LLM output) i opcjonalnie HTML.
+
+    Po Faza 2D split cache:
+    - skeleton (LLM JSON) jest źródłem prawdy — TTL chroni przed stale data
+    - html może być stale po CSS change ale skeleton zostaje, render z Jinja2 jest darmowy
+    """
+    if not _enabled():
+        return
+    if not _initialized and not _ensure_init():
+        return
+    if not lot_id or not kind or not skeleton:
+        return
+
+    import json as _json
+    cache_key = _cache_key(lot_id, source or "", kind, fingerprint)
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    skeleton_str = _json.dumps(skeleton, ensure_ascii=False)
+    html_str = html or ""  # html NOT NULL constraint — pusty string OK
+
+    try:
+        with _lock, _connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO llm_reports
+                  (cache_key, lot_id, source, kind, fingerprint, html, json_skeleton,
+                   provider, model, input_tokens, output_tokens, generated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cache_key) DO UPDATE SET
+                  html = excluded.html,
+                  json_skeleton = excluded.json_skeleton,
+                  provider = excluded.provider,
+                  model = excluded.model,
+                  input_tokens = excluded.input_tokens,
+                  output_tokens = excluded.output_tokens,
+                  generated_at = excluded.generated_at
+                """,
+                (
+                    cache_key, lot_id, source or "", kind, fingerprint, html_str, skeleton_str,
+                    provider, model, input_tokens, output_tokens, now,
+                ),
+            )
+        logger.info("[llm_cache] STORE skeleton %s::%s::%s (%d JSON, %d HTML)",
+                    source, lot_id, kind, len(skeleton_str), len(html_str))
+    except Exception:
+        logger.exception("[llm_cache] store_skeleton failed")
+
+
+def clear_html_only() -> int:
+    """Czyści tylko HTML (zostawia json_skeleton). Po CSS change Jinja2 zrobi
+    re-render z cached skeleton — bez kosztu LLM."""
+    if not _initialized:
+        return 0
+    try:
+        with _lock, _connect() as conn:
+            cur = conn.execute("UPDATE llm_reports SET html = '' WHERE html != ''")
+            return cur.rowcount or 0
+    except Exception:
+        logger.exception("[llm_cache] clear_html_only failed")
+        return 0
 
 
 def stats() -> dict:

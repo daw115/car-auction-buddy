@@ -422,11 +422,16 @@ def _budget_delta_pct(bid: Optional[float], budget: Optional[float]) -> int:
 # ============================================================================
 
 def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] = None) -> str:
-    """Hybrydowy raport klienta: ~$0.014/call (Gemini free = $0)."""
+    """Hybrydowy raport klienta: ~$0.014/call (Gemini free = $0).
+
+    Split-cache (Faza 2D): preferuje JSON skeleton (LLM output) z cache i
+    re-renderuje Jinja2 z fresh cost/market_pl/today. Tylko gdy skeleton MISS,
+    odpala LLM call. CSS-only changes = instant Jinja2 rerender bez kosztu.
+    """
     lot = item.lot
     ai = item.analysis
 
-    # Cache check
+    # Cache fingerprint
     fingerprint_payload = {
         "ai_score": ai.score, "ai_recommendation": ai.recommendation,
         "current_bid_usd": lot.current_bid_usd, "buy_now_price_usd": lot.buy_now_price_usd,
@@ -437,11 +442,8 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "_kind": "client_hybrid_v1",
     }
     fp = llm_cache.make_fingerprint(fingerprint_payload)
-    cached = llm_cache.get_cached(lot.lot_id, lot.source or "", "client_hybrid", fp)
-    if cached:
-        return cached
 
-    # 1) Liczymy koszty
+    # 1) Liczymy koszty (zawsze — szybko, deterministycznie)
     engine_l = _engine_liters_from_trim(lot.trim, lot.make, lot.model)
     cost = calculate_full_cost(
         bid_usd=lot.current_bid_usd or lot.buy_now_price_usd or 0,
@@ -464,15 +466,21 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         logger.exception("[Hybrid] Otomoto lookup failed (non-fatal)")
         market_pl = None
 
-    # 3) Mini-LLM call dla storytellingu (JSON)
-    user_prompt = CLIENT_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
-    fragments = _call_llm_json(
-        system=CLIENT_SYSTEM,
-        user=user_prompt,
-        max_tokens=int(os.getenv("HYBRID_CLIENT_MAX_TOKENS", "2500")),
-    )
+    # 3) Skeleton cache check (split cache v2): jeśli LLM JSON jest cached → re-render Jinja2 only
+    fragments = llm_cache.get_cached_skeleton(lot.lot_id, lot.source or "", "client_hybrid", fp)
+    if fragments is None:
+        # Mini-LLM call dla storytellingu (JSON)
+        user_prompt = CLIENT_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
+        fragments = _call_llm_json(
+            system=CLIENT_SYSTEM,
+            user=user_prompt,
+            max_tokens=int(os.getenv("HYBRID_CLIENT_MAX_TOKENS", "2500")),
+        )
+        skeleton_was_cached = False
+    else:
+        skeleton_was_cached = True
 
-    # 4) Render template
+    # 4) Render template (zawsze fresh — Jinja2 + dzisiejsze dane)
     template = _env().get_template("client_hybrid.html.j2")
     html = template.render(
         lot=lot,
@@ -491,8 +499,13 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
     )
 
-    # 5) Store in cache
-    llm_cache.store(lot.lot_id, lot.source or "", "client_hybrid", fp, html, provider=_provider())
+    # 5) Store skeleton + html (skeleton tylko jeśli nowy LLM call)
+    if not skeleton_was_cached:
+        llm_cache.store_skeleton(lot.lot_id, lot.source or "", "client_hybrid", fp, fragments,
+                                 html=html, provider=_provider())
+    else:
+        # Skeleton już cached, zapisujemy tylko HTML (np. po CSS change)
+        llm_cache.store(lot.lot_id, lot.source or "", "client_hybrid", fp, html, provider=_provider())
     return html
 
 
@@ -517,9 +530,6 @@ def render_broker_hybrid(
         "_kind": "broker_hybrid_v1",
     }
     fp = llm_cache.make_fingerprint(fingerprint_payload)
-    cached = llm_cache.get_cached(lot.lot_id, lot.source or "", "broker_hybrid", fp)
-    if cached:
-        return cached
 
     engine_l = _engine_liters_from_trim(lot.trim, lot.make, lot.model)
     cost = calculate_full_cost(
@@ -543,12 +553,18 @@ def render_broker_hybrid(
         logger.exception("[Hybrid] Otomoto lookup failed (non-fatal)")
         market_pl = None
 
-    user_prompt = BROKER_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
-    fragments = _call_llm_json(
-        system=BROKER_SYSTEM,
-        user=user_prompt,
-        max_tokens=int(os.getenv("HYBRID_BROKER_MAX_TOKENS", "3500")),
-    )
+    # Skeleton cache check (split cache v2)
+    fragments = llm_cache.get_cached_skeleton(lot.lot_id, lot.source or "", "broker_hybrid", fp)
+    if fragments is None:
+        user_prompt = BROKER_USER_TEMPLATE.format(lot_data=_lot_data_compact(item, criteria, cost, market_pl))
+        fragments = _call_llm_json(
+            system=BROKER_SYSTEM,
+            user=user_prompt,
+            max_tokens=int(os.getenv("HYBRID_BROKER_MAX_TOKENS", "3500")),
+        )
+        skeleton_was_cached = False
+    else:
+        skeleton_was_cached = True
 
     # Walk-away fallback gdy LLM nie poda lub poda absurd
     bt = fragments.get("bid_thresholds") or {}
@@ -577,7 +593,11 @@ def render_broker_hybrid(
         provider=_provider(),
         model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
-        cache_status="MISS",
+        cache_status="HIT" if skeleton_was_cached else "MISS",
     )
-    llm_cache.store(lot.lot_id, lot.source or "", "broker_hybrid", fp, html, provider=_provider())
+    if not skeleton_was_cached:
+        llm_cache.store_skeleton(lot.lot_id, lot.source or "", "broker_hybrid", fp, fragments,
+                                 html=html, provider=_provider())
+    else:
+        llm_cache.store(lot.lot_id, lot.source or "", "broker_hybrid", fp, html, provider=_provider())
     return html
