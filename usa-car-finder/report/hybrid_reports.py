@@ -185,6 +185,10 @@ def _call_gemini_json(system: str, user: str, max_tokens: int = 1500) -> dict:
     timeout = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "60"))
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    # thinkingBudget=0 wyłącza "thinking mode" w Gemini 2.5 (Flash/Pro). Bez tego thinking
+    # tokens zjadają output budget → finishReason=MAX_TOKENS → empty text → fallback Anthropic.
+    # Override: ustaw GEMINI_THINKING_BUDGET na liczbę >0 żeby pozwolić na thinking.
+    thinking_budget = int(os.getenv("GEMINI_THINKING_BUDGET", "0"))
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -192,6 +196,7 @@ def _call_gemini_json(system: str, user: str, max_tokens: int = 1500) -> dict:
             "maxOutputTokens": max_tokens,
             "temperature": 0.7,
             "responseMimeType": "application/json",
+            "thinkingConfig": {"thinkingBudget": thinking_budget},
         },
     }
 

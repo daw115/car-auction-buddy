@@ -1778,31 +1778,98 @@ async def regenerate_record_bundles(
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{slug}_{record_id}_{ts}_zbiorczy_{kind}.html"
 
-    # KLIENT — tylko POLECAM (filtr biznesowy: klient nie widzi RYZYKO/ODRZUĆ)
-    if "client" in requested_kinds:
-        # Filtr POLECAM przed renderem (oszczędza calle do Otomoto/LLM)
-        showcase_polecam = [item for item in showcase if item.analysis.recommendation == "POLECAM"]
+    # ─── PARALLEL FAN-OUT ─────────────────────────────────────────────────
+    # Zamiast 4 sekwencyjnych pętli (klient_bundle, klient_short_bundle, broker_bundle,
+    # per-lot klient_short) puszczamy wszystkie tasks naraz. LLM calls są bramkowane
+    # semaforem (LLM_REPORTS_CONCURRENCY), template renderery (klient_short) idą bez bramki.
+    # Wzorzec analogiczny do scrape pipeline (api/main.py:530+) — eliminuje 50-60% wall-clock.
+    llm_concurrency = int(os.getenv("LLM_REPORTS_CONCURRENCY", "2"))
+    llm_sem = asyncio.Semaphore(llm_concurrency)
 
+    async def _render_llm(fn, item):
+        async with llm_sem:
+            return await asyncio.to_thread(fn, item)
+
+    async def _render_template(fn, item):
+        return await asyncio.to_thread(fn, item)
+
+    showcase_polecam = [item for item in showcase if item.analysis.recommendation == "POLECAM"]
+
+    # Wybór rendererów per kind
+    client_renderer = None
+    broker_renderer = None
+    client_uses_llm = False
+    broker_uses_llm = False
+    if "client" in requested_kinds:
         if eng == "hybrid":
             from report.hybrid_reports import render_client_hybrid
-            renderer = lambda item: render_client_hybrid(item, criteria)
+            client_renderer = lambda it: render_client_hybrid(it, criteria)
+            client_uses_llm = True
         else:
-            from report.html_reports import render_client_report
-            renderer = lambda item: render_client_report(item, criteria)
+            from report.html_reports import render_client_report as _rcr
+            client_renderer = lambda it: _rcr(it, criteria)
+            client_uses_llm = False
+    if "broker" in requested_kinds:
+        lots_scanned = response.get("collected_count") or len(all_results_raw)
+        if eng == "hybrid":
+            from report.hybrid_reports import render_broker_hybrid
+            broker_renderer = lambda it: render_broker_hybrid(it, criteria, lots_scanned=lots_scanned)
+            broker_uses_llm = True
+        else:
+            from report.html_reports import render_broker_report as _rbr
+            broker_renderer = lambda it: _rbr(it, criteria, lots_scanned=lots_scanned)
+            broker_uses_llm = False
+    # Template renderer dla zbiorczego krótkiego klienta + per-lot krótkiego (zawsze Jinja2, no LLM)
+    from report.html_reports import render_client_report as _render_client_template
+    short_renderer = lambda it: _render_client_template(it, criteria)
 
+    # Build coroutines
+    client_coros: list = []
+    short_bundle_coros: list = []
+    broker_coros: list = []
+    per_lot_short_coros: list = []
+
+    if client_renderer is not None:
+        for it in showcase_polecam:
+            client_coros.append(_render_llm(client_renderer, it) if client_uses_llm else _render_template(client_renderer, it))
+        for it in showcase_polecam:
+            short_bundle_coros.append(_render_template(short_renderer, it))
+    if broker_renderer is not None:
+        for it in showcase:
+            broker_coros.append(_render_llm(broker_renderer, it) if broker_uses_llm else _render_template(broker_renderer, it))
+    # Per-lot client_short (zawsze, dla całego showcase — niezależne od kinds, bo ma osobny URL per-lot)
+    for it in showcase:
+        per_lot_short_coros.append(_render_template(short_renderer, it))
+
+    # Run all in parallel — semaphore bramkuje tylko LLM calls
+    all_coros = client_coros + short_bundle_coros + broker_coros + per_lot_short_coros
+    all_results = await asyncio.gather(*all_coros, return_exceptions=True) if all_coros else []
+    nC = len(client_coros)
+    nS = len(short_bundle_coros)
+    nB = len(broker_coros)
+    client_results = all_results[:nC]
+    short_results = all_results[nC:nC + nS]
+    broker_results = all_results[nC + nS:nC + nS + nB]
+    per_lot_results = all_results[nC + nS + nB:]
+
+    def _meta(item):
+        return {
+            "recommendation": item.analysis.recommendation,
+            "score": item.analysis.score,
+            "lot_id": item.lot.lot_id,
+        }
+
+    def _label(item):
+        return f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
+
+    # ── Bundle: KLIENT pełny ──
+    if client_renderer is not None:
         htmls = []
-        for item in showcase_polecam:
-            try:
-                html = await asyncio.to_thread(renderer, item)
-                label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-                meta = {
-                    "recommendation": item.analysis.recommendation,
-                    "score": item.analysis.score,
-                    "lot_id": item.lot.lot_id,
-                }
-                htmls.append((label, html, meta))
-            except Exception:
-                logger.exception("Regen client failed for lot %s", item.lot.lot_id)
+        for it, res in zip(showcase_polecam, client_results):
+            if isinstance(res, Exception):
+                logger.exception("Regen client failed for lot %s: %s", it.lot.lot_id, res)
+                continue
+            htmls.append((_label(it), res, _meta(it)))
         if htmls:
             htmls.sort(key=lambda x: -(x[2].get("score") or 0))
             bundle_title = f"Raport zbiorczy klienta — {len(htmls)} aut POLECAM ({title_meta})"
@@ -1814,21 +1881,13 @@ async def regenerate_record_bundles(
             generated.append(f"client ({len(htmls)} lotów POLECAM, {len(bundle)//1024} KB)")
             logger.info("[regen] client bundle (POLECAM only) for record #%d -> %s", record_id, fname)
 
-        # ZBIORCZY KRÓTKI KLIENT (template Jinja2, niezależnie od engine — zawsze szybki)
-        from report.html_reports import render_client_report as _render_client_template
+        # ── Bundle: KLIENT krótki zbiorczy ──
         short_htmls = []
-        for item in showcase_polecam:
-            try:
-                html = await asyncio.to_thread(_render_client_template, item, criteria)
-                label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-                meta = {
-                    "recommendation": item.analysis.recommendation,
-                    "score": item.analysis.score,
-                    "lot_id": item.lot.lot_id,
-                }
-                short_htmls.append((label, html, meta))
-            except Exception:
-                logger.exception("Regen client_short failed for lot %s", item.lot.lot_id)
+        for it, res in zip(showcase_polecam, short_results):
+            if isinstance(res, Exception):
+                logger.exception("Regen client_short bundle failed for lot %s: %s", it.lot.lot_id, res)
+                continue
+            short_htmls.append((_label(it), res, _meta(it)))
         if short_htmls:
             short_htmls.sort(key=lambda x: -(x[2].get("score") or 0))
             bundle_title = f"Raport krótki zbiorczy klienta — {len(short_htmls)} aut POLECAM ({title_meta})"
@@ -1840,29 +1899,14 @@ async def regenerate_record_bundles(
             generated.append(f"client_short_bundle ({len(short_htmls)} lotów POLECAM, {len(bundle)//1024} KB)")
             logger.info("[regen] client_short_bundle for record #%d -> %s", record_id, fname)
 
-    # BROKER
-    if "broker" in requested_kinds:
-        lots_scanned = response.get("collected_count") or len(all_results_raw)
-        if eng == "hybrid":
-            from report.hybrid_reports import render_broker_hybrid
-            renderer_b = lambda item: render_broker_hybrid(item, criteria, lots_scanned=lots_scanned)
-        else:
-            from report.html_reports import render_broker_report
-            renderer_b = lambda item: render_broker_report(item, criteria, lots_scanned=lots_scanned)
-
+    # ── Bundle: BROKER ──
+    if broker_renderer is not None:
         htmls_b = []
-        for item in showcase:
-            try:
-                html = await asyncio.to_thread(renderer_b, item)
-                label = f"{item.lot.year or '?'} {item.lot.make or ''} {item.lot.model or ''} (#{item.lot.lot_id})".strip()
-                meta = {
-                    "recommendation": item.analysis.recommendation,
-                    "score": item.analysis.score,
-                    "lot_id": item.lot.lot_id,
-                }
-                htmls_b.append((label, html, meta))
-            except Exception:
-                logger.exception("Regen broker failed for lot %s", item.lot.lot_id)
+        for it, res in zip(showcase, broker_results):
+            if isinstance(res, Exception):
+                logger.exception("Regen broker failed for lot %s: %s", it.lot.lot_id, res)
+                continue
+            htmls_b.append((_label(it), res, _meta(it)))
         if htmls_b:
             order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
             htmls_b.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
@@ -1875,35 +1919,31 @@ async def regenerate_record_bundles(
             generated.append(f"broker ({len(htmls_b)} lotów, {len(bundle)//1024} KB)")
             logger.info("[regen] broker bundle for record #%d -> %s", record_id, fname)
 
-    # PER-LOT KRÓTKI KLIENT (template Jinja2, ~13ms/lot) — zawsze re-renderuje
-    # niezależnie od engine bo to oddzielny typ raportu (krótki vs pełny).
+    # ── PER-LOT KRÓTKI KLIENT (template Jinja2, ~13ms/lot) ──
     try:
-        from report.html_reports import render_client_report
         from api.client_database import get_record as _get_record
         rec = _get_record(record_id)
         existing_auto = (rec.get("response") or {}).get("auto_reports_by_lot_id") or {}
         short_count = 0
-        for idx, item in enumerate(showcase, 1):
+        for idx, (it, res) in enumerate(zip(showcase, per_lot_results), 1):
+            if isinstance(res, Exception):
+                logger.exception("Regen short client report failed for lot %s: %s", it.lot.lot_id, res)
+                continue
             try:
-                html = await asyncio.to_thread(render_client_report, item, criteria)
-                lot_id_safe = (item.lot.lot_id or f"lot{idx}").replace("/", "_")
-                # Spróbuj zachować istniejącą nazwę pliku (z artifact_urls)
+                lot_id_safe = (it.lot.lot_id or f"lot{idx}").replace("/", "_")
                 fname = f"{(criteria.make or 'rec').lower()}_regen_{record_id}_top{idx}_{lot_id_safe}_klient_krotki.html"
                 fpath = SEARCH_ARTIFACT_DIR / fname
-                fpath.write_text(html, encoding="utf-8")
-                short_url = _absolute_artifact_url(f"/artifacts/{fname}")
-                # Zaktualizuj auto_reports w response (zostawi inne URLe)
-                if item.lot.lot_id:
-                    if item.lot.lot_id not in existing_auto:
-                        existing_auto[item.lot.lot_id] = {}
-                    existing_auto[item.lot.lot_id]["client_short_url"] = "/artifacts/" + fname
+                fpath.write_text(res, encoding="utf-8")
+                if it.lot.lot_id:
+                    if it.lot.lot_id not in existing_auto:
+                        existing_auto[it.lot.lot_id] = {}
+                    existing_auto[it.lot.lot_id]["client_short_url"] = "/artifacts/" + fname
                 short_count += 1
             except Exception:
-                logger.exception("Regen short client report failed for lot %s", item.lot.lot_id)
+                logger.exception("Regen short client write failed for lot %s", it.lot.lot_id)
         if short_count:
             generated.append(f"client_short ({short_count} lotów, template)")
             logger.info("[regen] client_short for record #%d: %d lotów", record_id, short_count)
-            # Update response_json z nowymi short_urls (auto_reports_by_lot_id)
             try:
                 from api.client_database import _connect, _now
                 import json as _j
