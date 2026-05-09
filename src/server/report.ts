@@ -19,8 +19,9 @@ export function renderReportHtml(opts: {
   clientName: string;
   generatedAt: string;
   lots: AnalyzedLot[];
+  searchedBy?: string | null;
 }): string {
-  const { lots } = opts;
+  const { lots, searchedBy } = opts;
   const total = lots.length;
   const polecam = lots.filter((l) => l.analysis.recommendation === "POLECAM").length;
   const ryzyko = lots.filter((l) => l.analysis.recommendation === "RYZYKO").length;
@@ -120,7 +121,7 @@ export function renderReportHtml(opts: {
   .summary-item .lbl { font-size: 9pt; opacity: 0.8; }
 </style></head><body>
 <h1>Raport wyszukiwania aut z USA</h1>
-<p>Klient: <strong>${esc(opts.clientName)}</strong> | Wygenerowano: ${esc(opts.generatedAt)} | Łączna liczba przeanalizowanych lotów: ${total}</p>
+<p>Klient: <strong>${esc(opts.clientName)}</strong> | Wygenerowano: ${esc(opts.generatedAt)} | Łączna liczba przeanalizowanych lotów: ${total}${searchedBy ? ` | Wyszukiwanie wykonał: <strong>${esc(searchedBy)}</strong>` : ""}</p>
 <div class="summary"><div class="summary-grid">
   <div class="summary-item"><div class="num" style="color:#7dffb3">${polecam}</div><div class="lbl">POLECAM</div></div>
   <div class="summary-item"><div class="num" style="color:#ffe08a">${ryzyko}</div><div class="lbl">RYZYKO</div></div>
@@ -134,6 +135,7 @@ export function renderMailHtml(opts: {
   clientName: string;
   topLots: AnalyzedLot[];
   generatedAt: string;
+  searchedBy?: string | null;
 }): string {
   const rows = opts.topLots
     .slice(0, 5)
@@ -151,7 +153,7 @@ export function renderMailHtml(opts: {
 <body style="font-family:Arial,sans-serif;color:#222;background:#f4f5f2;margin:0;padding:24px">
 <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
 <h2 style="color:#1a3a5c;margin-top:0">Cześć ${esc(opts.clientName)},</h2>
-<p>Poniżej przesyłam wybrane oferty z aukcji Copart i IAAI dopasowane do Twoich kryteriów. Wygenerowano: ${esc(opts.generatedAt)}.</p>
+<p>Poniżej przesyłam wybrane oferty z aukcji Copart i IAAI dopasowane do Twoich kryteriów. Wygenerowano: ${esc(opts.generatedAt)}.${opts.searchedBy ? ` Wyszukiwanie wykonał: <strong>${esc(opts.searchedBy)}</strong>.` : ""}</p>
 <table style="width:100%;border-collapse:collapse;margin:16px 0">
 <thead><tr style="background:#1a3a5c;color:#fff"><th align="left" style="padding:8px">Pojazd</th><th align="left" style="padding:8px">Stan</th><th align="left" style="padding:8px">Bid</th><th align="left" style="padding:8px">Ocena</th></tr></thead>
 <tbody>${rows}</tbody></table>

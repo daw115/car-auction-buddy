@@ -2223,7 +2223,11 @@ function Panel() {
         setAnalysisJob((s) => s ? { ...s, phase: "rendering", elapsedMs: Date.now() - startedAt } : s);
         try {
           const rep = (await fnRenderReport({
-            data: { clientName: activeClient?.name ?? "Klient", analyzed: r.analysis },
+            data: {
+              clientName: activeClient?.name ?? "Klient",
+              analyzed: r.analysis,
+              searchedBy: getCurrentSiteUser(),
+            },
           })) as { report_html: string; mail_html: string };
           generatedReportHtml = rep.report_html;
           generatedMailHtml = rep.mail_html;
@@ -2371,6 +2375,7 @@ function Panel() {
         data: {
           clientName: activeClient?.name ?? "Klient",
           analyzed: analysis,
+          searchedBy: getCurrentSiteUser(),
         },
       })) as { report_html: string; mail_html: string };
       setReportHtml(r.report_html);
