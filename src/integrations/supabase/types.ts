@@ -250,6 +250,24 @@ export type Database = {
         }
         Relationships: []
       }
+      site_user_passwords: {
+        Row: {
+          password_hash: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          password_hash: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          password_hash?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
       watchlist: {
         Row: {
           active: boolean
