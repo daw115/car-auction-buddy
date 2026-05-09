@@ -2375,6 +2375,7 @@ function Panel() {
         data: {
           clientName: activeClient?.name ?? "Klient",
           analyzed: analysis,
+          searchedBy: getCurrentSiteUser(),
         },
       })) as { report_html: string; mail_html: string };
       setReportHtml(r.report_html);
