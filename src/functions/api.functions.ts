@@ -692,6 +692,7 @@ export const renderReport = createServerFn({ method: "POST" })
     z.object({
       clientName: z.string().min(1).max(200),
       analyzed: z.array(z.any()),
+      searchedBy: z.string().max(100).optional().nullable(),
     }).parse,
   )
   .handler(async ({ data }) => {
@@ -703,11 +704,13 @@ export const renderReport = createServerFn({ method: "POST" })
         clientName: data.clientName,
         generatedAt,
         lots: sorted,
+        searchedBy: data.searchedBy ?? null,
       }),
       mail_html: renderMailHtml({
         clientName: data.clientName,
         generatedAt,
         topLots: sorted,
+        searchedBy: data.searchedBy ?? null,
       }),
     };
   });
