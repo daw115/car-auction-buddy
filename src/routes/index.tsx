@@ -39,7 +39,7 @@ import {
   batchSearch,
   getBackendRecordsList,
   getBackendRecordDetails,
-  
+  deleteBackendRecord,
   regenerateBundles,
 } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
