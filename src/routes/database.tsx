@@ -394,6 +394,16 @@ function RecordsSection() {
                         {r.analysis_notice || "—"}
                       </TableCell>
                       <TableCell className="text-right text-xs">{r.collected_count ?? "—"}</TableCell>
+                      <TableCell
+                        className={`text-right text-xs whitespace-nowrap ${durationColorClass(r.duration_seconds)}`}
+                        title={
+                          r.duration_seconds != null
+                            ? `${Math.round(r.duration_seconds)}s = ${formatDuration(r.duration_seconds)}`
+                            : undefined
+                        }
+                      >
+                        {formatDuration(r.duration_seconds)}
+                      </TableCell>
                       <TableCell>
                         <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                       </TableCell>
