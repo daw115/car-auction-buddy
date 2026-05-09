@@ -945,9 +945,17 @@ function BatchJobCard({
 
 // ---------- Backend Records Panel ----------
 
+function getRecordSearchedBy(r: any): string | null {
+  return r?.searched_by ?? r?.criteria?.searched_by ?? r?.meta?.searched_by ?? null;
+}
+
 function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordId: number | null; onSelectRecord: (id: number) => void }) {
   const fnListBackend = useServerFn(getBackendRecordsList);
+  const fnDeleteBackend = useServerFn(deleteBackendRecord);
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
+  const [userFilter, setUserFilter] = useState<string>("all");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: recordsData, isLoading, refetch } = useQuery({
     queryKey: ["backend-records", statusFilter],
@@ -955,7 +963,13 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
     refetchInterval: 30000,
   });
 
-  const records = recordsData?.records ?? [];
+  const allRecords = recordsData?.records ?? [];
+  const records = allRecords.filter((r) => {
+    if (userFilter === "all") return true;
+    const sb = getRecordSearchedBy(r);
+    if (userFilter === "__none__") return !sb;
+    return sb === userFilter;
+  });
   const total = recordsData?.total ?? 0;
 
   const filters = [
@@ -966,10 +980,28 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
     { value: "interrupted", label: "⚠️ Przerwane" },
   ];
 
+  async function handleDelete(r: BackendRecord) {
+    if (!confirm(`Usunąć rekord "${r.title}"? Tej operacji nie można cofnąć.`)) return;
+    setDeletingId(r.id);
+    try {
+      const res = await fnDeleteBackend({ data: { id: String(r.id) } });
+      if (res.ok) {
+        toast.success(`Usunięto rekord (pliki: ${res.files_removed})`);
+        await queryClient.invalidateQueries({ queryKey: ["backend-records"] });
+      } else {
+        toast.error(`Nie usunięto: ${res.detail}`);
+      }
+    } catch (e: any) {
+      toast.error(`Błąd: ${e?.message ?? "nieznany"}`);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <Card className="p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">📂 Rekordy backendu ({total})</h2>
+        <h2 className="text-sm font-semibold">📂 Rekordy backendu ({records.length}/{total})</h2>
         <Button variant="ghost" size="sm" onClick={() => void refetch()}>
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
@@ -987,10 +1019,24 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
           </Button>
         ))}
       </div>
+      <div className="mb-2">
+        <Select value={userFilter} onValueChange={setUserFilter}>
+          <SelectTrigger className="h-7 text-[11px]">
+            <SelectValue placeholder="Filtruj po użytkowniku" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">👥 Wszyscy użytkownicy</SelectItem>
+            {SITE_USERS.map((u) => (
+              <SelectItem key={u} value={u}>{u}</SelectItem>
+            ))}
+            <SelectItem value="__none__">— Bez przypisania</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className="max-h-[600px] overflow-auto space-y-1">
         {!records.length && !isLoading && (
           <div className="text-sm text-muted-foreground italic py-8 text-center">
-            Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}.
+            Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}{userFilter !== "all" ? ` (filtr: ${userFilter})` : ""}.
           </div>
         )}
         {records.map((r) => (
@@ -998,7 +1044,9 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
             key={r.id}
             record={r}
             isActive={activeRecordId === r.id}
+            isDeleting={deletingId === r.id}
             onClick={() => onSelectRecord(r.id)}
+            onDelete={() => handleDelete(r)}
           />
         ))}
       </div>
@@ -1006,35 +1054,50 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
   );
 }
 
-function BackendRecordRow({ record, isActive, onClick }: { record: BackendRecord; isActive?: boolean; onClick: () => void }) {
+function BackendRecordRow({ record, isActive, isDeleting, onClick, onDelete }: { record: BackendRecord; isActive?: boolean; isDeleting?: boolean; onClick: () => void; onDelete: () => void }) {
   const statusIcon: Record<string, string> = {
     done: "✅", new: "✅", cancelled: "⛔", error: "❌", interrupted: "⚠️",
   };
   const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
     done: "default", new: "default", cancelled: "secondary", error: "destructive", interrupted: "outline",
   };
+  const searchedBy = getRecordSearchedBy(record);
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`w-full p-2 rounded border transition-colors text-left ${isActive ? "border-primary bg-accent" : "hover:bg-muted/50"}`}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(); }}
+      className={`group w-full p-2 rounded border transition-colors text-left cursor-pointer ${isActive ? "border-primary bg-accent" : "hover:bg-muted/50"}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium truncate flex-1">{record.title}</span>
         <Badge variant={statusVariant[record.status] ?? "outline"} className="text-[10px] shrink-0">
           {statusIcon[record.status] ?? "?"} {record.status}
         </Badge>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 w-6 p-0 shrink-0 opacity-60 hover:opacity-100 hover:text-destructive"
+          disabled={isDeleting}
+          title="Usuń rekord"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        >
+          {isDeleting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        </Button>
       </div>
-      <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
         <span>{new Date(record.created_at).toLocaleString("pl-PL")}</span>
         {record.collected_count > 0 && <span>· {record.collected_count} lotów</span>}
         {record.client?.name && <span>· {record.client.name}</span>}
+        {searchedBy && <Badge variant="secondary" className="text-[9px] py-0 px-1">👤 {searchedBy}</Badge>}
       </div>
       {record.analysis_notice && (
         <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 truncate">
           {record.analysis_notice}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
