@@ -45,6 +45,7 @@ import {
 import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
+import { getCurrentSiteUser } from "@/lib/site-user";
 import { LogsPanel } from "@/components/LogsPanel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
