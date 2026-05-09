@@ -321,6 +321,9 @@ function RecordsSection() {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">📋 Search Records</CardTitle>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)} className="text-xs gap-1">
+            <Brain className="h-3.5 w-3.5" /> Przeanalizuj feedback
+          </Button>
           <Select value={userFilter} onValueChange={setUserFilter}>
             <SelectTrigger className="h-8 w-36 text-xs">
               <SelectValue placeholder="Użytkownik" />
