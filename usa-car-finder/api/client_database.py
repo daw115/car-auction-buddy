@@ -68,6 +68,28 @@ def init_db() -> None:
         if "duration_seconds" not in cols:
             conn.execute("ALTER TABLE search_records ADD COLUMN duration_seconds REAL")
 
+        # Lot feedback — kciuki w górę/dół per lot dla doskonalenia kryteriów
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS lot_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER NOT NULL,
+                lot_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                vote TEXT NOT NULL,
+                reason TEXT,
+                lot_snapshot TEXT NOT NULL,
+                criteria_snapshot TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(record_id, lot_id, source)
+            );
+            CREATE INDEX IF NOT EXISTS idx_lot_feedback_record ON lot_feedback(record_id);
+            CREATE INDEX IF NOT EXISTS idx_lot_feedback_lot ON lot_feedback(lot_id, source);
+            CREATE INDEX IF NOT EXISTS idx_lot_feedback_vote ON lot_feedback(vote);
+            """
+        )
+
 
 def update_artifact_urls(record_id: int, new_urls: dict) -> bool:
     """Aktualizuje artifact_urls_json dla rekordu (merge z istniejącymi)."""
@@ -354,4 +376,184 @@ def get_record(record_id: int) -> Optional[dict[str, Any]]:
         "duration_seconds": row["duration_seconds"] if "duration_seconds" in row.keys() else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lot feedback (kciuki w górę/dół) — uczenie kryteriów wyszukiwania
+# ─────────────────────────────────────────────────────────────────────────────
+
+def save_feedback(
+    *,
+    record_id: int,
+    lot_id: str,
+    source: str,
+    vote: str,
+    reason: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """Zapisuje feedback (vote 'up'/'down') dla konkretnego lota z rekordu wyszukiwania.
+
+    Idempotent: drugi vote na ten sam (record_id, lot_id, source) nadpisuje (UPSERT).
+
+    Tworzy snapshoty: lot data + analysis (z response.all_results) i criteria
+    z search_records. Pozwala później AI agregować feedback nawet gdy lot/record
+    zostanie usunięty.
+
+    Returns: dict z feedback row lub None jeśli rekord/lot nie istnieje.
+    """
+    init_db()
+    if vote not in ("up", "down"):
+        raise ValueError("vote must be 'up' or 'down'")
+    if not lot_id or not source:
+        raise ValueError("lot_id and source required")
+
+    now = _now()
+    with _connect() as conn:
+        # Pobierz response.all_results z search_records żeby zrobić snapshot lot data
+        sr_row = conn.execute(
+            "SELECT response_json, criteria_json FROM search_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+        if sr_row is None:
+            return None
+
+        try:
+            response = json.loads(sr_row["response_json"] or "{}")
+            criteria = json.loads(sr_row["criteria_json"] or "{}")
+        except Exception:
+            response = {}
+            criteria = {}
+
+        all_results = response.get("all_results") or []
+        lot_snapshot = None
+        for al in all_results:
+            lot = (al.get("lot") or {})
+            if str(lot.get("lot_id")) == str(lot_id) and (lot.get("source") or "") == source:
+                lot_snapshot = al
+                break
+        if lot_snapshot is None:
+            return None  # lot nie należy do tego rekordu
+
+        # UPSERT: ON CONFLICT na (record_id, lot_id, source) → update vote/reason/snapshot
+        conn.execute(
+            """
+            INSERT INTO lot_feedback
+                (record_id, lot_id, source, vote, reason, lot_snapshot, criteria_snapshot,
+                 created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(record_id, lot_id, source) DO UPDATE SET
+                vote = excluded.vote,
+                reason = excluded.reason,
+                lot_snapshot = excluded.lot_snapshot,
+                criteria_snapshot = excluded.criteria_snapshot,
+                updated_at = excluded.updated_at
+            """,
+            (
+                record_id, lot_id, source, vote, reason,
+                json.dumps(lot_snapshot, ensure_ascii=False),
+                json.dumps(criteria, ensure_ascii=False),
+                now, now,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM lot_feedback WHERE record_id = ? AND lot_id = ? AND source = ?",
+            (record_id, lot_id, source),
+        ).fetchone()
+
+    return {
+        "id": row["id"],
+        "record_id": row["record_id"],
+        "lot_id": row["lot_id"],
+        "source": row["source"],
+        "vote": row["vote"],
+        "reason": row["reason"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def delete_feedback(record_id: int, lot_id: str, source: str) -> bool:
+    """Usuwa feedback (user wycofuje vote)."""
+    init_db()
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM lot_feedback WHERE record_id = ? AND lot_id = ? AND source = ?",
+            (record_id, lot_id, source),
+        )
+        return (cur.rowcount or 0) > 0
+
+
+def list_feedback_for_record(record_id: int) -> list[dict[str, Any]]:
+    """Zwraca listę vote'ów dla danego rekordu (do wyświetlenia w UI)."""
+    init_db()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, lot_id, source, vote, reason, created_at, updated_at "
+            "FROM lot_feedback WHERE record_id = ? ORDER BY created_at",
+            (record_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_all_feedback(vote_filter: Optional[str] = None, limit: int = 1000) -> list[dict[str, Any]]:
+    """Lista wszystkich feedbacków (admin/analyze). Z snapshotami lot + criteria."""
+    init_db()
+    where = ""
+    params: list[Any] = []
+    if vote_filter in ("up", "down"):
+        where = "WHERE vote = ?"
+        params.append(vote_filter)
+    params.append(int(max(1, min(limit, 5000))))
+
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT * FROM lot_feedback
+            {where}
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+
+    result = []
+    for r in rows:
+        try:
+            lot_snap = json.loads(r["lot_snapshot"] or "{}")
+        except Exception:
+            lot_snap = {}
+        try:
+            crit_snap = json.loads(r["criteria_snapshot"] or "{}")
+        except Exception:
+            crit_snap = {}
+        result.append({
+            "id": r["id"],
+            "record_id": r["record_id"],
+            "lot_id": r["lot_id"],
+            "source": r["source"],
+            "vote": r["vote"],
+            "reason": r["reason"],
+            "lot": lot_snap,
+            "criteria": crit_snap,
+            "created_at": r["created_at"],
+            "updated_at": r["updated_at"],
+        })
+    return result
+
+
+def feedback_stats() -> dict[str, Any]:
+    """Zwraca podsumowanie agregatów feedback (do dashboardu)."""
+    init_db()
+    with _connect() as conn:
+        total = conn.execute("SELECT COUNT(*) AS n FROM lot_feedback").fetchone()["n"]
+        ups = conn.execute("SELECT COUNT(*) AS n FROM lot_feedback WHERE vote = 'up'").fetchone()["n"]
+        downs = conn.execute("SELECT COUNT(*) AS n FROM lot_feedback WHERE vote = 'down'").fetchone()["n"]
+        with_reason = conn.execute(
+            "SELECT COUNT(*) AS n FROM lot_feedback WHERE vote = 'down' AND reason IS NOT NULL AND reason != ''"
+        ).fetchone()["n"]
+    return {
+        "total": total,
+        "up": ups,
+        "down": downs,
+        "down_with_reason": with_reason,
     }

@@ -1857,6 +1857,249 @@ async def delete_client_record(
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Lot feedback (kciuki w górę/dół) — uczenie kryteriów wyszukiwania
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class LotFeedbackRequest(BaseModel):
+    lot_id: str
+    source: str  # 'copart' | 'iaai'
+    vote: str    # 'up' | 'down'
+    reason: Optional[str] = None  # tylko dla 'down'
+
+
+@app.post("/api/records/{record_id}/feedback")
+async def submit_lot_feedback(
+    record_id: int,
+    request: LotFeedbackRequest,
+    _auth: None = Depends(_require_bearer),
+):
+    """Zapisuje feedback kciuk w górę / w dół dla konkretnego lota.
+
+    Body:
+      { "lot_id": "45661246", "source": "copart", "vote": "up" | "down",
+        "reason": "Za stary rocznik" }  // reason opcjonalny, sensowny dla 'down'
+
+    Vote idempotentny: drugi vote na ten sam lot nadpisuje (UPSERT). Pozwala
+    zmienić zdanie (up → down lub odwrotnie).
+
+    Tworzy snapshot lot data + criteria — feedback zostaje nawet gdy rekord
+    zostanie usunięty (do późniejszej analizy AI).
+    """
+    from api.client_database import save_feedback
+
+    if request.vote not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="vote musi być 'up' lub 'down'")
+
+    try:
+        result = save_feedback(
+            record_id=record_id,
+            lot_id=request.lot_id.strip(),
+            source=(request.source or "").strip().lower(),
+            vote=request.vote,
+            reason=(request.reason or "").strip() or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Lot {request.source}::{request.lot_id} nie znaleziony w rekordzie #{record_id}",
+        )
+
+    logger.info("[feedback] #%d %s::%s → %s%s",
+                record_id, request.source, request.lot_id, request.vote,
+                f" ({result['reason'][:60]})" if result.get("reason") else "")
+    return result
+
+
+@app.delete("/api/records/{record_id}/feedback/{lot_id}")
+async def delete_lot_feedback(
+    record_id: int,
+    lot_id: str,
+    source: str,
+    _auth: None = Depends(_require_bearer),
+):
+    """Wycofuje vote (user się rozmyślił).
+
+    Query: ?source=copart|iaai (wymagany — bo (lot_id, source) razem unikalne)
+    """
+    from api.client_database import delete_feedback
+
+    if not source:
+        raise HTTPException(status_code=400, detail="Query param 'source' wymagany")
+
+    removed = delete_feedback(record_id, lot_id.strip(), source.strip().lower())
+    if not removed:
+        raise HTTPException(status_code=404, detail="Feedback nie znaleziony")
+    return {"deleted": True, "record_id": record_id, "lot_id": lot_id, "source": source}
+
+
+@app.get("/api/records/{record_id}/feedback")
+async def list_record_feedback(
+    record_id: int,
+    _auth: None = Depends(_require_bearer),
+):
+    """Zwraca wszystkie vote'y dla danego rekordu (do display w UI).
+
+    UI używa tego do pokazania czy user już zagłosował na konkretny lot
+    (żeby zaznaczyć przyciski up/down jako aktywne).
+
+    Returns: { feedback: [{lot_id, source, vote, reason, ...}], up: N, down: N }
+    """
+    from api.client_database import list_feedback_for_record
+    items = list_feedback_for_record(record_id)
+    ups = sum(1 for x in items if x["vote"] == "up")
+    downs = sum(1 for x in items if x["vote"] == "down")
+    return {"feedback": items, "up": ups, "down": downs, "total": len(items)}
+
+
+@app.get("/api/feedback")
+async def admin_list_all_feedback(
+    vote: Optional[str] = None,
+    limit: int = 200,
+    _auth: None = Depends(_require_bearer),
+):
+    """Admin: lista wszystkich feedbacków (z snapshotami lot+criteria).
+
+    Query: ?vote=up|down (filtr), ?limit=N (max 5000)
+    """
+    from api.client_database import list_all_feedback, feedback_stats
+    items = list_all_feedback(vote_filter=vote, limit=limit)
+    stats = feedback_stats()
+    return {"items": items, "stats": stats}
+
+
+@app.post("/api/feedback/analyze")
+async def analyze_feedback(_auth: None = Depends(_require_bearer)):
+    """AI-analiza wszystkich zebranych vote'ów → rekomendacje zmian kryteriów.
+
+    Agreguje up + down feedback, wysyła do Claude jako:
+      - lista UP (co user lubi: marka/model/rok/score/damage etc.)
+      - lista DOWN z reason (co user odrzuca i dlaczego)
+      - statystyki: avg score up vs down, common damage types, mileage range
+
+    Returns:
+      {
+        "recommendations": {
+          "preferred_makes": ["BMW", "Audi"],
+          "avoided_damage_types": ["Flood", "Fire", "Front End Heavy"],
+          "preferred_year_min": 2018,
+          "preferred_max_odometer_mi": 80000,
+          "preferred_seller_type": "insurance",
+          "score_threshold": 6.5,
+          "additional_notes": "..."
+        },
+        "summary": "Krótka analiza po polsku — co user wybiera, co odrzuca, dlaczego",
+        "stats": { up: N, down: N, avg_score_up: X, avg_score_down: Y, ... },
+        "items_analyzed": N
+      }
+    """
+    from api.client_database import list_all_feedback, feedback_stats
+
+    items = list_all_feedback(limit=5000)
+    if not items:
+        raise HTTPException(status_code=400, detail="Brak feedbacków do analizy. Zagłosuj 👍/👎 najpierw.")
+
+    # Buduj kompaktowy payload do AI: lot data + analysis fragments + criteria + reason
+    ups: list[dict] = []
+    downs: list[dict] = []
+    all_scores_up: list[float] = []
+    all_scores_down: list[float] = []
+    for it in items:
+        lot = (it.get("lot") or {}).get("lot") or {}
+        analysis = (it.get("lot") or {}).get("analysis") or {}
+        score = analysis.get("score")
+        compact = {
+            "make": lot.get("make"),
+            "model": lot.get("model"),
+            "year": lot.get("year"),
+            "odometer_mi": lot.get("odometer_mi"),
+            "damage_primary": lot.get("damage_primary"),
+            "damage_secondary": lot.get("damage_secondary"),
+            "title_type": lot.get("title_type"),
+            "seller_type": lot.get("seller_type"),
+            "score": score,
+            "recommendation": analysis.get("recommendation"),
+            "current_bid_usd": lot.get("current_bid_usd"),
+            "criteria_make": (it.get("criteria") or {}).get("make"),
+            "criteria_model": (it.get("criteria") or {}).get("model"),
+        }
+        if it["vote"] == "up":
+            ups.append(compact)
+            if isinstance(score, (int, float)):
+                all_scores_up.append(float(score))
+        elif it["vote"] == "down":
+            compact["reason"] = it.get("reason") or "(brak komentarza)"
+            downs.append(compact)
+            if isinstance(score, (int, float)):
+                all_scores_down.append(float(score))
+
+    stats = feedback_stats()
+    stats["avg_score_up"] = round(sum(all_scores_up) / len(all_scores_up), 2) if all_scores_up else None
+    stats["avg_score_down"] = round(sum(all_scores_down) / len(all_scores_down), 2) if all_scores_down else None
+    stats["items_analyzed"] = len(items)
+
+    # AI call (reuse hybrid LLM proxy) — używamy Claude bezpośrednio dla pełnej kontroli
+    from report.hybrid_reports import _call_llm_json
+    import json as _json
+
+    system = (
+        "Jesteś analitykiem rynku importu aut z USA. Na podstawie feedbacków brokera "
+        "(kciuki w górę = lubi, w dół = odrzuca + powód) generujesz rekomendacje "
+        "zmian kryteriów wyszukiwania. Zwracasz WYŁĄCZNIE poprawny JSON, bez markdown."
+    )
+    user_payload = {
+        "ups": ups[:50],     # cap żeby nie przekroczyć tokens
+        "downs": downs[:50],
+        "stats": stats,
+    }
+    user = (
+        "Przeanalizuj feedback brokera. Zwróć JSON o schemacie:\n"
+        "{\n"
+        '  "recommendations": {\n'
+        '    "preferred_makes": ["lista marek które user wybiera ZNACZĄCO częściej"],\n'
+        '    "avoided_makes": ["marki/modele odrzucane lub problematyczne"],\n'
+        '    "preferred_damage_types": ["typy uszkodzeń które user akceptuje"],\n'
+        '    "avoided_damage_types": ["typy uszkodzeń odrzucane (z reasonów)"],\n'
+        '    "preferred_year_min": null lub liczba (najmłodszy rocznik akceptowany przez ups),\n'
+        '    "preferred_max_odometer_mi": null lub liczba (max przebieg z ups),\n'
+        '    "preferred_seller_type": "insurance" | "dealer" | null,\n'
+        '    "score_threshold": null lub liczba (minimum score który user akceptuje),\n'
+        '    "additional_notes": "max 500 znaków — inne wzorce np. cena, lokalizacja, title"\n'
+        "  },\n"
+        '  "summary": "max 800 znaków po polsku — co user wybiera (na bazie ups), '
+        'co najczęściej odrzuca (na bazie downs+reasons), jakie wzorce widać"\n'
+        "}\n\n"
+        "DANE FEEDBACKÓW (snapshot lot data + criteria + reason dla downs):\n"
+        + _json.dumps(user_payload, ensure_ascii=False, indent=1)[:8000]
+        + "\n\nZASADY:\n"
+        "- Bazuj na FAKTACH z danych (nie fantazjuj)\n"
+        "- Jeśli mało danych w jakimś wymiarze (np. tylko 1 vote dla danej marki) — daj null lub pomiń\n"
+        "- additional_notes: konkretne uwagi obserwacyjne, nie ogólniki\n"
+        "- summary: zaczyna od 'Na podstawie X głosów: ...'"
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            _call_llm_json,
+            system=system,
+            user=user,
+            max_tokens=2000,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM analiza failed: {exc}") from exc
+
+    return {
+        "recommendations": result.get("recommendations") or {},
+        "summary": result.get("summary") or "",
+        "stats": stats,
+        "items_analyzed": len(items),
+    }
+
+
 @app.post("/api/records/{record_id}/regenerate-bundles")
 async def regenerate_record_bundles(
     record_id: int,
