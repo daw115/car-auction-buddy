@@ -1,13 +1,25 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Lock } from "lucide-react";
+import { Lock, LogOut, User } from "lucide-react";
+import {
+  SITE_USERS,
+  SITE_CURRENT_USER_KEY,
+  SITE_LAST_ACTIVE_KEY,
+  bumpSiteActivity,
+  type SiteUser,
+} from "@/lib/site-user";
 
-// Zmień to hasło na własne. Po zmianie wszyscy zalogowani będą musieli wpisać je ponownie.
+// Hasło ogólne — wymagane raz na nowego użytkownika żeby ustawić własne hasło.
 const SITE_PASSWORD = "carbuddy2026";
-const STORAGE_KEY = "site_access_v1";
+// Per-user hash hasła osobistego.
+const USER_HASH_KEY = (u: string) => `site_user_pw_v1:${u}`;
+// Sesja unlocked dla danego użytkownika.
+const UNLOCKED_KEY = "site_unlocked_user_v1";
+// Auto-logout: 60 minut nieaktywności.
+const INACTIVITY_MS = 60 * 60 * 1000;
 
 async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -16,71 +28,278 @@ async function sha256(text: string): Promise<string> {
     .join("");
 }
 
-export function PasswordGate({ children }: { children: React.ReactNode }) {
-  const [unlocked, setUnlocked] = useState<boolean | null>(null);
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
-  const [expectedHash, setExpectedHash] = useState<string>("");
+type Step = "pickUser" | "enterPersonal" | "setPersonal" | "unlocked";
 
+export function PasswordGate({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+  const [step, setStep] = useState<Step>("pickUser");
+  const [user, setUser] = useState<SiteUser | null>(null);
+  const [masterPw, setMasterPw] = useState("");
+  const [personalPw, setPersonalPw] = useState("");
+  const [personalPw2, setPersonalPw2] = useState("");
+  const [error, setError] = useState("");
+  const inactivityTimer = useRef<number | null>(null);
+
+  // Bootstrap: sprawdź czy ktoś już zalogowany i czy sesja nie wygasła.
   useEffect(() => {
-    let mounted = true;
-    sha256(SITE_PASSWORD).then((hash) => {
-      if (!mounted) return;
-      setExpectedHash(hash);
-      const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-      setUnlocked(stored === hash);
-    });
-    return () => {
-      mounted = false;
-    };
+    if (typeof window === "undefined") return;
+    const unlockedUser = localStorage.getItem(UNLOCKED_KEY);
+    const last = Number(localStorage.getItem(SITE_LAST_ACTIVE_KEY) || 0);
+    const expired = !last || Date.now() - last > INACTIVITY_MS;
+
+    if (unlockedUser && SITE_USERS.includes(unlockedUser as SiteUser) && !expired) {
+      setUser(unlockedUser as SiteUser);
+      setStep("unlocked");
+      bumpSiteActivity();
+    } else if (expired && unlockedUser) {
+      localStorage.removeItem(UNLOCKED_KEY);
+    }
+    setReady(true);
   }, []);
 
-  if (unlocked === null) return null;
-  if (unlocked) return <>{children}</>;
+  // Tracking aktywności + auto-logout.
+  useEffect(() => {
+    if (step !== "unlocked") return;
 
-  const handleSubmit = async (e: FormEvent) => {
+    const onActivity = () => {
+      bumpSiteActivity();
+      scheduleLogout();
+    };
+    const scheduleLogout = () => {
+      if (inactivityTimer.current) window.clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = window.setTimeout(() => {
+        handleLogout();
+      }, INACTIVITY_MS);
+    };
+
+    const events: Array<keyof WindowEventMap> = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    scheduleLogout();
+    bumpSiteActivity();
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      if (inactivityTimer.current) window.clearTimeout(inactivityTimer.current);
+    };
+  }, [step]);
+
+  function handleLogout() {
+    localStorage.removeItem(UNLOCKED_KEY);
+    setUser(null);
+    setStep("pickUser");
+    setMasterPw("");
+    setPersonalPw("");
+    setPersonalPw2("");
+    setError("");
+  }
+
+  async function pickUser(u: SiteUser) {
+    setUser(u);
+    setError("");
+    const hasPersonal = !!localStorage.getItem(USER_HASH_KEY(u));
+    setStep(hasPersonal ? "enterPersonal" : "setPersonal");
+  }
+
+  async function submitPersonal(e: FormEvent) {
     e.preventDefault();
-    const hash = await sha256(value);
-    if (hash === expectedHash) {
-      localStorage.setItem(STORAGE_KEY, hash);
-      setUnlocked(true);
+    if (!user) return;
+    const stored = localStorage.getItem(USER_HASH_KEY(user));
+    const hash = await sha256(personalPw);
+    if (stored && hash === stored) {
+      localStorage.setItem(UNLOCKED_KEY, user);
+      localStorage.setItem(SITE_CURRENT_USER_KEY, user);
+      bumpSiteActivity();
+      setPersonalPw("");
+      setStep("unlocked");
     } else {
-      setError("Nieprawidłowe hasło");
-      setValue("");
+      setError("Nieprawidłowe hasło osobiste");
+      setPersonalPw("");
     }
-  };
+  }
+
+  async function submitSetup(e: FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+    if (masterPw !== SITE_PASSWORD) {
+      setError("Nieprawidłowe hasło ogólne");
+      setMasterPw("");
+      return;
+    }
+    if (personalPw.length < 4) {
+      setError("Hasło osobiste musi mieć min. 4 znaki");
+      return;
+    }
+    if (personalPw !== personalPw2) {
+      setError("Hasła nie są identyczne");
+      return;
+    }
+    const hash = await sha256(personalPw);
+    localStorage.setItem(USER_HASH_KEY(user), hash);
+    localStorage.setItem(UNLOCKED_KEY, user);
+    localStorage.setItem(SITE_CURRENT_USER_KEY, user);
+    bumpSiteActivity();
+    setMasterPw("");
+    setPersonalPw("");
+    setPersonalPw2("");
+    setStep("unlocked");
+  }
+
+  if (!ready) return null;
+
+  if (step === "unlocked" && user) {
+    return (
+      <>
+        {children}
+        <button
+          onClick={handleLogout}
+          className="fixed bottom-3 right-3 z-50 inline-flex items-center gap-1.5 rounded-full bg-card/90 backdrop-blur border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-card shadow-sm"
+          title="Wyloguj"
+        >
+          <User className="h-3.5 w-3.5" />
+          <span className="font-medium text-foreground">{user}</span>
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm p-6">
-        <div className="flex flex-col items-center text-center mb-4">
+        <div className="flex flex-col items-center text-center mb-5">
           <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
             <Lock className="h-5 w-5 text-primary" />
           </div>
-          <h1 className="text-lg font-semibold">Strona chroniona hasłem</h1>
+          <h1 className="text-lg font-semibold">
+            {step === "pickUser" && "Kim jesteś?"}
+            {step === "enterPersonal" && `Hasło — ${user}`}
+            {step === "setPersonal" && `Pierwsze logowanie — ${user}`}
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Podaj hasło dostępu, aby kontynuować.
+            {step === "pickUser" && "Wybierz swoje konto."}
+            {step === "enterPersonal" && "Podaj swoje hasło osobiste."}
+            {step === "setPersonal" &&
+              "Podaj hasło ogólne, a następnie ustaw własne hasło dostępu."}
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="site-password">Hasło</Label>
-            <Input
-              id="site-password"
-              type="password"
-              autoFocus
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError("");
-              }}
-            />
-            {error && <p className="text-xs text-destructive">{error}</p>}
+
+        {step === "pickUser" && (
+          <div className="grid grid-cols-2 gap-2">
+            {SITE_USERS.map((u) => (
+              <Button
+                key={u}
+                variant="outline"
+                className="h-12 justify-start gap-2"
+                onClick={() => pickUser(u)}
+              >
+                <User className="h-4 w-4" />
+                {u}
+              </Button>
+            ))}
           </div>
-          <Button type="submit" className="w-full" disabled={!value}>
-            Wejdź
-          </Button>
-        </form>
+        )}
+
+        {step === "enterPersonal" && (
+          <form onSubmit={submitPersonal} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="personal-pw">Hasło osobiste</Label>
+              <Input
+                id="personal-pw"
+                type="password"
+                autoFocus
+                value={personalPw}
+                onChange={(e) => {
+                  setPersonalPw(e.target.value);
+                  setError("");
+                }}
+              />
+              {error && <p className="text-xs text-destructive">{error}</p>}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setStep("pickUser");
+                  setUser(null);
+                  setError("");
+                  setPersonalPw("");
+                }}
+              >
+                Wstecz
+              </Button>
+              <Button type="submit" className="flex-1" disabled={!personalPw}>
+                Wejdź
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {step === "setPersonal" && (
+          <form onSubmit={submitSetup} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="master-pw">Hasło ogólne</Label>
+              <Input
+                id="master-pw"
+                type="password"
+                autoFocus
+                value={masterPw}
+                onChange={(e) => {
+                  setMasterPw(e.target.value);
+                  setError("");
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-pw">Twoje nowe hasło</Label>
+              <Input
+                id="new-pw"
+                type="password"
+                value={personalPw}
+                onChange={(e) => {
+                  setPersonalPw(e.target.value);
+                  setError("");
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-pw2">Powtórz nowe hasło</Label>
+              <Input
+                id="new-pw2"
+                type="password"
+                value={personalPw2}
+                onChange={(e) => {
+                  setPersonalPw2(e.target.value);
+                  setError("");
+                }}
+              />
+              {error && <p className="text-xs text-destructive">{error}</p>}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setStep("pickUser");
+                  setUser(null);
+                  setError("");
+                  setMasterPw("");
+                  setPersonalPw("");
+                  setPersonalPw2("");
+                }}
+              >
+                Wstecz
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={!masterPw || !personalPw || !personalPw2}
+              >
+                Ustaw hasło i wejdź
+              </Button>
+            </div>
+          </form>
+        )}
       </Card>
     </div>
   );
