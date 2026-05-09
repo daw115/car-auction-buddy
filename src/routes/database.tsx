@@ -43,6 +43,7 @@ import {
   getDbOverview,
   getBackendRecordsList,
   getBackendRecordDetails,
+  deleteBackendRecord,
   listAllJobs,
   getJobDetails,
   listLlmCacheEntries,
