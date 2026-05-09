@@ -19,8 +19,9 @@ export function renderReportHtml(opts: {
   clientName: string;
   generatedAt: string;
   lots: AnalyzedLot[];
+  searchedBy?: string | null;
 }): string {
-  const { lots } = opts;
+  const { lots, searchedBy } = opts;
   const total = lots.length;
   const polecam = lots.filter((l) => l.analysis.recommendation === "POLECAM").length;
   const ryzyko = lots.filter((l) => l.analysis.recommendation === "RYZYKO").length;
