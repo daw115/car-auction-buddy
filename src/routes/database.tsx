@@ -275,9 +275,18 @@ function RecordsSection() {
     }
   };
 
-  const filtered = onlyCompleted
-    ? records.filter((r: any) => r.status === "done" || r.status === "new" || !r.status)
-    : records;
+  const getSearchedBy = (r: any): string | null =>
+    r?.searched_by ?? r?.criteria?.searched_by ?? r?.meta?.searched_by ?? null;
+
+  const filtered = records
+    .filter((r: any) =>
+      onlyCompleted ? r.status === "done" || r.status === "new" || !r.status : true,
+    )
+    .filter((r: any) => {
+      if (userFilter === "all") return true;
+      if (userFilter === "__none__") return !getSearchedBy(r);
+      return getSearchedBy(r) === userFilter;
+    });
 
   return (
     <Card>
