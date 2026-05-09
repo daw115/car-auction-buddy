@@ -2015,6 +2015,36 @@ export const getBackendRecordsList = createServerFn({ method: "GET" })
     }
   });
 
+export const deleteBackendRecord = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) {
+      return { ok: false as const, status: 0, detail: "Backend nie skonfigurowany" };
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/records/${data.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { ok: false as const, status: res.status, detail: (json as any)?.detail || `HTTP ${res.status}` };
+      }
+      return {
+        ok: true as const,
+        status: res.status,
+        record_id: (json as any)?.record_id ?? data.id,
+        files_removed: (json as any)?.files_removed ?? 0,
+        bytes_freed: (json as any)?.bytes_freed ?? 0,
+        skipped: (json as any)?.skipped ?? [],
+      };
+    } catch (e: any) {
+      return { ok: false as const, status: 0, detail: e?.message || "Network error" };
+    }
+  });
+
 export const getBackendRecordDetails = createServerFn({ method: "GET" })
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
