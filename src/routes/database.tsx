@@ -266,7 +266,11 @@ function RecordsSection() {
 
   useEffect(() => { load(); }, [limit]);
 
+  const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+
   const openDetail = async (id: string) => {
+    setDetailRecordId(String(id));
     setDetailLoading(true);
     try {
       const r = await fnDetail({ data: { id } });
