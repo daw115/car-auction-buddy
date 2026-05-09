@@ -11,13 +11,29 @@ import {
   bumpSiteActivity,
   type SiteUser,
 } from "@/lib/site-user";
+import { supabase } from "@/integrations/supabase/client";
 
 // Hasło ogólne — wymagane raz na nowego użytkownika żeby ustawić własne hasło.
 const SITE_PASSWORD = "carbuddy2026";
-// Per-user hash hasła osobistego.
-const USER_HASH_KEY = (u: string) => `site_user_pw_v1:${u}`;
-// Sesja unlocked dla danego użytkownika.
+// Sesja unlocked dla danego użytkownika (tylko nazwa, nie hasło).
 const UNLOCKED_KEY = "site_unlocked_user_v1";
+
+async function fetchUserHash(username: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("site_user_passwords")
+    .select("password_hash")
+    .eq("username", username)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.password_hash ?? null;
+}
+
+async function saveUserHash(username: string, hash: string): Promise<void> {
+  const { error } = await supabase
+    .from("site_user_passwords")
+    .upsert({ username, password_hash: hash, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
 // Auto-logout: 60 minut nieaktywności.
 const INACTIVITY_MS = 60 * 60 * 1000;
 
