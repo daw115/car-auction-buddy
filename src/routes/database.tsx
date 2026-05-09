@@ -324,6 +324,7 @@ function RecordsSection() {
                   <TableHead>Data</TableHead>
                   <TableHead>Tytuł</TableHead>
                   <TableHead>Klient</TableHead>
+                  <TableHead>Zrobione przez</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Info</TableHead>
                   <TableHead className="text-right">Lots</TableHead>
@@ -335,11 +336,20 @@ function RecordsSection() {
                 {filtered.map((r: any) => {
                   const isRunning = r.status === "running";
                   const isDeleting = deletingId === String(r.id);
+                  const searchedBy =
+                    r.searched_by ?? r.criteria?.searched_by ?? r.meta?.searched_by ?? null;
                   return (
                     <TableRow key={r.id} className="cursor-pointer" onClick={() => openDetail(r.id)}>
                       <TableCell className="text-xs whitespace-nowrap">{fmtDate(r.created_at)}</TableCell>
                       <TableCell className="max-w-[200px] truncate text-xs">{r.title || "—"}</TableCell>
                       <TableCell className="text-xs">{r.client?.name || r.client || "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {searchedBy ? (
+                          <Badge variant="secondary" className="text-[10px]">{searchedBy}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>{statusBadge(r.status)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                         {r.analysis_notice || "—"}
