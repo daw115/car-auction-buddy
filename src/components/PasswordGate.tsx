@@ -112,24 +112,34 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   async function pickUser(u: SiteUser) {
     setUser(u);
     setError("");
-    const hasPersonal = !!localStorage.getItem(USER_HASH_KEY(u));
-    setStep(hasPersonal ? "enterPersonal" : "setPersonal");
+    try {
+      const stored = await fetchUserHash(u);
+      setStep(stored ? "enterPersonal" : "setPersonal");
+    } catch (err) {
+      setError("Błąd połączenia z bazą");
+      console.error(err);
+    }
   }
 
   async function submitPersonal(e: FormEvent) {
     e.preventDefault();
     if (!user) return;
-    const stored = localStorage.getItem(USER_HASH_KEY(user));
-    const hash = await sha256(personalPw);
-    if (stored && hash === stored) {
-      localStorage.setItem(UNLOCKED_KEY, user);
-      localStorage.setItem(SITE_CURRENT_USER_KEY, user);
-      bumpSiteActivity();
-      setPersonalPw("");
-      setStep("unlocked");
-    } else {
-      setError("Nieprawidłowe hasło osobiste");
-      setPersonalPw("");
+    try {
+      const stored = await fetchUserHash(user);
+      const hash = await sha256(personalPw);
+      if (stored && hash === stored) {
+        localStorage.setItem(UNLOCKED_KEY, user);
+        localStorage.setItem(SITE_CURRENT_USER_KEY, user);
+        bumpSiteActivity();
+        setPersonalPw("");
+        setStep("unlocked");
+      } else {
+        setError("Nieprawidłowe hasło osobiste");
+        setPersonalPw("");
+      }
+    } catch (err) {
+      setError("Błąd połączenia z bazą");
+      console.error(err);
     }
   }
 
@@ -149,15 +159,20 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
       setError("Hasła nie są identyczne");
       return;
     }
-    const hash = await sha256(personalPw);
-    localStorage.setItem(USER_HASH_KEY(user), hash);
-    localStorage.setItem(UNLOCKED_KEY, user);
-    localStorage.setItem(SITE_CURRENT_USER_KEY, user);
-    bumpSiteActivity();
-    setMasterPw("");
-    setPersonalPw("");
-    setPersonalPw2("");
-    setStep("unlocked");
+    try {
+      const hash = await sha256(personalPw);
+      await saveUserHash(user, hash);
+      localStorage.setItem(UNLOCKED_KEY, user);
+      localStorage.setItem(SITE_CURRENT_USER_KEY, user);
+      bumpSiteActivity();
+      setMasterPw("");
+      setPersonalPw("");
+      setPersonalPw2("");
+      setStep("unlocked");
+    } catch (err) {
+      setError("Nie udało się zapisać hasła");
+      console.error(err);
+    }
   }
 
   if (!ready) return null;
