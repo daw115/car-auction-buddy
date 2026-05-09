@@ -11,13 +11,29 @@ import {
   bumpSiteActivity,
   type SiteUser,
 } from "@/lib/site-user";
+import { supabase } from "@/integrations/supabase/client";
 
 // Hasło ogólne — wymagane raz na nowego użytkownika żeby ustawić własne hasło.
 const SITE_PASSWORD = "carbuddy2026";
-// Per-user hash hasła osobistego.
-const USER_HASH_KEY = (u: string) => `site_user_pw_v1:${u}`;
-// Sesja unlocked dla danego użytkownika.
+// Sesja unlocked dla danego użytkownika (tylko nazwa, nie hasło).
 const UNLOCKED_KEY = "site_unlocked_user_v1";
+
+async function fetchUserHash(username: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("site_user_passwords")
+    .select("password_hash")
+    .eq("username", username)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.password_hash ?? null;
+}
+
+async function saveUserHash(username: string, hash: string): Promise<void> {
+  const { error } = await supabase
+    .from("site_user_passwords")
+    .upsert({ username, password_hash: hash, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
 // Auto-logout: 60 minut nieaktywności.
 const INACTIVITY_MS = 60 * 60 * 1000;
 
@@ -96,24 +112,34 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   async function pickUser(u: SiteUser) {
     setUser(u);
     setError("");
-    const hasPersonal = !!localStorage.getItem(USER_HASH_KEY(u));
-    setStep(hasPersonal ? "enterPersonal" : "setPersonal");
+    try {
+      const stored = await fetchUserHash(u);
+      setStep(stored ? "enterPersonal" : "setPersonal");
+    } catch (err) {
+      setError("Błąd połączenia z bazą");
+      console.error(err);
+    }
   }
 
   async function submitPersonal(e: FormEvent) {
     e.preventDefault();
     if (!user) return;
-    const stored = localStorage.getItem(USER_HASH_KEY(user));
-    const hash = await sha256(personalPw);
-    if (stored && hash === stored) {
-      localStorage.setItem(UNLOCKED_KEY, user);
-      localStorage.setItem(SITE_CURRENT_USER_KEY, user);
-      bumpSiteActivity();
-      setPersonalPw("");
-      setStep("unlocked");
-    } else {
-      setError("Nieprawidłowe hasło osobiste");
-      setPersonalPw("");
+    try {
+      const stored = await fetchUserHash(user);
+      const hash = await sha256(personalPw);
+      if (stored && hash === stored) {
+        localStorage.setItem(UNLOCKED_KEY, user);
+        localStorage.setItem(SITE_CURRENT_USER_KEY, user);
+        bumpSiteActivity();
+        setPersonalPw("");
+        setStep("unlocked");
+      } else {
+        setError("Nieprawidłowe hasło osobiste");
+        setPersonalPw("");
+      }
+    } catch (err) {
+      setError("Błąd połączenia z bazą");
+      console.error(err);
     }
   }
 
@@ -133,15 +159,20 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
       setError("Hasła nie są identyczne");
       return;
     }
-    const hash = await sha256(personalPw);
-    localStorage.setItem(USER_HASH_KEY(user), hash);
-    localStorage.setItem(UNLOCKED_KEY, user);
-    localStorage.setItem(SITE_CURRENT_USER_KEY, user);
-    bumpSiteActivity();
-    setMasterPw("");
-    setPersonalPw("");
-    setPersonalPw2("");
-    setStep("unlocked");
+    try {
+      const hash = await sha256(personalPw);
+      await saveUserHash(user, hash);
+      localStorage.setItem(UNLOCKED_KEY, user);
+      localStorage.setItem(SITE_CURRENT_USER_KEY, user);
+      bumpSiteActivity();
+      setMasterPw("");
+      setPersonalPw("");
+      setPersonalPw2("");
+      setStep("unlocked");
+    } catch (err) {
+      setError("Nie udało się zapisać hasła");
+      console.error(err);
+    }
   }
 
   if (!ready) return null;
