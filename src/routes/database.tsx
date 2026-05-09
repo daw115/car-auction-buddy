@@ -219,6 +219,7 @@ function RecordsSection() {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(50);
   const [onlyCompleted, setOnlyCompleted] = useState(true);
+  const [userFilter, setUserFilter] = useState<string>("all");
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
