@@ -445,20 +445,29 @@ function RecordsSection() {
           </div>
         )}
 
-        <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
+        <Dialog
+          open={!!detail || !!detailRecordId}
+          onOpenChange={(o) => {
+            if (!o) {
+              setDetail(null);
+              setDetailRecordId(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
             <DialogHeader>
-              <DialogTitle>Szczegóły rekordu</DialogTitle>
+              <DialogTitle>Szczegóły rekordu {detailRecordId ? `#${detailRecordId}` : ""}</DialogTitle>
             </DialogHeader>
             {detailLoading ? (
               <div className="flex justify-center py-8"><Spin /></div>
-            ) : detail ? (
-              <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-[60vh] whitespace-pre-wrap">
-                {JSON.stringify(detail, null, 2)}
-              </pre>
+            ) : detail && detailRecordId ? (
+              <RecordDetailView record={detail} recordId={detailRecordId} />
             ) : null}
           </DialogContent>
         </Dialog>
+
+        <AnalyzeFeedbackDialog open={analyzeOpen} onOpenChange={setAnalyzeOpen} />
+
 
         <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && !deletingId && setConfirmDel(null)}>
           <AlertDialogContent>
