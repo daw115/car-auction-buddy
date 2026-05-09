@@ -1739,6 +1739,109 @@ async def api_get_client_record(record_id: int, _auth: None = Depends(_require_b
     return _make_artifact_urls_absolute(record)
 
 
+@app.delete("/api/records/{record_id}")
+async def delete_client_record(
+    record_id: int,
+    delete_files: bool = True,
+    _auth: None = Depends(_require_bearer),
+):
+    """Usuwa rekord wyszukiwania z bazy + powiązane artefakty z dysku.
+
+    Query:
+        ?delete_files=true (default) — usuwa też pliki bundle/raporty z client_searches/
+                          false — zostawia pliki na dysku (tylko DB cleanup)
+
+    Pliki do usunięcia są wyznaczane na podstawie:
+    1. artifact_urls (bundle, polecane_index, ai_input/prompt/analysis)
+    2. response.auto_reports_by_lot_id (per-lot URL-e)
+    3. wszystkie pliki w SEARCH_ARTIFACT_DIR które dzielą wspólny prefix slug
+       (np. `bmw_m5_insurance_20260509_164356`) — to chwyta per-lot raporty
+       generowane podczas scrape (top1_*, top2_*, etc.)
+
+    NIE usuwa wpisów llm_cache (skeletony są reusable dla innych rekordów z
+    tym samym lot_id i mają TTL 24h).
+
+    Returns: { deleted: true, record_id, files_removed, bytes_freed }
+    """
+    import re
+    from api.client_database import delete_record
+
+    deleted = delete_record(record_id)
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Nie znaleziono rekordu")
+
+    files_removed = 0
+    bytes_freed = 0
+    skipped: list[str] = []
+
+    if delete_files:
+        artifact_urls = deleted.get("artifact_urls") or {}
+        response = deleted.get("response") or {}
+
+        # 1. Bezpośrednie filenames z artifact_urls
+        filenames: set[str] = set()
+        for url in artifact_urls.values():
+            if url and isinstance(url, str) and "/artifacts/" in url:
+                filenames.add(url.split("/artifacts/")[-1].split("?")[0])
+
+        # 2. Per-lot URL-e z auto_reports_by_lot_id
+        auto_reports = (response.get("auto_reports_by_lot_id") or {})
+        for lot_reports in auto_reports.values():
+            if not isinstance(lot_reports, dict):
+                continue
+            for url in lot_reports.values():
+                if url and isinstance(url, str) and "/artifacts/" in url:
+                    filenames.add(url.split("/artifacts/")[-1].split("?")[0])
+
+        # 3. Wykryj slug prefix (np. "bmw_m5_insurance_20260509_164356") z artifact_urls
+        # i dorzuć wszystkie pliki w katalogu pasujące do tego prefiksu (per-lot raporty
+        # nie zawsze są w artifact_urls, np. top1_lotid_klient_krotki.html).
+        prefixes: set[str] = set()
+        for url in artifact_urls.values():
+            if url and isinstance(url, str) and "/artifacts/" in url:
+                fname = url.split("/artifacts/")[-1].split("?")[0]
+                # Pattern: {slug}_{ts}_{kind}.{ext} albo {slug}_{ts1}_{ts2}_{kind}.{ext}
+                # Slug = make_model_insurance_TS  (TS to YYYYMMDD_HHMMSS = 15 znaków)
+                m = re.match(r'^([a-z0-9_]+_insurance_\d{8}_\d{6})', fname)
+                if m:
+                    prefixes.add(m.group(1))
+                # Też: regen pattern → "audi_regen_65_..."
+                m2 = re.match(r'^([a-z0-9_]+_regen_\d+)_', fname)
+                if m2:
+                    prefixes.add(m2.group(1))
+
+        for prefix in prefixes:
+            for fname in os.listdir(SEARCH_ARTIFACT_DIR):
+                if fname.startswith(prefix):
+                    filenames.add(fname)
+
+        # 4. Usuń pliki (only z SEARCH_ARTIFACT_DIR — defensywnie ignoruj absolute paths)
+        for fname in filenames:
+            # Sanityzacja: tylko nazwa pliku, bez ../../ etc.
+            if "/" in fname or "\\" in fname or fname.startswith("."):
+                skipped.append(fname)
+                continue
+            fpath = SEARCH_ARTIFACT_DIR / fname
+            if fpath.exists() and fpath.is_file():
+                try:
+                    bytes_freed += fpath.stat().st_size
+                    fpath.unlink()
+                    files_removed += 1
+                except Exception:
+                    logger.exception("Failed to delete %s", fpath)
+                    skipped.append(fname)
+
+    logger.info("[delete_record] #%d → DB row removed, %d files removed (%d bytes)",
+                record_id, files_removed, bytes_freed)
+    return {
+        "deleted": True,
+        "record_id": record_id,
+        "files_removed": files_removed,
+        "bytes_freed": bytes_freed,
+        "skipped": skipped if skipped else None,
+    }
+
+
 @app.post("/api/records/{record_id}/regenerate-bundles")
 async def regenerate_record_bundles(
     record_id: int,

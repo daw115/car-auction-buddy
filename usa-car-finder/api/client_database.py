@@ -278,6 +278,38 @@ def list_records(query: Optional[str] = None, limit: int = 50) -> list[dict[str,
     return records
 
 
+def delete_record(record_id: int) -> Optional[dict[str, Any]]:
+    """Usuwa rekord z DB. Zwraca artifact_urls + response (do cleanup plików) lub None."""
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT artifact_urls_json, response_json, criteria_json, title FROM search_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            artifact_urls = json.loads(row["artifact_urls_json"] or "{}")
+        except Exception:
+            artifact_urls = {}
+        try:
+            response = json.loads(row["response_json"] or "{}")
+        except Exception:
+            response = {}
+        try:
+            criteria = json.loads(row["criteria_json"] or "{}")
+        except Exception:
+            criteria = {}
+        title = row["title"]
+        conn.execute("DELETE FROM search_records WHERE id = ?", (record_id,))
+    return {
+        "artifact_urls": artifact_urls,
+        "response": response,
+        "criteria": criteria,
+        "title": title,
+    }
+
+
 def get_record(record_id: int) -> Optional[dict[str, Any]]:
     init_db()
     with _connect() as conn:
