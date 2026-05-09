@@ -1763,6 +1763,7 @@ export const getReportBundle = createServerFn({ method: "POST" })
         clientName,
         generatedAt,
         lots: [...analyzed].sort((a, b) => b.analysis.score - a.analysis.score),
+        searchedBy: (row.criteria as { searched_by?: string } | null)?.searched_by ?? null,
       });
     }
 
