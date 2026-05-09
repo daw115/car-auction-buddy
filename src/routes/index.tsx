@@ -45,6 +45,7 @@ import {
 import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
+import { getCurrentSiteUser } from "@/lib/site-user";
 import { LogsPanel } from "@/components/LogsPanel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
@@ -1904,9 +1905,7 @@ function Panel() {
           client_id: activeClient?.id ?? activeClientId ?? undefined,
           title: `${criteria.make} ${criteria.model || ""}`.trim(),
           status: "draft",
-          criteria,
-          listings,
-          analysis_status: "cancelled",
+          criteria: { ...criteria, searched_by: getCurrentSiteUser() },
           analysis_completed_at: now,
           analysis_error: "Anulowano przez użytkownika",
           retry_count: 0,
@@ -2268,9 +2267,7 @@ function Panel() {
               client_id: activeClient.id,
               title,
               status: "analyzed",
-              criteria,
-              listings,
-              ai_input: r.ai_input,
+              criteria: { ...criteria, searched_by: getCurrentSiteUser() },
               ai_prompt: r.ai_prompt || null,
               analysis: r.analysis,
               report_html: generatedReportHtml || null,
@@ -2319,9 +2316,7 @@ function Panel() {
               client_id: activeClient?.id ?? activeClientId ?? undefined,
               title: `${criteria.make} ${criteria.model || ""}`.trim(),
               status: "draft",
-              criteria,
-              listings,
-              analysis_status: "failed",
+              criteria: { ...criteria, searched_by: getCurrentSiteUser() },
               analysis_started_at: new Date(startedAt).toISOString(),
               analysis_completed_at: new Date().toISOString(),
               analysis_error: msg,
@@ -2428,9 +2423,7 @@ function Panel() {
           client_id: activeClient.id,
           title,
           status: analysis ? "analyzed" : "draft",
-          criteria,
-          listings,
-          ai_input: aiInput,
+          criteria: { ...criteria, searched_by: getCurrentSiteUser() },
           ai_prompt: aiPrompt || null,
           analysis,
           report_html: reportHtml || null,
