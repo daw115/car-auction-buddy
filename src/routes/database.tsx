@@ -293,7 +293,19 @@ function RecordsSection() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">📋 Search Records</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={userFilter} onValueChange={setUserFilter}>
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <SelectValue placeholder="Użytkownik" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">👥 Wszyscy</SelectItem>
+              {SITE_USERS.map((u) => (
+                <SelectItem key={u} value={u}>👤 {u}</SelectItem>
+              ))}
+              <SelectItem value="__none__">— Bez przypisania</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             variant={onlyCompleted ? "default" : "outline"}
             size="sm"
