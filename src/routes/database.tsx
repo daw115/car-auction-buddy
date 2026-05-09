@@ -53,8 +53,13 @@ import {
   fetchAuthHtml,
   getModelNormalizations,
   deleteModelNormalization,
+  getRecordFeedback,
+  submitLotFeedback,
+  deleteLotFeedback,
+  analyzeFeedback,
 } from "@/functions/api.functions";
 import { SITE_USERS } from "@/lib/site-user";
+import { Textarea } from "@/components/ui/textarea";
 import {
   RefreshCw,
   Loader2,
@@ -68,6 +73,9 @@ import {
   Cpu,
   Globe,
   Inbox,
+  ThumbsUp,
+  ThumbsDown,
+  Brain,
 } from "lucide-react";
 
 export const Route = createFileRoute("/database")({
@@ -258,7 +266,11 @@ function RecordsSection() {
 
   useEffect(() => { load(); }, [limit]);
 
+  const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+
   const openDetail = async (id: string) => {
+    setDetailRecordId(String(id));
     setDetailLoading(true);
     try {
       const r = await fnDetail({ data: { id } });
@@ -309,6 +321,9 @@ function RecordsSection() {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">📋 Search Records</CardTitle>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)} className="text-xs gap-1">
+            <Brain className="h-3.5 w-3.5" /> Przeanalizuj feedback
+          </Button>
           <Select value={userFilter} onValueChange={setUserFilter}>
             <SelectTrigger className="h-8 w-36 text-xs">
               <SelectValue placeholder="Użytkownik" />
@@ -430,20 +445,29 @@ function RecordsSection() {
           </div>
         )}
 
-        <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
+        <Dialog
+          open={!!detail || !!detailRecordId}
+          onOpenChange={(o) => {
+            if (!o) {
+              setDetail(null);
+              setDetailRecordId(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
             <DialogHeader>
-              <DialogTitle>Szczegóły rekordu</DialogTitle>
+              <DialogTitle>Szczegóły rekordu {detailRecordId ? `#${detailRecordId}` : ""}</DialogTitle>
             </DialogHeader>
             {detailLoading ? (
               <div className="flex justify-center py-8"><Spin /></div>
-            ) : detail ? (
-              <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-[60vh] whitespace-pre-wrap">
-                {JSON.stringify(detail, null, 2)}
-              </pre>
+            ) : detail && detailRecordId ? (
+              <RecordDetailView record={detail} recordId={detailRecordId} />
             ) : null}
           </DialogContent>
         </Dialog>
+
+        <AnalyzeFeedbackDialog open={analyzeOpen} onOpenChange={setAnalyzeOpen} />
+
 
         <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && !deletingId && setConfirmDel(null)}>
           <AlertDialogContent>
@@ -994,5 +1018,382 @@ function DatabasePage() {
         <NormalizationsSection />
       </main>
     </div>
+  );
+}
+
+// ============================================================
+// Lot feedback UI
+// ============================================================
+
+type FeedbackVote = "up" | "down";
+type FeedbackEntry = { lot_id: string; source: string; vote: FeedbackVote; reason?: string | null };
+
+function getRecordLots(record: any): any[] {
+  return record?.listings ?? record?.lots ?? record?.collected ?? [];
+}
+
+function lotKey(lot: any): string {
+  const id = String(lot?.lot_id ?? lot?.id ?? "");
+  const src = String(lot?.source ?? "copart").toLowerCase();
+  return `${src}::${id}`;
+}
+
+function RecordDetailView({ record, recordId }: { record: any; recordId: string }) {
+  const fnGet = useServerFn(getRecordFeedback);
+  const fnSubmit = useServerFn(submitLotFeedback);
+  const fnDelete = useServerFn(deleteLotFeedback);
+
+  const [feedback, setFeedback] = useState<Record<string, FeedbackEntry>>({});
+  const [loading, setLoading] = useState(true);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [downModal, setDownModal] = useState<{ lot: any; key: string } | null>(null);
+  const [reason, setReason] = useState("");
+
+  const lots = getRecordLots(record);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const r: any = await fnGet({ data: { recordId } });
+        if (cancelled) return;
+        const map: Record<string, FeedbackEntry> = {};
+        for (const f of r?.feedback ?? []) {
+          map[`${String(f.source).toLowerCase()}::${f.lot_id}`] = f;
+        }
+        setFeedback(map);
+      } catch {
+        if (!cancelled) toast.error("Nie udało się pobrać feedbacku");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [recordId, fnGet]);
+
+  const sendVote = async (lot: any, vote: FeedbackVote, reasonText?: string) => {
+    const key = lotKey(lot);
+    const lot_id = String(lot?.lot_id ?? lot?.id ?? "");
+    const source = (String(lot?.source ?? "copart").toLowerCase() === "iaai" ? "iaai" : "copart") as "copart" | "iaai";
+    if (!lot_id) {
+      toast.error("Lot bez identyfikatora");
+      return;
+    }
+    const prev = feedback[key];
+    setBusyKey(key);
+    setFeedback((f) => ({ ...f, [key]: { lot_id, source, vote, reason: reasonText ?? null } }));
+    try {
+      await fnSubmit({ data: { recordId, lot_id, source, vote, reason: reasonText } });
+      toast.success(vote === "up" ? "Polubiono ✓" : "Odrzucono z notatką ✓");
+    } catch (e: any) {
+      setFeedback((f) => {
+        const next = { ...f };
+        if (prev) next[key] = prev; else delete next[key];
+        return next;
+      });
+      const status = e?.status;
+      if (status === 404) toast.error("Błąd: lot nie znaleziony");
+      else toast.error(`Błąd: ${e?.message || "nieznany"}`);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const removeVote = async (lot: any) => {
+    const key = lotKey(lot);
+    const lot_id = String(lot?.lot_id ?? lot?.id ?? "");
+    const source = (String(lot?.source ?? "copart").toLowerCase() === "iaai" ? "iaai" : "copart") as "copart" | "iaai";
+    const prev = feedback[key];
+    setBusyKey(key);
+    setFeedback((f) => {
+      const next = { ...f };
+      delete next[key];
+      return next;
+    });
+    try {
+      await fnDelete({ data: { recordId, lot_id, source } });
+      toast.success("Cofnięto ocenę");
+    } catch (e: any) {
+      if (prev) setFeedback((f) => ({ ...f, [key]: prev }));
+      toast.error(`Błąd: ${e?.message || "nieznany"}`);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleUp = (lot: any) => {
+    const key = lotKey(lot);
+    const cur = feedback[key];
+    if (cur?.vote === "up") return removeVote(lot);
+    return sendVote(lot, "up");
+  };
+
+  const handleDown = (lot: any) => {
+    const key = lotKey(lot);
+    const cur = feedback[key];
+    if (cur?.vote === "down") return removeVote(lot);
+    setReason("");
+    setDownModal({ lot, key });
+  };
+
+  const submitDown = async () => {
+    if (!downModal) return;
+    const trimmed = reason.trim();
+    if (trimmed.length < 5) {
+      toast.error("Powód musi mieć min. 5 znaków");
+      return;
+    }
+    if (trimmed.length > 500) {
+      toast.error("Powód maks. 500 znaków");
+      return;
+    }
+    const lot = downModal.lot;
+    setDownModal(null);
+    await sendVote(lot, "down", trimmed);
+  };
+
+  const upCount = Object.values(feedback).filter((f) => f.vote === "up").length;
+  const downCount = Object.values(feedback).filter((f) => f.vote === "down").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 text-xs">
+        <Badge variant="outline">Lotów: {lots.length}</Badge>
+        <Badge variant="outline" className="text-emerald-600">👍 {upCount}</Badge>
+        <Badge variant="outline" className="text-red-600">👎 {downCount}</Badge>
+        {record?.title && <Badge variant="secondary">{record.title}</Badge>}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6"><Spin /></div>
+      ) : lots.length === 0 ? (
+        <EmptyState text="Ten rekord nie zawiera lotów" />
+      ) : (
+        <div className="space-y-1.5">
+          {lots.map((lot: any, idx: number) => {
+            const key = lotKey(lot);
+            const fb = feedback[key];
+            const busy = busyKey === key;
+            const id = String(lot?.lot_id ?? lot?.id ?? `#${idx}`);
+            const source = String(lot?.source ?? "—");
+            const title =
+              lot?.title ||
+              [lot?.year, lot?.make, lot?.model].filter(Boolean).join(" ") ||
+              `Lot ${id}`;
+            const price = lot?.current_bid_usd ?? lot?.buy_now_price_usd ?? lot?.price_usd;
+            const url = lot?.url;
+            return (
+              <div
+                key={`${key}-${idx}`}
+                className="flex items-center gap-2 px-3 py-2 rounded border bg-card hover:bg-accent/30 transition-colors"
+                title={fb?.reason ? `Powód: ${fb.reason}` : undefined}
+              >
+                <span className="text-[10px] text-muted-foreground w-6">{idx + 1}.</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium truncate">{title}</div>
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-2 flex-wrap">
+                    <span>{source}</span>
+                    <span>#{id}</span>
+                    {price != null && <span>${Number(price).toLocaleString()}</span>}
+                    {url && (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-primary"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        otwórz
+                      </a>
+                    )}
+                    {fb?.reason && (
+                      <span className="italic text-red-600 dark:text-red-400 truncate max-w-[300px]">
+                        „{fb.reason}"
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant={fb?.vote === "up" ? "default" : "ghost"}
+                  size="icon"
+                  className={`h-7 w-7 ${fb?.vote === "up" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-muted-foreground hover:text-emerald-600"}`}
+                  disabled={busy}
+                  onClick={() => handleUp(lot)}
+                  title={fb?.vote === "up" ? "Cofnij polubienie" : "Polub"}
+                >
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant={fb?.vote === "down" ? "default" : "ghost"}
+                  size="icon"
+                  className={`h-7 w-7 ${fb?.vote === "down" ? "bg-red-600 hover:bg-red-700 text-white" : "text-muted-foreground hover:text-red-600"}`}
+                  disabled={busy}
+                  onClick={() => handleDown(lot)}
+                  title={fb?.vote === "down" ? "Cofnij odrzucenie" : "Odrzuć"}
+                >
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={!!downModal} onOpenChange={(o) => !o && setDownModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dlaczego odrzuciłeś ten samochód?</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            placeholder="np. za stary, przebieg, uszkodzenie, cena…"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={4}
+            maxLength={500}
+          />
+          <div className="text-[10px] text-muted-foreground text-right">{reason.length}/500</div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDownModal(null)}>Anuluj</Button>
+            <Button
+              variant="destructive"
+              onClick={submitDown}
+              disabled={reason.trim().length < 5}
+            >
+              Odrzuć i zapisz
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function AnalyzeFeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const fn = useServerFn(analyzeFeedback);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setResult(null);
+    setLoading(true);
+    (async () => {
+      try {
+        const r = await fn({ data: undefined as any });
+        setResult(r);
+      } catch (e: any) {
+        toast.error(`Analiza nie powiodła się: ${e?.message || "błąd"}`);
+        onOpenChange(false);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [open, fn, onOpenChange]);
+
+  const rec = result?.recommendations ?? {};
+  const stats = result?.stats ?? {};
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Brain className="h-4 w-4" /> Analiza feedbacku
+          </DialogTitle>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex flex-col items-center gap-2 py-8">
+            <Spin />
+            <div className="text-xs text-muted-foreground">Analizuję Twoje oceny…</div>
+          </div>
+        ) : result ? (
+          <div className="space-y-5 text-sm">
+            {result.summary && (
+              <section>
+                <h3 className="font-semibold mb-1">Podsumowanie</h3>
+                <p className="text-muted-foreground whitespace-pre-wrap">{result.summary}</p>
+              </section>
+            )}
+
+            <section>
+              <h3 className="font-semibold mb-2">Rekomendowane zmiany kryteriów</h3>
+              <div className="space-y-2">
+                {Array.isArray(rec.preferred_makes) && rec.preferred_makes.length > 0 && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Preferowane marki</div>
+                    <div className="flex flex-wrap gap-1">
+                      {rec.preferred_makes.map((m: string) => (
+                        <Badge key={m} className="bg-emerald-600 hover:bg-emerald-700 text-white">{m}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(rec.avoided_damage_types) && rec.avoided_damage_types.length > 0 && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Unikane uszkodzenia</div>
+                    <div className="flex flex-wrap gap-1">
+                      {rec.avoided_damage_types.map((d: string) => (
+                        <Badge key={d} className="bg-red-600 hover:bg-red-700 text-white">{d}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {rec.preferred_year_min != null && (
+                  <div className="text-xs">Min rocznik: <strong>{rec.preferred_year_min}</strong></div>
+                )}
+                {rec.preferred_max_odometer_mi != null && (
+                  <div className="text-xs">
+                    Max przebieg: <strong>{Number(rec.preferred_max_odometer_mi).toLocaleString()} mi</strong>
+                  </div>
+                )}
+                {rec.score_threshold != null && (
+                  <div className="text-xs">Min score: <strong>{rec.score_threshold}</strong></div>
+                )}
+                {rec.additional_notes && (
+                  <div className="text-xs text-muted-foreground italic">{rec.additional_notes}</div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="font-semibold mb-2">Statystyki</h3>
+              <div className="flex flex-wrap gap-3 text-xs">
+                <Badge variant="outline" className="text-emerald-600">
+                  👍 {stats.up ?? 0}
+                </Badge>
+                <Badge variant="outline" className="text-red-600">
+                  👎 {stats.down ?? 0}
+                </Badge>
+                {stats.avg_score_up != null && (
+                  <Badge variant="outline">śr. score 👍: {Number(stats.avg_score_up).toFixed(1)}</Badge>
+                )}
+                {stats.avg_score_down != null && (
+                  <Badge variant="outline">śr. score 👎: {Number(stats.avg_score_down).toFixed(1)}</Badge>
+                )}
+              </div>
+            </section>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Zamknij</Button>
+              <Button
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem("scrape:prefill_recommendations", JSON.stringify(rec));
+                    toast.success("Zapisano kryteria — otwórz formularz wyszukiwania");
+                  } catch {
+                    toast.error("Nie udało się zapisać kryteriów");
+                  }
+                  onOpenChange(false);
+                }}
+              >
+                Zastosuj te kryteria w nowym wyszukiwaniu
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -2066,6 +2066,75 @@ export const getBackendRecordDetails = createServerFn({ method: "GET" })
     }
   });
 
+// ---------- Lot feedback ----------
+
+async function scraperFetch(path: string, init?: RequestInit) {
+  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+  const token = process.env.SCRAPER_API_TOKEN;
+  if (!baseUrl || !token) throw new Error("Backend nie skonfigurowany");
+  const res = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = (json as any)?.detail || `HTTP ${res.status}`;
+    const err: any = new Error(detail);
+    err.status = res.status;
+    throw err;
+  }
+  return json;
+}
+
+export const getRecordFeedback = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ recordId: z.coerce.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    try {
+      return await scraperFetch(`/api/records/${data.recordId}/feedback`);
+    } catch {
+      return { feedback: [], up: 0, down: 0, total: 0 };
+    }
+  });
+
+export const submitLotFeedback = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    recordId: z.coerce.string().min(1),
+    lot_id: z.string().min(1),
+    source: z.enum(["copart", "iaai"]),
+    vote: z.enum(["up", "down"]),
+    reason: z.string().max(500).optional(),
+  }).parse)
+  .handler(async ({ data }) => {
+    const { recordId, ...body } = data;
+    return await scraperFetch(`/api/records/${recordId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  });
+
+export const deleteLotFeedback = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    recordId: z.coerce.string().min(1),
+    lot_id: z.string().min(1),
+    source: z.enum(["copart", "iaai"]),
+  }).parse)
+  .handler(async ({ data }) => {
+    const params = new URLSearchParams({ source: data.source });
+    return await scraperFetch(
+      `/api/records/${data.recordId}/feedback/${data.lot_id}?${params}`,
+      { method: "DELETE" },
+    );
+  });
+
+export const analyzeFeedback = createServerFn({ method: "POST" })
+  .handler(async () => {
+    return await scraperFetch(`/api/feedback/analyze`, { method: "POST" });
+  });
+
 export const listAllJobs = createServerFn({ method: "GET" })
   .inputValidator(z.object({ limit: z.number().optional() }).parse)
   .handler(async ({ data }) => {
