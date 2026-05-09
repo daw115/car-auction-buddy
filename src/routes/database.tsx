@@ -53,8 +53,13 @@ import {
   fetchAuthHtml,
   getModelNormalizations,
   deleteModelNormalization,
+  getRecordFeedback,
+  submitLotFeedback,
+  deleteLotFeedback,
+  analyzeFeedback,
 } from "@/functions/api.functions";
 import { SITE_USERS } from "@/lib/site-user";
+import { Textarea } from "@/components/ui/textarea";
 import {
   RefreshCw,
   Loader2,
@@ -68,6 +73,9 @@ import {
   Cpu,
   Globe,
   Inbox,
+  ThumbsUp,
+  ThumbsDown,
+  Brain,
 } from "lucide-react";
 
 export const Route = createFileRoute("/database")({
