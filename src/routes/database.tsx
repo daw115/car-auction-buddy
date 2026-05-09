@@ -97,6 +97,21 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
+function durationColorClass(seconds: number | null | undefined): string {
+  if (seconds == null) return "text-muted-foreground italic";
+  if (seconds < 300) return "text-emerald-600 dark:text-emerald-400";
+  if (seconds < 900) return "text-blue-600 dark:text-blue-400";
+  return "text-orange-600 dark:text-orange-400";
+}
+
 function fmtSize(kb: number | undefined) {
   if (!kb) return "—";
   return kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(1)} KB`;
@@ -351,6 +366,7 @@ function RecordsSection() {
                   <TableHead>Status</TableHead>
                   <TableHead>Info</TableHead>
                   <TableHead className="text-right">Lots</TableHead>
+                  <TableHead className="text-right">Czas trwania</TableHead>
                   <TableHead />
                   <TableHead className="text-right">Akcje</TableHead>
                 </TableRow>
@@ -378,6 +394,16 @@ function RecordsSection() {
                         {r.analysis_notice || "—"}
                       </TableCell>
                       <TableCell className="text-right text-xs">{r.collected_count ?? "—"}</TableCell>
+                      <TableCell
+                        className={`text-right text-xs whitespace-nowrap ${durationColorClass(r.duration_seconds)}`}
+                        title={
+                          r.duration_seconds != null
+                            ? `${Math.round(r.duration_seconds)}s = ${formatDuration(r.duration_seconds)}`
+                            : undefined
+                        }
+                      >
+                        {formatDuration(r.duration_seconds)}
+                      </TableCell>
                       <TableCell>
                         <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                       </TableCell>
