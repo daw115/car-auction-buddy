@@ -54,6 +54,7 @@ import {
   getModelNormalizations,
   deleteModelNormalization,
 } from "@/functions/api.functions";
+import { SITE_USERS } from "@/lib/site-user";
 import {
   RefreshCw,
   Loader2,
@@ -219,6 +220,7 @@ function RecordsSection() {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(50);
   const [onlyCompleted, setOnlyCompleted] = useState(true);
+  const [userFilter, setUserFilter] = useState<string>("all");
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
@@ -274,15 +276,36 @@ function RecordsSection() {
     }
   };
 
-  const filtered = onlyCompleted
-    ? records.filter((r: any) => r.status === "done" || r.status === "new" || !r.status)
-    : records;
+  const getSearchedBy = (r: any): string | null =>
+    r?.searched_by ?? r?.criteria?.searched_by ?? r?.meta?.searched_by ?? null;
+
+  const filtered = records
+    .filter((r: any) =>
+      onlyCompleted ? r.status === "done" || r.status === "new" || !r.status : true,
+    )
+    .filter((r: any) => {
+      if (userFilter === "all") return true;
+      if (userFilter === "__none__") return !getSearchedBy(r);
+      return getSearchedBy(r) === userFilter;
+    });
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">📋 Search Records</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={userFilter} onValueChange={setUserFilter}>
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <SelectValue placeholder="Użytkownik" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">👥 Wszyscy</SelectItem>
+              {SITE_USERS.map((u) => (
+                <SelectItem key={u} value={u}>👤 {u}</SelectItem>
+              ))}
+              <SelectItem value="__none__">— Bez przypisania</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             variant={onlyCompleted ? "default" : "outline"}
             size="sm"
