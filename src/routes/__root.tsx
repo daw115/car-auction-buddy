@@ -2,6 +2,7 @@ import { Outlet, Link, createRootRouteWithContext, HeadContent, Scripts } from "
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
+import { PasswordGate } from "@/components/PasswordGate";
 
 import appCss from "../styles.css?url";
 
@@ -83,7 +84,9 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <Outlet />
+        <PasswordGate>
+          <Outlet />
+        </PasswordGate>
         <Toaster richColors position="top-right" />
       </ThemeProvider>
     </QueryClientProvider>
