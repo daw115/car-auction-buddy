@@ -121,7 +121,7 @@ export function renderReportHtml(opts: {
   .summary-item .lbl { font-size: 9pt; opacity: 0.8; }
 </style></head><body>
 <h1>Raport wyszukiwania aut z USA</h1>
-<p>Klient: <strong>${esc(opts.clientName)}</strong> | Wygenerowano: ${esc(opts.generatedAt)} | Łączna liczba przeanalizowanych lotów: ${total}</p>
+<p>Klient: <strong>${esc(opts.clientName)}</strong> | Wygenerowano: ${esc(opts.generatedAt)} | Łączna liczba przeanalizowanych lotów: ${total}${searchedBy ? ` | Wyszukiwanie wykonał: <strong>${esc(searchedBy)}</strong>` : ""}</p>
 <div class="summary"><div class="summary-grid">
   <div class="summary-item"><div class="num" style="color:#7dffb3">${polecam}</div><div class="lbl">POLECAM</div></div>
   <div class="summary-item"><div class="num" style="color:#ffe08a">${ryzyko}</div><div class="lbl">RYZYKO</div></div>
