@@ -915,6 +915,17 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         vin_coverage=vin_coverage,
     )
 
+    # Liczymy duration scrape (od job.created_at do teraz). Wykorzystywany dla:
+    # 1. zapisu w search_records.duration_seconds (statystyka rekordu)
+    # 2. Telegram broadcast (już używane)
+    duration_s: Optional[float] = None
+    try:
+        if getattr(job, "created_at", None):
+            created = datetime.fromisoformat(job.created_at)
+            duration_s = max(0.0, (datetime.now() - created).total_seconds())
+    except Exception:
+        duration_s = None
+
     try:
         from api.client_database import init_db, save_search_record, upsert_client
 
@@ -935,6 +946,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             notes=(client_payload or {}).get("notes") if client_payload else None,
             status="done",
             job_id=job.id,  # link do joba dla traceability
+            duration_seconds=duration_s,
         )
         response_payload.record_id = record_id
         response_payload.client_id = client_id
@@ -954,13 +966,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                 1 for r in (response_payload.all_results or [])
                 if (getattr(r.analysis, "recommendation", "") == "RYZYKO")
             )
-            duration_s: Optional[float] = None
-            try:
-                if getattr(job, "created_at", None):
-                    created = datetime.fromisoformat(job.created_at)
-                    duration_s = max(0.0, (datetime.now() - created).total_seconds())
-            except Exception:
-                duration_s = None
+            # duration_s już obliczone przed zapisem rekordu (zachowujemy jedno źródło prawdy)
 
             bundle_paths = {
                 "client_short_bundle": client_short_bundle_file,
@@ -1144,6 +1150,14 @@ def _save_job_terminal_record(
         if search_record_exists_for_job(job.id):
             logger.info("[record] Skip — rekord dla job %s juz istnieje", job.id)
             return
+        # Duration: ile zajął job zanim został anulowany/wywalił błąd
+        duration_s: Optional[float] = None
+        try:
+            if getattr(job, "created_at", None):
+                created = datetime.fromisoformat(job.created_at)
+                duration_s = max(0.0, (datetime.now() - created).total_seconds())
+        except Exception:
+            duration_s = None
         client_payload = request.client.model_dump(mode="json") if request.client else None
         client_id = upsert_client(client_payload)
         request_dict = request.model_dump(mode="json")
@@ -1159,6 +1173,7 @@ def _save_job_terminal_record(
             notes=(client_payload or {}).get("notes") if client_payload else None,
             status=status,
             job_id=job.id,
+            duration_seconds=duration_s,
         )
         logger.info("[record] Zapisano %s record dla joba %s (criteria: %s)",
                     status, job.id, search_title(request.criteria))

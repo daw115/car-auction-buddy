@@ -64,6 +64,9 @@ def init_db() -> None:
         if "job_id" not in cols:
             conn.execute("ALTER TABLE search_records ADD COLUMN job_id TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_search_records_job_id ON search_records(job_id)")
+        # Migration: duration_seconds (czas trwania scrape, sec)
+        if "duration_seconds" not in cols:
+            conn.execute("ALTER TABLE search_records ADD COLUMN duration_seconds REAL")
 
 
 def update_artifact_urls(record_id: int, new_urls: dict) -> bool:
@@ -167,24 +170,29 @@ def save_search_record(
     notes: Optional[str] = None,
     status: str = "new",
     job_id: Optional[str] = None,
+    duration_seconds: Optional[float] = None,
 ) -> int:
     """Zapisuje rekord wyszukiwania.
 
     status: 'new' (default — DONE z wynikami), 'cancelled', 'error', 'interrupted'.
     job_id: ID powiązanego joba (jeśli pochodzi z queue) — dla traceability.
+    duration_seconds: czas trwania scrape w sekundach (od job.created_at do now).
     """
     now = _now()
     with _connect() as conn:
         response_data = dict(response_data or {})
         if job_id and "job_id" not in response_data:
             response_data["job_id"] = job_id
+        if duration_seconds is not None and "duration_seconds" not in response_data:
+            response_data["duration_seconds"] = float(duration_seconds)
         cursor = conn.execute(
             """
             INSERT INTO search_records (
                 client_id, title, status, notes, criteria_json, request_json, response_json,
-                artifact_urls_json, collected_count, analysis_notice, job_id, created_at, updated_at
+                artifact_urls_json, collected_count, analysis_notice, job_id,
+                duration_seconds, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 client_id,
@@ -198,6 +206,7 @@ def save_search_record(
                 int(collected_count or 0),
                 analysis_notice,
                 job_id,
+                float(duration_seconds) if duration_seconds is not None else None,
                 now,
                 now,
             ),
@@ -247,7 +256,7 @@ def list_records(query: Optional[str] = None, limit: int = 50) -> list[dict[str,
             SELECT
                 sr.id, sr.client_id, sr.title, sr.status, sr.notes,
                 sr.collected_count, sr.analysis_notice, sr.artifact_urls_json,
-                sr.created_at, sr.updated_at,
+                sr.duration_seconds, sr.created_at, sr.updated_at,
                 c.name AS client_name, c.email AS client_email,
                 c.phone AS client_phone, c.notes AS client_notes
             FROM search_records sr
@@ -271,6 +280,7 @@ def list_records(query: Optional[str] = None, limit: int = 50) -> list[dict[str,
                 "collected_count": row["collected_count"],
                 "analysis_notice": row["analysis_notice"],
                 "artifact_urls": json.loads(row["artifact_urls_json"] or "{}"),
+                "duration_seconds": row["duration_seconds"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
             }
@@ -341,6 +351,7 @@ def get_record(record_id: int) -> Optional[dict[str, Any]]:
         "artifact_urls": json.loads(row["artifact_urls_json"] or "{}"),
         "collected_count": row["collected_count"],
         "analysis_notice": row["analysis_notice"],
+        "duration_seconds": row["duration_seconds"] if "duration_seconds" in row.keys() else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
