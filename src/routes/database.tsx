@@ -366,6 +366,7 @@ function RecordsSection() {
                   <TableHead>Status</TableHead>
                   <TableHead>Info</TableHead>
                   <TableHead className="text-right">Lots</TableHead>
+                  <TableHead className="text-right">Czas trwania</TableHead>
                   <TableHead />
                   <TableHead className="text-right">Akcje</TableHead>
                 </TableRow>
