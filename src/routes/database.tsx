@@ -97,6 +97,21 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
+function durationColorClass(seconds: number | null | undefined): string {
+  if (seconds == null) return "text-muted-foreground italic";
+  if (seconds < 300) return "text-emerald-600 dark:text-emerald-400";
+  if (seconds < 900) return "text-blue-600 dark:text-blue-400";
+  return "text-orange-600 dark:text-orange-400";
+}
+
 function fmtSize(kb: number | undefined) {
   if (!kb) return "—";
   return kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(1)} KB`;
