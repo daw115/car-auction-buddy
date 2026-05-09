@@ -2274,14 +2274,15 @@ def _bundle_html(htmls: list[tuple], title: str) -> str:
         "<style>",
         # Reset + globalne
         "  * { box-sizing: border-box; }",
-        "  body { margin: 0; font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; background: #0d1117; }",
+        "  html, body { margin: 0; max-width: 100%; overflow-x: hidden; }",
+        "  body { font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; background: #0d1117; }",
         # Layout: flex sidebar + main
         "  .bundle-app { display: flex; min-height: 100vh; }",
-        # Sidebar
+        # Sidebar (desktop default — sticky po lewej)
         "  .bundle-sidebar { width: 320px; flex-shrink: 0; background: #161b22; color: #e6edf3;",
         "    border-right: 1px solid #30363d; height: 100vh; position: sticky; top: 0;",
-        "    overflow-y: auto; padding: 24px 18px; }",
-        "  .bundle-sidebar h1 { font-size: 18px; margin: 0 0 6px; color: #fff; line-height: 1.3; }",
+        "    overflow-y: auto; padding: 24px 18px; transition: transform 0.25s ease; z-index: 100; }",
+        "  .bundle-sidebar h1 { font-size: 18px; margin: 0 0 6px; color: #fff; line-height: 1.3; padding-right: 32px; }",
         "  .bundle-sidebar .meta { font-size: 11px; color: #7d8590; margin-bottom: 20px; }",
         "  .bundle-sidebar .nav-list { list-style: none; padding: 0; margin: 0; }",
         "  .bundle-sidebar .nav-item { padding: 10px 12px; border-radius: 8px; cursor: pointer;",
@@ -2289,26 +2290,47 @@ def _bundle_html(htmls: list[tuple], title: str) -> str:
         "  .bundle-sidebar .nav-item:hover { background: #1f2937; }",
         "  .bundle-sidebar .nav-item.active { background: rgba(88,166,255,0.15); border-color: #58a6ff; }",
         "  .bundle-sidebar .nav-num { font-size: 10px; color: #7d8590; margin-bottom: 2px; }",
-        "  .bundle-sidebar .nav-label { font-size: 13px; color: #e6edf3; line-height: 1.35; }",
+        "  .bundle-sidebar .nav-label { font-size: 13px; color: #e6edf3; line-height: 1.35; word-break: break-word; }",
         "  .bundle-sidebar .nav-badge { display: inline-block; padding: 2px 8px; border-radius: 99px;",
         "    font-size: 10px; font-weight: 700; color: #fff; margin-top: 4px; letter-spacing: 0.5px; }",
         # Main content
         "  .bundle-main { flex: 1; min-width: 0; }",
         "  .lot-section { display: none; }",
         "  .lot-section.active { display: block; }",
-        # Print mode — pokazuj wszystko, ukryj sidebar
+        # Toggle button + overlay (mobile only — ukryte na desktop)
+        "  .bundle-toggle { display: none; position: fixed; top: 12px; left: 12px; z-index: 102;",
+        "    width: 44px; height: 44px; border-radius: 8px; border: 1px solid #30363d;",
+        "    background: #161b22; color: #fff; font-size: 22px; line-height: 1; cursor: pointer;",
+        "    box-shadow: 0 2px 8px rgba(0,0,0,0.4); }",
+        "  .bundle-toggle:active { background: #1f2937; }",
+        "  .bundle-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 99; }",
+        "  .bundle-overlay.show { display: block; }",
+        # Mobile breakpoint — sidebar staje się slide-over panel
+        "  @media (max-width: 768px) {",
+        "    .bundle-toggle { display: flex; align-items: center; justify-content: center; }",
+        "    .bundle-app { display: block; }",
+        "    .bundle-sidebar { position: fixed; top: 0; left: 0; width: 280px; max-width: 85vw;",
+        "      height: 100vh; transform: translateX(-100%); box-shadow: 2px 0 12px rgba(0,0,0,0.5); }",
+        "    .bundle-sidebar.open { transform: translateX(0); }",
+        "    .bundle-main { padding-top: 56px; }",
+        "  }",
+        # Print mode — pokazuj wszystko, ukryj sidebar/toggle
         "  @media print {",
-        "    .bundle-sidebar { display: none !important; }",
+        "    .bundle-sidebar, .bundle-toggle, .bundle-overlay { display: none !important; }",
         "    .lot-section { display: block !important; page-break-before: always; }",
         "    .lot-section:first-of-type { page-break-before: auto; }",
         "    .bundle-app { display: block; }",
+        "    .bundle-main { padding-top: 0; }",
         "  }",
         "</style>",
         "</head>",
         "<body>",
+        # Mobile toggle button (hamburger) + overlay
+        "<button class='bundle-toggle' onclick='toggleSidebar()' aria-label='Menu' id='bundleToggle'>☰</button>",
+        "<div class='bundle-overlay' onclick='toggleSidebar()' id='bundleOverlay'></div>",
         "<div class='bundle-app'>",
         # Sidebar
-        "<aside class='bundle-sidebar'>",
+        "<aside class='bundle-sidebar' id='bundleSidebar'>",
         f"<h1>📋 {title}</h1>",
         f"<div class='meta'>Wygenerowano: {datetime.now().strftime('%Y-%m-%d %H:%M')} · {len(normalized)} aut</div>",
         "<ul class='nav-list'>",
@@ -2350,6 +2372,15 @@ def _bundle_html(htmls: list[tuple], title: str) -> str:
     # JavaScript do przełączania
     parts.append("""
 <script>
+function toggleSidebar() {
+  const sb = document.getElementById('bundleSidebar');
+  const ov = document.getElementById('bundleOverlay');
+  const btn = document.getElementById('bundleToggle');
+  const open = sb.classList.toggle('open');
+  ov.classList.toggle('show', open);
+  btn.textContent = open ? '✕' : '☰';
+  btn.setAttribute('aria-label', open ? 'Zamknij menu' : 'Otwórz menu');
+}
 function showLot(idx) {
   document.querySelectorAll('.lot-section').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -2358,13 +2389,24 @@ function showLot(idx) {
   if (target) target.classList.add('active');
   if (nav) nav.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  // Update URL hash dla bookmarkable links
   history.replaceState(null, '', '#lot-' + idx);
+  // Mobile: zamknij sidebar po wybraniu auta (lepszy UX, user widzi raport)
+  if (window.innerWidth <= 768) {
+    const sb = document.getElementById('bundleSidebar');
+    if (sb && sb.classList.contains('open')) toggleSidebar();
+  }
 }
 // Init: jeśli URL ma #lot-N, otwórz tę sekcję
 window.addEventListener('DOMContentLoaded', () => {
   const m = (window.location.hash || '').match(/^#lot-(\\d+)$/);
   if (m) showLot(parseInt(m[1], 10));
+});
+// ESC zamyka sidebar na mobile
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const sb = document.getElementById('bundleSidebar');
+    if (sb && sb.classList.contains('open')) toggleSidebar();
+  }
 });
 </script>""")
 
