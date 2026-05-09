@@ -135,6 +135,7 @@ export function renderMailHtml(opts: {
   clientName: string;
   topLots: AnalyzedLot[];
   generatedAt: string;
+  searchedBy?: string | null;
 }): string {
   const rows = opts.topLots
     .slice(0, 5)
@@ -152,7 +153,7 @@ export function renderMailHtml(opts: {
 <body style="font-family:Arial,sans-serif;color:#222;background:#f4f5f2;margin:0;padding:24px">
 <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
 <h2 style="color:#1a3a5c;margin-top:0">Cześć ${esc(opts.clientName)},</h2>
-<p>Poniżej przesyłam wybrane oferty z aukcji Copart i IAAI dopasowane do Twoich kryteriów. Wygenerowano: ${esc(opts.generatedAt)}.</p>
+<p>Poniżej przesyłam wybrane oferty z aukcji Copart i IAAI dopasowane do Twoich kryteriów. Wygenerowano: ${esc(opts.generatedAt)}.${opts.searchedBy ? ` Wyszukiwanie wykonał: <strong>${esc(opts.searchedBy)}</strong>.` : ""}</p>
 <table style="width:100%;border-collapse:collapse;margin:16px 0">
 <thead><tr style="background:#1a3a5c;color:#fff"><th align="left" style="padding:8px">Pojazd</th><th align="left" style="padding:8px">Stan</th><th align="left" style="padding:8px">Bid</th><th align="left" style="padding:8px">Ocena</th></tr></thead>
 <tbody>${rows}</tbody></table>
