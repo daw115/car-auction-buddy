@@ -221,8 +221,11 @@ function RecordsSection() {
   const [onlyCompleted, setOnlyCompleted] = useState(true);
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<any | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fn = useServerFn(getBackendRecordsList);
   const fnDetail = useServerFn(getBackendRecordDetails);
+  const fnDelete = useServerFn(deleteBackendRecord);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -247,6 +250,27 @@ function RecordsSection() {
       toast.error("Nie udało się pobrać szczegółów");
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDel) return;
+    const id = String(confirmDel.id);
+    setDeletingId(id);
+    try {
+      const res = await fnDelete({ data: { id } });
+      if (res.ok) {
+        const kb = (res.bytes_freed / 1024).toFixed(0);
+        toast.success(`Usunięto rekord #${res.record_id} (${res.files_removed} plików, ${kb} KB zwolnione)`);
+        setConfirmDel(null);
+        load();
+      } else {
+        toast.error(`Nie udało się usunąć: ${res.detail}`);
+      }
+    } catch (e: any) {
+      toast.error(`Nie udało się usunąć: ${e?.message || "błąd"}`);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -304,24 +328,44 @@ function RecordsSection() {
                   <TableHead>Info</TableHead>
                   <TableHead className="text-right">Lots</TableHead>
                   <TableHead />
+                  <TableHead className="text-right">Akcje</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((r: any) => (
-                  <TableRow key={r.id} className="cursor-pointer" onClick={() => openDetail(r.id)}>
-                    <TableCell className="text-xs whitespace-nowrap">{fmtDate(r.created_at)}</TableCell>
-                    <TableCell className="max-w-[200px] truncate text-xs">{r.title || "—"}</TableCell>
-                    <TableCell className="text-xs">{r.client || "—"}</TableCell>
-                    <TableCell>{statusBadge(r.status)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                      {r.analysis_notice || "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs">{r.collected_count ?? "—"}</TableCell>
-                    <TableCell>
-                      <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filtered.map((r: any) => {
+                  const isRunning = r.status === "running";
+                  const isDeleting = deletingId === String(r.id);
+                  return (
+                    <TableRow key={r.id} className="cursor-pointer" onClick={() => openDetail(r.id)}>
+                      <TableCell className="text-xs whitespace-nowrap">{fmtDate(r.created_at)}</TableCell>
+                      <TableCell className="max-w-[200px] truncate text-xs">{r.title || "—"}</TableCell>
+                      <TableCell className="text-xs">{r.client?.name || r.client || "—"}</TableCell>
+                      <TableCell>{statusBadge(r.status)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                        {r.analysis_notice || "—"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs">{r.collected_count ?? "—"}</TableCell>
+                      <TableCell>
+                        <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={isRunning || isDeleting}
+                          title={isRunning ? "Najpierw anuluj scrape" : "Usuń rekord"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDel(r);
+                          }}
+                        >
+                          {isDeleting ? <Spin /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -341,6 +385,34 @@ function RecordsSection() {
             ) : null}
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && !deletingId && setConfirmDel(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Usunąć wyszukiwanie?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmDel && (
+                  <>
+                    Rekord #{confirmDel.id}: <strong>{confirmDel.title || "—"}</strong> z{" "}
+                    {fmtDate(confirmDel.created_at)}. Operacja usunie też wszystkie wygenerowane
+                    raporty HTML z dysku ({confirmDel.collected_count ?? 0} lotów). Tej akcji nie
+                    można cofnąć.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={!!deletingId}>Anuluj</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); handleDelete(); }}
+                disabled={!!deletingId}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingId ? "Usuwanie..." : "Usuń"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );
