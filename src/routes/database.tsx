@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BidfaxBadge } from "@/components/BidfaxBadge";
 import {
   getDbOverview,
   getBackendRecordsList,
