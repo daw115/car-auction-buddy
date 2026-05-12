@@ -2974,6 +2974,7 @@ function Panel() {
                   placeholder="Flood, Fire"
                 />
               </Field>
+            </div>
 
             <Separator className="my-4" />
 
