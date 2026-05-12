@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LogsPanel } from "@/components/LogsPanel";
+import { BidfaxBadge } from "@/components/BidfaxBadge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
 import { Button } from "@/components/ui/button";
