@@ -13,6 +13,8 @@ export type CarLot = {
   trim?: string | null;
   odometer_mi?: number | null;
   odometer_km?: number | null;
+  fuel_type?: string | null;
+  raw_data?: Record<string, string | number | boolean | null | undefined> | null;
   damage_primary?: string | null;
   damage_secondary?: string | null;
   title_type?: string | null;
@@ -36,6 +38,7 @@ export type ClientCriteria = {
   year_to?: number | null;
   budget_usd?: number | null;
   max_odometer_mi?: number | null;
+  fuel_type?: "Gas" | "Hybrid" | "Diesel" | "Electric" | null;
   excluded_damage_types?: string[];
   max_results?: number;
   sources?: string[];

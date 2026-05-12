@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LogsPanel } from "@/components/LogsPanel";
+import { BidfaxBadge } from "@/components/BidfaxBadge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
 import { Button } from "@/components/ui/button";
@@ -173,6 +174,7 @@ const DEFAULT_CRITERIA: ClientCriteria = {
   year_to: 2024,
   budget_usd: null,
   max_odometer_mi: null,
+  fuel_type: null,
   excluded_damage_types: ["Flood", "Fire"],
   max_results: 15,
   sources: ["copart", "iaai"],
@@ -1372,6 +1374,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
           <div>Rocznik: {criteria.year_from || "?"}–{criteria.year_to || "?"}</div>
           <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
           <div>Max przebieg: {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}</div>
+          {criteria.fuel_type && <div>Paliwo: <strong>{criteria.fuel_type}</strong></div>}
           <div>Źródła: {(criteria.sources || []).join(", ")}</div>
           <div>Wyklucz: {(criteria.excluded_damage_types || []).join(", ")}</div>
         </div>
@@ -1453,6 +1456,8 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                         {lot.current_bid_usd && <span>${lot.current_bid_usd.toLocaleString()}</span>}
                         {lot.seller_type && <Badge variant="outline" className="text-xs">{lot.seller_type}</Badge>}
                       </div>
+
+                      <BidfaxBadge lot={lot} />
 
                       {ai?.client_description_pl && (
                         <div className="text-xs mt-1 italic">{ai.client_description_pl}</div>
@@ -2919,6 +2924,28 @@ function Panel() {
                   }
                 />
               </Field>
+              <Field label="Typ paliwa">
+                <Select
+                  value={criteria.fuel_type ?? "any"}
+                  onValueChange={(v) =>
+                    setCriteria({
+                      ...criteria,
+                      fuel_type: v === "any" ? null : (v as "Gas" | "Hybrid" | "Diesel" | "Electric"),
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Dowolny" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Dowolny</SelectItem>
+                    <SelectItem value="Gas">Gas</SelectItem>
+                    <SelectItem value="Hybrid">Hybrid</SelectItem>
+                    <SelectItem value="Diesel">Diesel</SelectItem>
+                    <SelectItem value="Electric">Electric</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
               <Field label="Max wyników (maks. 15)">
                 <Input
                   type="number"
@@ -2950,7 +2977,6 @@ function Panel() {
                 />
               </Field>
             </div>
-
 
             <Separator className="my-4" />
 

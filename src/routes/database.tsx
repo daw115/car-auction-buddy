@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BidfaxBadge } from "@/components/BidfaxBadge";
 import {
   getDbOverview,
   getBackendRecordsList,
@@ -1236,6 +1237,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
                         „{fb.reason}"
                       </span>
                     )}
+                    <BidfaxBadge lot={lot} compact />
                   </div>
                 </div>
                 <Button
