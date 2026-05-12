@@ -1237,6 +1237,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
                         „{fb.reason}"
                       </span>
                     )}
+                    <BidfaxBadge lot={lot} compact />
                   </div>
                 </div>
                 <Button
