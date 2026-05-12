@@ -106,10 +106,18 @@ def parse_iaai_html(html_file: Path) -> Optional[CarLot]:
         make = make or attr("Make") or None
         model = model or attr("Model") or None
 
-        # VIN - search in HTML for 17-character alphanumeric
+        # VIN - search in HTML for valid VIN format.
+        # KRYTYCZNE: VIN musi zaczynać się LITERĄ (WMI = World Manufacturer
+        # Identifier, country code A-Z) — czysto numeryczne 17-znaki to lot ID /
+        # stock numbers IAAI, nie prawdziwy VIN.
+        # Plus VIN nie zawiera I, O, Q (ISO 3779) — już wykluczone w klasie znaków.
         vin_raw = None
-        vin_matches = re.findall(r'\b[A-HJ-NPR-Z0-9]{17}\b', html_content)
+        vin_matches = re.findall(r'\b[A-HJ-NPR-Z][A-HJ-NPR-Z0-9]{16}\b', html_content)
         if vin_matches:
+            # Bierzemy pierwsze. Dodatkowy filter na typowe WMI:
+            # 1-5 = North America, 6-7 = Oceania (ale rzadko VIN ma cyfrę na 1.
+            # pozycji, więc tu zostaje litera-first regex). Najczęstsze BMW:
+            # 5UX (USA), 4US (USA), WBA/WBS/WBY (Germany), WMW (Mini).
             vin_raw = vin_matches[0]
 
         odo_text = txt("[class*='odometer']") or txt("[class*='mileage']")

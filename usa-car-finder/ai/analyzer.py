@@ -113,6 +113,34 @@ def parse_price_from_str(text: Optional[str]) -> Optional[float]:
         return None
 
 
+def _is_valid_vin(vin: Optional[str]) -> bool:
+    """Walidacja VIN według ISO 3779.
+
+    Reject reasons (najczęstsze false positives w naszym pipeline):
+    - Pusty / None / len != 17
+    - Zawiera `*` (Copart maskuje końcowe znaki: '5UX53DP08R9******')
+    - Pierwszy znak nie jest literą (numeryczne lot IDs IAAI: '33051824458733436')
+    - Zawiera I, O, Q (ISO 3779 wyklucza te znaki)
+    """
+    if not vin:
+        return False
+    vin = vin.strip().upper()
+    if len(vin) != 17:
+        return False
+    if "*" in vin:
+        return False
+    # WMI (pozycja 1) musi być literą — zarówno BMW (5,W,4) jak i Toyota (J,1,5),
+    # itd. Tylko pierwsze cyfry rejektujemy gdy całość jest 17 cyfr (lot ID IAAI).
+    # ALE: VIN może zaczynać się od cyfry (np. '1FATP8UH0L5106209' — Ford USA).
+    # Stricter test: musi zawierać MIESZANE litery i cyfry (nie wszystko cyfry).
+    if vin.isdigit():
+        return False
+    # ISO 3779: VIN nie zawiera I, O, Q
+    if any(c in vin for c in "IOQ"):
+        return False
+    return True
+
+
 def _enrich_lots_with_bidfax(lots: List[CarLot], criteria: ClientCriteria) -> None:
     """Wzbogaca lot.raw_data['bidfax_sold_price'/'bidfax_history_url'/'bidfax_sold_vin']
     o historyczne ceny sprzedaży z bidfax.info.
@@ -133,30 +161,45 @@ def _enrich_lots_with_bidfax(lots: List[CarLot], criteria: ClientCriteria) -> No
         print(f"[AI/Bidfax] Moduł bidfax niedostępny ({exc}) - pomijam wzbogacenie")
         return
 
-    # Bidfax wymaga PEŁNEGO VIN (17 znaków). Copart maskuje VIN
-    # do "4T1K61BK..." — bez full_vin (z AuctionGate/AutoHelperBot extension)
-    # zapytanie nie ma sensu. Pomijamy loty bez pełnego VINa.
+    # Bidfax wymaga PRAWDZIWEGO VIN 17 znaków (ISO 3779). Akceptujemy:
+    # 1. lot.full_vin (z AuctionGate / AHB direct) — najlepsza jakość
+    # 2. fallback do lot.vin (z listingu) — Copart maskuje końcówkę
+    #    (5UX53DP08R9******), IAAI parser czasem zwraca lot IDs zamiast VIN-u.
+    # _is_valid_vin() rejektuje maskowane (*) i numeryczne lot IDs.
     lot_by_query: dict[str, str] = {}  # query (VIN) → lot_id
     makes: dict[str, str] = {}
+    skipped_masked = 0
+    skipped_invalid = 0
+    skipped_empty = 0
     for lot in lots:
-        vin = (lot.full_vin or "").strip()
-        if not vin or len(vin) != 17:
+        candidate = (lot.full_vin or lot.vin or "").strip().upper()
+        if not candidate:
+            skipped_empty += 1
             continue
-        lot_by_query[vin] = lot.lot_id
+        if "*" in candidate:
+            skipped_masked += 1
+            continue
+        if not _is_valid_vin(candidate):
+            skipped_invalid += 1
+            continue
+        lot_by_query[candidate] = lot.lot_id
         expected_make = lot.make or criteria.make
         if expected_make:
-            makes[vin] = expected_make
+            makes[candidate] = expected_make
 
     queries = list(lot_by_query.keys())
     if not queries:
-        skipped = len(lots)
         print(
-            f"[AI/Bidfax] Pomijam wzbogacenie: {skipped} lotów bez pełnego VIN "
-            f"(bidfax wymaga 17 znaków; zwykle dostarcza AuctionGate/AutoHelperBot)"
+            f"[AI/Bidfax] Pomijam wzbogacenie: 0/{len(lots)} lotów ma valid VIN "
+            f"(empty={skipped_empty}, masked='*'={skipped_masked}, invalid format={skipped_invalid}). "
+            f"Bidfax wymaga pełnego VIN 17 znaków; zwykle dostarcza AuctionGate/AutoHelperBot."
         )
         return
 
-    print(f"[AI/Bidfax] Sprawdzam historyczne ceny sprzedaży dla {len(queries)} lotów z pełnym VIN...")
+    print(
+        f"[AI/Bidfax] Sprawdzam historyczne ceny sprzedaży dla {len(queries)}/{len(lots)} lotów z valid VIN "
+        f"(skipped: empty={skipped_empty}, masked={skipped_masked}, invalid={skipped_invalid})..."
+    )
     try:
         results = asyncio.run(lookup_with_cache(
             queries,
@@ -175,16 +218,19 @@ def _enrich_lots_with_bidfax(lots: List[CarLot], criteria: ClientCriteria) -> No
 
     enriched = 0
     for lot in lots:
-        vin = (lot.full_vin or "").strip()
-        if not vin or len(vin) != 17:
+        candidate = (lot.full_vin or lot.vin or "").strip().upper()
+        if "*" in candidate or not _is_valid_vin(candidate):
             continue
-        price, returned_vin, url = results.get(vin, (BIDFAX_IN_PROGRESS, "", ""))
+        price, returned_vin, url = results.get(candidate, (BIDFAX_IN_PROGRESS, "", ""))
         if not price or price == BIDFAX_IN_PROGRESS:
             continue
         lot.raw_data["bidfax_sold_price"] = price
         lot.raw_data["bidfax_history_url"] = url
         if returned_vin:
             lot.raw_data["bidfax_sold_vin"] = returned_vin
+        # Promote do lot.full_vin gdy poprzednio było puste (skoro bidfax matchnął)
+        if not lot.full_vin:
+            lot.full_vin = candidate
         enriched += 1
     print(f"[AI/Bidfax] Wzbogacono {enriched}/{len(queries)} zapytanych lotów o ceny historyczne")
 
