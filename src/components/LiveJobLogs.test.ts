@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isNoiseLine, getLineClass } from "./LiveJobLogs";
+import { isNoiseLine, getLineClass, noiseReason } from "./LiveJobLogs";
 
 describe("LiveJobLogs noise filter", () => {
   describe("isNoiseLine — filters request-spam", () => {
@@ -14,11 +14,12 @@ describe("LiveJobLogs noise filter", () => {
       'INFO: - "GET /api/model-normalizations HTTP/1.1" 200',
       'INFO: - "GET /api/db/stats HTTP/1.1" 200',
       'INFO: - "GET /api/feedback HTTP/1.1" 200',
-      'GET /api/jobs/abc?foo=bar',
+      "GET /api/jobs/abc?foo=bar",
     ];
 
     it.each(spam)("filters: %s", (line) => {
       expect(isNoiseLine(line)).toBe(true);
+      expect(noiseReason(line)).toMatch(/^request-spam \(/);
     });
   });
 
@@ -31,18 +32,30 @@ describe("LiveJobLogs noise filter", () => {
       "WARNING: scrape timeout",
       "Broadcast event delivered to 3 clients",
       "Auto-bundle complete: 15 reports",
-      'POST /api/scrape/start HTTP/1.1 200',
-      'GET /api/logs/stream HTTP/1.1 200',
+      "POST /api/scrape/start HTTP/1.1 200",
+      "GET /api/logs/stream HTTP/1.1 200",
       "INFO scraping_list phase started",
       "[pre_rank] scoring 42 lots",
-      // Edge: similar prefix but different segment
-      'GET /api/jobs-list HTTP/1.1 200',
-      'GET /api/healthcheck HTTP/1.1 200',
-      'GET /api/records-export HTTP/1.1 200',
+      "GET /api/jobs-list HTTP/1.1 200",
+      "GET /api/healthcheck HTTP/1.1 200",
+      "GET /api/records-export HTTP/1.1 200",
     ];
 
     it.each(keep)("keeps: %s", (line) => {
       expect(isNoiseLine(line)).toBe(false);
+      expect(noiseReason(line)).toBeNull();
+    });
+  });
+
+  describe("noiseReason — explains why a line was filtered", () => {
+    it("includes the matched path segment", () => {
+      expect(noiseReason('GET /api/jobs/abc HTTP/1.1')).toBe(
+        "request-spam (/api/jobs)",
+      );
+      expect(noiseReason("GET /health HTTP/1.1")).toBe("request-spam (/health)");
+      expect(noiseReason("GET /api/html-cache/lookup HTTP/1.1")).toBe(
+        "request-spam (/api/html-cache)",
+      );
     });
   });
 
