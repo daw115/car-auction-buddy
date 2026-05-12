@@ -6,7 +6,7 @@ interface Props {
 }
 
 const NOISE_RE =
-  /GET \/(api\/(jobs|records|health|html-cache|llm-cache|model-normalizations|db|feedback)|health)/;
+  /GET \/(?:api\/(?:jobs|records|health|html-cache|llm-cache|model-normalizations|db|feedback)|health)(?=[/?\s"]|$)/;
 
 function getLineClass(line: string): string {
   if (/\b(error|ERROR|FAILED|crash)\b/i.test(line)) return "text-red-400";
