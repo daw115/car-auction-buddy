@@ -14,12 +14,7 @@ export type CarLot = {
   odometer_mi?: number | null;
   odometer_km?: number | null;
   fuel_type?: string | null;
-  raw_data?: {
-    bidfax_sold_price?: string | null;
-    bidfax_history_url?: string | null;
-    bidfax_sold_vin?: string | null;
-    [key: string]: unknown;
-  } | null;
+  raw_data?: Record<string, string | number | boolean | null | undefined> | null;
   damage_primary?: string | null;
   damage_secondary?: string | null;
   title_type?: string | null;
