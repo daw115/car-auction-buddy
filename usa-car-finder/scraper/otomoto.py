@@ -311,7 +311,13 @@ def lookup_market_price(
     error_msg: Optional[str] = None
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            # Użyj systemowego Chrome (channel=chrome) jeśli BROWSER_CHANNEL=chrome,
+            # inaczej bundled Chromium (default Playwright).
+            _channel = (os.getenv("BROWSER_CHANNEL", "").strip().lower() or None)
+            _launch_kwargs = {"headless": True, "args": ["--no-sandbox"]}
+            if _channel and _channel != "chromium":
+                _launch_kwargs["channel"] = _channel
+            browser = p.chromium.launch(**_launch_kwargs)
             context = browser.new_context(
                 user_agent=OTOMOTO_USER_AGENT,
                 locale="pl-PL",
