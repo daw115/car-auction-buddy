@@ -187,6 +187,25 @@ class IAAIScraper(BaseScraper):
 
         Opt-in via FILTER_SELLER_INSURANCE_ONLY=true. Drastycznie redukuje
         liczbę kandydatów (typowo 5-15x mniej z całej listy)."""
+        # DEBUG: gdy IAAI_DEBUG_SIDEBAR=true, zapisz pełen HTML listing PRZED
+        # próbą kliknięcia — pozwala diagnozę aktualnych selektorów IAAI po
+        # JS renderingu. Plik: data/html_cache/iaai_sidebar_debug_TIMESTAMP.html
+        if os.getenv("IAAI_DEBUG_SIDEBAR", "false").lower() == "true":
+            try:
+                import time
+                from pathlib import Path
+                # Czekaj na pełen JS render sidebar
+                await asyncio.sleep(3)
+                html = await page.content()
+                ts = time.strftime("%Y%m%d_%H%M%S")
+                cache_dir = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache"))
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                fp = cache_dir / f"iaai_sidebar_debug_{ts}.html"
+                fp.write_text(html, encoding="utf-8")
+                print(f"[IAAI] DEBUG: sidebar HTML zapisany do {fp} ({len(html)//1024} KB)")
+            except Exception as exc:
+                print(f"[IAAI] DEBUG sidebar dump failed: {exc}")
+
         # Krok 1: spróbuj rozwinąć accordion 'Seller Type' / 'Sellers' jeśli jest
         # zwinięty (IAAI nie zawsze pokazuje wszystkie facets na starcie).
         for expand_selector in [
