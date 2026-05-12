@@ -174,7 +174,7 @@ const DEFAULT_CRITERIA: ClientCriteria = {
   budget_usd: null,
   max_odometer_mi: null,
   excluded_damage_types: ["Flood", "Fire"],
-  max_results: 30,
+  max_results: 15,
   sources: ["copart", "iaai"],
 };
 
@@ -2919,11 +2919,19 @@ function Panel() {
                   }
                 />
               </Field>
-              <Field label="Max wyników">
+              <Field label="Max wyników (maks. 15)">
                 <Input
                   type="number"
-                  value={criteria.max_results ?? 30}
-                  onChange={(e) => setCriteria({ ...criteria, max_results: +e.target.value || 30 })}
+                  min={1}
+                  max={15}
+                  placeholder="Maks. 15"
+                  value={criteria.max_results ?? 15}
+                  onChange={(e) => {
+                    const raw = +e.target.value;
+                    if (!raw) return setCriteria({ ...criteria, max_results: 15 });
+                    const clamped = Math.min(Math.max(raw, 1), 15);
+                    setCriteria({ ...criteria, max_results: clamped });
+                  }}
                 />
               </Field>
               <Field label="Wykluczone uszkodzenia">
