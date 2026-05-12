@@ -59,7 +59,7 @@ def _env() -> Environment:
 # ============================================================================
 
 def _provider() -> str:
-    return (os.getenv("LLM_REPORTS_PROVIDER", "gemini") or "gemini").lower()
+    return (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
 
 
 def _engine_liters_from_trim(trim: Optional[str], make: Optional[str], model: Optional[str]) -> Optional[float]:

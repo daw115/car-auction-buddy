@@ -6,7 +6,7 @@ budżet około 30k USD, do 60 tys mil"
 Zwracamy: {make: 'BMW', model: 'M5', year_from: 2018, year_to: 2020,
 budget_usd: 30000, max_odometer_mi: 60000, sources: [copart, iaai], ...}
 
-Provider: Gemini Flash (free) → Anthropic fallback.
+Provider: Anthropic primary → Gemini Flash fallback (jeśli LLM_REPORTS_PROVIDER=gemini, odwrotnie).
 """
 from __future__ import annotations
 
@@ -257,7 +257,7 @@ def parse_client_message(message: str) -> dict:
     if not message or not message.strip():
         raise ValueError("Pusta wiadomość")
 
-    provider = (os.getenv("LLM_REPORTS_PROVIDER", "gemini") or "gemini").lower()
+    provider = (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
     fallback = os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true"
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
 
