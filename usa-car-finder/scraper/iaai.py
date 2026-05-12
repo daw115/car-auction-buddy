@@ -181,75 +181,105 @@ class IAAIScraper(BaseScraper):
             print(f"[IAAI] Filtr 'Auction Today' nieudany: {exc}")
 
     async def _apply_seller_insurance_filter(self, page) -> bool:
-        """Klika sidebar facet 'Insurance Companies' (lub równoważne) w IAAI search.
-        Zwraca True jeśli filtr zaaplikowany. IAAI ma to w sekcji 'Seller Type'
-        lub 'Sellers' w lewym sidebar — accordion często wymaga expand zanim klik.
+        """Klika sidebar 'Seller Type → Insurance Companies' w IAAI search.
+
+        Struktura IAAI sidebar (2-step UX, zdiagnozowano w iaai_sidebar_debug):
+          <li class="checkbox">
+            <input type="checkbox" id="customizedSellerType">
+            <label for="customizedSellerType">Seller Type</label>
+          </li>
+        Po kliku na #customizedSellerType lub jego label, IAAI otwiera
+        dropdown / sub-panel z opcjami (Insurance Companies / Dealer / Owner).
+        Wtedy klikamy konkretną opcję 'Insurance Companies'.
 
         Opt-in via FILTER_SELLER_INSURANCE_ONLY=true. Drastycznie redukuje
         liczbę kandydatów (typowo 5-15x mniej z całej listy)."""
-        # DEBUG: gdy IAAI_DEBUG_SIDEBAR=true, zapisz pełen HTML listing PRZED
-        # próbą kliknięcia — pozwala diagnozę aktualnych selektorów IAAI po
-        # JS renderingu. Plik: data/html_cache/iaai_sidebar_debug_TIMESTAMP.html
-        if os.getenv("IAAI_DEBUG_SIDEBAR", "false").lower() == "true":
+
+        async def _debug_dump(suffix: str) -> None:
+            """Debug HTML dump gdy IAAI_DEBUG_SIDEBAR=true."""
+            if os.getenv("IAAI_DEBUG_SIDEBAR", "false").lower() != "true":
+                return
             try:
                 import time
                 from pathlib import Path
-                # Czekaj na pełen JS render sidebar
-                await asyncio.sleep(3)
                 html = await page.content()
                 ts = time.strftime("%Y%m%d_%H%M%S")
                 cache_dir = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache"))
                 cache_dir.mkdir(parents=True, exist_ok=True)
-                fp = cache_dir / f"iaai_sidebar_debug_{ts}.html"
+                fp = cache_dir / f"iaai_sidebar_{suffix}_{ts}.html"
                 fp.write_text(html, encoding="utf-8")
-                print(f"[IAAI] DEBUG: sidebar HTML zapisany do {fp} ({len(html)//1024} KB)")
+                print(f"[IAAI] DEBUG {suffix}: HTML zapisany do {fp} ({len(html)//1024} KB)")
             except Exception as exc:
-                print(f"[IAAI] DEBUG sidebar dump failed: {exc}")
+                print(f"[IAAI] DEBUG {suffix} dump failed: {exc}")
 
-        # Krok 1: spróbuj rozwinąć accordion 'Seller Type' / 'Sellers' jeśli jest
-        # zwinięty (IAAI nie zawsze pokazuje wszystkie facets na starcie).
-        for expand_selector in [
-            "button:has-text('Seller Type')",
-            "button:has-text('Sellers')",
-            "a:has-text('Seller Type')",
-            ".filter-group:has-text('Seller') button[aria-expanded='false']",
-        ]:
-            try:
-                locator = page.locator(expand_selector).first
-                if await locator.count() > 0:
-                    expanded = await locator.get_attribute("aria-expanded")
-                    if expanded != "true":
-                        await locator.click()
-                        await asyncio.sleep(0.6)
-                        break
-            except Exception:
-                pass
+        # Czekaj na pełen JS render sidebar
+        await asyncio.sleep(2)
+        await _debug_dump("before_click")
 
-        # Krok 2: klik na checkbox / link 'Insurance Companies' (różne warianty UI).
-        for selector in [
-            "label:has-text('Insurance Companies')",
-            "label:has-text('Insurance Company')",
-            "a:has-text('Insurance Companies')",
-            "a:has-text('Insurance Company')",
-            "input[type=checkbox][value*='Insurance']",
-            "[data-filter*='Insurance']",
-            ".filter-option:has-text('Insurance Companies')",
-        ]:
+        # Krok 1: kliknij na element 'Seller Type' (id=customizedSellerType)
+        # — to otwiera dropdown/sub-list z opcjami sprzedawcy.
+        toggle_selectors = [
+            "#customizedSellerType",
+            "label[for='customizedSellerType']",
+            "input#customizedSellerType",
+            "li.checkbox label:has-text('Seller Type')",
+        ]
+        clicked_toggle = False
+        for sel in toggle_selectors:
             try:
-                locator = page.locator(selector).first
+                locator = page.locator(sel).first
                 if await locator.count() > 0:
                     try:
                         await locator.scroll_into_view_if_needed(timeout=2000)
                     except Exception:
                         pass
                     await locator.click()
-                    await asyncio.sleep(1.5)
-                    print("[IAAI] Filtr DOM: 'Seller: Insurance Companies'")
+                    await asyncio.sleep(2)  # czekaj na lazy load sub-options
+                    clicked_toggle = True
+                    print(f"[IAAI] Klik na '{sel}' (Seller Type toggle)")
+                    break
+            except Exception as exc:
+                continue
+
+        if not clicked_toggle:
+            print("[IAAI] Filtr sidebar 'Seller Type' nie znaleziony — fallback do client-side")
+            return False
+
+        await _debug_dump("after_toggle")
+
+        # Krok 2: kliknij konkretną opcję 'Insurance Companies' (lub równoważną)
+        # IAAI używa skrótów:
+        #   - 'Insurance Companies' / 'Insurance Company'
+        #   - 'ICO' = Insurance Company Owned (kod wewnętrzny)
+        #   - 'Insurance' (czasem skrócone)
+        insurance_selectors = [
+            "label:has-text('Insurance Compan')",  # 'Insurance Companies' lub 'Insurance Company'
+            "input[type=checkbox][value*='Insurance']",
+            "input[type=checkbox][value*='ICO']",
+            "input[type=checkbox][id*='Insurance']",
+            "input[type=checkbox][name*='Insurance']",
+            "a:has-text('Insurance Compan')",
+            "li:has-text('Insurance Compan') input[type=checkbox]",
+            "li.checkbox:has-text('Insurance') label",
+        ]
+        for sel in insurance_selectors:
+            try:
+                locator = page.locator(sel).first
+                if await locator.count() > 0:
+                    try:
+                        await locator.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    await locator.click()
+                    await asyncio.sleep(2)
+                    print(f"[IAAI] Filtr DOM zaaplikowany: Seller Type → Insurance Companies (selector: '{sel}')")
+                    await _debug_dump("after_insurance")
                     return True
             except Exception:
                 continue
 
-        print("[IAAI] Filtr sidebar 'Insurance Companies' nie znaleziony — fallback do client-side")
+        print("[IAAI] Sub-option 'Insurance Companies' nie znaleziona po toggle — fallback do client-side")
+        await _debug_dump("not_found")
         return False
 
     async def _apply_listing_filters(
