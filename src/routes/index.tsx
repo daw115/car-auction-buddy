@@ -1373,6 +1373,7 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
           <div>Rocznik: {criteria.year_from || "?"}–{criteria.year_to || "?"}</div>
           <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
           <div>Max przebieg: {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}</div>
+          {criteria.fuel_type && <div>Paliwo: <strong>{criteria.fuel_type}</strong></div>}
           <div>Źródła: {(criteria.sources || []).join(", ")}</div>
           <div>Wyklucz: {(criteria.excluded_damage_types || []).join(", ")}</div>
         </div>
