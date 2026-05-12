@@ -229,22 +229,20 @@ def _call_anthropic(message: str) -> dict:
     if base_url:
         kwargs["base_url"] = base_url
     client = anthropic.Anthropic(**kwargs)
-    # Wzmocniona instrukcja w user message + sanitizer w _parse_json_loose
-    # usuwa ```json``` markdown jeśli model je doklei. Nie używamy prefill `{`
-    # bo niektóre proxy/modele potem dorzucają markdown wrapper i parser fails.
+    # Schema w user message (nie w system) — niektóre proxy ignorują system param
+    # i odpowiadają chatty. Hybrid_reports robi tak samo (działa).
+    user_prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"WIADOMOŚĆ OD KLIENTA:\n{message}\n\n"
+        f"Wyciągnij kryteria wyszukiwania według schematu powyżej. "
+        f"Zwróć WYŁĄCZNIE surowy obiekt JSON. Pierwszy znak `{{`, ostatni `}}`. "
+        f"Bez markdown, bez ```json```, bez tekstu wprowadzającego."
+    )
     resp = client.messages.create(
         model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         max_tokens=1500,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": (
-                f"Wiadomość od klienta:\n\n{message}\n\n"
-                "WYMAGANY FORMAT ODPOWIEDZI: TYLKO surowy obiekt JSON. "
-                "ŻADNYCH markdown code fences (```json), ŻADNYCH komentarzy, "
-                "ŻADNEGO tekstu wprowadzającego. Pierwszy znak Twojej odpowiedzi "
-                "MUSI być `{`. Ostatni znak `}`. Nic więcej."
-            )},
-        ],
+        system="You are a JSON extraction API. You always respond with raw JSON object only, no prose, no markdown.",
+        messages=[{"role": "user", "content": user_prompt}],
     )
     chunks = [b.text for b in resp.content if b.type == "text"]
     return _parse_json_loose("".join(chunks))
