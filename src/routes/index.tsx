@@ -57,6 +57,7 @@ import { LogsPanel } from "@/components/LogsPanel";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
+import { LiveJobLogs } from "@/components/LiveJobLogs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -798,6 +799,10 @@ function ActiveJobRow({ job, onCancel }: { job: ActiveJob; onCancel: (id: string
             {job.analysis_notice || "Sprawdź czy nazwa modelu jest poprawna."}
           </div>
         </div>
+      )}
+
+      {["running", "scraping", "scraping_list", "scraping_details", "enriching", "parsing", "ai_analyzing", "generating_reports", "in_progress"].includes(job.status) && (
+        <LiveJobLogs jobId={String(job.id)} active={true} />
       )}
     </div>
   );

@@ -20,6 +20,7 @@ import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
+import { Route as ApiScraperLogsStreamRouteImport } from './routes/api/scraper-logs.stream'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
@@ -79,6 +80,11 @@ const ApiConfigRoute = ApiConfigRouteImport.update({
   path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScraperLogsStreamRoute = ApiScraperLogsStreamRouteImport.update({
+  id: '/api/scraper-logs/stream',
+  path: '/api/scraper-logs/stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
   id: '/api/reports/pdf',
   path: '/api/reports/pdf',
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/dev/logs': typeof DevLogsRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesByTo {
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/dev/logs': typeof DevLogsRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRoutesById {
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/dev/logs': typeof DevLogsRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
 }
 export interface FileRouteTypes {
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/api/dev/auth'
     | '/api/reports/pdf'
+    | '/api/scraper-logs/stream'
     | '/api/public/hooks/cleanup-logs'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/api/dev/auth'
     | '/api/reports/pdf'
+    | '/api/scraper-logs/stream'
     | '/api/public/hooks/cleanup-logs'
   id:
     | '__root__'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/api/dev/auth'
     | '/api/reports/pdf'
+    | '/api/scraper-logs/stream'
     | '/api/public/hooks/cleanup-logs'
   fileRoutesById: FileRoutesById
 }
@@ -210,6 +222,7 @@ export interface RootRouteChildren {
   DevLogsRoute: typeof DevLogsRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
+  ApiScraperLogsStreamRoute: typeof ApiScraperLogsStreamRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
 
@@ -292,6 +305,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/scraper-logs/stream': {
+      id: '/api/scraper-logs/stream'
+      path: '/api/scraper-logs/stream'
+      fullPath: '/api/scraper-logs/stream'
+      preLoaderRoute: typeof ApiScraperLogsStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/reports/pdf': {
       id: '/api/reports/pdf'
       path: '/api/reports/pdf'
@@ -330,6 +350,7 @@ const rootRouteChildren: RootRouteChildren = {
   DevLogsRoute: DevLogsRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
+  ApiScraperLogsStreamRoute: ApiScraperLogsStreamRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport
