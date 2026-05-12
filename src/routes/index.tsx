@@ -2920,6 +2920,28 @@ function Panel() {
                   }
                 />
               </Field>
+              <Field label="Typ paliwa">
+                <Select
+                  value={criteria.fuel_type ?? "any"}
+                  onValueChange={(v) =>
+                    setCriteria({
+                      ...criteria,
+                      fuel_type: v === "any" ? null : (v as "Gas" | "Hybrid" | "Diesel" | "Electric"),
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Dowolny" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Dowolny</SelectItem>
+                    <SelectItem value="Gas">Gas</SelectItem>
+                    <SelectItem value="Hybrid">Hybrid</SelectItem>
+                    <SelectItem value="Diesel">Diesel</SelectItem>
+                    <SelectItem value="Electric">Electric</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
               <Field label="Max wyników (maks. 15)">
                 <Input
                   type="number"
