@@ -2974,9 +2974,6 @@ function Panel() {
                   placeholder="Flood, Fire"
                 />
               </Field>
-                      </div>
-
-                      <BidfaxBadge lot={lot} />
 
             <Separator className="my-4" />
 
