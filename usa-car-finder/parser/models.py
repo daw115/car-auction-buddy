@@ -64,7 +64,7 @@ class ClientCriteria(BaseModel):
     excluded_damage_types: list[str] = Field(
         default_factory=lambda: ["Flood", "Fire"]
     )
-    max_results: int = 30
+    max_results: int = 15
     sources: list[str] = Field(default_factory=lambda: ["copart", "iaai"])
 
     @field_validator("make")
@@ -87,9 +87,10 @@ class ClientCriteria(BaseModel):
     @field_validator("max_results")
     @classmethod
     def max_results_range(cls, value: int) -> int:
-        if value < 1 or value > 100:
-            raise ValueError("max_results musi być w zakresie 1-100")
-        return value
+        if value < 1:
+            raise ValueError("max_results musi być >= 1")
+        # Cap do 15 (twardy limit z UI — chroni przed niepotrzebnym scrape'em długich list)
+        return min(int(value), 15)
 
     @field_validator("sources")
     @classmethod
