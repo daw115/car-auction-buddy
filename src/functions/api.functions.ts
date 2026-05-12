@@ -505,6 +505,7 @@ const criteriaSchema = z.object({
   year_to: z.number().int().min(1900).max(2100).nullable().optional(),
   budget_usd: z.number().min(0).max(1_000_000).nullable().optional(),
   max_odometer_mi: z.number().int().min(0).max(1_000_000).nullable().optional(),
+  fuel_type: z.enum(["Gas", "Hybrid", "Diesel", "Electric"]).nullable().optional(),
   excluded_damage_types: z.array(z.string().max(40)).max(20).optional(),
   max_results: z.number().int().min(1).max(100).optional(),
   sources: z.array(z.string().max(20)).max(5).optional(),
