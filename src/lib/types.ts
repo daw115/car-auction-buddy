@@ -38,6 +38,7 @@ export type ClientCriteria = {
   year_to?: number | null;
   budget_usd?: number | null;
   max_odometer_mi?: number | null;
+  fuel_type?: "Gas" | "Hybrid" | "Diesel" | "Electric" | null;
   excluded_damage_types?: string[];
   max_results?: number;
   sources?: string[];
