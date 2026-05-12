@@ -1029,7 +1029,31 @@ type FeedbackVote = "up" | "down";
 type FeedbackEntry = { lot_id: string; source: string; vote: FeedbackVote; reason?: string | null };
 
 function getRecordLots(record: any): any[] {
-  return record?.listings ?? record?.lots ?? record?.collected ?? [];
+  // Direct shapes (legacy / local DB)
+  const direct =
+    record?.listings ?? record?.lots ?? record?.collected ?? null;
+  if (Array.isArray(direct) && direct.length > 0) return direct;
+
+  // External backend shape: response.all_results / top_recommendations
+  // where each item is { lot, analysis, is_top_recommendation, included_in_report }.
+  const resp = record?.response ?? record?.result ?? null;
+  const candidates: any[] =
+    (Array.isArray(resp?.all_results) && resp.all_results) ||
+    (Array.isArray(resp?.top_recommendations) && resp.top_recommendations) ||
+    (Array.isArray(record?.all_results) && record.all_results) ||
+    (Array.isArray(record?.top_recommendations) && record.top_recommendations) ||
+    [];
+
+  return candidates.map((entry: any) => {
+    const lot = entry?.lot ?? entry;
+    // Merge analysis hints onto the lot for downstream rendering.
+    return {
+      ...lot,
+      analysis: entry?.analysis ?? lot?.analysis,
+      is_top_recommendation: entry?.is_top_recommendation,
+      included_in_report: entry?.included_in_report,
+    };
+  });
 }
 
 function lotKey(lot: any): string {
