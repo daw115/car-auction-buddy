@@ -180,23 +180,91 @@ class IAAIScraper(BaseScraper):
         except Exception as exc:
             print(f"[IAAI] Filtr 'Auction Today' nieudany: {exc}")
 
+    async def _apply_seller_insurance_filter(self, page) -> bool:
+        """Klika sidebar facet 'Insurance Companies' (lub równoważne) w IAAI search.
+        Zwraca True jeśli filtr zaaplikowany. IAAI ma to w sekcji 'Seller Type'
+        lub 'Sellers' w lewym sidebar — accordion często wymaga expand zanim klik.
+
+        Opt-in via FILTER_SELLER_INSURANCE_ONLY=true. Drastycznie redukuje
+        liczbę kandydatów (typowo 5-15x mniej z całej listy)."""
+        # Krok 1: spróbuj rozwinąć accordion 'Seller Type' / 'Sellers' jeśli jest
+        # zwinięty (IAAI nie zawsze pokazuje wszystkie facets na starcie).
+        for expand_selector in [
+            "button:has-text('Seller Type')",
+            "button:has-text('Sellers')",
+            "a:has-text('Seller Type')",
+            ".filter-group:has-text('Seller') button[aria-expanded='false']",
+        ]:
+            try:
+                locator = page.locator(expand_selector).first
+                if await locator.count() > 0:
+                    expanded = await locator.get_attribute("aria-expanded")
+                    if expanded != "true":
+                        await locator.click()
+                        await asyncio.sleep(0.6)
+                        break
+            except Exception:
+                pass
+
+        # Krok 2: klik na checkbox / link 'Insurance Companies' (różne warianty UI).
+        for selector in [
+            "label:has-text('Insurance Companies')",
+            "label:has-text('Insurance Company')",
+            "a:has-text('Insurance Companies')",
+            "a:has-text('Insurance Company')",
+            "input[type=checkbox][value*='Insurance']",
+            "[data-filter*='Insurance']",
+            ".filter-option:has-text('Insurance Companies')",
+        ]:
+            try:
+                locator = page.locator(selector).first
+                if await locator.count() > 0:
+                    try:
+                        await locator.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    await locator.click()
+                    await asyncio.sleep(1.5)
+                    print("[IAAI] Filtr DOM: 'Seller: Insurance Companies'")
+                    return True
+            except Exception:
+                continue
+
+        print("[IAAI] Filtr sidebar 'Insurance Companies' nie znaleziony — fallback do client-side")
+        return False
+
     async def _apply_listing_filters(
         self,
         page,
         criteria: ClientCriteria,
         *,
         auction_window_hours: Optional[int],
+        insurance_only: bool = False,
     ) -> None:
-        """Orchestrator filtrów DOM. Opt-in via IAAI_USE_DOM_FILTERS=true.
-        Klika filtry IAAI w DOM (rok / odometer / Auction Today) przed scrapingiem listy."""
-        if os.getenv("IAAI_USE_DOM_FILTERS", "false").lower() != "true":
+        """Orchestrator filtrów DOM. Klika filtry IAAI w DOM (rok / odometer /
+        Auction Today / Seller) przed scrapingiem listy.
+
+        - IAAI_USE_DOM_FILTERS=true → opt-in dla year/odometer/auction-today
+        - FILTER_SELLER_INSURANCE_ONLY=true (lub `insurance_only` arg) → zawsze
+          próbuj kliknąć Seller filter (główny win: 5-15× mniej kandydatów).
+        """
+        use_dom_filters = os.getenv("IAAI_USE_DOM_FILTERS", "false").lower() == "true"
+        env_insurance_only = os.getenv("FILTER_SELLER_INSURANCE_ONLY", "false").lower() == "true"
+        apply_seller = insurance_only or env_insurance_only
+
+        if not use_dom_filters and not apply_seller:
             return
-        print("[IAAI] Aplikuję filtry DOM (IAAI_USE_DOM_FILTERS=true)...")
+
+        if use_dom_filters:
+            print("[IAAI] Aplikuję filtry DOM (IAAI_USE_DOM_FILTERS=true)...")
         try:
-            await self._apply_year_filter(page, criteria.year_from, criteria.year_to)
-            await self._apply_odometer_filter(page, criteria.max_odometer_mi)
-            if auction_window_hours is not None and auction_window_hours <= 30:
-                await self._apply_auction_today_filter(page)
+            if use_dom_filters:
+                await self._apply_year_filter(page, criteria.year_from, criteria.year_to)
+                await self._apply_odometer_filter(page, criteria.max_odometer_mi)
+                if auction_window_hours is not None and auction_window_hours <= 30:
+                    await self._apply_auction_today_filter(page)
+            if apply_seller:
+                await self._apply_seller_insurance_filter(page)
             await asyncio.sleep(2)
         except Exception as exc:
             print(f"[IAAI] Aplikacja filtrów DOM przerwana ({exc}) - lecę bez nich")
@@ -227,7 +295,26 @@ class IAAIScraper(BaseScraper):
 
     @staticmethod
     def _seller_type_from_html(html: str, text: str) -> Optional[str]:
+        """Wykrywa typ sprzedawcy z karty listing IAAI.
+
+        Trzy strategie (od najpewniejszej do fallbackowej):
+        1. **Native IAAI badge** w prawym górnym rogu karty (`<span>INSURANCE</span>` /
+           `<span>DEALER</span>`). Działa BEZ AutoHelperBot.
+        2. **AHB "Who sell:" chip** wstawiony przez AutoHelperBot extension
+           (wymaga `USE_EXTENSIONS=true` + zalogowany AHB w przeglądarce).
+        3. None gdy żadne nie pasuje (przepuszczamy do detail page).
+        """
         combined = f"{html} {text}"
+
+        # Strategia 1: Native IAAI listing badge. IAAI sam pokazuje "INSURANCE" /
+        # "DEALER" jako kolorowy tag w karcie wyniku — niezależny od AHB.
+        # Patrzymy na izolowane słowo (granice słowa) żeby nie złapać częściowych
+        # matchów typu "INSURANCEFOO".
+        badge = re.search(r"\b(INSURANCE|DEALER)\b", combined)
+        if badge:
+            return "insurance" if badge.group(1).upper() == "INSURANCE" else "dealer"
+
+        # Strategia 2: AHB "Who sell:" chip (fallback).
         match = re.search(
             r"Who\s*sell[s:]?\s*:?\s*(Insurance|Seller|Dealer|Owner)",
             combined,
@@ -487,20 +574,33 @@ class IAAIScraper(BaseScraper):
 
                 print(f"[IAAI] Znaleziono {vehicle_count} wyników")
 
-                # Opt-in DOM filters (IAAI_USE_DOM_FILTERS=true) — klika filtry w UI przed scrapingiem.
-                # Drastycznie redukuje liczbę "duds" spoza budgetu/roku na 1. stronie.
-                await self._apply_listing_filters(page, criteria, auction_window_hours=auction_window_hours)
-                if os.getenv("IAAI_USE_DOM_FILTERS", "false").lower() == "true":
-                    vehicle_count_after = await page.locator("a[href*='/VehicleDetail']").count()
-                    if vehicle_count_after != vehicle_count:
-                        print(f"[IAAI] Po filtrach DOM: {vehicle_count_after} wyników (było {vehicle_count})")
-
-                scan_limit = self.get_detail_scan_limit(criteria.max_results)
+                # Oblicz effective_insurance_only ZANIM odpalimy DOM filters —
+                # filtr Seller=Insurance ma być aplikowany od razu (drastycznie
+                # redukuje liczbę kandydatów do detail enrichment, nie tylko
+                # gdy IAAI_USE_DOM_FILTERS=true).
                 effective_insurance_only = (
                     insurance_only
                     if insurance_only is not None
                     else os.getenv("FILTER_SELLER_INSURANCE_ONLY", "false").lower() == "true"
                 )
+
+                # DOM filters (year/odometer/auction-today via IAAI_USE_DOM_FILTERS) +
+                # Seller=Insurance Companies (gdy effective_insurance_only=True).
+                await self._apply_listing_filters(
+                    page,
+                    criteria,
+                    auction_window_hours=auction_window_hours,
+                    insurance_only=effective_insurance_only,
+                )
+                if (
+                    os.getenv("IAAI_USE_DOM_FILTERS", "false").lower() == "true"
+                    or effective_insurance_only
+                ):
+                    vehicle_count_after = await page.locator("a[href*='/VehicleDetail']").count()
+                    if vehicle_count_after != vehicle_count:
+                        print(f"[IAAI] Po filtrach DOM: {vehicle_count_after} wyników (było {vehicle_count})")
+
+                scan_limit = self.get_detail_scan_limit(criteria.max_results)
                 use_listing_prefilter = (
                     effective_insurance_only
                     or auction_window_hours is not None
