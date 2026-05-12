@@ -1457,6 +1457,8 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
                         {lot.seller_type && <Badge variant="outline" className="text-xs">{lot.seller_type}</Badge>}
                       </div>
 
+                      <BidfaxBadge lot={lot} />
+
                       {ai?.client_description_pl && (
                         <div className="text-xs mt-1 italic">{ai.client_description_pl}</div>
                       )}
