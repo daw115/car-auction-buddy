@@ -174,7 +174,7 @@ const DEFAULT_CRITERIA: ClientCriteria = {
   budget_usd: null,
   max_odometer_mi: null,
   excluded_damage_types: ["Flood", "Fire"],
-  max_results: 30,
+  max_results: 15,
   sources: ["copart", "iaai"],
 };
 
