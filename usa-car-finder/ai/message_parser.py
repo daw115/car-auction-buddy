@@ -185,6 +185,7 @@ def _call_gemini(message: str) -> dict:
     timeout = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "60"))
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    thinking_budget = int(os.getenv("GEMINI_THINKING_BUDGET", "0"))
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": f"Wiadomość od klienta:\n\n{message}\n\nZwróć JSON z kryteriami."}]}],
@@ -192,6 +193,7 @@ def _call_gemini(message: str) -> dict:
             "maxOutputTokens": 1500,
             "temperature": 0.1,
             "responseMimeType": "application/json",
+            "thinkingConfig": {"thinkingBudget": thinking_budget},
         },
     }
     req = urllib.request.Request(
@@ -223,14 +225,21 @@ def _call_anthropic(message: str) -> dict:
     if base_url:
         kwargs["base_url"] = base_url
     client = anthropic.Anthropic(**kwargs)
+    # Prefill `{` w assistant message wymusza JSON output (Anthropic best practice).
+    # Bez tego model czasem zaczyna chatty: "I see you mentioned X — that's a popular...".
+    # Dodajemy `{` z powrotem na początek response przed JSON parse.
     resp = client.messages.create(
         model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         max_tokens=1500,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"Wiadomość od klienta:\n\n{message}"}],
+        messages=[
+            {"role": "user", "content": f"Wiadomość od klienta:\n\n{message}\n\nZwróć WYŁĄCZNIE JSON, zaczynając od `{{`."},
+            {"role": "assistant", "content": "{"},  # prefill — model continues from `{`
+        ],
     )
     chunks = [b.text for b in resp.content if b.type == "text"]
-    return _parse_json_loose("".join(chunks))
+    raw = "{" + "".join(chunks)  # dokleamy prefill `{` z powrotem
+    return _parse_json_loose(raw)
 
 
 def parse_client_message(message: str) -> dict:
