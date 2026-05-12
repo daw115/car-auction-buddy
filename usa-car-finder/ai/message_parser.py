@@ -121,8 +121,12 @@ def _strip_json(text: str) -> str:
 
 
 def _sanitize_llm_json(raw: str) -> str:
-    """Sanityzuje typowe błędy LLM w JSON (leading +, trailing commas, // comments)."""
+    """Sanityzuje typowe błędy LLM w JSON (leading +, trailing commas, // comments,
+    markdown code fences gdziekolwiek w tekście)."""
     import re as _re
+    # Usuń wszystkie ```json / ```python / ``` markery z dowolnego miejsca
+    raw = _re.sub(r'```[a-zA-Z]*\s*\n?', '', raw)
+    raw = raw.replace('```', '')
     raw = _re.sub(r'([:\[,]\s*)\+(\d)', r'\1\2', raw)  # +1 -> 1
     raw = _re.sub(r",(\s*[}\]])", r"\1", raw)  # trailing commas
     raw = _re.sub(r"//[^\n]*", "", raw)  # // comments
@@ -225,21 +229,25 @@ def _call_anthropic(message: str) -> dict:
     if base_url:
         kwargs["base_url"] = base_url
     client = anthropic.Anthropic(**kwargs)
-    # Prefill `{` w assistant message wymusza JSON output (Anthropic best practice).
-    # Bez tego model czasem zaczyna chatty: "I see you mentioned X — that's a popular...".
-    # Dodajemy `{` z powrotem na początek response przed JSON parse.
+    # Wzmocniona instrukcja w user message + sanitizer w _parse_json_loose
+    # usuwa ```json``` markdown jeśli model je doklei. Nie używamy prefill `{`
+    # bo niektóre proxy/modele potem dorzucają markdown wrapper i parser fails.
     resp = client.messages.create(
         model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         max_tokens=1500,
         system=SYSTEM_PROMPT,
         messages=[
-            {"role": "user", "content": f"Wiadomość od klienta:\n\n{message}\n\nZwróć WYŁĄCZNIE JSON, zaczynając od `{{`."},
-            {"role": "assistant", "content": "{"},  # prefill — model continues from `{`
+            {"role": "user", "content": (
+                f"Wiadomość od klienta:\n\n{message}\n\n"
+                "WYMAGANY FORMAT ODPOWIEDZI: TYLKO surowy obiekt JSON. "
+                "ŻADNYCH markdown code fences (```json), ŻADNYCH komentarzy, "
+                "ŻADNEGO tekstu wprowadzającego. Pierwszy znak Twojej odpowiedzi "
+                "MUSI być `{`. Ostatni znak `}`. Nic więcej."
+            )},
         ],
     )
     chunks = [b.text for b in resp.content if b.type == "text"]
-    raw = "{" + "".join(chunks)  # dokleamy prefill `{` z powrotem
-    return _parse_json_loose(raw)
+    return _parse_json_loose("".join(chunks))
 
 
 def parse_client_message(message: str) -> dict:
