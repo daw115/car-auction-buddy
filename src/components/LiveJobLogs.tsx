@@ -5,10 +5,14 @@ interface Props {
   active: boolean;
 }
 
-const NOISE_RE =
+export const NOISE_RE =
   /GET \/(?:api\/(?:jobs|records|health|html-cache|llm-cache|model-normalizations|db|feedback)|health)(?=[/?\s"]|$)/;
 
-function getLineClass(line: string): string {
+export function isNoiseLine(line: string): boolean {
+  return NOISE_RE.test(line);
+}
+
+export function getLineClass(line: string): string {
   if (/\b(error|ERROR|FAILED|crash)\b/i.test(line)) return "text-red-400";
   if (/\b(WARNING|WARN|fallback)\b/.test(line) || /Gemini 429/.test(line))
     return "text-yellow-400";
