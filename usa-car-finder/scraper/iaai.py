@@ -120,6 +120,87 @@ class IAAIScraper(BaseScraper):
         await asyncio.sleep(wait_seconds)
         return True
 
+    async def _apply_dom_filter_input(self, page, input_selector: str, value: str) -> bool:
+        """Wypełnia DOM input (np. #YearFilterFrom) wartością i wciska Enter.
+        Opt-in via IAAI_USE_DOM_FILTERS=true. Zwraca True jeśli zaaplikowano."""
+        try:
+            locator = page.locator(input_selector).first
+            if await locator.count() == 0:
+                return False
+            try:
+                await locator.scroll_into_view_if_needed(timeout=2000)
+            except Exception:
+                pass
+            await locator.fill("")
+            await locator.fill(value)
+            await locator.press("Enter")
+            return True
+        except Exception as exc:
+            print(f"[IAAI] Filtr {input_selector} nieudany: {exc}")
+            return False
+
+    async def _apply_year_filter(self, page, year_from: Optional[int], year_to: Optional[int]) -> None:
+        applied_any = False
+        if year_from:
+            if await self._apply_dom_filter_input(page, "#YearFilterFrom", str(year_from)):
+                applied_any = True
+                await asyncio.sleep(0.8)
+        if year_to:
+            if await self._apply_dom_filter_input(page, "#YearFilterTo", str(year_to)):
+                applied_any = True
+                await asyncio.sleep(0.8)
+        if applied_any:
+            print(f"[IAAI] Filtr DOM: rok {year_from or '*'}-{year_to or '*'}")
+
+    async def _apply_odometer_filter(self, page, max_miles: Optional[int]) -> None:
+        if not max_miles:
+            return
+        if await self._apply_dom_filter_input(page, "#ODOValueFilterTo", str(max_miles)):
+            await asyncio.sleep(0.8)
+            print(f"[IAAI] Filtr DOM: odometer ≤ {max_miles} mi")
+
+    async def _apply_auction_today_filter(self, page) -> None:
+        try:
+            for selector in [
+                "button:has-text('Auction Today')",
+                "a:has-text('Auction Today')",
+                "[data-filter='AuctionToday']",
+                "label:has-text('Auction Today')",
+            ]:
+                locator = page.locator(selector).first
+                if await locator.count() > 0:
+                    try:
+                        await locator.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    await locator.click()
+                    await asyncio.sleep(1.2)
+                    print("[IAAI] Filtr DOM: 'Auction Today'")
+                    return
+        except Exception as exc:
+            print(f"[IAAI] Filtr 'Auction Today' nieudany: {exc}")
+
+    async def _apply_listing_filters(
+        self,
+        page,
+        criteria: ClientCriteria,
+        *,
+        auction_window_hours: Optional[int],
+    ) -> None:
+        """Orchestrator filtrów DOM. Opt-in via IAAI_USE_DOM_FILTERS=true.
+        Klika filtry IAAI w DOM (rok / odometer / Auction Today) przed scrapingiem listy."""
+        if os.getenv("IAAI_USE_DOM_FILTERS", "false").lower() != "true":
+            return
+        print("[IAAI] Aplikuję filtry DOM (IAAI_USE_DOM_FILTERS=true)...")
+        try:
+            await self._apply_year_filter(page, criteria.year_from, criteria.year_to)
+            await self._apply_odometer_filter(page, criteria.max_odometer_mi)
+            if auction_window_hours is not None and auction_window_hours <= 30:
+                await self._apply_auction_today_filter(page)
+            await asyncio.sleep(2)
+        except Exception as exc:
+            print(f"[IAAI] Aplikacja filtrów DOM przerwana ({exc}) - lecę bez nich")
+
     async def _wait_for_listing_seller_data(self, page, timeout_s: int = 15) -> bool:
         if os.getenv("USE_EXTENSIONS", "false").lower() != "true":
             return False
@@ -405,6 +486,14 @@ class IAAIScraper(BaseScraper):
                     return []
 
                 print(f"[IAAI] Znaleziono {vehicle_count} wyników")
+
+                # Opt-in DOM filters (IAAI_USE_DOM_FILTERS=true) — klika filtry w UI przed scrapingiem.
+                # Drastycznie redukuje liczbę "duds" spoza budgetu/roku na 1. stronie.
+                await self._apply_listing_filters(page, criteria, auction_window_hours=auction_window_hours)
+                if os.getenv("IAAI_USE_DOM_FILTERS", "false").lower() == "true":
+                    vehicle_count_after = await page.locator("a[href*='/VehicleDetail']").count()
+                    if vehicle_count_after != vehicle_count:
+                        print(f"[IAAI] Po filtrach DOM: {vehicle_count_after} wyników (było {vehicle_count})")
 
                 scan_limit = self.get_detail_scan_limit(criteria.max_results)
                 effective_insurance_only = (

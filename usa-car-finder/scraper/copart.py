@@ -3,6 +3,7 @@ import json
 import random
 import os
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError, async_playwright
@@ -131,14 +132,69 @@ class CopartScraper(BaseScraper):
         await asyncio.sleep(wait_seconds)
         return True
 
-    def _build_search_payload(self, criteria: ClientCriteria, page_number: int, page_size: int) -> dict:
+    def _build_search_payload(
+        self,
+        criteria: ClientCriteria,
+        page_number: int,
+        page_size: int,
+        *,
+        min_auction_window_hours: Optional[int] = None,
+        auction_window_hours: Optional[int] = None,
+    ) -> dict:
         parts = [criteria.make]
         if criteria.model:
             parts.append(criteria.model)
         query = " ".join(parts).strip().lower()
+
+        api_filter: dict = {}
+
+        # FETI: Run and Drive (lot_condition_code:CERT-D) — default ON.
+        # Wycina ~95% lotów które nie odpalają — drastycznie zmniejsza listę kandydatów.
+        if os.getenv("COPART_FILTER_RUN_AND_DRIVE", "true").lower() == "true":
+            api_filter["FETI"] = ["lot_condition_code:CERT-D"]
+
+        # YEAR: zakres lat (range query Solr-style).
+        if criteria.year_from or criteria.year_to:
+            y_from = criteria.year_from if criteria.year_from else "*"
+            y_to = criteria.year_to if criteria.year_to else (datetime.now(tz=timezone.utc).year + 1)
+            api_filter["YEAR"] = [f"lot_year:[{y_from} TO {y_to}]"]
+
+        # ODM: max odometr (mile).
+        if criteria.max_odometer_mi is not None:
+            api_filter["ODM"] = [f"odometer_reading_received:[0 TO {criteria.max_odometer_mi}]"]
+
+        # FUEL: typ paliwa (Gas/Hybrid/Diesel/Electric — z ClientCriteria.fuel_type).
+        if criteria.fuel_type:
+            api_filter["FUEL"] = [f'fuel_type_desc:"{criteria.fuel_type}"']
+
+        # SDAT: okno czasowe aukcji (auction_date_utc) — z kwargs min_auction_window_hours/auction_window_hours.
+        if min_auction_window_hours is not None or auction_window_hours is not None:
+            now = datetime.now(tz=timezone.utc)
+            min_h = min_auction_window_hours if min_auction_window_hours is not None else 0
+            max_h = auction_window_hours if auction_window_hours is not None else (min_h + 48)
+            start = now + timedelta(hours=min_h)
+            end = now + timedelta(hours=max_h)
+            api_filter["SDAT"] = [
+                f'auction_date_utc:["{start.strftime("%Y-%m-%dT%H:%M:%SZ")}" '
+                f'TO "{end.strftime("%Y-%m-%dT%H:%M:%SZ")}"]'
+            ]
+
+        # DMG: opt-in serwer-side wykluczenie damage types (Flood/Fire itp.).
+        # Klucz "DMG" / pole "damage_description_desc" jest "best effort" —
+        # po włączeniu sprawdź czy `total=` na liście spada (~20-40% gdy
+        # wykluczasz Flood+Fire). Client-side filter zostaje jako bezpiecznik.
+        if (
+            os.getenv("COPART_FILTER_EXCLUDE_DAMAGE", "false").lower() == "true"
+            and criteria.excluded_damage_types
+        ):
+            api_filter["DMG"] = [
+                f'-damage_description_desc:"{dmg}"'
+                for dmg in criteria.excluded_damage_types
+            ]
+
         return {
             "query": [query],
-            "filter": {},
+            "filter": api_filter,
             "sort": ["auction_date_utc asc"],
             "page": page_number,
             "size": page_size,
@@ -161,8 +217,17 @@ class CopartScraper(BaseScraper):
         criteria: ClientCriteria,
         page_number: int,
         page_size: int = 100,
+        *,
+        min_auction_window_hours: Optional[int] = None,
+        auction_window_hours: Optional[int] = None,
     ) -> tuple[list[dict], dict]:
-        payload = self._build_search_payload(criteria, page_number, page_size)
+        payload = self._build_search_payload(
+            criteria,
+            page_number,
+            page_size,
+            min_auction_window_hours=min_auction_window_hours,
+            auction_window_hours=auction_window_hours,
+        )
         response = await page.evaluate(
             """async (payload) => {
                 const response = await fetch('/public/lots/search-results', {
@@ -193,8 +258,6 @@ class CopartScraper(BaseScraper):
         auction_date = None
         if lot.get("ad"):
             try:
-                from datetime import datetime, timezone
-
                 auction_date = self.format_utc(
                     datetime.fromtimestamp(int(lot["ad"]) / 1000, tz=timezone.utc)
                 )
@@ -318,7 +381,13 @@ class CopartScraper(BaseScraper):
             "potem sortuję po najmniejszych uszkodzeniach"
         )
         for page_number in range(max_pages):
-            lots, result_meta = await self._fetch_listing_api_page(page, criteria, page_number)
+            lots, result_meta = await self._fetch_listing_api_page(
+                page,
+                criteria,
+                page_number,
+                min_auction_window_hours=min_auction_window_hours,
+                auction_window_hours=auction_window_hours,
+            )
             page_matches = 0
             for api_lot in lots:
                 candidate = self._listing_candidate_from_api_lot(api_lot)

@@ -1,9 +1,11 @@
+import asyncio
 import json
 import os
 import time
 import urllib.error
 import urllib.request
 import anthropic
+from pathlib import Path
 from typing import Optional, Tuple, List
 from parser.models import CarLot, ClientCriteria, AIAnalysis, AnalyzedLot
 from dotenv import load_dotenv
@@ -12,6 +14,9 @@ load_dotenv(override=True)
 
 EASTERN_STATES = {"NY", "NJ", "PA", "CT", "MA", "RI", "VT", "NH", "ME", "MD", "DE", "VA", "NC", "SC", "GA", "FL"}
 WESTERN_STATES = {"CA", "OR", "WA", "NV", "AZ", "UT", "CO", "NM"}
+
+# Cache historycznych cen sprzedaży z bidfax.info (TTL 60 dni, file-based JSON).
+BIDFAX_CACHE_PATH = Path(os.getenv("BIDFAX_CACHE_PATH", "data/bidfax_cache.json"))
 
 SYSTEM_PROMPT = """Jesteś ekspertem od importu aut z USA do Polski.
 Analizujesz dane z aukcji Copart i IAAI dla klienta-brokera importowego.
@@ -70,6 +75,19 @@ ZASADY UŻYCIA TYPU SPRZEDAWCY (seller_type):
 - "insurance": ubezpieczyciel chce szybko pozbyć auta, ceny bardziej negocjowalne
 - "dealer": reseller, cena zazwyczaj bliższa rynkowej, mniejszy margines
 
+HISTORYCZNA CENA SPRZEDAŻY (bidfax_sold_price):
+- Jeśli pole `bidfax_sold_price` ma wartość (np. "$8,500"), to ostateczna cena za jaką
+  TEN SAM lot lub bardzo podobny już sprzedał się historycznie na bidfax.info.
+- Używaj jej jako benchmark rynkowy:
+  * current_bid + naprawa + transport + opłaty ZNACZNIE > bidfax_sold_price
+    → ostrzeż klienta, rynek już pokazał że to nie warto
+  * łączny koszt zbliża się do bidfax_sold_price → uczciwa wycena
+  * łączny koszt wyraźnie poniżej bidfax_sold_price → potencjalna okazja, podnieś score
+- Pole `bidfax_sold_vin` (jeśli obecne) to VIN dopasowanego lota — pomaga zweryfikować
+  że to dokładnie ten sam pojazd, a nie tylko podobny.
+- Brak `bidfax_sold_price` = bidfax nie ma jeszcze tego lota w bazie. To NIE jest
+  negatywny sygnał (po prostu brak danych historycznych).
+
 SZCZEGÓŁOWA ANALIZA - dla każdego lota MUSISZ podać:
 1. Dlaczego wybrałeś ten lot (konkretne zalety)
 2. Wszystkie dane techniczne (VIN, przebieg, rok, uszkodzenia, tytuł)
@@ -95,6 +113,82 @@ def parse_price_from_str(text: Optional[str]) -> Optional[float]:
         return None
 
 
+def _enrich_lots_with_bidfax(lots: List[CarLot], criteria: ClientCriteria) -> None:
+    """Wzbogaca lot.raw_data['bidfax_sold_price'/'bidfax_history_url'/'bidfax_sold_vin']
+    o historyczne ceny sprzedaży z bidfax.info.
+
+    Opt-in przez BIDFAX_ENRICHMENT_ENABLED=true. Bez flagi — no-op.
+    Cache 60 dni w BIDFAX_CACHE_PATH (default data/bidfax_cache.json).
+    Wymaga real Chrome (Cloudflare + reCAPTCHA v3) — pierwsze uruchomienie
+    może być wolne / wymagać interwencji ręcznej.
+    """
+    if os.getenv("BIDFAX_ENRICHMENT_ENABLED", "false").lower() != "true":
+        return
+    if not lots:
+        return
+
+    try:
+        from scraper.bidfax import lookup_with_cache, IN_PROGRESS as BIDFAX_IN_PROGRESS
+    except ImportError as exc:
+        print(f"[AI/Bidfax] Moduł bidfax niedostępny ({exc}) - pomijam wzbogacenie")
+        return
+
+    # Bidfax wymaga PEŁNEGO VIN (17 znaków). Copart maskuje VIN
+    # do "4T1K61BK..." — bez full_vin (z AuctionGate/AutoHelperBot extension)
+    # zapytanie nie ma sensu. Pomijamy loty bez pełnego VINa.
+    lot_by_query: dict[str, str] = {}  # query (VIN) → lot_id
+    makes: dict[str, str] = {}
+    for lot in lots:
+        vin = (lot.full_vin or "").strip()
+        if not vin or len(vin) != 17:
+            continue
+        lot_by_query[vin] = lot.lot_id
+        expected_make = lot.make or criteria.make
+        if expected_make:
+            makes[vin] = expected_make
+
+    queries = list(lot_by_query.keys())
+    if not queries:
+        skipped = len(lots)
+        print(
+            f"[AI/Bidfax] Pomijam wzbogacenie: {skipped} lotów bez pełnego VIN "
+            f"(bidfax wymaga 17 znaków; zwykle dostarcza AuctionGate/AutoHelperBot)"
+        )
+        return
+
+    print(f"[AI/Bidfax] Sprawdzam historyczne ceny sprzedaży dla {len(queries)} lotów z pełnym VIN...")
+    try:
+        results = asyncio.run(lookup_with_cache(
+            queries,
+            BIDFAX_CACHE_PATH,
+            makes=makes,
+        ))
+    except RuntimeError as exc:
+        # asyncio.run() crashuje gdy już jesteśmy w event-loopie (np. wywołane
+        # z FastAPI). Wtedy enrichment musi być wywołany przez orkiestratora
+        # zanim wejdziemy w event loop. Surfacujemy ostrzeżenie i kontynuujemy.
+        print(f"[AI/Bidfax] Nie można uruchomić w istniejącym event loop ({exc}) - pomijam")
+        return
+    except Exception as exc:
+        print(f"[AI/Bidfax] Lookup nieudany ({exc}) - kontynuuję bez wzbogacenia")
+        return
+
+    enriched = 0
+    for lot in lots:
+        vin = (lot.full_vin or "").strip()
+        if not vin or len(vin) != 17:
+            continue
+        price, returned_vin, url = results.get(vin, (BIDFAX_IN_PROGRESS, "", ""))
+        if not price or price == BIDFAX_IN_PROGRESS:
+            continue
+        lot.raw_data["bidfax_sold_price"] = price
+        lot.raw_data["bidfax_history_url"] = url
+        if returned_vin:
+            lot.raw_data["bidfax_sold_vin"] = returned_vin
+        enriched += 1
+    print(f"[AI/Bidfax] Wzbogacono {enriched}/{len(queries)} zapytanych lotów o ceny historyczne")
+
+
 def analyze_lots(
     lots: List[CarLot],
     criteria: ClientCriteria,
@@ -109,6 +203,10 @@ def analyze_lots(
     """
     if not lots:
         return [], []
+
+    # Opt-in (BIDFAX_ENRICHMENT_ENABLED=true): wzbogacenie lot.raw_data o historyczne ceny.
+    # Bez flagi = no-op. Wywoływane przed scoringiem żeby AI widziało benchmark.
+    _enrich_lots_with_bidfax(lots, criteria)
 
     ai_mode = os.getenv("AI_ANALYSIS_MODE", "auto").lower()
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -228,6 +326,9 @@ def _lot_payloads(lots: List[CarLot]) -> list[dict]:
             "airbags_deployed": lot.airbags_deployed,
             "keys": lot.keys,
             "enriched_by_extension": lot.enriched_by_extension,
+            "bidfax_sold_price": lot.raw_data.get("bidfax_sold_price"),
+            "bidfax_history_url": lot.raw_data.get("bidfax_history_url"),
+            "bidfax_sold_vin": lot.raw_data.get("bidfax_sold_vin"),
         }
         for lot in lots
     ]

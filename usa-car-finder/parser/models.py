@@ -60,6 +60,7 @@ class ClientCriteria(BaseModel):
     year_to: Optional[int] = None
     budget_usd: Optional[float] = None  # Opcjonalny — niektorzy klienci nie podaja
     max_odometer_mi: Optional[int] = None
+    fuel_type: Optional[str] = None  # Gas / Hybrid / Diesel / Electric — server-side FUEL filter (Copart)
     allowed_damage_types: list[str] = Field(default_factory=list)
     excluded_damage_types: list[str] = Field(
         default_factory=lambda: ["Flood", "Fire"]
@@ -101,6 +102,16 @@ class ClientCriteria(BaseModel):
         if invalid or not normalized:
             raise ValueError("sources musi zawierać copart, iaai lub oba")
         return normalized
+
+    @field_validator("fuel_type")
+    @classmethod
+    def normalize_fuel_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        return cleaned.title()
 
     @model_validator(mode="after")
     def validate_ranges(self):
