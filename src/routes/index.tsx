@@ -173,6 +173,7 @@ const DEFAULT_CRITERIA: ClientCriteria = {
   year_to: 2024,
   budget_usd: null,
   max_odometer_mi: null,
+  fuel_type: null,
   excluded_damage_types: ["Flood", "Fire"],
   max_results: 15,
   sources: ["copart", "iaai"],
