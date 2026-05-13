@@ -653,8 +653,15 @@ class CopartScraper(BaseScraper):
                     except Exception:
                         pass
                 if owns_context:
-                    await context.close()
+                    try:
+                        await context.close()
+                    except Exception:
+                        # TargetClosedError gdy context już zamknięty (cascade close).
+                        pass
                 if browser is not None:
-                    await browser.close()
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
 
         return saved_files

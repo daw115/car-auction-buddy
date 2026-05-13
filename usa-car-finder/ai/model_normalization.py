@@ -252,19 +252,27 @@ def stats() -> dict:
 # Verification via Anthropic Claude (RouteAI proxy)
 # ============================================================================
 
-VERIFY_SYSTEM_PROMPT = """Jesteś ekspertem od bazy aut Copart i IAAI. Klient w wiadomości
-napisał coś co MA być modelem auta. Twoim zadaniem zweryfikować czy ta nazwa
-jest poprawnym modelem listing'owym w Copart/IAAI, a jeśli nie — zwrócić bazową nazwę.
+VERIFY_SYSTEM_PROMPT = """You are a JSON extraction API. You always respond with raw JSON object only, no prose, no markdown."""
 
-Zwróć JSON:
-{
+
+VERIFY_USER_TEMPLATE = """Jesteś ekspertem od bazy aut Copart i IAAI. Zweryfikuj czy `model` jest poprawnym modelem listingowym w Copart/IAAI dla danej marki, a jeśli nie — zwróć bazową nazwę.
+
+Marka: {make}
+Klient napisał: {original_text}
+{raw_model_line}
+WYMAGANY OUTPUT (raw JSON, pierwszy znak `{{`, ostatni `}}`):
+{{
   "normalized_model": "4 Series",
   "reason": "M440i to trim/wariant; Copart i IAAI listują pod 4 Series",
   "is_normalized": true
-}
+}}
 
-Pole is_normalized=true jeśli zmieniłeś input, false jeśli zostało jak było.
-NIGDY nie pisz markdown, NIGDY ```json``` tagów."""
+ZASADY:
+- "is_normalized": true gdy zmieniasz input, false gdy oryginalna nazwa była poprawna.
+- Gdy uważasz że oryginalna nazwa modelu JEST POPRAWNA → `normalized_model` = ta sama wartość, `is_normalized` = false.
+- Bez markdown, bez ```json``` tagów, bez prozy.
+- Pierwszy znak `{{`, ostatni `}}`. Nic więcej.
+"""
 
 
 def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
@@ -287,11 +295,11 @@ def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str
         kwargs["base_url"] = base_url
     client = anthropic.Anthropic(**kwargs)
 
-    user_msg = (
-        f"Marka: {make}\n"
-        f"Klient napisał: {original_text}\n"
-        + (f"Sparsowany model: {raw_model}\n" if raw_model else "")
-        + "\nCzy ten model jest poprawny w Copart/IAAI? Jeśli nie — podaj bazową nazwę."
+    raw_model_line = f"Sparsowany model: {raw_model}\n" if raw_model else ""
+    user_msg = VERIFY_USER_TEMPLATE.format(
+        make=make,
+        original_text=original_text,
+        raw_model_line=raw_model_line,
     )
 
     try:
@@ -307,6 +315,7 @@ def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str
 
     chunks = [b.text for b in resp.content if b.type == "text"]
     raw = "".join(chunks).strip()
+    # Strip markdown fences (na wszelki wypadek)
     if raw.startswith("```json"):
         raw = raw[7:]
     elif raw.startswith("```"):
@@ -315,10 +324,40 @@ def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str
         raw = raw[:-3]
     raw = raw.strip()
 
+    data = None
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        logger.warning("[model_normalization] JSON parse failed: %s; raw=%r", exc, raw[:200])
+    except json.JSONDecodeError:
+        # Fallback 1: regex-wyciągnij pierwszy {...} z prozy.
+        # Niektóre proxy (oneprovider) zwraca "Tak, model X3 jest poprawny..."
+        # zamiast czystego JSON. Wyciągamy JSON jeśli jest gdziekolwiek.
+        import re
+        match = re.search(r'\{[^{}]*"normalized_model"[^{}]*\}', raw, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+    if data is None:
+        # Fallback 2: heurystyka treści — gdy LLM mówi prozą że oryginalny model
+        # jest poprawny ("Tak, X3 jest poprawny dla BMW..."), traktuj jako
+        # is_normalized=false z tym samym modelem. Tylko gdy raw_model jest podany.
+        raw_lower = raw.lower()
+        confirm_keywords = ("poprawny", "jest ok", "valid", "is correct", "zgodny", "akceptowalny", "uznawany")
+        if raw_model and any(k in raw_lower for k in confirm_keywords):
+            logger.info(
+                "[model_normalization] LLM zwrócił prozę z afirmacją — heurystyka: %r poprawny",
+                raw_model,
+            )
+            return {
+                "normalized_model": raw_model.strip(),
+                "reason": "Heurystyka: LLM odpowiedział prozą potwierdzającą oryginalny model",
+                "is_normalized": False,
+                "provider": "anthropic",
+                "llm_model": model_name,
+            }
+        logger.warning("[model_normalization] JSON parse failed (no fallback match); raw=%r", raw[:200])
         return None
 
     return {

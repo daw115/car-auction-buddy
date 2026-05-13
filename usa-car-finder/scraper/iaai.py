@@ -775,8 +775,16 @@ class IAAIScraper(BaseScraper):
                     except Exception:
                         pass
                 if owns_context:
-                    await context.close()
+                    try:
+                        await context.close()
+                    except Exception:
+                        # TargetClosedError gdy context już zamknięty (np. crash Chrome
+                        # lub close cascade). Nieblokujący — scrape zwrócił dane przed.
+                        pass
                 if browser is not None:
-                    await browser.close()
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
 
         return saved_files
