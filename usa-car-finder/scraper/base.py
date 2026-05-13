@@ -518,7 +518,9 @@ class BaseScraper:
             if not getattr(ctx, "_autohelperbot_login_attempted", False):
                 ctx._autohelperbot_login_attempted = True  # type: ignore[attr-defined]
                 logged = await self._login_autohelperbot_if_configured(bot_page)
-                if logged:
+                # Zapisuj storage state TYLKO po faktycznym fresh login
+                # (skip jeśli health check pass — sesja juz zapisana wcześniej)
+                if logged and not getattr(bot_page, "_ahb_skipped_login", False):
                     print(f"[Scraper] AutoHelperBot: zapisuję świeży storage_state po loginie")
                     try:
                         from scraper.storage_state import storage_state_path
@@ -588,6 +590,11 @@ class BaseScraper:
             return False
 
     async def _login_autohelperbot_if_configured(self, page: Page) -> bool:
+        """Loguje AHB jeśli sesja wygasła. Zwraca True gdy sesja OK lub fresh login.
+
+        Side-effect: ustawia page._ahb_skipped_login=True gdy health check pass
+        (caller może użyć tego żeby skipnąć storage_state save — niepotrzebne
+        gdy nie było fresh login)."""
         email = os.getenv("AUTOHELPERBOT_EMAIL", "").strip()
         password = os.getenv("AUTOHELPERBOT_PASSWORD", "").strip()
         if not email or not password:
@@ -596,8 +603,10 @@ class BaseScraper:
         # Health check: jeśli sesja aktywna, pomiń login flow (oszczędność ~5-10s)
         if await self._is_ahb_session_active(page):
             print("[Scraper] ✅ AutoHelperBot sesja aktywna — pomijam logowanie")
+            page._ahb_skipped_login = True  # type: ignore[attr-defined]
             return True
 
+        page._ahb_skipped_login = False  # type: ignore[attr-defined]
         print("[Scraper] ⚠️ AutoHelperBot sesja wygasła lub brak — loguję z .env...")
         try:
             await page.goto("https://autohelperbot.com/en/login", wait_until="domcontentloaded", timeout=30000)
