@@ -1,0 +1,29 @@
+{
+   "action": {
+      "default_popup": "index.html"
+   },
+   "background": {
+      "service_worker": "background.js"
+   },
+   "content_scripts": [ {
+      "js": [ "src/jquery-3.7.0.min.js", "content.js" ],
+      "matches": [ "*://*.copart.com/*", "*://*.iaai.com/*" ]
+   } ],
+   "content_security_policy": {
+      "object-src": "'self'",
+      "script-src": "'self'"
+   },
+   "description": "Your assistant in the world of car",
+   "host_permissions": [ "*://*.copart.com/*", "*://*.iaai.com/*", "\u003Call_urls>" ],
+   "icons": {
+      "128": "assets/logo/logo-128.png",
+      "16": "assets/logo/logo-16.png",
+      "48": "assets/logo/logo-48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgtSMf8XNgUKJ2+aD8oiVQrptAq9i5IG1yDbufSa3KUQf+GelldMVB9wzVClyivgMUEAW2fIh/dIWeeY6S846aTxoeMf9jpdy5M1Ih2uSXo9W2fgiyowtnf6+9Yf1cA0PBn3v1ZYXAJjgsC28UIGwEb47knHVdgYU/4P1WaXkSuUkAanESU9ZV229PNrHVQa6NY4qZ/OH+Mtly13n2PeRI/jftcZnmNXqmLevixCvK9CO409+uGwzZyombBsMgCE+gRN8zGRuyG1rCT0uKgFlnzYl2qF1spsVWVlglUb3iHAfTaegY00bBToxDk3cGYphffCJb3Byuat2E6ALM/IPdQIDAQAB",
+   "manifest_version": 3,
+   "name": "AutohelperBot",
+   "permissions": [ "activeTab" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.3.9"
+}
