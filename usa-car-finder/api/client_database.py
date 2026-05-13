@@ -5,11 +5,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from api._time_utils import utc_now_iso
+
 DB_PATH = Path(os.getenv("APP_DATABASE_PATH", "./data/app.db"))
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    """Aware UTC ISO string (z '+00:00') dla wszystkich created_at/updated_at.
+
+    Wcześniej `datetime.now().isoformat()` = naive LOCAL — psuło duration calc
+    (mieszanie z naive UTC stringami z jobs.py daje offset 7200s w CEST/CET).
+    """
+    return utc_now_iso()
 
 
 def _connect() -> sqlite3.Connection:

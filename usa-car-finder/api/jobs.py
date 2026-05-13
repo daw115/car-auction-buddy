@@ -6,8 +6,10 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
+
+from api._time_utils import utc_now, utc_now_iso, parse_iso_to_utc
 
 logger = logging.getLogger("api.jobs")
 
@@ -20,7 +22,7 @@ class Phase:
     name: str
     status: PhaseStatus = "running"
     info: dict = field(default_factory=dict)
-    started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat(timespec="seconds"))
+    started_at: str = field(default_factory=lambda: utc_now_iso())
     finished_at: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -40,7 +42,7 @@ class Job:
     phases: list[Phase] = field(default_factory=list)
     result: Optional[dict] = None
     error: Optional[str] = None
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat(timespec="seconds"))
+    created_at: str = field(default_factory=lambda: utc_now_iso())
     finished_at: Optional[str] = None
     cancel_requested: bool = False
     task: Optional[asyncio.Task] = None
@@ -156,14 +158,14 @@ def find_reusable_job(criteria_hash: str, ttl_seconds: int) -> Optional[Job]:
         return None
 
     # in-memory: running zawsze, done w oknie TTL
-    now = datetime.utcnow()
+    now = utc_now()
     candidates_running = [j for j in _jobs.values() if j.criteria_hash == criteria_hash and j.status == "running"]
     if candidates_running:
         return max(candidates_running, key=lambda j: j.created_at)
 
     candidates_done = [j for j in _jobs.values() if j.criteria_hash == criteria_hash and j.status == "done" and j.finished_at]
     fresh = [j for j in candidates_done
-             if (now - datetime.fromisoformat(j.finished_at)).total_seconds() <= ttl_seconds]
+             if (now - parse_iso_to_utc(j.finished_at)).total_seconds() <= ttl_seconds]
     if fresh:
         return max(fresh, key=lambda j: j.finished_at or "")
 
@@ -222,7 +224,7 @@ def progress_callback(job: Job) -> Callable[[str, dict], None]:
             if info:
                 existing.info.update(info)
         if finished or status in ("done", "blocked", "error", "skipped"):
-            existing.finished_at = datetime.utcnow().isoformat(timespec="seconds")
+            existing.finished_at = utc_now_iso()
         event = {"type": "phase", "phase": existing.to_dict()}
         # Persist faz tylko gdy faza się skończyła (started/intermediate update'y nie warto bić DB)
         if finished or status in ("done", "blocked", "error", "skipped", "cancelled"):
@@ -244,7 +246,7 @@ async def mark_running(job: Job) -> None:
 async def mark_done(job: Job, result: dict) -> None:
     job.status = "done"
     job.result = result
-    job.finished_at = datetime.utcnow().isoformat(timespec="seconds")
+    job.finished_at = utc_now_iso()
     _persist(job)
     await _publish(job, {"type": "status", "status": "done"})
     await _publish(job, {"type": "__end__"})
@@ -253,7 +255,7 @@ async def mark_done(job: Job, result: dict) -> None:
 async def mark_error(job: Job, error: str) -> None:
     job.status = "error"
     job.error = error
-    job.finished_at = datetime.utcnow().isoformat(timespec="seconds")
+    job.finished_at = utc_now_iso()
     _persist(job)
     await _publish(job, {"type": "status", "status": "error", "error": error})
     await _publish(job, {"type": "__end__"})
@@ -261,7 +263,7 @@ async def mark_error(job: Job, error: str) -> None:
 
 async def mark_cancelled(job: Job) -> None:
     job.status = "cancelled"
-    job.finished_at = datetime.utcnow().isoformat(timespec="seconds")
+    job.finished_at = utc_now_iso()
     for phase in job.phases:
         if phase.status == "running":
             phase.status = "cancelled"

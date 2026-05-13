@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from api._time_utils import utc_now, utc_now_iso
+
 logger = logging.getLogger("api.job_db")
 
 _db_path: Optional[Path] = None
@@ -109,7 +111,7 @@ def find_reusable_row(criteria_hash: str, ttl_seconds: int) -> Optional[dict]:
     if not _initialized or not criteria_hash:
         return None
 
-    cutoff = (datetime.utcnow() - timedelta(seconds=ttl_seconds)).isoformat(timespec="seconds")
+    cutoff = (utc_now() - timedelta(seconds=ttl_seconds)).isoformat(timespec="seconds")
     with _lock, _connect() as conn:
         # Najpierw running (najświeższy)
         row = conn.execute(
@@ -136,7 +138,7 @@ def mark_orphaned_running_as_interrupted() -> int:
     """
     if not _initialized:
         return 0
-    finished = datetime.utcnow().isoformat(timespec="seconds")
+    finished = utc_now_iso()
     with _lock, _connect() as conn:
         cur = conn.execute(
             "UPDATE jobs SET status='interrupted', finished_at=COALESCE(finished_at, ?), "

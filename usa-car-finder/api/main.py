@@ -918,11 +918,15 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
     # Liczymy duration scrape (od job.created_at do teraz). Wykorzystywany dla:
     # 1. zapisu w search_records.duration_seconds (statystyka rekordu)
     # 2. Telegram broadcast (już używane)
+    # KRYTYCZNE: aware UTC subtraction. Wcześniej `datetime.now()` (naive LOCAL)
+    # vs `datetime.fromisoformat(naive_utc_str)` (naive UTC) dawało offset +7200s
+    # w strefie CEST/CET (tz != UTC).
+    from api._time_utils import utc_now, parse_iso_to_utc
     duration_s: Optional[float] = None
     try:
         if getattr(job, "created_at", None):
-            created = datetime.fromisoformat(job.created_at)
-            duration_s = max(0.0, (datetime.now() - created).total_seconds())
+            created = parse_iso_to_utc(job.created_at)
+            duration_s = max(0.0, (utc_now() - created).total_seconds())
     except Exception:
         duration_s = None
 
@@ -1151,11 +1155,13 @@ def _save_job_terminal_record(
             logger.info("[record] Skip — rekord dla job %s juz istnieje", job.id)
             return
         # Duration: ile zajął job zanim został anulowany/wywalił błąd
+        # KRYTYCZNE: aware UTC subtraction (patrz komentarz przy _execute_search).
+        from api._time_utils import utc_now, parse_iso_to_utc
         duration_s: Optional[float] = None
         try:
             if getattr(job, "created_at", None):
-                created = datetime.fromisoformat(job.created_at)
-                duration_s = max(0.0, (datetime.now() - created).total_seconds())
+                created = parse_iso_to_utc(job.created_at)
+                duration_s = max(0.0, (utc_now() - created).total_seconds())
         except Exception:
             duration_s = None
         client_payload = request.client.model_dump(mode="json") if request.client else None
