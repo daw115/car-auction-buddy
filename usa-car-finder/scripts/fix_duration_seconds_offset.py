@@ -45,6 +45,7 @@ def detect_offset() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fix duration_seconds offset")
     parser.add_argument("--apply", action="store_true", help="Apply changes (default: dry run)")
+    parser.add_argument("--dry-run", action="store_true", help="Alias dla braku --apply (no-op flag for clarity)")
     parser.add_argument("--offset", type=int, default=None,
                         help=f"UTC offset w sekundach do odjęcia (default: auto-detect, fallback {DEFAULT_OFFSET_S})")
     parser.add_argument("--threshold", type=int, default=None,
