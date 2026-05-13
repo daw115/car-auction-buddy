@@ -61,36 +61,24 @@ class CopartScraper(BaseScraper):
         return None
 
     async def _is_session_active(self, page) -> bool:
-        """Sprawdza czy Copart session jest aktywna.
+        """Sprawdza czy Copart session jest aktywna (URL-based redirect check).
 
-        Strategia: otwórz /account/ (member dashboard). Zalogowany → strona
-        z 'Sign Out'/'Log Out' link. Niezalogowany → redirect na /login.
-        Oszczędza ~10-15s na każdym scrape gdy sesja jest aktywna.
+        Strategia: otwórz /account/. Zalogowany → URL pozostaje /account/.
+        Niezalogowany → Copart redirectuje na /login (lub /signin).
+        URL-based jest 100% reliable — DOM selektory (Sign Out, Logout) są
+        JS-injected po hover na user menu, niedostępne w initial HTML.
+
+        Oszczędza ~10-15s na każdym scrape gdy sesja aktywna.
         """
         try:
             await page.goto(f"{self.BASE_URL}/account/", wait_until="domcontentloaded", timeout=15000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
+                await page.wait_for_load_state("networkidle", timeout=5000)
             except Exception:
                 pass
-            # Redirect na /login = sesja expired
             current_url = (page.url or "").lower()
-            if "/login" in current_url or "/signin" in current_url:
-                return False
-            # Sprawdź obecność Sign Out / Logout linku (tylko dla zalogowanych)
-            for selector in [
-                "a:has-text('Sign Out')",
-                "a:has-text('Log Out')",
-                "a:has-text('Logout')",
-                "[href*='/logout']",
-                "[data-uname='homepageHeaderUserNameInfo']",  # Copart user name w headerze
-            ]:
-                try:
-                    if await page.locator(selector).first.count() > 0:
-                        return True
-                except Exception:
-                    continue
-            return False
+            # Logged-in = URL nie zredirectowany na login/signin page
+            return not any(p in current_url for p in ["/login", "/signin"])
         except Exception as exc:
             print(f"[Copart] Health check sesji failed: {exc}")
             return False

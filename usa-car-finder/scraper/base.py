@@ -569,37 +569,20 @@ class BaseScraper:
         return {}
 
     async def _is_ahb_session_active(self, page: Page) -> bool:
-        """Sprawdza czy AutoHelperBot session jest aktywna.
+        """Sprawdza czy AutoHelperBot session jest aktywna (URL-based redirect check).
 
-        Strategia: otwórz homepage /en/. Zalogowany → user menu / Logout link.
-        Niezalogowany → 'Sign In' button / brak user-only elementów.
-        Oszczędza ~5-10s per scrape gdy sesja jest aktywna (typowo zawsze).
+        Strategia: otwórz homepage /en/. Zalogowany → URL pozostaje /en/.
+        Niezalogowany → AHB redirectuje na /en/login. URL-based jest
+        deterministyczne (AHB DOM minimal w SSR, user-info JS-injected).
         """
         try:
             await page.goto("https://autohelperbot.com/en/", wait_until="domcontentloaded", timeout=15000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
+                await page.wait_for_load_state("networkidle", timeout=5000)
             except Exception:
                 pass
             current_url = (page.url or "").lower()
-            if "/login" in current_url or "/signin" in current_url:
-                return False
-            # User-only elements (Logout link, profile menu)
-            for selector in [
-                "a:has-text('Logout')",
-                "a:has-text('Log out')",
-                "a:has-text('Sign Out')",
-                "[href*='/logout']",
-                "[href*='/profile']",
-                ".user-menu",
-                ".user-avatar",
-            ]:
-                try:
-                    if await page.locator(selector).first.count() > 0:
-                        return True
-                except Exception:
-                    continue
-            return False
+            return not any(p in current_url for p in ["/login", "/signin"])
         except Exception as exc:
             print(f"[Scraper] AutoHelperBot health check failed: {exc}")
             return False

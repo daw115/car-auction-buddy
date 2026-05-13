@@ -59,38 +59,21 @@ class IAAIScraper(BaseScraper):
         return None
 
     async def _is_session_active(self, page) -> bool:
-        """Sprawdza czy IAAI session jest aktywna.
+        """Sprawdza czy IAAI session jest aktywna (URL-based redirect check).
 
-        Strategia: otwórz /Dashboard (member home). Zalogowany → strona z
-        userem w prawym górnym rogu / 'Sign Out' link. Niezalogowany →
-        redirect na login.iaai.com. Oszczędza ~10-15s/scrape.
+        Strategia: otwórz /Dashboard. Zalogowany → URL pozostaje /Dashboard.
+        Niezalogowany → IAAI redirectuje na login.iaai.com. URL-based jest
+        deterministyczne i nie zależy od JS-rendered DOM selektorów.
         """
         try:
             await page.goto(f"{self.BASE_URL}/Dashboard", wait_until="domcontentloaded", timeout=15000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
+                await page.wait_for_load_state("networkidle", timeout=5000)
             except Exception:
                 pass
             current_url = (page.url or "").lower()
-            # Redirect na login.iaai.com lub /login = sesja expired
-            if "login.iaai.com" in current_url or "/login" in current_url or "/signin" in current_url:
-                return False
-            # Sprawdź obecność Sign Out / user info (tylko dla zalogowanych)
-            for selector in [
-                "a:has-text('Sign Out')",
-                "a:has-text('Log Out')",
-                "a:has-text('Logout')",
-                "[href*='Logout']",
-                "[href*='SignOut']",
-                ".user-name",
-                "[data-testid='user-name']",
-            ]:
-                try:
-                    if await page.locator(selector).first.count() > 0:
-                        return True
-                except Exception:
-                    continue
-            return False
+            # Logged-in = URL nie zredirectowany na login subdomain ani /login path
+            return not any(p in current_url for p in ["login.iaai.com", "/login", "/signin"])
         except Exception as exc:
             print(f"[IAAI] Health check sesji failed: {exc}")
             return False
