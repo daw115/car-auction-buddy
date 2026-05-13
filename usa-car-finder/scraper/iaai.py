@@ -58,6 +58,43 @@ class IAAIScraper(BaseScraper):
                     continue
         return None
 
+    async def _is_session_active(self, page) -> bool:
+        """Sprawdza czy IAAI session jest aktywna.
+
+        Strategia: otwórz /Dashboard (member home). Zalogowany → strona z
+        userem w prawym górnym rogu / 'Sign Out' link. Niezalogowany →
+        redirect na login.iaai.com. Oszczędza ~10-15s/scrape.
+        """
+        try:
+            await page.goto(f"{self.BASE_URL}/Dashboard", wait_until="domcontentloaded", timeout=15000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            current_url = (page.url or "").lower()
+            # Redirect na login.iaai.com lub /login = sesja expired
+            if "login.iaai.com" in current_url or "/login" in current_url or "/signin" in current_url:
+                return False
+            # Sprawdź obecność Sign Out / user info (tylko dla zalogowanych)
+            for selector in [
+                "a:has-text('Sign Out')",
+                "a:has-text('Log Out')",
+                "a:has-text('Logout')",
+                "[href*='Logout']",
+                "[href*='SignOut']",
+                ".user-name",
+                "[data-testid='user-name']",
+            ]:
+                try:
+                    if await page.locator(selector).first.count() > 0:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception as exc:
+            print(f"[IAAI] Health check sesji failed: {exc}")
+            return False
+
     async def _login_if_configured(self, page) -> bool:
         email = os.getenv("IAAI_EMAIL", "").strip()
         password = os.getenv("IAAI_PASSWORD", "").strip()
@@ -65,7 +102,12 @@ class IAAIScraper(BaseScraper):
             print("[IAAI] Brak IAAI_EMAIL/IAAI_PASSWORD - pomijam aktywne logowanie")
             return False
 
-        print("[IAAI] Loguję konto IAAI z .env...")
+        # Health check: jeśli sesja aktywna, pomiń login flow (~10-15s oszczędności)
+        if await self._is_session_active(page):
+            print("[IAAI] ✅ Sesja aktywna — pomijam logowanie")
+            return True
+
+        print("[IAAI] ⚠️ Sesja wygasła lub brak — loguję z .env...")
         login_timeout_ms = int(os.getenv("LOGIN_NAV_TIMEOUT_MS", "15000"))
         await page.goto("https://login.iaai.com/", wait_until="domcontentloaded", timeout=login_timeout_ms)
         try:

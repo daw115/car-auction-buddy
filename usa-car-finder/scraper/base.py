@@ -568,12 +568,54 @@ class BaseScraper:
 
         return {}
 
+    async def _is_ahb_session_active(self, page: Page) -> bool:
+        """Sprawdza czy AutoHelperBot session jest aktywna.
+
+        Strategia: otwórz homepage /en/. Zalogowany → user menu / Logout link.
+        Niezalogowany → 'Sign In' button / brak user-only elementów.
+        Oszczędza ~5-10s per scrape gdy sesja jest aktywna (typowo zawsze).
+        """
+        try:
+            await page.goto("https://autohelperbot.com/en/", wait_until="domcontentloaded", timeout=15000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            current_url = (page.url or "").lower()
+            if "/login" in current_url or "/signin" in current_url:
+                return False
+            # User-only elements (Logout link, profile menu)
+            for selector in [
+                "a:has-text('Logout')",
+                "a:has-text('Log out')",
+                "a:has-text('Sign Out')",
+                "[href*='/logout']",
+                "[href*='/profile']",
+                ".user-menu",
+                ".user-avatar",
+            ]:
+                try:
+                    if await page.locator(selector).first.count() > 0:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception as exc:
+            print(f"[Scraper] AutoHelperBot health check failed: {exc}")
+            return False
+
     async def _login_autohelperbot_if_configured(self, page: Page) -> bool:
         email = os.getenv("AUTOHELPERBOT_EMAIL", "").strip()
         password = os.getenv("AUTOHELPERBOT_PASSWORD", "").strip()
         if not email or not password:
             return False
 
+        # Health check: jeśli sesja aktywna, pomiń login flow (oszczędność ~5-10s)
+        if await self._is_ahb_session_active(page):
+            print("[Scraper] ✅ AutoHelperBot sesja aktywna — pomijam logowanie")
+            return True
+
+        print("[Scraper] ⚠️ AutoHelperBot sesja wygasła lub brak — loguję z .env...")
         try:
             await page.goto("https://autohelperbot.com/en/login", wait_until="domcontentloaded", timeout=30000)
         except Exception as exc:

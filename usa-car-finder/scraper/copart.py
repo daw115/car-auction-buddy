@@ -60,6 +60,41 @@ class CopartScraper(BaseScraper):
                     continue
         return None
 
+    async def _is_session_active(self, page) -> bool:
+        """Sprawdza czy Copart session jest aktywna.
+
+        Strategia: otwórz /account/ (member dashboard). Zalogowany → strona
+        z 'Sign Out'/'Log Out' link. Niezalogowany → redirect na /login.
+        Oszczędza ~10-15s na każdym scrape gdy sesja jest aktywna.
+        """
+        try:
+            await page.goto(f"{self.BASE_URL}/account/", wait_until="domcontentloaded", timeout=15000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            # Redirect na /login = sesja expired
+            current_url = (page.url or "").lower()
+            if "/login" in current_url or "/signin" in current_url:
+                return False
+            # Sprawdź obecność Sign Out / Logout linku (tylko dla zalogowanych)
+            for selector in [
+                "a:has-text('Sign Out')",
+                "a:has-text('Log Out')",
+                "a:has-text('Logout')",
+                "[href*='/logout']",
+                "[data-uname='homepageHeaderUserNameInfo']",  # Copart user name w headerze
+            ]:
+                try:
+                    if await page.locator(selector).first.count() > 0:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception as exc:
+            print(f"[Copart] Health check sesji failed: {exc}")
+            return False
+
     async def _login_if_configured(self, page) -> bool:
         email = os.getenv("COPART_EMAIL", "").strip()
         password = os.getenv("COPART_PASSWORD", "").strip()
@@ -67,7 +102,12 @@ class CopartScraper(BaseScraper):
             print("[Copart] Brak COPART_EMAIL/COPART_PASSWORD - pomijam aktywne logowanie")
             return False
 
-        print("[Copart] Loguję konto Copart z .env...")
+        # Health check: jeśli sesja aktywna, pomiń login flow (~10-15s oszczędności)
+        if await self._is_session_active(page):
+            print("[Copart] ✅ Sesja aktywna — pomijam logowanie")
+            return True
+
+        print("[Copart] ⚠️ Sesja wygasła lub brak — loguję z .env...")
         login_timeout_ms = int(os.getenv("LOGIN_NAV_TIMEOUT_MS", "15000"))
         await page.goto(f"{self.BASE_URL}/login/", wait_until="domcontentloaded", timeout=login_timeout_ms)
         try:
