@@ -1,0 +1,2 @@
+# Chrome extension compiled packages (regeneratable, large binary)
+extensions/*.crx
