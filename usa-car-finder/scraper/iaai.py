@@ -497,11 +497,13 @@ class IAAIScraper(BaseScraper):
             return False
 
         if insurance_only and candidate.seller_type != "insurance":
-            # Strict mode (default) — odrzucamy zarówno DEALER jak i UNKNOWN.
-            # Permissive mode (IAAI_REQUIRE_LISTING_SELLER=false) — przepuszczamy
-            # UNKNOWN do detail page (kosztuje ~10-20s/lot, ale łapie loty bez
-            # AHB chip / native badge).
-            require_known = os.getenv("IAAI_REQUIRE_LISTING_SELLER", "true").lower() == "true"
+            # Permissive mode (default IAAI_REQUIRE_LISTING_SELLER=false) — IAAI
+            # listing HTML często nie ma native badge widocznego dla regex
+            # (React/lazy render); UNKNOWN przepuszczamy do detail page.
+            # Strict mode (=true) — wymaga że badge ALBO AHB chip są wykrywalne;
+            # odrzuca UNKNOWN. Włącz dopiero po weryfikacji że `seller insurance`
+            # > 0 w logach.
+            require_known = os.getenv("IAAI_REQUIRE_LISTING_SELLER", "false").lower() == "true"
             if require_known:
                 return False
             if candidate.seller_type is not None:
