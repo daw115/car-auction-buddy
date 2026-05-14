@@ -65,6 +65,26 @@ ZASADY OCENY USZKODZEŃ:
 - FRAME/STRUCTURAL DAMAGE → duże ryzyko, może nie przejść homologacji PL
 - REBUILT TITLE → ryzyko, trudniej sprzedać w Polsce
 - FRONT END / REAR END → standardowe szkody, szacuj 1000-4000 USD
+  ALE: sprawdź pole `frame_damage_check` (vision analysis zdjęć — patrz niżej)
+
+KABRIOLET / CONVERTIBLE — automatyczna dyskwalifikacja:
+- Loty z body_style/model containing 'Convertible', 'Cabrio', 'Roadster',
+  'Spider/Spyder', 'Soft Top' → ODRZUĆ chyba że klient EXPLICITNIE pyta
+  o kabriolet (np. 'BMW 4 Series Convertible' w model).
+- Powód: dach miękki wymaga full restoration (drogie), broker importowy
+  zwykle nie chce. Filter scrape już to robi (`_filter_by_client_criteria`),
+  ale gdyby coś przeleciało — ty też odrzucasz.
+
+VISION FRAME DAMAGE CHECK (pole `frame_damage_check`):
+- Dla lotów z FRONT/REAR damage system uruchamia osobny vision call który
+  analizuje zdjęcia pod kątem uszkodzenia BELKI konstrukcyjnej (frame rail).
+- Jeśli `frame_damage_check.frame_damaged: true` (z `confidence >= 0.5`)
+  → **AUTOMATYCZNIE ODRZUĆ**. Belka uszkodzona = pojazd nie nadaje się
+  do importu (prostowanie ramy + homologacja PL = ryzyko niezgodności VIN).
+- Pole `frame_damage_check.reason` (PL string) opisuje znalezisko.
+  Wstaw to do red_flags i client_description_pl.
+- Brak `frame_damage_check` = vision skip (lot bez FRONT/REAR damage lub
+  brak zdjęć). To NIE jest red flag — po prostu nie aplikuje się.
 
 ZASADY UŻYCIA CENY REZERWOWEJ (seller_reserve_usd):
 - Jeśli aktualna oferta < rezerwa: auto prawdopodobnie nie zostanie sprzedane lub cena wzrośnie znacznie
@@ -254,6 +274,17 @@ def analyze_lots(
     # Bez flagi = no-op. Wywoływane przed scoringiem żeby AI widziało benchmark.
     _enrich_lots_with_bidfax(lots, criteria)
 
+    # Vision frame damage check (FRAME_DAMAGE_VISION_ENABLED=true, default true):
+    # Per lot z FRONT/REAR damage uruchamia Claude vision -> analiza zdjęć
+    # pod kątem uszkodzenia belki konstrukcyjnej. Cache 60 dni per VIN.
+    # Wynik w lot.raw_data['frame_damage_check'] -> AI w scoringu używa
+    # do auto-ODRZUĆ gdy frame_damaged=True.
+    try:
+        from ai.frame_damage_vision import enrich_lots_with_frame_check
+        enrich_lots_with_frame_check(lots)
+    except Exception as exc:
+        print(f"[AI/Frame] Vision check failed ({exc}) - kontynuuję bez")
+
     ai_mode = os.getenv("AI_ANALYSIS_MODE", "auto").lower()
     openai_key = os.getenv("OPENAI_API_KEY")
     has_openai_key = _has_usable_openai_key(openai_key)
@@ -375,6 +406,7 @@ def _lot_payloads(lots: List[CarLot]) -> list[dict]:
             "bidfax_sold_price": lot.raw_data.get("bidfax_sold_price"),
             "bidfax_history_url": lot.raw_data.get("bidfax_history_url"),
             "bidfax_sold_vin": lot.raw_data.get("bidfax_sold_vin"),
+            "frame_damage_check": lot.raw_data.get("frame_damage_check"),
         }
         for lot in lots
     ]

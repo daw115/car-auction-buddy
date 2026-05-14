@@ -449,11 +449,52 @@ class AutomatedScraper:
         normalized = (text or "").strip().lower()
         return re.sub(r"[\s\-_]+", "", normalized)
 
+    # Słowa kluczowe identyfikujące kabriolet (różne lokalizacje języka/marki):
+    # convertible (US), cabriolet (DE/FR), roadster (sport), spider/spyder (Italy),
+    # soft top (generic), drop top (slang), eos (VW Eos), miata (popularnie kabrio).
+    _CABRIO_KEYWORDS = (
+        "convertible",
+        "cabriolet",
+        "cabrio",
+        "roadster",
+        "spider",
+        "spyder",
+        "soft top",
+        "softtop",
+        "drop top",
+        "droptop",
+    )
+
+    @classmethod
+    def _client_wants_convertible(cls, criteria: ClientCriteria) -> bool:
+        """True gdy klient EXPLICITNIE pyta o cabrio (przez slowo kluczowe w modelu)."""
+        haystack = " ".join([
+            (criteria.model or "").lower(),
+            " ".join(criteria.allowed_damage_types or []).lower(),
+        ])
+        return any(kw in haystack for kw in cls._CABRIO_KEYWORDS)
+
+    @classmethod
+    def _lot_is_convertible(cls, lot: CarLot) -> bool:
+        """True gdy lot to kabriolet (sprawdza model/trim + listing_title/raw)."""
+        raw = lot.raw_data or {}
+        haystack = " ".join([
+            (lot.model or "").lower(),
+            (lot.trim or "").lower(),
+            (raw.get("title_raw") or raw.get("listing_title") or "").lower(),
+            # IAAI/Copart czasem trzyma 'BodyStyle' w listing JSON
+            (raw.get("body_style") or "").lower(),
+            ((raw.get("listing") or {}).get("bs") or "").lower(),  # Copart 'bs' = body style
+        ])
+        return any(kw in haystack for kw in cls._CABRIO_KEYWORDS)
+
     def _filter_by_client_criteria(self, lots: List[CarLot], criteria: ClientCriteria) -> List[CarLot]:
         filtered: List[CarLot] = []
         make_query = self._normalize_text(criteria.make)
         model_query = self._normalize_text(criteria.model)
         excluded_damages = criteria.excluded_damage_types or []
+        client_wants_cabrio = self._client_wants_convertible(criteria)
+        cabrio_rejected = 0
 
         for lot in lots:
             lot_make = self._normalize_text(lot.make)
@@ -463,6 +504,15 @@ class AutomatedScraper:
             if make_query and (not lot_make or make_query not in lot_make):
                 continue
             if model_query and (not lot_model or model_query not in lot_model):
+                continue
+
+            # Cabrio filter: kabriolet wykluczony chyba ze klient EXPLICITNIE pyta
+            # o convertible/cabrio/roadster w modelu (np. 'BMW 4 Series Convertible').
+            # Bez tego sliska tendencja: scrape 'BMW 4 Series' lapie zarowno coupe
+            # jak i convertible — broker importowy zwykle chce coupe (wymiana plotow
+            # latwiejsza, niz dach miekki ktory wymaga full restoration).
+            if not client_wants_cabrio and self._lot_is_convertible(lot):
+                cabrio_rejected += 1
                 continue
 
             if criteria.year_from and lot.year and lot.year < criteria.year_from:
@@ -490,6 +540,12 @@ class AutomatedScraper:
                     continue
 
             filtered.append(lot)
+
+        if cabrio_rejected:
+            logger.info(
+                "Filtr cabrio: odrzucono %d lotów (klient nie pytał o convertible)",
+                cabrio_rejected,
+            )
 
         return filtered
 
