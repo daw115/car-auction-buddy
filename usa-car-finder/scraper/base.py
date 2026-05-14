@@ -336,7 +336,15 @@ class BaseScraper:
         if strict_threshold and requested <= strict_threshold:
             return min(per_source_limit, requested)
 
-        multiplier = max(1, int(os.getenv("SEARCH_DETAIL_MULTIPLIER", "4")))
+        # SEARCH_DETAIL_MULTIPLIER: ile razy max_results pobrać do detail
+        # enrichment (zanim post-filter zredukuje do final top).
+        # Default 2 (poprzednio 4):
+        #   - max_results=5  → scan 10 detail (zamiast 20)
+        #   - max_results=15 → scan 30 detail (zamiast 60)
+        # 50% mniej detail page fetches = ~50% szybszy IAAI scrape, mniejsze
+        # ryzyko Imperva/CF block. Można podnieść do 3-4 dla niszowych modeli
+        # gdzie post-filter wyrzuca dużo (np. nietypowe trimy).
+        multiplier = max(1, int(os.getenv("SEARCH_DETAIL_MULTIPLIER", "2")))
         return min(per_source_limit, requested * multiplier)
 
     async def random_delay(self, min_s: float = 2.0, max_s: float = 5.0):
@@ -693,7 +701,10 @@ class BaseScraper:
         return None
 
     async def extract_bot_data_for_lot(self, page: Page, lot_id: str) -> dict:
-        iframe_wait = int(os.getenv("EXTENSION_IFRAME_WAIT_SECONDS", "15"))
+        # Iframe wait: gdy USE_EXTENSIONS=true Chrome ładuje AHB extension content
+        # script — czekamy max iframe_wait sec. Default 8s (poprzednio 15s, ale
+        # 95% lotów odpowiada w 1-3s).
+        iframe_wait = int(os.getenv("EXTENSION_IFRAME_WAIT_SECONDS", "8"))
         plugins_ready = await self.wait_for_extensions(page, timeout_s=iframe_wait)
         if plugins_ready:
             extension_data = await self.extract_extension_data(page)
@@ -702,7 +713,10 @@ class BaseScraper:
         else:
             print("[Scraper] Pluginy nie zwróciły danych w limicie")
 
-        direct_wait = int(os.getenv("AUTOHELPERBOT_DIRECT_WAIT_SECONDS", "20"))
+        # AHB direct (osobny tab autohelperbot.com): zwykle odpowiada 1-3s
+        # gdy session OK, do 8s przy network glitch. Default 8s (poprzednio 20s).
+        # Skraca per lot z 20s → 8s gdy AHB session padł.
+        direct_wait = int(os.getenv("AUTOHELPERBOT_DIRECT_WAIT_SECONDS", "8"))
         return await self.extract_autohelperbot_direct(page, lot_id, timeout_s=direct_wait)
 
     async def collect_paginated_links(
