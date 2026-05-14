@@ -460,6 +460,68 @@ class CopartScraper(BaseScraper):
         candidates.sort(key=self.candidate_sort_key)
         return candidates[:scan_limit]
 
+    async def _fetch_one_detail_parallel(self, context, url: str, idx: int, total: int):
+        """Fetch single Copart detail page w osobnym tab (nowa page w context).
+
+        Każda task ma własną page (osobny tab Chrome) — pozwala asyncio.gather
+        ważyć N równoległych detail fetches bez race condition na shared page.
+
+        AHB direct (przez extract_bot_data_for_lot) otwiera dodatkowy tab dla
+        bot.autohelperbot.com — to OK bo context.new_page() jest tani.
+
+        Zwraca (saved_path, url) gdy sukces, None gdy error/timeout/blokada.
+        """
+        page = None
+        try:
+            page = await context.new_page()
+            detail_timeout_ms = int(os.getenv("DETAIL_NAV_TIMEOUT_MS", "60000"))
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=detail_timeout_ms)
+            except PlaywrightTimeoutError:
+                print(
+                    f"[Copart] {idx+1}/{total} timeout detalu po {detail_timeout_ms}ms - "
+                    "kontynuuję z aktualnym DOM"
+                )
+            if await self.has_security_challenge(page):
+                wait_seconds = int(os.getenv("COPART_SECURITY_WAIT_SECONDS", "0"))
+                if not await self.wait_for_security_challenge_clear(page, wait_seconds):
+                    print(
+                        f"[Copart] {idx+1}/{total} blokada Imperva/hCaptcha - pomijam lot."
+                    )
+                    return None
+            await self.wait_for_detail_data(page)
+            print(f"[Copart] {idx+1}/{total} pobieram dane botów...")
+            metadata = self.last_listing_metadata.setdefault(url, {})
+            lot_id = metadata.get("lot_id")
+            if not lot_id:
+                match = re.search(r"/lot/(\d+)", url, flags=re.IGNORECASE)
+                lot_id = match.group(1) if match else ""
+            extension_data = await self.extract_bot_data_for_lot(page, lot_id)
+            if extension_data:
+                metadata["extension_data"] = extension_data
+                for key in (
+                    "seller_type",
+                    "seller_reserve_usd",
+                    "full_vin",
+                    "delivery_cost_estimate_usd",
+                ):
+                    if extension_data.get(key):
+                        metadata[key] = extension_data[key]
+            await self.jitter()
+            html = await page.content()
+            path = self.save_html(url, html)
+            print(f"[Copart] {idx+1}/{total} zapisano: {path.name}")
+            return (str(path), url)
+        except Exception as e:
+            print(f"[Copart] Błąd {url}: {type(e).__name__}: {e}")
+            return None
+        finally:
+            if page is not None:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+
     async def scrape(
         self,
         criteria: ClientCriteria,
@@ -608,56 +670,37 @@ class CopartScraper(BaseScraper):
                 else:
                     print(f"[Copart] Do pobrania szczegółów: {len(lot_links)} lotów")
 
-                for i, url in enumerate(lot_links):
-                    if detail_target is not None and len(saved_files) >= detail_target:
-                        break
-                    if self.is_cached(url):
-                        cache_path = self.get_cache_path(url)
-                        saved_files.append((str(cache_path), url))
-                        print(f"[Copart] {i+1}/{len(lot_links)} z cache: {cache_path.name}")
-                        continue
-                    try:
-                        detail_timeout_ms = int(os.getenv("DETAIL_NAV_TIMEOUT_MS", "60000"))
-                        try:
-                            await page.goto(url, wait_until="domcontentloaded", timeout=detail_timeout_ms)
-                        except PlaywrightTimeoutError:
-                            print(
-                                f"[Copart] {i+1}/{len(lot_links)} timeout detalu po {detail_timeout_ms}ms - "
-                                "kontynuuję z aktualnym DOM"
-                            )
-                        if await self.has_security_challenge(page):
-                            wait_seconds = int(os.getenv("COPART_SECURITY_WAIT_SECONDS", "0"))
-                            if not await self.wait_for_security_challenge_clear(page, wait_seconds):
-                                print(
-                                    f"[Copart] {i+1}/{len(lot_links)} blokada Imperva/hCaptcha "
-                                    "- pomijam lot."
-                                )
-                                continue
-                        await self.wait_for_detail_data(page)
-                        print(f"[Copart] {i+1}/{len(lot_links)} pobieram dane botów...")
-                        metadata = self.last_listing_metadata.setdefault(url, {})
-                        lot_id = metadata.get("lot_id")
-                        if not lot_id:
-                            match = re.search(r"/lot/(\d+)", url, flags=re.IGNORECASE)
-                            lot_id = match.group(1) if match else ""
-                        extension_data = await self.extract_bot_data_for_lot(page, lot_id)
-                        if extension_data:
-                            metadata["extension_data"] = extension_data
-                            for key in (
-                                "seller_type",
-                                "seller_reserve_usd",
-                                "full_vin",
-                                "delivery_cost_estimate_usd",
-                            ):
-                                if extension_data.get(key):
-                                    metadata[key] = extension_data[key]
-                        await self.jitter()
-                        html = await page.content()
-                        path = self.save_html(url, html)
-                        saved_files.append((str(path), url))
-                        print(f"[Copart] {i+1}/{len(lot_links)} zapisano: {path.name}")
-                    except Exception as e:
-                        print(f"[Copart] Błąd {url}: {e}")
+                # PARALLEL detail fetch — port z IAAI (commit 9c28521).
+                # Sekwencyjnie 30 × 15s = 450s; sem=3 → ceil(30/3) × 15s = 150s
+                # (~5 min oszczędności per pełny scrape).
+                concurrency = max(1, int(os.getenv("COPART_PARALLEL_DETAIL", "3")))
+                total_links = len(lot_links)
+                i = 0
+                while i < total_links and (detail_target is None or len(saved_files) < detail_target):
+                    remaining_slots = (detail_target - len(saved_files)) if detail_target else (total_links - i)
+                    batch_size = min(concurrency, total_links - i, remaining_slots)
+                    batch_urls = lot_links[i:i + batch_size]
+
+                    # Cache check synchronicznie (oszczędza task creation)
+                    detail_tasks = []
+                    for j, url in enumerate(batch_urls):
+                        global_idx = i + j
+                        if self.is_cached(url):
+                            cache_path = self.get_cache_path(url)
+                            saved_files.append((str(cache_path), url))
+                            print(f"[Copart] {global_idx+1}/{total_links} z cache: {cache_path.name}")
+                            continue
+                        detail_tasks.append(self._fetch_one_detail_parallel(context, url, global_idx, total_links))
+
+                    if detail_tasks:
+                        results = await asyncio.gather(*detail_tasks, return_exceptions=True)
+                        for r in results:
+                            if isinstance(r, Exception):
+                                print(f"[Copart] Detail task exception: {type(r).__name__}: {r}")
+                            elif r is not None:
+                                saved_files.append(r)
+
+                    i += batch_size
             finally:
                 if page is not None:
                     try:
