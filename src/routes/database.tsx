@@ -82,9 +82,21 @@ import {
 export const Route = createFileRoute("/database")({
   head: () => ({
     meta: [
-      { title: "Baza danych — USA Car Finder" },
-      { name: "description", content: "Przeglądaj bazę danych aplikacji" },
+      { title: "Baza danych analiz — USA Car Finder" },
+      {
+        name: "description",
+        content:
+          "Przeglądaj zapisane analizy aukcji, rekordy lotów, klientów i wyniki scrapera. Filtruj, sortuj i wracaj do historycznych raportów.",
+      },
+      { property: "og:title", content: "Baza danych analiz — USA Car Finder" },
+      {
+        property: "og:description",
+        content:
+          "Historia analiz aukcji, lotów i klientów z możliwością filtrowania i sortowania rekordów.",
+      },
+      { property: "og:url", content: "https://car-auction-buddy.lovable.app/database" },
     ],
+    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/database" }],
   }),
   component: DatabasePage,
 });

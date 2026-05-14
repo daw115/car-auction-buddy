@@ -85,7 +85,9 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <PasswordGate>
-          <Outlet />
+          <main>
+            <Outlet />
+          </main>
         </PasswordGate>
         <Toaster richColors position="top-right" />
       </ThemeProvider>

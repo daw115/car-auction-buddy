@@ -1,0 +1,14 @@
+# USA Car Finder
+
+> Operator panel for searching, analyzing, and reporting on US auction
+> vehicles (Copart, IAAI). Includes scraper jobs, AI analysis, cost
+> calculator, watchlist, and PDF report generation.
+
+## Pages
+
+- [Panel operatora](/): Main scraper panel — start jobs, browse results, run AI analysis.
+- [Dashboard](/dashboard): Analytics dashboard with charts of analyses, top makes, and red flags.
+- [Kalkulator kosztów](/calculator): VIN decoder, recall lookup, and total landed-cost calculator for US auctions.
+- [Baza danych](/database): Browse the records database — past analyses, lots, and clients.
+- [Watchlist](/watchlist): Tracked auction lots with comparison tools.
+- [Ustawienia](/settings): API keys, AI provider, and integration settings.

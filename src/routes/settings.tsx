@@ -15,6 +15,25 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
+  head: () => ({
+    meta: [
+      { title: "Ustawienia integracji — USA Car Finder" },
+      {
+        name: "description",
+        content:
+          "Konfiguruj klucze API Anthropic i Gemini, wybór dostawcy AI, tryb analizy oraz integrację ze scraperem aukcji.",
+      },
+      { property: "og:title", content: "Ustawienia integracji — USA Car Finder" },
+      {
+        property: "og:description",
+        content:
+          "Klucze API, wybór dostawcy AI i konfiguracja scrapera w jednym miejscu.",
+      },
+      { property: "og:url", content: "https://car-auction-buddy.lovable.app/settings" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/settings" }],
+  }),
   component: SettingsPage,
 });
 

@@ -121,6 +121,24 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Panel operatora — USA Car Finder" },
+      {
+        name: "description",
+        content:
+          "Uruchamiaj scrapery aukcji Copart i IAAI, analizuj wyniki AI, generuj raporty PDF i zarządzaj klientami z jednego panelu operatora.",
+      },
+      { property: "og:title", content: "Panel operatora — USA Car Finder" },
+      {
+        property: "og:description",
+        content:
+          "Uruchamiaj scrapery aukcji Copart i IAAI, analizuj wyniki AI i generuj raporty PDF z jednego panelu.",
+      },
+      { property: "og:url", content: "https://car-auction-buddy.lovable.app/" },
+    ],
+    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/" }],
+  }),
   component: Panel,
 });
 

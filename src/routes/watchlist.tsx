@@ -11,7 +11,26 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, ArrowLeft, Trash2, ExternalLink, GitCompare, Eye, EyeOff } from "lucide-react";
 
-export const Route = createFileRoute("/watchlist")({ component: WatchlistPage });
+export const Route = createFileRoute("/watchlist")({
+  head: () => ({
+    meta: [
+      { title: "Watchlist obserwowanych lotów — USA Car Finder" },
+      {
+        name: "description",
+        content:
+          "Zarządzaj listą obserwowanych lotów aukcyjnych, porównuj do trzech ofert obok siebie i śledź zmiany cen w czasie.",
+      },
+      { property: "og:title", content: "Watchlist obserwowanych lotów — USA Car Finder" },
+      {
+        property: "og:description",
+        content: "Lista obserwowanych aukcji z porównywarką i historią zmian cen.",
+      },
+      { property: "og:url", content: "https://car-auction-buddy.lovable.app/watchlist" },
+    ],
+    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/watchlist" }],
+  }),
+  component: WatchlistPage,
+});
 
 function WatchlistPage() {
   const fetchList = useServerFn(listWatchlist);
