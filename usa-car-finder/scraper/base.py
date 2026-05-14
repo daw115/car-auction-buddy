@@ -548,9 +548,9 @@ class BaseScraper:
                         pass
 
             try:
-                # Timeout zwiększony z 8s → 15s żeby dać CF challenge szansę
-                # auto-resolve (stealth pomaga, ale CF czasem wymaga 5-10s).
-                ahb_goto_timeout = int(os.getenv("AHB_GOTO_TIMEOUT_MS", "15000"))
+                # 8s wystarczy do CF challenge dom-loaded (sam page renderuje
+                # szybko, CF JS oszukuje się stealth ale nadal blokuje content).
+                ahb_goto_timeout = int(os.getenv("AHB_GOTO_TIMEOUT_MS", "8000"))
                 await bot_page.goto(url, wait_until="domcontentloaded", timeout=ahb_goto_timeout)
             except Exception as exc:
                 print(f"[Scraper] AutoHelperBot direct: timeout, skip lot ({type(exc).__name__})")
@@ -559,6 +559,20 @@ class BaseScraper:
             # networkidle skrócony 10s → 4s; samo domcontentloaded zwykle wystarczy
             try:
                 await bot_page.wait_for_load_state("networkidle", timeout=4000)
+            except Exception:
+                pass
+
+            # Fast-fail: gdy AHB serwuje Cloudflare bot challenge, pole regex
+            # nigdy nie znajdzie danych — zamiast czekać 8s na sukces, sprawdź
+            # raz tytuł/body i exit immediately. Oszczędność ~7s/lot.
+            try:
+                cf_check = await bot_page.evaluate(
+                    "() => (document.body ? document.body.innerText.slice(0, 300) : '')"
+                )
+                if cf_check and "security verification" in cf_check.lower():
+                    if os.getenv("AHB_DEBUG_EMPTY", "true").lower() == "true":
+                        print(f"[Scraper] AHB CF challenge wykryty (lot {lot_id}) — fast-fail")
+                    return {}
             except Exception:
                 pass
 
