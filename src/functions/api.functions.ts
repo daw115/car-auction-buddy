@@ -509,6 +509,9 @@ const criteriaSchema = z.object({
   excluded_damage_types: z.array(z.string().max(40)).max(20).optional(),
   max_results: z.number().int().min(1).max(100).optional(),
   sources: z.array(z.string().max(20)).max(5).optional(),
+  // Kto uruchomił wyszukiwanie (Dawid/Janek/Iga/Monte z PasswordGate).
+  // Zod domyślnie strip-uje nieznane pola, więc bez tego trafiało null do backendu.
+  searched_by: z.string().max(40).nullable().optional(),
 });
 
 const lotSchema: z.ZodType<CarLot> = z
