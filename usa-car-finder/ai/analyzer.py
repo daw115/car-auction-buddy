@@ -85,6 +85,11 @@ VISION FRAME DAMAGE CHECK (pole `frame_damage_check`):
   Wstaw to do red_flags i client_description_pl.
 - Brak `frame_damage_check` = vision skip (lot bez FRONT/REAR damage lub
   brak zdjęć). To NIE jest red flag — po prostu nie aplikuje się.
+- **Pole `frame_damage_check.images_inaccessible: true`** oznacza że vision
+  API nie miało dostępu do zdjęć (Copart/IAAI cookie-protected CDN).
+  W tym wypadku WARTOŚĆ NIE JEST INFORMACYJNA — IGNORUJ ten check
+  i decyduj wyłącznie na podstawie text damage_primary/damage_secondary.
+  Nie wstawiaj nic o "vision frame damage" do red_flags w tym przypadku.
 
 ZASADY UŻYCIA CENY REZERWOWEJ (seller_reserve_usd):
 - Jeśli aktualna oferta < rezerwa: auto prawdopodobnie nie zostanie sprzedane lub cena wzrośnie znacznie

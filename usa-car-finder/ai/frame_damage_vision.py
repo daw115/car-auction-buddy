@@ -222,10 +222,40 @@ def check_frame_damage(lot: CarLot, *, force: bool = False) -> Optional[dict]:
         logger.warning("[frame_damage] JSON parse failed for %s; raw=%r", cache_key, raw[:200])
         return None
 
+    raw_reason = str(data.get("reason", "") or "")[:300]
+    raw_confidence = float(data.get("confidence", 0.5) or 0.5)
+    raw_frame_damaged = bool(data.get("frame_damaged"))
+
+    # KRYTYCZNY FIX: Anthropic vision API nie ma dostępu do Copart/IAAI image URLs
+    # (cookies-protected CDN). Gdy LLM zgłasza "zdjęcia niedostępne" / "brak access"
+    # — to NIE jest sygnał o frame damage, tylko o niemożności weryfikacji.
+    # Wtedy zwracamy frame_damaged=False (przepuść lot, AI scoringu zdecyduje
+    # na podstawie text damage_primary). Inaczej dyskwalifikujemy wszystko
+    # z FRONT/REAR damage automatycznie — co broker'a nie satysfakcjonuje.
+    reason_lower = raw_reason.lower()
+    inaccessible_keywords = (
+        "niedostępne", "niedostepne", "niedostateczne", "brak zdjęć",
+        "brak zdjec", "błąd ładow", "blad ladow", "błąd konwer", "blad konwer",
+        "obrazy niedostępne", "obrazy niedostepne", "no access", "cannot access",
+        "unable to access", "not accessible", "no visible", "brak dostępu",
+        "brak dostepu", "image not", "could not retrieve", "nieczytel", "blurry",
+        "brak czytelnych",
+    )
+    images_inaccessible = any(kw in reason_lower for kw in inaccessible_keywords)
+    if images_inaccessible:
+        logger.info(
+            "[frame_damage] %s: vision returned inaccessible (reason=%r) → traktuj jako frame_damaged=False (no veto)",
+            cache_key,
+            raw_reason[:80],
+        )
+        raw_frame_damaged = False
+        raw_confidence = 0.0  # Zero confidence — wynik nieinformacyjny
+
     result = {
-        "frame_damaged": bool(data.get("frame_damaged")),
-        "confidence": float(data.get("confidence", 0.5) or 0.5),
-        "reason": str(data.get("reason", "") or "")[:300],
+        "frame_damaged": raw_frame_damaged,
+        "confidence": raw_confidence,
+        "reason": raw_reason,
+        "images_inaccessible": images_inaccessible,
         "checked_via": "vision",
         "checked_at": time.time(),
     }
