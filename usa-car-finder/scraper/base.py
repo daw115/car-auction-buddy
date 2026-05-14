@@ -518,6 +518,17 @@ class BaseScraper:
             return {}
 
         bot_page = await page.context.new_page()
+        # Apply playwright-stealth: maskuje navigator.webdriver, navigator.plugins,
+        # WebGL fingerprint itp. — żeby Cloudflare auto-challenge nie blokował tab.
+        # AHB.com zaostrzyło CF protection w 2026 — bez stealth każda strona
+        # zwraca "Performing security verification" zamiast danych.
+        try:
+            from playwright_stealth import Stealth
+            await Stealth().apply_stealth_async(bot_page)
+        except Exception as stealth_exc:
+            # Best-effort — gdy import zawiedzie, fall back do gołego Playwright
+            if os.getenv("AHB_DEBUG_EMPTY", "true").lower() == "true":
+                print(f"[Scraper] AHB stealth apply failed: {stealth_exc}")
         try:
             print(f"[Scraper] Fallback AutoHelperBot direct: lot {lot_id}")
 
@@ -537,9 +548,10 @@ class BaseScraper:
                         pass
 
             try:
-                # Krótszy timeout — AutoHelperBot często odpowiada w 2-4s; jeśli >8s
-                # to znaczy że ma overload, lepiej szybko skipnąć niż czekać 15s
-                await bot_page.goto(url, wait_until="domcontentloaded", timeout=8000)
+                # Timeout zwiększony z 8s → 15s żeby dać CF challenge szansę
+                # auto-resolve (stealth pomaga, ale CF czasem wymaga 5-10s).
+                ahb_goto_timeout = int(os.getenv("AHB_GOTO_TIMEOUT_MS", "15000"))
+                await bot_page.goto(url, wait_until="domcontentloaded", timeout=ahb_goto_timeout)
             except Exception as exc:
                 print(f"[Scraper] AutoHelperBot direct: timeout, skip lot ({type(exc).__name__})")
                 return {}
