@@ -705,9 +705,9 @@ class BaseScraper:
         # instant hit, skip plugins + AHB direct (~15-20s/lot saved).
         try:
             from . import ahb_cache  # local import — keep cache module optional
-            cached = ahb_cache.get_cached(self.source, lot_id)
+            cached = ahb_cache.get_cached(self.source_name, lot_id)
             if cached:
-                print(f"[Scraper] AHB cache HIT: {self.source}:{lot_id}")
+                print(f"[Scraper] AHB cache HIT: {self.source_name}:{lot_id}")
                 return cached
         except Exception:
             pass  # cache failure should never block scrape
@@ -722,7 +722,7 @@ class BaseScraper:
             if extension_data:
                 try:
                     from . import ahb_cache
-                    ahb_cache.put_cached(self.source, lot_id, extension_data)
+                    ahb_cache.put_cached(self.source_name, lot_id, extension_data)
                 except Exception:
                     pass
                 return extension_data
@@ -737,7 +737,7 @@ class BaseScraper:
         if direct_data:
             try:
                 from . import ahb_cache
-                ahb_cache.put_cached(self.source, lot_id, direct_data)
+                ahb_cache.put_cached(self.source_name, lot_id, direct_data)
             except Exception:
                 pass
         return direct_data
