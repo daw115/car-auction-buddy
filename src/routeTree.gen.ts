@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -28,6 +29,11 @@ import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/publ
 const WatchlistRoute = WatchlistRouteImport.update({
   id: '/watchlist',
   path: '/watchlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/settings': typeof SettingsRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/settings': typeof SettingsRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/settings': typeof SettingsRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
   '/api/health': typeof ApiHealthRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/database'
     | '/settings'
+    | '/sitemap.xml'
     | '/watchlist'
     | '/api/config'
     | '/api/health'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/database'
     | '/settings'
+    | '/sitemap.xml'
     | '/watchlist'
     | '/api/config'
     | '/api/health'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/database'
     | '/settings'
+    | '/sitemap.xml'
     | '/watchlist'
     | '/api/config'
     | '/api/health'
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
   SettingsRoute: typeof SettingsRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WatchlistRoute: typeof WatchlistRoute
   ApiConfigRoute: typeof ApiConfigRoute
   ApiHealthRoute: typeof ApiHealthRoute
@@ -233,6 +246,13 @@ declare module '@tanstack/react-router' {
       path: '/watchlist'
       fullPath: '/watchlist'
       preLoaderRoute: typeof WatchlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -342,6 +362,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
   SettingsRoute: SettingsRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   WatchlistRoute: WatchlistRoute,
   ApiConfigRoute: ApiConfigRoute,
   ApiHealthRoute: ApiHealthRoute,
@@ -356,3 +377,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
