@@ -701,6 +701,17 @@ class BaseScraper:
         return None
 
     async def extract_bot_data_for_lot(self, page: Page, lot_id: str) -> dict:
+        # AHB on-disk cache (60-day TTL): same lot scraped again within window →
+        # instant hit, skip plugins + AHB direct (~15-20s/lot saved).
+        try:
+            from . import ahb_cache  # local import — keep cache module optional
+            cached = ahb_cache.get_cached(self.source, lot_id)
+            if cached:
+                print(f"[Scraper] AHB cache HIT: {self.source}:{lot_id}")
+                return cached
+        except Exception:
+            pass  # cache failure should never block scrape
+
         # Iframe wait: gdy USE_EXTENSIONS=true Chrome ładuje AHB extension content
         # script — czekamy max iframe_wait sec. Default 8s (poprzednio 15s, ale
         # 95% lotów odpowiada w 1-3s).
@@ -709,6 +720,11 @@ class BaseScraper:
         if plugins_ready:
             extension_data = await self.extract_extension_data(page)
             if extension_data:
+                try:
+                    from . import ahb_cache
+                    ahb_cache.put_cached(self.source, lot_id, extension_data)
+                except Exception:
+                    pass
                 return extension_data
         else:
             print("[Scraper] Pluginy nie zwróciły danych w limicie")
@@ -717,7 +733,14 @@ class BaseScraper:
         # gdy session OK, do 8s przy network glitch. Default 8s (poprzednio 20s).
         # Skraca per lot z 20s → 8s gdy AHB session padł.
         direct_wait = int(os.getenv("AUTOHELPERBOT_DIRECT_WAIT_SECONDS", "8"))
-        return await self.extract_autohelperbot_direct(page, lot_id, timeout_s=direct_wait)
+        direct_data = await self.extract_autohelperbot_direct(page, lot_id, timeout_s=direct_wait)
+        if direct_data:
+            try:
+                from . import ahb_cache
+                ahb_cache.put_cached(self.source, lot_id, direct_data)
+            except Exception:
+                pass
+        return direct_data
 
     async def collect_paginated_links(
         self,
