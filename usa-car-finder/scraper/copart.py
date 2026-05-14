@@ -359,7 +359,14 @@ class CopartScraper(BaseScraper):
             return False
 
         if insurance_only and candidate.seller_type != "insurance":
-            return False
+            # Strict mode (default, COPART_REQUIRE_LISTING_SELLER=true) — odrzucamy
+            # zarówno DEALER jak i UNKNOWN (gdy `ifs` brakuje w JSON-ie).
+            # Permissive mode — przepuszczamy UNKNOWN do detail page.
+            require_known = os.getenv("COPART_REQUIRE_LISTING_SELLER", "true").lower() == "true"
+            if require_known:
+                return False
+            if candidate.seller_type is not None:
+                return False
 
         if self.damage_has_excluded_type(candidate.damage_text, criteria.excluded_damage_types):
             return False
@@ -417,11 +424,14 @@ class CopartScraper(BaseScraper):
                 auction_window_hours=auction_window_hours,
             )
             page_matches = 0
+            seller_breakdown = {"insurance": 0, "dealer": 0, "unknown": 0}
             for api_lot in lots:
                 candidate = self._listing_candidate_from_api_lot(api_lot)
                 if candidate is None or candidate.url in seen:
                     continue
                 seen.add(candidate.url)
+                seller_key = candidate.seller_type if candidate.seller_type in ("insurance", "dealer") else "unknown"
+                seller_breakdown[seller_key] += 1
                 if not self._listing_matches(
                     candidate,
                     criteria,
@@ -439,6 +449,8 @@ class CopartScraper(BaseScraper):
             total = result_meta.get("totalElements") or result_meta.get("totalLotCount") or "?"
             print(
                 f"[Copart] Strona listy {page_number + 1}: "
+                f"seller insurance={seller_breakdown['insurance']} "
+                f"dealer={seller_breakdown['dealer']} unknown={seller_breakdown['unknown']} → "
                 f"{page_matches} pasuje, łącznie {len(candidates)}/{scan_limit}, total={total}"
             )
 

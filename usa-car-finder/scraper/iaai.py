@@ -496,8 +496,16 @@ class IAAIScraper(BaseScraper):
         ):
             return False
 
-        if insurance_only and candidate.seller_type is not None and candidate.seller_type != "insurance":
-            return False
+        if insurance_only and candidate.seller_type != "insurance":
+            # Strict mode (default) — odrzucamy zarówno DEALER jak i UNKNOWN.
+            # Permissive mode (IAAI_REQUIRE_LISTING_SELLER=false) — przepuszczamy
+            # UNKNOWN do detail page (kosztuje ~10-20s/lot, ale łapie loty bez
+            # AHB chip / native badge).
+            require_known = os.getenv("IAAI_REQUIRE_LISTING_SELLER", "true").lower() == "true"
+            if require_known:
+                return False
+            if candidate.seller_type is not None:
+                return False
 
         if self.damage_has_excluded_type(candidate.damage_text, criteria.excluded_damage_types):
             return False
@@ -592,10 +600,13 @@ class IAAIScraper(BaseScraper):
             await self._wait_for_listing_seller_data(page, timeout_s=15)
             page_candidates = await self._extract_current_listing_candidates(page)
             page_matches = 0
+            seller_breakdown = {"insurance": 0, "dealer": 0, "unknown": 0}
             for candidate in page_candidates:
                 if candidate.url in seen:
                     continue
                 seen.add(candidate.url)
+                seller_key = candidate.seller_type if candidate.seller_type in ("insurance", "dealer") else "unknown"
+                seller_breakdown[seller_key] += 1
                 if not self._listing_matches(
                     candidate,
                     criteria,
@@ -612,6 +623,8 @@ class IAAIScraper(BaseScraper):
 
             print(
                 f"[IAAI] Strona listy {page_index + 1}: "
+                f"seller insurance={seller_breakdown['insurance']} "
+                f"dealer={seller_breakdown['dealer']} unknown={seller_breakdown['unknown']} → "
                 f"{page_matches} pasuje, łącznie {len(candidates)}/{scan_limit}"
             )
 
