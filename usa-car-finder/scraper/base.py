@@ -552,12 +552,14 @@ class BaseScraper:
 
             # pętla skrócona 20s → 8s (dane przychodzą zwykle w 1-3s gdy sesja OK)
             poll_max = min(timeout_s, 8)
-            for _ in range(poll_max):
+            last_data: dict = {}
+            for attempt in range(poll_max):
                 try:
                     data = await bot_page.evaluate(EXTENSION_DATA_JS)
                 except Exception:
                     data = {}
 
+                last_data = data or {}
                 useful = _clean_extension_payload(data)
                 if useful:
                     useful["extension_source"] = "autohelperbot_direct"
@@ -568,6 +570,22 @@ class BaseScraper:
                     )
                     return useful
                 await asyncio.sleep(1)
+
+            # Diagnostic: log raw page state when AHB returns nothing usable.
+            # Helps detect AHB.com structure changes or session issues.
+            if os.getenv("AHB_DEBUG_EMPTY", "true").lower() == "true":
+                try:
+                    body_text = await bot_page.evaluate(
+                        "() => (document.body ? document.body.innerText.slice(0, 500) : '<no body>')"
+                    )
+                    current_url = bot_page.url or "?"
+                    print(
+                        f"[Scraper] AHB direct EMPTY for lot {lot_id} "
+                        f"(url={current_url[:80]}, body_len={len(body_text)}, "
+                        f"first 200ch: {body_text[:200].replace(chr(10), ' ')!r})"
+                    )
+                except Exception as dbg_exc:
+                    print(f"[Scraper] AHB direct debug failed: {dbg_exc}")
         except Exception as exc:
             print(f"[Scraper] AutoHelperBot direct nie zwrócił danych: {exc}")
         finally:
