@@ -576,8 +576,13 @@ class IAAIScraper(BaseScraper):
         insurance_only: bool,
     ) -> list[ListingCandidate]:
         max_pages = max(1, int(os.getenv("SEARCH_MAX_PAGES", "5")))
+        # Early exit: gdy N stron z rzędu daje 0 pasujących lotów → break.
+        # Default 2 (jeśli pierwsze 2 strony dały 0 → modele rzadkie/poza oknem,
+        # nie warto iterować pozostałe 3 strony × ~30s = 90s).
+        empty_streak_threshold = max(1, int(os.getenv("SEARCH_EMPTY_STREAK_THRESHOLD", "2")))
         candidates: list[ListingCandidate] = []
         seen: set[str] = set()
+        empty_streak = 0
 
         print(
             "[IAAI] Lista: filtruję auction window → insurance → damage, "
@@ -612,6 +617,19 @@ class IAAIScraper(BaseScraper):
 
             if len(candidates) >= scan_limit:
                 break
+
+            # Early exit: track empty streak. Gdy N kolejnych stron daje 0
+            # pasujących lotów → przerwij paginację (oszczędność ~30s/strona).
+            if page_matches == 0:
+                empty_streak += 1
+                if empty_streak >= empty_streak_threshold:
+                    print(
+                        f"[IAAI] Early exit: {empty_streak} kolejnych stron bez wyników — "
+                        f"przerwij paginację (zostało {max_pages - page_index - 1} stron)"
+                    )
+                    break
+            else:
+                empty_streak = 0
 
             clicked_next = await self._click_next_results_page(page)
             if not clicked_next:
