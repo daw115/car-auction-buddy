@@ -11,7 +11,26 @@ import {
   LineChart, Line,
 } from "recharts";
 
-export const Route = createFileRoute("/dashboard")({ component: Dashboard });
+export const Route = createFileRoute("/dashboard")({
+  head: () => ({
+    meta: [
+      { title: "Dashboard analityczny — USA Car Finder" },
+      {
+        name: "description",
+        content:
+          "Statystyki analiz, klientów i obserwowanych lotów. Wykresy TOP marek, najczęstszych red flag i timeline analiz z ostatnich 30 dni.",
+      },
+      { property: "og:title", content: "Dashboard analityczny — USA Car Finder" },
+      {
+        property: "og:description",
+        content: "Analityka: TOP marki, red flagi i timeline analiz z ostatnich 30 dni.",
+      },
+      { property: "og:url", content: "https://car-auction-buddy.lovable.app/dashboard" },
+    ],
+    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/dashboard" }],
+  }),
+  component: Dashboard,
+});
 
 function Dashboard() {
   const fetchStats = useServerFn(getDashboardStats);

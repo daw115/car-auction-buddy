@@ -13,6 +13,24 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Calculator, Search, ArrowLeft, AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/calculator")({
+  head: () => ({
+    meta: [
+      { title: "Kalkulator kosztów aukcji — USA Car Finder" },
+      {
+        name: "description",
+        content:
+          "Dekoduj VIN, sprawdzaj recalle NHTSA i wyliczaj pełny koszt sprowadzenia auta z USA: aukcja, transport, cło, akcyza, marża.",
+      },
+      { property: "og:title", content: "Kalkulator kosztów aukcji — USA Car Finder" },
+      {
+        property: "og:description",
+        content:
+          "VIN decoder, recalle NHTSA i kalkulator landed cost dla aut z aukcji Copart i IAAI.",
+      },
+      { property: "og:url", content: "https://car-auction-buddy.lovable.app/calculator" },
+    ],
+    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/calculator" }],
+  }),
   component: CalculatorPage,
 });
 

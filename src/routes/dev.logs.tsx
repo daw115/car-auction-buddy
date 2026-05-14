@@ -787,6 +787,12 @@ function DevLogsGate() {
 }
 
 export const Route = createFileRoute("/dev/logs")({
+  head: () => ({
+    meta: [
+      { title: "Dev logs — USA Car Finder" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: DevLogsGate,
 });
 
