@@ -1,0 +1,23 @@
+[Unit]
+Description=AHB/Bidfax CDP Chrome (CF-cleared, headed via WSLg)
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/google-chrome \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir=%h/.chrome-cdp-profile \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-session-crashed-bubble \
+  --restore-last-session \
+  https://autohelperbot.com/en/ https://bidfax.info
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
