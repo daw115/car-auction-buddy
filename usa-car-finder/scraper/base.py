@@ -499,6 +499,70 @@ class BaseScraper:
             )
         return None
 
+    async def _extract_ahb_via_cdp(self, cdp_url: str, lot_id: str, url: str, timeout_s: int) -> dict:
+        """AHB lookup przez CDP-attached Chrome (jak bidfax).
+
+        User uruchamia headed Chrome z --remote-debugging-port, klika CF
+        Turnstile RAZ na autohelperbot.com. Backend łączy się przez CDP do
+        tej CF-cleared sesji — żaden challenge nie blokuje (real user Chrome).
+
+        Reuse tej samej Chrome co bidfax (AHB_CHROME_CDP_URL defaultuje do
+        BIDFAX_CHROME_CDP_URL). Connect per-lot — connect_over_cdp to lekki
+        websocket handshake (~0.3s), nie launchuje nowej Chrome.
+        """
+        from playwright.async_api import async_playwright
+
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.connect_over_cdp(cdp_url)
+                try:
+                    context = browser.contexts[0] if browser.contexts else await browser.new_context()
+                    bot_page = await context.new_page()
+                    try:
+                        await bot_page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                        try:
+                            await bot_page.wait_for_load_state("networkidle", timeout=5000)
+                        except Exception:
+                            pass
+                        poll_max = min(timeout_s, 10)
+                        for _ in range(poll_max):
+                            try:
+                                data = await bot_page.evaluate(EXTENSION_DATA_JS)
+                            except Exception:
+                                data = {}
+                            useful = _clean_extension_payload(data)
+                            if useful:
+                                useful["extension_source"] = "autohelperbot_cdp"
+                                print(
+                                    f"[Scraper] AHB CDP OK: lot {lot_id} "
+                                    f"seller={useful.get('seller_type', 'unknown')} "
+                                    f"vin={useful.get('full_vin', 'brak')}"
+                                )
+                                return useful
+                            await asyncio.sleep(1)
+                        if os.getenv("AHB_DEBUG_EMPTY", "true").lower() == "true":
+                            body = await bot_page.evaluate(
+                                "() => (document.body ? document.body.innerText.slice(0,200) : '')"
+                            )
+                            print(
+                                f"[Scraper] AHB CDP EMPTY lot {lot_id} "
+                                f"(body: {body[:150].replace(chr(10), ' ')!r})"
+                            )
+                        return {}
+                    finally:
+                        try:
+                            await bot_page.close()
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        await browser.close()  # disconnect CDP, NIE zabija user Chrome
+                    except Exception:
+                        pass
+        except Exception as exc:
+            print(f"[Scraper] AHB CDP connect failed ({cdp_url}): {type(exc).__name__}: {exc}")
+            return {}
+
     async def extract_autohelperbot_direct(self, page: Page, lot_id: str, timeout_s: int = 20) -> dict:
         """Fallback: otwiera stronę AutoHelperBot bezpośrednio w tym samym profilu przeglądarki.
 
@@ -506,6 +570,9 @@ class BaseScraper:
         - Pre-login odbywa się tylko RAZ per BrowserContext (cached przez context.__autohelperbot_logged)
         - Per-lot pomija scenę logowania jeśli sesja już aktywna (storage_state w playwright_profiles)
         - Skrócone timeouty: networkidle 4s zamiast 10s, pętla danych do 8s zamiast 20s
+
+        CDP mode: gdy AHB_CHROME_CDP_URL (lub BIDFAX_CHROME_CDP_URL) ustawione,
+        łączymy się do CF-cleared Chrome user'a — omija Cloudflare challenge.
         """
         if (
             os.getenv("USE_EXTENSIONS", "false").lower() != "true"
@@ -516,6 +583,14 @@ class BaseScraper:
         url = self.autohelperbot_detail_url(lot_id)
         if not url:
             return {}
+
+        # CDP attach mode — preferowany gdy skonfigurowany (bypass CF challenge).
+        cdp_url = (
+            os.getenv("AHB_CHROME_CDP_URL", "").strip()
+            or os.getenv("BIDFAX_CHROME_CDP_URL", "").strip()
+        )
+        if cdp_url:
+            return await self._extract_ahb_via_cdp(cdp_url, lot_id, url, timeout_s)
 
         bot_page = await page.context.new_page()
         # Apply playwright-stealth: maskuje navigator.webdriver, navigator.plugins,

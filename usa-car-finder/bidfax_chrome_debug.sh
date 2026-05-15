@@ -2,16 +2,19 @@
 # Uruchamia OSOBNĄ instancję Chrome (osobny profil, port debug 9222)
 # do której Playwright może się podłączyć przez CDP.
 #
-# Po uruchomieniu:
-#   1. Wejdź w Chrome na bidfax.info
-#   2. Jeśli CF Turnstile się pojawi — kliknij (powinien działać, to real Chrome)
+# Po uruchomieniu (jedna Chrome obsługuje BIDFAX + AUTOHELPERBOT):
+#   1. Wejdź w Chrome na bidfax.info → kliknij CF Turnstile jeśli się pojawi
+#   2. Otwórz NOWĄ kartę → autohelperbot.com → kliknij CF Turnstile
+#      (oraz zaloguj się do AHB jeśli wymaga — sesja zapamięta się w profilu)
 #   3. Zostaw Chrome OTWARTE
-#   4. W INNYM terminalu odpal:
-#        BIDFAX_ENRICHMENT_ENABLED=true \
-#        BIDFAX_CHROME_CDP_URL=http://localhost:9222 \
-#        python3 test_bidfax_real.py
+#   4. W .env produkcji ustaw:
+#        BIDFAX_CHROME_CDP_URL=http://<host_ip>:9222   (bidfax enrichment)
+#        AHB_CHROME_CDP_URL=http://<host_ip>:9222       (AHB enrichment)
+#      (AHB_CHROME_CDP_URL może być puste — wtedy fallback do BIDFAX_CHROME_CDP_URL)
 #
 # Profil zapamiętuje CF clearance cookies — kolejne uruchomienia idą bez challenge'a.
+# Cookie CF ważne ~1-7 dni — gdy AHB znów zwraca "security verification",
+# wróć do tej Chrome i kliknij CF ponownie (bez restartu backendu).
 #
 # Cross-platform: auto-detect Chrome dla Linux/WSL2 i macOS. Override BIDFAX_CHROME_BIN
 # żeby wskazać własną ścieżkę.
@@ -80,4 +83,5 @@ exec "$CHROME" \
     --remote-debugging-port="$DEBUG_PORT" \
     --remote-debugging-address="$DEBUG_ADDR" \
     --user-data-dir="$PROFILE_DIR" \
-    "https://bidfax.info"
+    "https://bidfax.info" \
+    "https://autohelperbot.com/en/"
