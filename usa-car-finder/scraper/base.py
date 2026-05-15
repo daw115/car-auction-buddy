@@ -106,6 +106,13 @@ class ListingCandidate:
 
 
 class BaseScraper:
+    # Shared CF warmup state — class-level żeby parallel scrapery (Copart+IAAI)
+    # i równoległe taski (sem=3) NIE robiły N jednoczesnych warmupów. Tylko
+    # jeden task nawiguje homepage żeby real Chrome auto-przeszedł CF; reszta
+    # czeka na lock i korzysta z świeżego clearance.
+    _cf_warmup_lock = asyncio.Lock()
+    _cf_last_warmup_ts: float = 0.0
+
     def __init__(self, source_name: str):
         self.source_name = source_name
         self.cache_dir = HTML_CACHE_DIR / source_name
@@ -499,6 +506,76 @@ class BaseScraper:
             )
         return None
 
+    @staticmethod
+    def _is_cf_challenge(body: str) -> bool:
+        """Wykrywa Cloudflare interstitial w body AHB."""
+        if not body:
+            return False
+        low = body.lower()
+        return (
+            "security verification" in low
+            or "performing security verification" in low
+            or ("just a moment" in low and "cloudflare" in low)
+            or "verify you are not a bot" in low
+        )
+
+    async def _cf_warmup(self, context, lot_id: str) -> bool:
+        """Auto-odświeża CF clearance gdy AHB zwraca challenge.
+
+        Real headed Chrome (CDP) auto-przechodzi CF challenge gdy nawiguje
+        normalną stronę i poczeka kilka sekund. Otwieramy homepage AHB,
+        czekamy aż interstitial zniknie (max ~AHB_CF_WARMUP_SECONDS), cookie
+        clearance zapisuje się w profilu → kolejne loty już bez challenge.
+
+        Lock + 30s throttle: przy parallel (sem=3 × 2 scrapery) tylko jeden
+        task robi realny warmup, reszta czeka na lock i dziedziczy clearance.
+        Zwraca True gdy CF czyste po warmupie.
+        """
+        warmup_max = int(os.getenv("AHB_CF_WARMUP_SECONDS", "25"))
+        if warmup_max <= 0:
+            return False  # auto-warmup wyłączony — zachowanie fast-fail
+        async with BaseScraper._cf_warmup_lock:
+            # Inny task właśnie zrobił warmup (<30s temu) → CF już czyste,
+            # nie powtarzaj nawigacji, od razu sygnalizuj retry.
+            since = time.monotonic() - BaseScraper._cf_last_warmup_ts
+            if BaseScraper._cf_last_warmup_ts > 0 and since < 30:
+                print(f"[Scraper] AHB CF warmup: świeży clearance ({since:.0f}s temu) — retry bez nawigacji")
+                return True
+
+            print(f"[Scraper] AHB CF challenge wykryty (lot {lot_id}) — auto-warmup homepage...")
+            wp = await context.new_page()
+            try:
+                await wp.goto(
+                    "https://autohelperbot.com/en/",
+                    wait_until="domcontentloaded",
+                    timeout=20000,
+                )
+                cleared = False
+                for _ in range(max(5, warmup_max)):
+                    await asyncio.sleep(1)
+                    try:
+                        body = await wp.evaluate(
+                            "() => (document.body ? document.body.innerText.slice(0, 400) : '')"
+                        )
+                    except Exception:
+                        body = ""
+                    if body and not self._is_cf_challenge(body):
+                        cleared = True
+                        break
+                BaseScraper._cf_last_warmup_ts = time.monotonic()
+                print(
+                    f"[Scraper] AHB CF warmup {'OK — clearance odświeżone' if cleared else 'NIEUDANY (CF dalej blokuje)'}"
+                )
+                return cleared
+            except Exception as exc:
+                print(f"[Scraper] AHB CF warmup error: {type(exc).__name__}: {exc}")
+                return False
+            finally:
+                try:
+                    await wp.close()
+                except Exception:
+                    pass
+
     async def _extract_ahb_via_cdp(self, cdp_url: str, lot_id: str, url: str, timeout_s: int) -> dict:
         """AHB lookup przez CDP-attached Chrome (jak bidfax).
 
@@ -509,51 +586,75 @@ class BaseScraper:
         Reuse tej samej Chrome co bidfax (AHB_CHROME_CDP_URL defaultuje do
         BIDFAX_CHROME_CDP_URL). Connect per-lot — connect_over_cdp to lekki
         websocket handshake (~0.3s), nie launchuje nowej Chrome.
+
+        Auto-warmup: gdy CF challenge wykryty, _cf_warmup() odświeża clearance
+        (real Chrome auto-passa) i lot jest ponawiany — bez ręcznej interwencji.
         """
         from playwright.async_api import async_playwright
+
+        async def _fetch_once(context) -> tuple[dict, bool]:
+            """Zwraca (useful_data, cf_challenge_detected)."""
+            bot_page = await context.new_page()
+            try:
+                await bot_page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                try:
+                    await bot_page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass
+                poll_max = min(timeout_s, 10)
+                last_body = ""
+                for _ in range(poll_max):
+                    try:
+                        data = await bot_page.evaluate(EXTENSION_DATA_JS)
+                    except Exception:
+                        data = {}
+                    useful = _clean_extension_payload(data)
+                    if useful:
+                        useful["extension_source"] = "autohelperbot_cdp"
+                        print(
+                            f"[Scraper] AHB CDP OK: lot {lot_id} "
+                            f"seller={useful.get('seller_type', 'unknown')} "
+                            f"vin={useful.get('full_vin', 'brak')}"
+                        )
+                        return useful, False
+                    try:
+                        last_body = await bot_page.evaluate(
+                            "() => (document.body ? document.body.innerText.slice(0, 400) : '')"
+                        )
+                    except Exception:
+                        last_body = ""
+                    if self._is_cf_challenge(last_body):
+                        return {}, True  # nie pollój dalej — CF nie ustąpi sam tutaj
+                    await asyncio.sleep(1)
+                if os.getenv("AHB_DEBUG_EMPTY", "true").lower() == "true":
+                    print(
+                        f"[Scraper] AHB CDP EMPTY lot {lot_id} "
+                        f"(body: {last_body[:150].replace(chr(10), ' ')!r})"
+                    )
+                return {}, False
+            finally:
+                try:
+                    await bot_page.close()
+                except Exception:
+                    pass
 
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.connect_over_cdp(cdp_url)
                 try:
                     context = browser.contexts[0] if browser.contexts else await browser.new_context()
-                    bot_page = await context.new_page()
-                    try:
-                        await bot_page.goto(url, wait_until="domcontentloaded", timeout=15000)
-                        try:
-                            await bot_page.wait_for_load_state("networkidle", timeout=5000)
-                        except Exception:
-                            pass
-                        poll_max = min(timeout_s, 10)
-                        for _ in range(poll_max):
-                            try:
-                                data = await bot_page.evaluate(EXTENSION_DATA_JS)
-                            except Exception:
-                                data = {}
-                            useful = _clean_extension_payload(data)
-                            if useful:
-                                useful["extension_source"] = "autohelperbot_cdp"
-                                print(
-                                    f"[Scraper] AHB CDP OK: lot {lot_id} "
-                                    f"seller={useful.get('seller_type', 'unknown')} "
-                                    f"vin={useful.get('full_vin', 'brak')}"
-                                )
-                                return useful
-                            await asyncio.sleep(1)
-                        if os.getenv("AHB_DEBUG_EMPTY", "true").lower() == "true":
-                            body = await bot_page.evaluate(
-                                "() => (document.body ? document.body.innerText.slice(0,200) : '')"
-                            )
-                            print(
-                                f"[Scraper] AHB CDP EMPTY lot {lot_id} "
-                                f"(body: {body[:150].replace(chr(10), ' ')!r})"
-                            )
-                        return {}
-                    finally:
-                        try:
-                            await bot_page.close()
-                        except Exception:
-                            pass
+                    result, cf = await _fetch_once(context)
+                    if result:
+                        return result
+                    if cf:
+                        # Auto-warmup CF clearance i jednorazowy retry.
+                        warmed = await self._cf_warmup(context, lot_id)
+                        if warmed:
+                            result, cf2 = await _fetch_once(context)
+                            if result:
+                                return result
+                            print(f"[Scraper] AHB CDP: lot {lot_id} dalej brak danych po CF warmup")
+                    return {}
                 finally:
                     try:
                         await browser.close()  # disconnect CDP, NIE zabija user Chrome
