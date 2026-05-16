@@ -1081,6 +1081,49 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
   );
 }
 
+function SearchAuditPanel() {
+  const fnList = useServerFn(listSearchAudit);
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["search-audit"],
+    queryFn: () => fnList({ data: { limit: 50 } }),
+    refetchInterval: 30000,
+  });
+  const entries: SearchAuditEntry[] = data?.entries ?? [];
+  return (
+    <Card className="p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">🕓 Historia audytu wyszukiwań ({entries.length})</h2>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+      <div className="max-h-[320px] overflow-auto space-y-1">
+        {!entries.length && !isLoading && (
+          <div className="text-xs italic text-muted-foreground py-4 text-center">
+            Brak wpisów audytu. Wpisy pojawią się po uruchomieniu wyszukiwania.
+          </div>
+        )}
+        {entries.map((e) => (
+          <div key={e.id} className="text-[11px] p-1.5 rounded border border-border/50 hover:bg-muted/30">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {e.searched_by ? (
+                <Badge variant="secondary" className="text-[9px] py-0 px-1">👤 {e.searched_by}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[9px] py-0 px-1 italic">nieprzypisane</Badge>
+              )}
+              <span className="text-muted-foreground">{new Date(e.created_at).toLocaleString("pl-PL")}</span>
+            </div>
+            <div className="mt-0.5 text-foreground/80 truncate">
+              {[e.make, e.model].filter(Boolean).join(" ") || "—"}
+              {e.budget_usd ? ` · $${e.budget_usd.toLocaleString("en-US")}` : ""}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function BackendRecordRow({ record, isActive, isDeleting, onClick, onDelete }: { record: BackendRecord; isActive?: boolean; isDeleting?: boolean; onClick: () => void; onDelete: () => void }) {
   const statusIcon: Record<string, string> = {
     done: "✅", new: "✅", cancelled: "⛔", error: "❌", interrupted: "⚠️",
