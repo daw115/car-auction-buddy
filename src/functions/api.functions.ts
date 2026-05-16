@@ -7,6 +7,7 @@ import { callAI, detectProvider } from "@/server/ai.server";
 import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
 import { renderReportHtml, renderMailHtml } from "@/server/report";
 import { makeLogger, writeLog } from "@/server/logger.server";
+import { devLog } from "@/server/dev-logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 import { LOT_SYSTEM_PROMPT } from "@/server/prompts/lot-prompt";
 import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "@/server/lot-report";
@@ -513,6 +514,74 @@ const criteriaSchema = z.object({
   // Zod domyślnie strip-uje nieznane pola, więc bez tego trafiało null do backendu.
   searched_by: z.string().max(40).nullable().optional(),
 });
+
+const KNOWN_CRITERIA_KEYS = [
+  "make", "model", "year_from", "year_to", "budget_usd", "max_odometer_mi",
+  "fuel_type", "excluded_damage_types", "max_results", "sources", "searched_by",
+] as const;
+
+/**
+ * Parsuje kryteria z czytelnym komunikatem błędu i wykrywa utratę pól.
+ * - Rzuca błąd, gdy walidacja Zod nie przeszła (z listą pól i powodami).
+ * - Rzuca błąd, gdy pole było w surowym inpucie ale zostało wycięte/zniekształcone
+ *   przez walidację (np. searched_by zbyt długie, zły typ, nieznane pole).
+ */
+function parseCriteria(raw: unknown): z.infer<typeof criteriaSchema> {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`Walidacja kryteriów: oczekiwano obiektu, otrzymano ${typeof raw}.`);
+  }
+  const rawObj = raw as Record<string, unknown>;
+  const rawKeys = Object.keys(rawObj);
+  const unknownKeys = rawKeys.filter((k) => !(KNOWN_CRITERIA_KEYS as readonly string[]).includes(k));
+
+  let parsed: z.infer<typeof criteriaSchema>;
+  try {
+    parsed = criteriaSchema.parse(raw);
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      const issues = e.issues
+        .map((i) => `• ${i.path.join(".") || "(root)"} — ${i.message}`)
+        .join("\n");
+      throw new Error(`Walidacja kryteriów wyszukiwania nie powiodła się:\n${issues}`);
+    }
+    throw e;
+  }
+
+  // Wykrywanie "cichych strat" — pole z wartością w raw, brak w wyniku.
+  const lost: Array<{ key: string; raw: unknown }> = [];
+  for (const k of KNOWN_CRITERIA_KEYS) {
+    const rv = rawObj[k];
+    const pv = (parsed as Record<string, unknown>)[k];
+    const rawHasValue = rv != null && rv !== "";
+    const parsedMissing = pv == null || pv === "";
+    if (rawHasValue && parsedMissing) {
+      lost.push({ key: k, raw: rv });
+    }
+  }
+  if (lost.length > 0) {
+    const detail = lost.map((l) => `${l.key} (typ: ${typeof l.raw})`).join(", ");
+    throw new Error(
+      `Walidacja kryteriów: utracono pola po walidacji: [${detail}]. ` +
+      `Sprawdź czy UI przesyła wartości w poprawnym typie/zakresie.`,
+    );
+  }
+
+  if (unknownKeys.length > 0) {
+    devLog("warn", "criteria:validate", `Nieznane pola w kryteriach pominięto: ${unknownKeys.join(", ")}`, {
+      unknown_keys: unknownKeys,
+    });
+  }
+
+  return parsed;
+}
+
+/** Loguje do strumienia /dev/logs dokładny payload kryteriów wysyłanych do backendu. */
+function logCriteriaSent(scope: string, criteria: z.infer<typeof criteriaSchema>, extra?: Record<string, unknown>) {
+  devLog("http", `criteria:sent:${scope}`, `→ ${scope}: kryteria wysłane do backendu`, {
+    criteria,
+    ...(extra ?? {}),
+  });
+}
 
 const lotSchema: z.ZodType<CarLot> = z
   .object({
