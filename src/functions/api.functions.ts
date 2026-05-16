@@ -593,7 +593,7 @@ const lotSchema: z.ZodType<CarLot> = z
 export const runAnalysis = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      criteria: criteriaSchema,
+      criteria: z.unknown().transform(parseCriteria),
       listings: z.array(lotSchema).min(1).max(100),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
@@ -885,7 +885,7 @@ async function writeScrapeCache(args: {
 export const runScraperSearch = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      criteria: criteriaSchema,
+      criteria: z.unknown().transform(parseCriteria),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
     }).parse,
@@ -1070,7 +1070,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 export const startScraperSearch = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      criteria: criteriaSchema,
+      criteria: z.unknown().transform(parseCriteria),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
     }).parse,
@@ -1218,7 +1218,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     z.object({
       jobId: z.string().min(1),
       cacheKey: z.string().min(1).optional(),
-      criteria: criteriaSchema.optional(),
+      criteria: z.unknown().transform((v) => v == null ? undefined : parseCriteria(v)).optional(),
     }).parse,
   )
   .handler(async ({ data }): Promise<{
@@ -1745,7 +1745,7 @@ type LotMeta = { rank_group?: "TOP" | "REJECTED"; rank_position?: number; rank_r
 export const runLotReports = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      criteria: criteriaSchema,
+      criteria: z.unknown().transform(parseCriteria),
       listings: z.array(lotSchema).min(1).max(100),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
