@@ -113,6 +113,23 @@ HISTORYCZNA CENA SPRZEDAŻY (bidfax_sold_price):
 - Brak `bidfax_sold_price` = bidfax nie ma jeszcze tego lota w bazie. To NIE jest
   negatywny sygnał (po prostu brak danych historycznych).
 
+DODATKOWE SYGNAŁY (z rozszerzenia AHB i listingu):
+- `average_price_usd`: rynkowa średnia cena sprzedaży tego modelu (AutoHelperBot).
+  Traktuj jak benchmark — analogicznie do bidfax_sold_price, ale to średnia
+  rynkowa, nie cena dokładnie tego lota. Gdy łączny koszt >> average_price_usd
+  → ostrzeż; gdy wyraźnie poniżej → potencjalna okazja. Priorytet: bidfax (ten
+  sam VIN) > average_price (model). Brak pola = brak danych, NIE sygnał ujemny.
+- `delivery_cost_estimate_usd`: realny koszt transportu z AHB (gdy obecny, użyj
+  go zamiast szacunku po stanie w kalkulacji kosztu całkowitego).
+- `listing_damage_text`: surowy opis szkód z listingu (niuanse, np. "minor door
+  dent + side rust"). Cenniejszy niż sama kategoria damage_primary — czytaj go
+  uważnie przy ocenie zakresu napraw.
+- `body_style`: typ nadwozia. Użyj do weryfikacji zgodności z oczekiwaniem
+  klienta (np. odrzuć cabrio gdy klient nie prosił — patrz reguła cabrio).
+- `frame_damage_check.inconclusive: true`: vision nie miał dostępu do zdjęć —
+  NIE traktuj jako "brak szkód konstrukcyjnych"; oceniaj wyłącznie po opisie
+  tekstowym szkód (damage_primary/secondary/listing_damage_text).
+
 SZCZEGÓŁOWA ANALIZA - dla każdego lota MUSISZ podać:
 1. Dlaczego wybrałeś ten lot (konkretne zalety)
 2. Wszystkie dane techniczne (VIN, przebieg, rok, uszkodzenia, tytuł)
@@ -382,6 +399,25 @@ def _sanitize_error_text(text: str) -> str:
     return text
 
 
+def _frame_check_payload(lot: CarLot):
+    """Zwraca frame_damage_check do payloadu LLM.
+
+    Gdy vision nie miał dostępu do zdjęć (images_inaccessible=True), surowy
+    `frame_damaged:false` jest WYMUSZONY (brak danych) — wysłanie go żywcem
+    mogłoby zostać zinterpretowane przez LLM jako "brak szkód konstrukcyjnych".
+    Zamiast tego jawny sygnał 'inconclusive' → model ocenia po opisie tekstowym.
+    """
+    fc = lot.raw_data.get("frame_damage_check")
+    if not isinstance(fc, dict):
+        return fc
+    if fc.get("images_inaccessible"):
+        return {
+            "inconclusive": True,
+            "note": "vision niedostępny (zdjęcia zablokowane) — oceniaj po damage tekstowym",
+        }
+    return fc
+
+
 def _lot_payloads(lots: List[CarLot]) -> list[dict]:
     return [
         {
@@ -408,10 +444,15 @@ def _lot_payloads(lots: List[CarLot]) -> list[dict]:
             "airbags_deployed": lot.airbags_deployed,
             "keys": lot.keys,
             "enriched_by_extension": lot.enriched_by_extension,
+            "delivery_cost_estimate_usd": lot.delivery_cost_estimate_usd,
+            "average_price_usd": lot.raw_data.get("average_price_usd"),
+            "listing_damage_text": lot.raw_data.get("listing_damage_text"),
+            "body_style": lot.raw_data.get("body_style")
+            or (lot.raw_data.get("listing") or {}).get("bs"),
             "bidfax_sold_price": lot.raw_data.get("bidfax_sold_price"),
             "bidfax_history_url": lot.raw_data.get("bidfax_history_url"),
             "bidfax_sold_vin": lot.raw_data.get("bidfax_sold_vin"),
-            "frame_damage_check": lot.raw_data.get("frame_damage_check"),
+            "frame_damage_check": _frame_check_payload(lot),
         }
         for lot in lots
     ]
@@ -751,6 +792,19 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
 
         transport_usd = lot.delivery_cost_estimate_usd or _location_transport_usd(state)
         estimated_total = int(round(bid_usd + repair_usd + transport_usd + 500))
+
+        # Benchmark rynkowy: bidfax (ten sam VIN) > average_price (model AHB).
+        # Local scorer pełni też rolę pre-filtra top-15 do Claude, więc bez
+        # tego sygnału dobre okazje/przepłaty były niewidoczne na tym etapie.
+        benchmark_usd = parse_price_from_str(lot.raw_data.get("bidfax_sold_price"))
+        if benchmark_usd is None:
+            benchmark_usd = parse_price_from_str(lot.raw_data.get("average_price_usd"))
+        if benchmark_usd and benchmark_usd > 0 and estimated_total > 0:
+            if estimated_total > benchmark_usd * 1.2:
+                red_flags.append("Szacunek powyżej ceny rynkowej")
+                score -= 0.8
+            elif estimated_total < benchmark_usd * 0.85:
+                score += 0.5
 
         # Budget filter: tylko gdy klient podał budżet
         if criteria.budget_usd and estimated_total > criteria.budget_usd:

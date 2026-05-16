@@ -419,21 +419,30 @@ class BaseScraper:
         return False
 
     async def wait_for_detail_data(self, page: Page):
-        """Daje czas na doładowanie danych dynamicznych i lazy-load mediów."""
+        """Daje czas na doładowanie danych dynamicznych i lazy-load mediów.
+
+        Tunable przez env (uruchamiane BEZWARUNKOWO na każdy lot detalu — to
+        dominujący bottleneck). Niższe defaulty: ~15s/lot → ~8s/lot. networkidle
+        ma except:pass więc krótszy timeout = wcześniejszy fallback, nie błąd.
+        Gdy braki danych (VIN/damage/images) → zwiększ DETAIL_SETTLE_WAIT_S.
+        """
+        nid_ms = int(os.getenv("DETAIL_NETWORKIDLE_MS", "6000"))
+        scroll_wait = float(os.getenv("DETAIL_SCROLL_WAIT_S", "0.8"))
+        settle_wait = float(os.getenv("DETAIL_SETTLE_WAIT_S", "1.0"))
         try:
-            await page.wait_for_load_state("networkidle", timeout=12000)
+            await page.wait_for_load_state("networkidle", timeout=nid_ms)
         except Exception:
             pass
 
         # Przewiń stronę, aby uruchomić lazy-load zdjęć/metadanych.
         try:
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(scroll_wait)
             await page.evaluate("window.scrollTo(0, 0)")
         except Exception:
             pass
 
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(settle_wait)
 
     async def wait_for_extensions(self, page: Page, timeout_s: int = 15) -> bool:
         """Czeka, aż AutoHelperBot/AuctionGate wstrzykną iframe."""
@@ -1041,7 +1050,13 @@ class BaseScraper:
                     continue
 
                 await locator.click(timeout=5000)
-                await asyncio.sleep(3)
+                # networkidle zamiast stałego sleep(3): re-render kończy się
+                # zwykle szybciej; settle dla lazy-load tunable env.
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=6000)
+                except Exception:
+                    pass
+                await asyncio.sleep(float(os.getenv("PAGINATION_SETTLE_S", "1")))
                 return True
             except Exception:
                 continue

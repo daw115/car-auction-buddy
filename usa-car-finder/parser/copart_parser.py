@@ -153,6 +153,7 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
         location_city = None
         current_bid = None
         damage_primary = None
+        damage_secondary = None
         title_type = None
         mi = None
         km = None
@@ -179,6 +180,7 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
                 current_bid = dynamic.get("currentBid") or data.get("hb")
 
                 damage_primary = data.get("dd")
+                damage_secondary = data.get("sdd") or data.get("scc") or None
                 title_type = data.get("tgd")
                 if data.get("ifs") is True:
                     seller_type = "insurance"
@@ -218,6 +220,7 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
             odometer_mi=mi,
             odometer_km=km,
             damage_primary=damage_primary or None,
+            damage_secondary=damage_secondary or None,
             title_type=title_type or None,
             current_bid_usd=current_bid,
             seller_type=seller_type,

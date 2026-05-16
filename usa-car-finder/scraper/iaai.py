@@ -723,7 +723,7 @@ class IAAIScraper(BaseScraper):
 
                 # Czekaj na załadowanie JavaScript (IAAI ładuje wyniki asynchronicznie)
                 print("[IAAI] Czekam na załadowanie wyników...")
-                await asyncio.sleep(5)
+                await asyncio.sleep(int(os.getenv("IAAI_LISTING_INITIAL_WAIT_S", "3")))
 
                 # Sprawdź czy są wyniki
                 vehicle_count = await page.locator("a[href*='/VehicleDetail']").count()

@@ -485,6 +485,10 @@ class AutomatedScraper:
             # IAAI/Copart czasem trzyma 'BodyStyle' w listing JSON
             (raw.get("body_style") or "").lower(),
             ((raw.get("listing") or {}).get("bs") or "").lower(),  # Copart 'bs' = body style
+            # Opis szkód łapie np. "Convertible top damage" gdy model generyczny
+            (lot.damage_primary or "").lower(),
+            (lot.damage_secondary or "").lower(),
+            (raw.get("listing_damage_text") or "").lower(),
         ])
         return any(kw in haystack for kw in cls._CABRIO_KEYWORDS)
 
