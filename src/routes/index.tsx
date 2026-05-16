@@ -982,6 +982,7 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [userFilter, setUserFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("default");
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: recordsData, isLoading, refetch } = useQuery({
@@ -996,6 +997,26 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
     const sb = getRecordSearchedBy(r);
     if (userFilter === "__none__") return !sb;
     return sb === userFilter;
+  });
+  const sortedRecords = [...records].sort((a, b) => {
+    switch (sortBy) {
+      case "searched_by_asc": {
+        const sa = getRecordSearchedBy(a) ?? "";
+        const sb = getRecordSearchedBy(b) ?? "";
+        return sa.localeCompare(sb);
+      }
+      case "searched_by_desc": {
+        const sa = getRecordSearchedBy(a) ?? "";
+        const sb = getRecordSearchedBy(b) ?? "";
+        return sb.localeCompare(sa);
+      }
+      case "date_asc":
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      case "date_desc":
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      default:
+        return 0;
+    }
   });
   const total = recordsData?.total ?? 0;
 
@@ -1060,13 +1081,27 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
           </SelectContent>
         </Select>
       </div>
+      <div className="mb-2">
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="h-7 text-[11px]">
+            <SelectValue placeholder="Sortuj" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">📋 Domyślnie</SelectItem>
+            <SelectItem value="searched_by_asc">👤 Zrobione przez (A-Z)</SelectItem>
+            <SelectItem value="searched_by_desc">👤 Zrobione przez (Z-A)</SelectItem>
+            <SelectItem value="date_desc">📅 Data (od najnowszych)</SelectItem>
+            <SelectItem value="date_asc">📅 Data (od najstarszych)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className="max-h-[600px] overflow-auto space-y-1">
-        {!records.length && !isLoading && (
+        {!sortedRecords.length && !isLoading && (
           <div className="text-sm text-muted-foreground italic py-8 text-center">
             Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}{userFilter !== "all" ? ` (filtr: ${userFilter})` : ""}.
           </div>
         )}
-        {records.map((r) => (
+        {sortedRecords.map((r) => (
           <BackendRecordRow
             key={r.id}
             record={r}
