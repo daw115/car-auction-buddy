@@ -6,7 +6,7 @@ import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "@/server/anthropic.s
 import { callAI, detectProvider } from "@/server/ai.server";
 import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
 import { renderReportHtml, renderMailHtml } from "@/server/report";
-import { makeLogger } from "@/server/logger.server";
+import { makeLogger, writeLog } from "@/server/logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 import { LOT_SYSTEM_PROMPT } from "@/server/prompts/lot-prompt";
 import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "@/server/lot-report";
@@ -864,6 +864,22 @@ export const runScraperSearch = createServerFn({ method: "POST" })
       budget_usd: data.criteria.budget_usd,
     });
 
+    await writeLog(
+      { operation: "audit", clientId: data.clientId ?? null, recordId: data.recordId ?? null },
+      {
+        step: "search.start",
+        level: "info",
+        message: `Wyszukiwanie uruchomione${data.criteria.searched_by ? ` przez ${data.criteria.searched_by}` : " (nieprzypisane)"}`,
+        details: {
+          searched_by: data.criteria.searched_by ?? null,
+          make: data.criteria.make,
+          model: data.criteria.model ?? null,
+          budget_usd: data.criteria.budget_usd ?? null,
+          mode: "sync",
+        },
+      },
+    );
+
     let res: Response;
     try {
       res = await fetch(`${baseUrl}/search`, {
@@ -1050,6 +1066,26 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       criteria_make: data.criteria.make,
       cache_key: cacheKey,
     });
+
+    // Audit trail: kto uruchomił wyszukiwanie i z jakimi kryteriami.
+    await writeLog(
+      { operation: "audit", clientId: data.clientId ?? null, recordId: data.recordId ?? null },
+      {
+        step: "search.start",
+        level: "info",
+        message: `Wyszukiwanie uruchomione${data.criteria.searched_by ? ` przez ${data.criteria.searched_by}` : " (nieprzypisane)"}`,
+        details: {
+          searched_by: data.criteria.searched_by ?? null,
+          make: data.criteria.make,
+          model: data.criteria.model ?? null,
+          year_from: data.criteria.year_from ?? null,
+          year_to: data.criteria.year_to ?? null,
+          budget_usd: data.criteria.budget_usd ?? null,
+          max_results: data.criteria.max_results ?? null,
+          cache_key: cacheKey,
+        },
+      },
+    );
 
     const res = await fetch(`${baseUrl}/search`, {
       method: "POST",
@@ -1538,6 +1574,46 @@ export const cleanupLogs = createServerFn({ method: "POST" }).handler(async () =
   if (error) throw new Error(error.message);
   return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
 });
+
+export type SearchAuditEntry = {
+  id: string;
+  created_at: string;
+  searched_by: string | null;
+  message: string;
+  make: string | null;
+  model: string | null;
+  budget_usd: number | null;
+  client_id: string | null;
+  record_id: string | null;
+};
+
+export const listSearchAudit = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ limit: z.number().min(1).max(200).optional() }).parse)
+  .handler(async ({ data }): Promise<{ entries: SearchAuditEntry[] }> => {
+    const { data: rows, error } = await supabaseAdmin
+      .from("operation_logs")
+      .select("id, created_at, message, details, client_id, record_id")
+      .eq("operation", "audit")
+      .eq("step", "search.start")
+      .order("created_at", { ascending: false })
+      .limit(data.limit ?? 50);
+    if (error) throw new Error(error.message);
+    const entries: SearchAuditEntry[] = (rows ?? []).map((r: Record<string, unknown>) => {
+      const d = (r.details ?? {}) as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        created_at: String(r.created_at),
+        searched_by: (d.searched_by as string | null) ?? null,
+        message: (r.message as string | null) ?? "",
+        make: (d.make as string | null) ?? null,
+        model: (d.model as string | null) ?? null,
+        budget_usd: (d.budget_usd as number | null) ?? null,
+        client_id: (r.client_id as string | null) ?? null,
+        record_id: (r.record_id as string | null) ?? null,
+      };
+    });
+    return { entries };
+  });
 
 // ---------- Mock listings (demo / E2E test) ----------
 
