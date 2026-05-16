@@ -1115,7 +1115,11 @@ function BackendRecordRow({ record, isActive, isDeleting, onClick, onDelete }: {
         <span>{new Date(record.created_at).toLocaleString("pl-PL")}</span>
         {record.collected_count > 0 && <span>· {record.collected_count} lotów</span>}
         {record.client?.name && <span>· {record.client.name}</span>}
-        {searchedBy && <Badge variant="secondary" className="text-[9px] py-0 px-1">👤 {searchedBy}</Badge>}
+        {searchedBy ? (
+          <span className="inline-flex items-center gap-1">· <span className="text-[9px] text-muted-foreground">Zrobione przez:</span> <Badge variant="secondary" className="text-[9px] py-0 px-1">{searchedBy}</Badge></span>
+        ) : (
+          <span className="text-[9px] italic">· nieprzypisane</span>
+        )}
       </div>
       {record.analysis_notice && (
         <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 truncate">
