@@ -1993,6 +1993,7 @@ export type BackendRecord = {
   analysis_notice?: string | null;
   artifact_urls?: Record<string, string>;
   job_id?: string | null;
+  searched_by?: string | null;
   created_at: string;
   updated_at: string;
 };
