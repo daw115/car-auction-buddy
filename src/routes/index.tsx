@@ -2787,6 +2787,7 @@ function Panel() {
             </div>
           </Card>
           <BackendRecordsPanel activeRecordId={openedBackendRecordId} onSelectRecord={setOpenedBackendRecordId} />
+          <SearchAuditPanel />
           <ConnectionStatusPanel />
         </aside>
 
