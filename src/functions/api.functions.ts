@@ -1575,6 +1575,46 @@ export const cleanupLogs = createServerFn({ method: "POST" }).handler(async () =
   return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
 });
 
+export type SearchAuditEntry = {
+  id: string;
+  created_at: string;
+  searched_by: string | null;
+  message: string;
+  make: string | null;
+  model: string | null;
+  budget_usd: number | null;
+  client_id: string | null;
+  record_id: string | null;
+};
+
+export const listSearchAudit = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ limit: z.number().min(1).max(200).optional() }).parse)
+  .handler(async ({ data }): Promise<{ entries: SearchAuditEntry[] }> => {
+    const { data: rows, error } = await supabaseAdmin
+      .from("operation_logs")
+      .select("id, created_at, message, details, client_id, record_id")
+      .eq("operation", "audit")
+      .eq("step", "search.start")
+      .order("created_at", { ascending: false })
+      .limit(data.limit ?? 50);
+    if (error) throw new Error(error.message);
+    const entries: SearchAuditEntry[] = (rows ?? []).map((r) => {
+      const d = (r.details ?? {}) as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        created_at: r.created_at,
+        searched_by: (d.searched_by as string | null) ?? null,
+        message: r.message ?? "",
+        make: (d.make as string | null) ?? null,
+        model: (d.model as string | null) ?? null,
+        budget_usd: (d.budget_usd as number | null) ?? null,
+        client_id: r.client_id ?? null,
+        record_id: r.record_id ?? null,
+      };
+    });
+    return { entries };
+  });
+
 // ---------- Mock listings (demo / E2E test) ----------
 
 function buildMockListings(criteria: ClientCriteria): CarLot[] {
