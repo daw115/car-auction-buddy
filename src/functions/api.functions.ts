@@ -1602,14 +1602,14 @@ export const listSearchAudit = createServerFn({ method: "GET" })
       const d = (r.details ?? {}) as Record<string, unknown>;
       return {
         id: String(r.id),
-        created_at: r.created_at,
+        created_at: String(r.created_at),
         searched_by: (d.searched_by as string | null) ?? null,
-        message: r.message ?? "",
+        message: (r.message as string | null) ?? "",
         make: (d.make as string | null) ?? null,
         model: (d.model as string | null) ?? null,
         budget_usd: (d.budget_usd as number | null) ?? null,
-        client_id: r.client_id ?? null,
-        record_id: r.record_id ?? null,
+        client_id: (r.client_id as string | null) ?? null,
+        record_id: (r.record_id as string | null) ?? null,
       };
     });
     return { entries };
