@@ -1081,13 +1081,27 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
           </SelectContent>
         </Select>
       </div>
+      <div className="mb-2">
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="h-7 text-[11px]">
+            <SelectValue placeholder="Sortuj" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">📋 Domyślnie</SelectItem>
+            <SelectItem value="searched_by_asc">👤 Zrobione przez (A-Z)</SelectItem>
+            <SelectItem value="searched_by_desc">👤 Zrobione przez (Z-A)</SelectItem>
+            <SelectItem value="date_desc">📅 Data (od najnowszych)</SelectItem>
+            <SelectItem value="date_asc">📅 Data (od najstarszych)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className="max-h-[600px] overflow-auto space-y-1">
-        {!records.length && !isLoading && (
+        {!sortedRecords.length && !isLoading && (
           <div className="text-sm text-muted-foreground italic py-8 text-center">
             Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}{userFilter !== "all" ? ` (filtr: ${userFilter})` : ""}.
           </div>
         )}
-        {records.map((r) => (
+        {sortedRecords.map((r) => (
           <BackendRecordRow
             key={r.id}
             record={r}
