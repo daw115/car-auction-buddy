@@ -951,6 +951,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 
     let res: Response;
     try {
+      logCriteriaSent("runScraperSearch", data.criteria, { endpoint: `${baseUrl}/search` });
       res = await fetch(`${baseUrl}/search`, {
         method: "POST",
         headers: {
@@ -1156,6 +1157,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       },
     );
 
+    logCriteriaSent("startScraperSearch", data.criteria, { endpoint: `${baseUrl}/search`, cache_key: cacheKey });
     const res = await fetch(`${baseUrl}/search`, {
       method: "POST",
       headers: {
@@ -2506,6 +2508,7 @@ export const batchSearch = createServerFn({ method: "POST" })
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl || !token) throw new Error("Backend not configured");
 
+    devLog("http", "criteria:sent:batchSearch", `→ batchSearch: payload wysłany do backendu`, { payload: data, endpoint: `${baseUrl}/api/search/batch` });
     const res = await fetch(`${baseUrl}/api/search/batch`, {
       method: "POST",
       headers: {
