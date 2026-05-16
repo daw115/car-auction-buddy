@@ -1415,16 +1415,33 @@ function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: ()
   const artifactUrls = (record as any).artifact_urls || {};
 
 
+  const searchedBy = getRecordSearchedBy(record);
+
   return (
     <Card className="p-4">
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-xl font-bold">{(record as any).title ?? `Rekord #${recordId}`}</h2>
-          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
             <Badge>{(record as any).status}</Badge>
             <span>{new Date((record as any).created_at).toLocaleString("pl-PL")}</span>
             {(record as any).client?.name && <span>· {(record as any).client.name}</span>}
+            {searchedBy ? (
+              <>
+                <span>·</span>
+                <Badge variant="secondary" className="text-[10px]">👤 {searchedBy}</Badge>
+                <Link
+                  to="/database"
+                  className="text-[10px] text-blue-500 hover:underline ml-1"
+                  title="Zobacz wszystkie rekordy tego autora"
+                >
+                  📜 Historia
+                </Link>
+              </>
+            ) : (
+              <span className="text-[10px] italic">· nieprzypisane</span>
+            )}
           </div>
         </div>
         <Button variant="ghost" onClick={onClose}>← Wróć do nowej sesji</Button>
