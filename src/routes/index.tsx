@@ -982,6 +982,7 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [userFilter, setUserFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("default");
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: recordsData, isLoading, refetch } = useQuery({
@@ -996,6 +997,26 @@ function BackendRecordsPanel({ activeRecordId, onSelectRecord }: { activeRecordI
     const sb = getRecordSearchedBy(r);
     if (userFilter === "__none__") return !sb;
     return sb === userFilter;
+  });
+  const sortedRecords = [...records].sort((a, b) => {
+    switch (sortBy) {
+      case "searched_by_asc": {
+        const sa = getRecordSearchedBy(a) ?? "";
+        const sb = getRecordSearchedBy(b) ?? "";
+        return sa.localeCompare(sb);
+      }
+      case "searched_by_desc": {
+        const sa = getRecordSearchedBy(a) ?? "";
+        const sb = getRecordSearchedBy(b) ?? "";
+        return sb.localeCompare(sa);
+      }
+      case "date_asc":
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      case "date_desc":
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      default:
+        return 0;
+    }
   });
   const total = recordsData?.total ?? 0;
 
