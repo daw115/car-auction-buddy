@@ -6,7 +6,7 @@ import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "@/server/anthropic.s
 import { callAI, detectProvider } from "@/server/ai.server";
 import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
 import { renderReportHtml, renderMailHtml } from "@/server/report";
-import { makeLogger } from "@/server/logger.server";
+import { makeLogger, writeLog } from "@/server/logger.server";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 import { LOT_SYSTEM_PROMPT } from "@/server/prompts/lot-prompt";
 import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "@/server/lot-report";
