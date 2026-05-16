@@ -864,6 +864,22 @@ export const runScraperSearch = createServerFn({ method: "POST" })
       budget_usd: data.criteria.budget_usd,
     });
 
+    await writeLog(
+      { operation: "audit", clientId: data.clientId ?? null, recordId: data.recordId ?? null },
+      {
+        step: "search.start",
+        level: "info",
+        message: `Wyszukiwanie uruchomione${data.criteria.searched_by ? ` przez ${data.criteria.searched_by}` : " (nieprzypisane)"}`,
+        details: {
+          searched_by: data.criteria.searched_by ?? null,
+          make: data.criteria.make,
+          model: data.criteria.model ?? null,
+          budget_usd: data.criteria.budget_usd ?? null,
+          mode: "sync",
+        },
+      },
+    );
+
     let res: Response;
     try {
       res = await fetch(`${baseUrl}/search`, {
@@ -1050,6 +1066,26 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       criteria_make: data.criteria.make,
       cache_key: cacheKey,
     });
+
+    // Audit trail: kto uruchomił wyszukiwanie i z jakimi kryteriami.
+    await writeLog(
+      { operation: "audit", clientId: data.clientId ?? null, recordId: data.recordId ?? null },
+      {
+        step: "search.start",
+        level: "info",
+        message: `Wyszukiwanie uruchomione${data.criteria.searched_by ? ` przez ${data.criteria.searched_by}` : " (nieprzypisane)"}`,
+        details: {
+          searched_by: data.criteria.searched_by ?? null,
+          make: data.criteria.make,
+          model: data.criteria.model ?? null,
+          year_from: data.criteria.year_from ?? null,
+          year_to: data.criteria.year_to ?? null,
+          budget_usd: data.criteria.budget_usd ?? null,
+          max_results: data.criteria.max_results ?? null,
+          cache_key: cacheKey,
+        },
+      },
+    );
 
     const res = await fetch(`${baseUrl}/search`, {
       method: "POST",
