@@ -1598,7 +1598,7 @@ export const listSearchAudit = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(data.limit ?? 50);
     if (error) throw new Error(error.message);
-    const entries: SearchAuditEntry[] = (rows ?? []).map((r) => {
+    const entries: SearchAuditEntry[] = (rows ?? []).map((r: Record<string, unknown>) => {
       const d = (r.details ?? {}) as Record<string, unknown>;
       return {
         id: String(r.id),
