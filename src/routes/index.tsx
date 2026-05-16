@@ -1088,22 +1088,42 @@ function SearchAuditPanel() {
     queryFn: () => fnList({ data: { limit: 50 } }),
     refetchInterval: 30000,
   });
+  const [userFilter, setUserFilter] = useState<string>("all");
   const entries: SearchAuditEntry[] = data?.entries ?? [];
+  const filtered = entries.filter((e) => {
+    if (userFilter === "all") return true;
+    if (userFilter === "__none__") return !e.searched_by;
+    return e.searched_by === userFilter;
+  });
   return (
     <Card className="p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">🕓 Historia audytu wyszukiwań ({entries.length})</h2>
+        <h2 className="text-sm font-semibold">🕓 Historia audytu wyszukiwań ({filtered.length}/{entries.length})</h2>
         <Button variant="ghost" size="sm" onClick={() => void refetch()}>
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
+      <div className="mb-2">
+        <Select value={userFilter} onValueChange={setUserFilter}>
+          <SelectTrigger className="h-7 text-[11px]">
+            <SelectValue placeholder="Filtruj po użytkowniku" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">👥 Wszyscy użytkownicy</SelectItem>
+            {SITE_USERS.map((u) => (
+              <SelectItem key={u} value={u}>{u}</SelectItem>
+            ))}
+            <SelectItem value="__none__">— Bez przypisania</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className="max-h-[320px] overflow-auto space-y-1">
-        {!entries.length && !isLoading && (
+        {!filtered.length && !isLoading && (
           <div className="text-xs italic text-muted-foreground py-4 text-center">
-            Brak wpisów audytu. Wpisy pojawią się po uruchomieniu wyszukiwania.
+            Brak wpisów audytu{userFilter !== "all" ? ` (filtr: ${userFilter})` : ""}.
           </div>
         )}
-        {entries.map((e) => (
+        {filtered.map((e) => (
           <div key={e.id} className="text-[11px] p-1.5 rounded border border-border/50 hover:bg-muted/30">
             <div className="flex items-center gap-1.5 flex-wrap">
               {e.searched_by ? (
