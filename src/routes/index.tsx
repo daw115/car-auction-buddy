@@ -41,7 +41,9 @@ import {
   getBackendRecordDetails,
   deleteBackendRecord,
   regenerateBundles,
+  listSearchAudit,
 } from "@/functions/api.functions";
+import type { SearchAuditEntry } from "@/functions/api.functions";
 import type { BackendRecord } from "@/functions/api.functions";
 import { addToWatchlist } from "@/functions/watchlist.functions";
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
