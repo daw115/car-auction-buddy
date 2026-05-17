@@ -7,6 +7,11 @@ Type=simple
 Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+# UWAGA: BEZ --restore-last-session i bez fixed URL-i. Backend nawiguje
+# karty programowo przez CDP i je zamyka (patrz _sweep_cdp_tabs). Z
+# --restore-last-session każdy restart Chrome (Restart=always / reboot)
+# wskrzeszał WSZYSTKIE poprzednie karty → kumulacja "za dużo kart".
+# about:blank = jedna pusta karta startowa (Chrome musi mieć ≥1 okno).
 ExecStart=/usr/bin/google-chrome \
   --remote-debugging-port=9222 \
   --remote-debugging-address=127.0.0.1 \
@@ -14,8 +19,8 @@ ExecStart=/usr/bin/google-chrome \
   --no-first-run \
   --no-default-browser-check \
   --disable-session-crashed-bubble \
-  --restore-last-session \
-  https://autohelperbot.com/en/ https://bidfax.info
+  --hide-crash-restore-bubble \
+  about:blank
 Restart=always
 RestartSec=10
 

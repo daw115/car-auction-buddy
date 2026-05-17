@@ -585,6 +585,36 @@ class BaseScraper:
                 except Exception:
                     pass
 
+    @staticmethod
+    async def _sweep_cdp_tabs(context) -> None:
+        """Zamyka osierocone karty lotów na współdzielonym CDP Chrome.
+
+        Defensywny self-heal: pod parallelem (sem 3-5) wiele tasków
+        connect_over_cdp dzieli JEDEN headed Chrome; gdy bot_page.close()
+        zawiedzie pod obciążeniem (swallowed except), karta `*_lot/*` zostaje.
+        Po każdym lookupie zamiatamy wszystkie karty lot/bidfax — leak nie
+        kumuluje się między wyszukiwaniami. Zostawiamy max 1 stronę (Chrome
+        nie może mieć 0 okien) i nie ruszamy stron domowych innych niż lot.
+        """
+        try:
+            pages = list(context.pages)
+        except Exception:
+            return
+        leak_markers = ("/copart_lot/", "/iaai_lot/", "autohelperbot_app=")
+        for pg in pages:
+            try:
+                u = (pg.url or "").lower()
+            except Exception:
+                continue
+            if any(m in u for m in leak_markers):
+                # nie zamykaj ostatniej karty
+                try:
+                    if len(context.pages) <= 1:
+                        break
+                    await pg.close()
+                except Exception:
+                    pass
+
     async def _extract_ahb_via_cdp(self, cdp_url: str, lot_id: str, url: str, timeout_s: int) -> dict:
         """AHB lookup przez CDP-attached Chrome (jak bidfax).
 
@@ -665,6 +695,12 @@ class BaseScraper:
                             print(f"[Scraper] AHB CDP: lot {lot_id} dalej brak danych po CF warmup")
                     return {}
                 finally:
+                    # Self-heal: zamknij osierocone karty lotów ZANIM rozłączymy
+                    # CDP (po disconnect nie mamy już uchwytu do context).
+                    try:
+                        await self._sweep_cdp_tabs(context)
+                    except Exception:
+                        pass
                     try:
                         await browser.close()  # disconnect CDP, NIE zabija user Chrome
                     except Exception:
