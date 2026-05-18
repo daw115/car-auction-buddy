@@ -24,6 +24,12 @@ set -euo pipefail
 SSH_HOSTNAME="${SSH_HOSTNAME:-ssh.moneybitches.organof.org}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
 DRY_RUN="${DRY_RUN:-0}"
+# Po restarcie cloudflared named-tunel potrzebuje czasu na re-establish edge
+# connection. Pojedynczy `sleep 6; curl` dawał FAŁSZYWY rollback (tunel
+# wstawał >6s → /health chwilowo !=200 → cofnięcie ingressu SSH mimo że
+# config był poprawny). Retry z backoffem: akceptuj na pierwszym 200.
+HEALTH_RETRIES="${HEALTH_RETRIES:-10}"
+HEALTH_INTERVAL="${HEALTH_INTERVAL:-6}"
 
 log() { printf '[setup-ssh-cf] %s\n' "$*"; }
 die() { printf '[setup-ssh-cf][ERROR] %s\n' "$*" >&2; exit 1; }
@@ -83,16 +89,31 @@ fi
 run "cloudflared tunnel route dns '$TUNNEL_NAME' '$SSH_HOSTNAME' || true"
 
 # --- 7. Restart + weryfikacja że produkcyjny HTTP nadal żyje ---
+# Retry health zamiast pojedynczego sleep — eliminuje fałszywy rollback gdy
+# cloudflared re-establish edge wolniej niż 6s (przyczyna poprzedniej porażki).
 if [ "$DRY_RUN" != "1" ]; then
   sudo systemctl restart cloudflared
-  sleep 6
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$HEALTH_URL" || echo 000)"
+  code="000"
+  for attempt in $(seq 1 "$HEALTH_RETRIES"); do
+    sleep "$HEALTH_INTERVAL"
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$HEALTH_URL" || echo 000)"
+    if [ "$code" = "200" ]; then
+      log "PROD HTTP /health = 200 (próba $attempt/$HEALTH_RETRIES) — tunel HTTP nienaruszony ✓"
+      break
+    fi
+    log "health=$code (próba $attempt/$HEALTH_RETRIES) — czekam na re-establish cloudflared..."
+  done
   if [ "$code" != "200" ]; then
-    log "PROD HEALTH = $code po restarcie — ROLLBACK configu"
+    log "PROD HEALTH = $code po $HEALTH_RETRIES próbach — ROLLBACK configu"
     [ -n "${BACKUP:-}" ] && cp "$BACKUP" "$CFG" && sudo systemctl restart cloudflared
-    die "Rollback wykonany (HTTP tunel był zagrożony). SSH-over-CF NIE aktywowane."
+    die "Rollback wykonany (HTTP tunel realnie padł). SSH-over-CF NIE aktywowane."
   fi
-  log "PROD HTTP /health = 200 — tunel HTTP nienaruszony ✓"
+  # Sanity: potwierdź że ingress SSH faktycznie jest w działającym configu
+  # (gdyby idempotency/edycja zawiodła — lepiej wiedzieć teraz niż przy ssh).
+  if ! grep -q "$SSH_HOSTNAME" "$CFG"; then
+    die "Config nie zawiera $SSH_HOSTNAME po restarcie — ingress nieaktywny (sprawdź $CFG)"
+  fi
+  log "Ingress SSH potwierdzony w configu ($SSH_HOSTNAME) ✓"
 fi
 
 cat <<EOF
