@@ -769,7 +769,20 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                         if broker_htmls:
                             order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
                             broker_htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
-                            bundle_title = f"Raport brokerski zbiorczy — {len(broker_htmls)} aut ({title_meta})"
+                            n_selected = len(broker_htmls)
+                            # Ostatnia zakładka: audyt WSZYSTKICH sprawdzanych
+                            # pojazdów (pod wybranymi) — powód wyboru/odrzucenia.
+                            try:
+                                if all_results:
+                                    summary_html = _all_vehicles_summary_html(all_results, criteria)
+                                    broker_htmls.append((
+                                        f"📋 Wszystkie sprawdzane ({len(all_results)})",
+                                        summary_html,
+                                        {"recommendation": "_SUMMARY", "score": None},
+                                    ))
+                            except Exception:
+                                logger.exception("Sekcja 'Wszystkie sprawdzane pojazdy' nieudana")
+                            bundle_title = f"Raport brokerski zbiorczy — {n_selected} aut ({title_meta})"
                             bundle_html = _bundle_html(broker_htmls, bundle_title)
                             bundle_path = SEARCH_ARTIFACT_DIR / f"{slug}_{ts}_zbiorczy_broker.html"
                             bundle_path.write_text(bundle_html, encoding="utf-8")
@@ -2511,6 +2524,8 @@ def _bundle_html(htmls: list[tuple], title: str) -> str:
             return ("#eab308", "⚠️ RYZYKO")
         if "ODRZUĆ" in rec_low or "ODRZUC" in rec_low:
             return ("#ef4444", "❌ ODRZUĆ")
+        if "_SUMMARY" in rec_low:
+            return ("#0066ff", "📋 AUDYT")
         return ("#6b7280", "?")
 
     parts = [
@@ -2661,6 +2676,110 @@ window.addEventListener('keydown', (e) => {
 
     parts.append("</body></html>")
     return "\n".join(parts)
+
+
+def _all_vehicles_summary_html(all_results: list, criteria) -> str:
+    """Standalone HTML: WSZYSTKIE sprawdzane pojazdy + powód wyboru/odrzucenia.
+
+    Wstrzykiwane jako ostatnia zakładka raportu brokerskiego zbiorczego
+    (_bundle_html wycina <body>+<style>). Daje brokerowi pełny audyt: dla
+    każdego analizowanego lota — rekomendacja, score i konkretny powód
+    (red_flags = ryzyka/dyskwalifikacje + notatka AI / opis).
+    """
+    import html as _h
+
+    def esc(v) -> str:
+        return _h.escape(str(v)) if v is not None else ""
+
+    def _row(al) -> str:
+        lot = al.lot
+        an = al.analysis
+        rec = (an.recommendation or "").upper()
+        if "POLECAM" in rec:
+            bg, fg, lbl = "#dcfce7", "#166534", "✅ POLECAM"
+        elif "RYZYKO" in rec:
+            bg, fg, lbl = "#fef9c3", "#854d0e", "⚠️ RYZYKO"
+        elif "ODRZU" in rec:
+            bg, fg, lbl = "#fee2e2", "#991b1b", "❌ ODRZUĆ"
+        else:
+            bg, fg, lbl = "#e5e7eb", "#374151", "?"
+        title = " ".join(
+            str(x) for x in [lot.year, lot.make, lot.model, lot.trim] if x
+        ).strip() or f"Lot {lot.lot_id}"
+        flags = "; ".join(an.red_flags or [])
+        why = (an.ai_notes or an.client_description_pl or "").strip()
+        # Powód: dla ODRZUĆ/RYZYKO red_flags są kluczowe; dla POLECAM uzasadnienie.
+        reason_bits = []
+        if flags:
+            reason_bits.append(f"<strong>Sygnały:</strong> {esc(flags)}")
+        if why:
+            reason_bits.append(esc(why[:600]))
+        reason = "<br>".join(reason_bits) or "<em>brak uzasadnienia</em>"
+        score = f"{an.score:.1f}" if an.score is not None else "—"
+        total = (
+            f"${an.estimated_total_cost_usd:,.0f}".replace(",", " ")
+            if getattr(an, "estimated_total_cost_usd", None)
+            else "—"
+        )
+        odo = f"{lot.odometer_mi:,} mi".replace(",", " ") if lot.odometer_mi else "—"
+        dmg = esc(lot.damage_primary or "—")
+        url = esc(lot.url or "")
+        lot_cell = (
+            f"<a href='{url}' target='_blank' rel='noopener'>{esc(title)}</a>"
+            f"<div class='sub'>{esc(lot.source)} · #{esc(lot.lot_id)} · {odo} · {dmg}</div>"
+        )
+        return (
+            "<tr>"
+            f"<td>{lot_cell}</td>"
+            f"<td><span class='badge' style='background:{bg};color:{fg}'>{lbl}</span></td>"
+            f"<td class='num'>{score}</td>"
+            f"<td class='num'>{total}</td>"
+            f"<td class='reason'>{reason}</td>"
+            "</tr>"
+        )
+
+    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2, "ODRZUC": 2}
+    rows = sorted(
+        all_results,
+        key=lambda al: (
+            order.get((al.analysis.recommendation or "").upper(), 9),
+            -(al.analysis.score or 0),
+        ),
+    )
+    n_pol = sum(1 for al in all_results if "POLECAM" in (al.analysis.recommendation or "").upper())
+    n_ryz = sum(1 for al in all_results if "RYZYKO" in (al.analysis.recommendation or "").upper())
+    n_odr = sum(1 for al in all_results if "ODRZU" in (al.analysis.recommendation or "").upper())
+    crit = " ".join(
+        str(x) for x in [getattr(criteria, "make", ""), getattr(criteria, "model", "")] if x
+    ).strip()
+    body_rows = "".join(_row(al) for al in rows)
+    return f"""<!DOCTYPE html><html lang='pl'><head><meta charset='UTF-8'>
+<title>Wszystkie sprawdzane pojazdy</title><style>
+.av-wrap{{font-family:'Segoe UI',-apple-system,sans-serif;background:#fff;color:#1a1f36;padding:28px;max-width:1100px;margin:0 auto}}
+.av-wrap h2{{margin:0 0 4px;color:#0d2855;font-size:22px}}
+.av-wrap .meta{{color:#6b7280;font-size:13px;margin-bottom:18px}}
+.av-wrap .pills span{{display:inline-block;padding:3px 12px;border-radius:14px;font-size:12px;font-weight:700;margin-right:8px}}
+.av-wrap table{{width:100%;border-collapse:collapse;font-size:13px}}
+.av-wrap th,.av-wrap td{{text-align:left;padding:10px 12px;border-bottom:1px solid #e5e9f2;vertical-align:top}}
+.av-wrap th{{background:#f5f7fb;color:#0d2855;font-size:11px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0}}
+.av-wrap td a{{color:#0066ff;text-decoration:none;font-weight:600}}
+.av-wrap td a:hover{{text-decoration:underline}}
+.av-wrap .sub{{color:#6b7280;font-size:11px;margin-top:3px}}
+.av-wrap .badge{{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap}}
+.av-wrap .num{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}}
+.av-wrap .reason{{max-width:480px;line-height:1.45;color:#374151}}
+</style></head><body><div class='av-wrap'>
+<h2>📋 Wszystkie sprawdzane pojazdy</h2>
+<div class='meta'>Zapytanie: <em>{_h.escape(crit) or "—"}</em> · Przeanalizowano: <strong>{len(all_results)}</strong> pojazdów ·
+audyt pełnej selekcji (dlaczego wybrany / dlaczego odrzucony)</div>
+<div class='pills'>
+<span style='background:#dcfce7;color:#166534'>✅ POLECAM: {n_pol}</span>
+<span style='background:#fef9c3;color:#854d0e'>⚠️ RYZYKO: {n_ryz}</span>
+<span style='background:#fee2e2;color:#991b1b'>❌ ODRZUĆ: {n_odr}</span>
+</div>
+<table><thead><tr><th>Pojazd</th><th>Decyzja</th><th>Score</th><th>Szac. total</th><th>Powód (wybór / odrzucenie)</th></tr></thead>
+<tbody>{body_rows}</tbody></table>
+</div></body></html>"""
 
 
 # USUNIETE w 2026-05-07: /report/client-bundle i /report/broker-bundle (Rich on-demand)
