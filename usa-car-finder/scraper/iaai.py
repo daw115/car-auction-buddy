@@ -767,12 +767,16 @@ class IAAIScraper(BaseScraper):
 
                 print(f"[IAAI] Znaleziono {vehicle_count} wyników")
 
-                # Buyer-mask guard: IAAI maskuje listing ("Please log in as a
-                # buyer", VIN ******) gdy sesja jest zalogowana ale NIE buyer-
-                # tier. _is_session_active (URL-only) tego nie wykrywa →
-                # wszystkie seller=unknown, row_text zdegradowany → 0 pasuje.
-                # Wykryj mask i wymuś re-login + reload search RAZ.
-                if os.getenv("IAAI_RELOGIN_ON_MASK", "true").lower() == "true":
+                # Buyer-mask guard — DEFAULT OFF (zweryfikowane diagnostyką).
+                # Ustalenie: konto IAAI nie jest buyer-tier → listing jest
+                # ZAWSZE buyer-masked, a force re-login NIE czyści maski
+                # (potwierdzone: "Po force re-login: buyer_masked=True").
+                # Mask maskuje TYLKO seller/VIN — make/model/auction są
+                # czytelne, więc NIE powoduje 0-match (to robi filtr okna
+                # aukcji <12h, działający poprawnie). Włączenie tego dawało
+                # tylko +~15s/scrape bez efektu. Kod zostaje (env-gated) na
+                # wypadek gdyby konto stało się buyer-tier.
+                if os.getenv("IAAI_RELOGIN_ON_MASK", "false").lower() == "true":
                     try:
                         masked = "log in as a buyer" in (await page.content()).lower()
                     except Exception:
