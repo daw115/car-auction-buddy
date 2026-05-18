@@ -78,15 +78,17 @@ class IAAIScraper(BaseScraper):
             print(f"[IAAI] Health check sesji failed: {exc}")
             return False
 
-    async def _login_if_configured(self, page) -> bool:
+    async def _login_if_configured(self, page, *, force: bool = False) -> bool:
         email = os.getenv("IAAI_EMAIL", "").strip()
         password = os.getenv("IAAI_PASSWORD", "").strip()
         if not email or not password:
             print("[IAAI] Brak IAAI_EMAIL/IAAI_PASSWORD - pomijam aktywne logowanie")
             return False
 
-        # Health check: jeśli sesja aktywna, pomiń login flow (~10-15s oszczędności)
-        if await self._is_session_active(page):
+        # Health check: jeśli sesja aktywna, pomiń login flow (~10-15s oszczędności).
+        # force=True omija ten skrót — używane gdy listing jest buyer-masked
+        # mimo że URL-check przeszedł (sesja zalogowana, ale nie buyer-tier).
+        if not force and await self._is_session_active(page):
             print("[IAAI] ✅ Sesja aktywna — pomijam logowanie")
             return True
 
@@ -513,9 +515,17 @@ class IAAIScraper(BaseScraper):
             return False
 
         text = candidate.row_text.lower()
-        if criteria.make and criteria.make.lower() not in text:
+        # Normalizuj separatory: "CR-V" / "CRV" / "CR V" oraz "Mercedes-Benz"
+        # mają pasować niezależnie od myślnika/spacji (search URL używa
+        # normalize_model_for_query, ale ten filtr porównywał dosłownie →
+        # 0 dopasowań np. dla Honda CR-V gdy IAAI renderuje "CRV").
+        def _norm(s: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+        text_norm = _norm(text)
+        if criteria.make and _norm(criteria.make) not in text_norm:
             return False
-        if criteria.model and criteria.model.lower() not in text:
+        if criteria.model and _norm(criteria.model) not in text_norm:
             return False
 
         year_match = re.search(r"\b(19|20)\d{2}\b", candidate.row_text)
@@ -756,6 +766,39 @@ class IAAIScraper(BaseScraper):
                     return []
 
                 print(f"[IAAI] Znaleziono {vehicle_count} wyników")
+
+                # Buyer-mask guard: IAAI maskuje listing ("Please log in as a
+                # buyer", VIN ******) gdy sesja jest zalogowana ale NIE buyer-
+                # tier. _is_session_active (URL-only) tego nie wykrywa →
+                # wszystkie seller=unknown, row_text zdegradowany → 0 pasuje.
+                # Wykryj mask i wymuś re-login + reload search RAZ.
+                if os.getenv("IAAI_RELOGIN_ON_MASK", "true").lower() == "true":
+                    try:
+                        masked = "log in as a buyer" in (await page.content()).lower()
+                    except Exception:
+                        masked = False
+                    if masked:
+                        print("[IAAI] ⚠️ Listing buyer-masked — wymuszam re-login (force)")
+                        try:
+                            await self._login_if_configured(page, force=True)
+                            if not await self.has_security_challenge(page):
+                                await context.storage_state(path=str(storage_state_path("iaai")))
+                            await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                            await asyncio.sleep(int(os.getenv("IAAI_LISTING_INITIAL_WAIT_S", "3")))
+                            vehicle_count = await page.locator("a[href*='/VehicleDetail']").count()
+                            try:
+                                still = "log in as a buyer" in (await page.content()).lower()
+                            except Exception:
+                                still = False
+                            print(
+                                f"[IAAI] Po force re-login: {vehicle_count} wyników, "
+                                f"buyer_masked={still}"
+                            )
+                            if vehicle_count == 0:
+                                print("[IAAI] Brak wyników po re-login")
+                                return []
+                        except Exception as exc:
+                            print(f"[IAAI] Force re-login po mask nieudany: {exc}")
 
                 # Oblicz effective_insurance_only ZANIM odpalimy DOM filters —
                 # filtr Seller=Insurance ma być aplikowany od razu (drastycznie
