@@ -630,6 +630,30 @@ class IAAIScraper(BaseScraper):
                 f"{page_matches} pasuje, łącznie {len(candidates)}/{scan_limit}"
             )
 
+            # DIAGNOSTYKA: gdy 0 dopasowań mimo wczytanych lotów — dlaczego?
+            # (buyer-login mask vs model-string mismatch vs zły wynik search).
+            if (
+                page_matches == 0
+                and page_candidates
+                and os.getenv("IAAI_DEBUG_NOMATCH", "true").lower() == "true"
+            ):
+                try:
+                    html_l = (await page.content()).lower()
+                    buyer_masked = "log in as a buyer" in html_l
+                except Exception:
+                    buyer_masked = None
+                mk = (criteria.make or "").lower()
+                md = (criteria.model or "").lower()
+                for c in page_candidates[:3]:
+                    t = (c.row_text or "")[:160].replace("\n", " ")
+                    print(
+                        f"[IAAI][DBG] seller={c.seller_type} "
+                        f"make_in={(mk in c.row_text.lower()) if mk else None} "
+                        f"model('{md}')_in={(md in c.row_text.lower()) if md else None} "
+                        f"auction={c.auction_date} buyer_masked={buyer_masked} "
+                        f"row[:160]={t!r}"
+                    )
+
             if len(candidates) >= scan_limit:
                 break
 
