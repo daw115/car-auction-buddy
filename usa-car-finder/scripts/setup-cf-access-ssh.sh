@@ -61,14 +61,17 @@ if [ -n "$EXIST_TOK_ID" ] && [ "$EXIST_TOK_ID" != "null" ]; then
   log "UWAGA: sekret pokazywany jest tylko przy tworzeniu. Jeśli go nie masz,"
   log "       zmień TOKEN_NAME i uruchom ponownie aby wygenerować nowy."
   CLIENT_ID="$(echo "$TOKS" | jq -r --arg n "$TOKEN_NAME" '.result[]|select(.name==$n)|.client_id')"
+  TOKEN_UUID="$(echo "$TOKS" | jq -r --arg n "$TOKEN_NAME" '.result[]|select(.name==$n)|.id')"
   CLIENT_SECRET="(istniejący — nieodczytywalny; użyj nowego TOKEN_NAME by wygenerować)"
 else
   NEW="$(cf POST "/accounts/$ACCOUNT_ID/access/service_tokens" "{\"name\":\"$TOKEN_NAME\"}")"
   ok "$NEW" || die "Tworzenie service token fail: $(echo "$NEW" | jq -c '.errors')"
   CLIENT_ID="$(echo "$NEW" | jq -r '.result.client_id')"
   CLIENT_SECRET="$(echo "$NEW" | jq -r '.result.client_secret')"
+  TOKEN_UUID="$(echo "$NEW" | jq -r '.result.id')"
   log "Service token utworzony: $TOKEN_NAME"
 fi
+[ -n "$TOKEN_UUID" ] && [ "$TOKEN_UUID" != "null" ] || die "Brak service token UUID (id)"
 
 # --- 3. Self-hosted Access app dla SSH hostname (idempotent po domenie) ---
 APPS="$(cf GET "/accounts/$ACCOUNT_ID/access/apps")"
@@ -90,9 +93,10 @@ else
 fi
 
 # --- 4. Policy: pozwól TYLKO temu service tokenowi ---
-POL_BODY="$(jq -n --arg cid "$CLIENT_ID" \
+# UWAGA: reguła service_token wymaga UUID tokenu (.id), NIE client_id.
+POL_BODY="$(jq -n --arg tid "$TOKEN_UUID" \
   '{name:"allow-svc-token",decision:"non_identity",
-    include:[{service_token:{token_id:$cid}}]}')"
+    include:[{service_token:{token_id:$tid}}]}')"
 POLS="$(cf GET "/accounts/$ACCOUNT_ID/access/apps/$APP_ID/policies")"
 POL_ID="$(echo "$POLS" | jq -r '.result[]|select(.name=="allow-svc-token")|.id' | head -1)"
 if [ -n "$POL_ID" ] && [ "$POL_ID" != "null" ]; then
