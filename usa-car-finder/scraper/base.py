@@ -284,8 +284,10 @@ class BaseScraper:
             (62, "front", ("front end", "front")),
             (50, "side/rear", ("rear end", "rear", "side")),
             (36, "vandalism/theft", ("vandalism", "theft")),
-            (28, "hail", ("hail",)),
-            (16, "minor", ("minor dent", "scratches", "scratch", "dent", "normal wear")),
+            # NAJBARDZIEJ POŻĄDANE (najniższy wynik = najwyższy priorytet otwarcia):
+            (24, "hail", ("hail",)),
+            (14, "minor", ("minor dent", "scratches", "scratch", "dent")),
+            (8, "normal-wear", ("normal wear",)),
         ]
 
         matches: list[tuple[int, str]] = []

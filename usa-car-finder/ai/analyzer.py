@@ -59,6 +59,13 @@ KOSZTY STAŁE DO UWZGLĘDNIENIA:
 - Homologacja + rejestracja: ok. 500 USD
 
 ZASADY OCENY USZKODZEŃ:
+- NAJBARDZIEJ POŻĄDANE typy uszkodzeń (wyraźny PLUS do score, faworyzuj do POLECAM —
+  najtańsza i najpewniejsza naprawa, mechanika/konstrukcja nienaruszone):
+  1. NORMAL WEAR (najlepsze — brak szkód kolizyjnych, tylko zużycie eksploatacyjne)
+  2. MINOR DENT / SCRATCHES (kosmetyka)
+  3. HAIL (grad — naprawa PDR, blacharka bez wymiany elementów)
+  Lot z którymkolwiek z tych typów (i Clean/Salvage title bez frame/airbag) →
+  traktuj jako mocnego kandydata POLECAM.
 - FLOOD / WATER DAMAGE → automatycznie ODRZUĆ (ukryta korozja, elektronika)
 - FIRE → automatycznie ODRZUĆ
 - DEPLOYED AIRBAGS → duże ryzyko, nalicz 1500-3000 USD do naprawy
@@ -713,11 +720,17 @@ def _estimate_repair_cost(lot: CarLot) -> tuple[int, list[str], float]:
     elif "side" in damage:
         base = 2400
         score_delta -= 0.3
-    elif "hail" in damage:
-        base = 1800
-        score_delta += 0.2
+    elif "normal wear" in damage:
+        # NAJBARDZIEJ POŻĄDANE — brak szkód kolizyjnych, tylko zużycie eksploatacyjne
+        base = 600
+        score_delta += 1.0
     elif "minor" in damage or "scratch" in damage or "dent" in damage:
+        # Pożądane — kosmetyka, najtańsza/najpewniejsza naprawa
         base = 1200
+        score_delta += 0.8
+    elif "hail" in damage:
+        # Pożądane — grad (PDR), mechanika nienaruszona
+        base = 1800
         score_delta += 0.6
     else:
         base = 3000
