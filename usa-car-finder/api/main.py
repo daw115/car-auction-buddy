@@ -212,6 +212,9 @@ class SearchRequest(BaseModel):
     demo: bool = False
     auction_min_hours: Optional[int] = None
     auction_max_hours: Optional[int] = None
+    # Gdy True — całkowicie wyłącza filtr okna aukcji (znajduje też aukcje
+    # "future" poza standardowym oknem 12–120h ORAZ loty bez daty aukcji).
+    disable_auction_filter: bool = False
     client: Optional[ClientContext] = None
 
 
@@ -363,6 +366,7 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
             criteria,
             auction_window_hours=request.auction_max_hours,
             min_auction_window_hours=request.auction_min_hours,
+            disable_auction_filter=request.disable_auction_filter,
             progress_cb=progress_cb,
         )
 

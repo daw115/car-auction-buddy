@@ -62,6 +62,7 @@ class AutomatedScraper:
         criteria: ClientCriteria,
         auction_window_hours: Optional[int] = None,
         min_auction_window_hours: Optional[int] = None,
+        disable_auction_filter: bool = False,
         progress_cb: ProgressCb = None,
     ) -> List[CarLot]:
         """
@@ -71,6 +72,9 @@ class AutomatedScraper:
             criteria: Parametry wyszukiwania
             auction_window_hours: Górna granica okna aukcji w godzinach (np. 120 = 5 dni).
             min_auction_window_hours: Dolna granica okna aukcji (np. 12h).
+            disable_auction_filter: Gdy True — wyłącza filtr okna aukcji
+                (max=None → auction_date_in_window zwraca True dla wszystkich),
+                łapie też aukcje "future" poza oknem oraz loty bez daty aukcji.
             progress_cb: opcjonalny callback (phase_name, info_dict) do streamingu postępu.
 
         Returns:
@@ -79,12 +83,19 @@ class AutomatedScraper:
         all_lots = []
         strict_scan_threshold = max(0, int(os.getenv("STRICT_SCAN_MAX_RESULTS_THRESHOLD", "3")))
         strict_scan = bool(strict_scan_threshold and criteria.max_results <= strict_scan_threshold)
-        max_window_hours = auction_window_hours if auction_window_hours is not None else self.max_auction_window_hours
-        min_window_hours = (
-            min_auction_window_hours
-            if min_auction_window_hours is not None
-            else self.min_auction_window_hours
-        )
+        if disable_auction_filter:
+            # max=None → auction_date_in_window() przepuszcza wszystko (w tym
+            # aukcje future + loty bez daty). min nieistotny gdy max=None.
+            max_window_hours = None
+            min_window_hours = None
+            print("[Scraper] Filtr okna aukcji WYŁĄCZONY — szukam też aukcji future")
+        else:
+            max_window_hours = auction_window_hours if auction_window_hours is not None else self.max_auction_window_hours
+            min_window_hours = (
+                min_auction_window_hours
+                if min_auction_window_hours is not None
+                else self.min_auction_window_hours
+            )
 
         def source_criteria(remaining_sources: int) -> ClientCriteria:
             if not strict_scan:
