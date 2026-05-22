@@ -223,7 +223,7 @@ type ScraperReportUrls = {
   polecane_index_url?: string;
   client_reports_html?: string[];
   broker_reports_html?: string[];
-  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
+  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string; broker_bundle?: string; client_bundle?: string; client_short_bundle?: string };
   report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
 };
 
