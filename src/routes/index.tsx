@@ -3573,6 +3573,27 @@ function ScraperReportsSection({
             Pobierz pełną analizę (JSON)
           </Button>
         )}
+        {reportUrls.artifact_urls?.broker_bundle && (
+          <Button variant="default" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.broker_bundle, "_blank")}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            📋 Zbiorczy raport brokerski (audyt wszystkich pojazdów)
+          </Button>
+        )}
+        {reportUrls.artifact_urls?.client_bundle && (
+          <Button variant="outline" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.client_bundle, "_blank")}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            📄 Zbiorczy klient
+          </Button>
+        )}
+        {reportUrls.artifact_urls?.client_short_bundle && (
+          <Button variant="outline" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.client_short_bundle, "_blank")}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            ⚡ Zbiorczy krótki klient
+          </Button>
+        )}
         {reportUrls.report_endpoints?.client_html && (
           <Button variant="outline" size="sm"
             disabled={loadingEndpoint === "client"}
