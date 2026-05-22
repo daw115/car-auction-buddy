@@ -130,13 +130,38 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     window.location.replace(url.toString());
   }
 
+  async function hardRefreshApp() {
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+    } catch (err) {
+      console.warn("hardRefreshApp cleanup failed", err);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("_r", String(Date.now()));
+    window.location.replace(url.toString());
+  }
+
+  function diag(msg: string) {
+    setDiagLog((prev) => [`${new Date().toLocaleTimeString()}  ${msg}`, ...prev].slice(0, 20));
+  }
+
   async function pickUser(u: SiteUser) {
+    diag(`pickUser START — wybrano: ${u}`);
     setUser(u);
     setError("");
     try {
       const stored = await fetchUserHash(u);
+      diag(`pickUser OK — fetchUserHash zwróciło: ${stored ? "tak" : "nie"}`);
       setStep(stored ? "enterPersonal" : "setPersonal");
     } catch (err) {
+      diag(`pickUser BŁĄD — ${err instanceof Error ? err.message : String(err)}`);
       setError("Błąd połączenia z bazą");
       console.error(err);
     }
