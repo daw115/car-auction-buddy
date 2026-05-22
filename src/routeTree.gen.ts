@@ -13,6 +13,7 @@ import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RecordsRouteImport } from './routes/records'
+import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
@@ -45,6 +46,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const RecordsRoute = RecordsRouteImport.update({
   id: '/records',
   path: '/records',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JobsRoute = JobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DatabaseRoute = DatabaseRouteImport.update({
@@ -119,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/calculator'
     | '/dashboard'
     | '/database'
+    | '/jobs'
     | '/records'
     | '/settings'
     | '/sitemap.xml'
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/calculator'
     | '/dashboard'
     | '/database'
+    | '/jobs'
     | '/records'
     | '/settings'
     | '/sitemap.xml'
@@ -217,6 +228,7 @@ export interface FileRouteTypes {
     | '/calculator'
     | '/dashboard'
     | '/database'
+    | '/jobs'
     | '/records'
     | '/settings'
     | '/sitemap.xml'
@@ -237,6 +249,7 @@ export interface RootRouteChildren {
   CalculatorRoute: typeof CalculatorRoute
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
+  JobsRoute: typeof JobsRoute
   RecordsRoute: typeof RecordsRoute
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/records'
       fullPath: '/records'
       preLoaderRoute: typeof RecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jobs': {
+      id: '/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof JobsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/database': {
@@ -381,6 +401,7 @@ const rootRouteChildren: RootRouteChildren = {
   CalculatorRoute: CalculatorRoute,
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
+  JobsRoute: JobsRoute,
   RecordsRoute: RecordsRoute,
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
@@ -398,3 +419,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

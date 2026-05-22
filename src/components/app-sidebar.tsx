@@ -8,7 +8,9 @@ import {
   Settings,
   Terminal,
   Car,
+  Activity,
 } from "lucide-react";
+
 
 import {
   Sidebar,
@@ -32,6 +34,7 @@ type NavItem = {
 
 const workItems: NavItem[] = [
   { title: "Szukaj", url: "/", icon: Search, exact: true },
+  { title: "Aktywne joby", url: "/jobs", icon: Activity },
   { title: "Rekordy", url: "/records", icon: Database },
   { title: "Watchlist", url: "/watchlist", icon: Bookmark },
   { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
