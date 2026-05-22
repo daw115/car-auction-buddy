@@ -3174,6 +3174,7 @@ function Panel() {
                   <Trash2 className="h-4 w-4" />
                   Wyczyść cache
                 </Button>
+                </div>
               </div>
             </div>
             <ResumeJobBanner
