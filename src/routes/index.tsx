@@ -692,7 +692,7 @@ function Panel() {
   const fnSaveRecord = useServerFn(saveRecord);
   const fnDeleteRecord = useServerFn(deleteRecord);
   const fnGetConfig = useServerFn(getConfig);
-  const fnUpdateConfig = useServerFn(updateConfig);
+  // fnUpdateConfig usunięty wraz z SettingsSheet (pełne ustawienia są na /settings)
   const fnRunAnalysis = useServerFn(runAnalysis);
   const fnRenderReport = useServerFn(renderReport);
   const fnRunScraper = useServerFn(runScraperSearch);
