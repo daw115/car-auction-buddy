@@ -3132,7 +3132,18 @@ function Panel() {
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Loty z aukcji ({listings.length})
               </h3>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-3">
+                <label
+                  className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
+                  title="Wyłącza filtr okna aukcji po stronie scrapera — zwraca też loty bez nadchodzącej daty aukcji."
+                >
+                  <Checkbox
+                    checked={disableAuctionFilter}
+                    onCheckedChange={(v) => setDisableAuctionFilter(v === true)}
+                  />
+                  Bez filtra aukcji
+                </label>
+                <div className="flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
