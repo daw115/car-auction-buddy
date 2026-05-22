@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
 import { PasswordGate } from "@/components/PasswordGate";
+import { ChunkErrorOverlay } from "@/components/ChunkErrorOverlay";
 
 import appCss from "../styles.css?url";
 
@@ -90,6 +91,7 @@ function RootComponent() {
           </main>
         </PasswordGate>
         <Toaster richColors position="top-right" />
+        <ChunkErrorOverlay />
       </ThemeProvider>
     </QueryClientProvider>
   );
