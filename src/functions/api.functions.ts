@@ -1021,6 +1021,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       criteria: z.unknown().transform(parseCriteria),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
+      disable_auction_filter: z.boolean().optional(),
     }).parse,
   )
   .handler(async ({ data }): Promise<
