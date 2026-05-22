@@ -26,7 +26,7 @@ import {
   startScraperSearch,
   pollScraperJob,
   cancelScraperJob,
-  listActiveScraperJobs,
+  // listActiveScraperJobs przeniesiony do /jobs
   clearScrapeCache,
   getJobLogs,
   runLotReports,
@@ -59,7 +59,7 @@ import { LogsPanel } from "@/components/LogsPanel";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ResumeJobBanner } from "@/components/ResumeJobBanner";
-import { LiveJobLogs } from "@/components/LiveJobLogs";
+// LiveJobLogs używany teraz tylko w panels/jobs-panel.tsx
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
