@@ -4,12 +4,16 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
 import { PasswordGate } from "@/components/PasswordGate";
 import { ChunkErrorOverlay } from "@/components/ChunkErrorOverlay";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { AppTopbar } from "@/components/app-topbar";
 
 import appCss from "../styles.css?url";
 
 interface RouterContext {
   queryClient: QueryClient;
 }
+
 
 function NotFoundComponent() {
   return (
@@ -86,9 +90,15 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <PasswordGate>
-          <main>
-            <Outlet />
-          </main>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset className="min-w-0">
+              <AppTopbar />
+              <main className="flex-1 p-4 sm:p-6 min-w-0">
+                <Outlet />
+              </main>
+            </SidebarInset>
+          </SidebarProvider>
         </PasswordGate>
         <Toaster richColors position="top-right" />
         <ChunkErrorOverlay />
@@ -96,3 +106,4 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
+

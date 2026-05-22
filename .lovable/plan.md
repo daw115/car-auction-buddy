@@ -1,52 +1,79 @@
 ## Cel
 
-Wywołanie Anthropic w `callAnthropic()` jest obecnie zwykłym `fetch()` bez timeoutu. Cloudflare Worker / proxy zamyka połączenie po ~100 s i klient widzi `Anthropic HTTP 524`. Chcemy przerwać request po naszej stronie wcześniej (~110 s — z marginesem względem limitu CF) i zwrócić zrozumiały komunikat zamiast surowego 524.
+Obecny `/` mieści wszystko (formularz wyszukiwania, status job-a, wyniki, watchlist-skróty, panel rekordów backendu, audyt, raporty, ustawienia) — ponad 3900 linii w jednym pliku, bez wyraźnej hierarchii. Po zmianie użytkownik wchodzi w konkretną sekcję z sidebara, każdy ekran robi jedną rzecz, a wygląd dostaje świeższą warstwę wizualną przy zachowaniu obecnej palety (operator-blue/cream).
 
-## Zakres
+## Nowy układ aplikacji
 
-Zmieniony **tylko jeden plik**: `src/server/anthropic.server.ts`.
+```text
+┌─────────────────────────────────────────────────────────┐
+│ Sidebar (collapsible=icon)        Topbar: breadcrumb,   │
+│  • Szukaj          [Search]       active job pill,      │
+│  • Aktywne joby    [Activity]     theme, user, settings │
+│  • Wyniki / Rekordy[Database]    ─────────────────────  │
+│  • Watchlist       [Bookmark]                           │
+│  • Raporty         [FileText]     <Outlet />            │
+│  • Audyt           [ShieldCheck]                        │
+│  • Logi (dev)      [Terminal]                           │
+│  • Kalkulator      [Calculator]                         │
+│  • Ustawienia      [Settings]                           │
+└─────────────────────────────────────────────────────────┘
+```
 
-Bez zmian w:
-- kontrakcie funkcji `callAnthropic` (te same argumenty i typ zwracany),
-- `src/server/api.functions.ts`, `src/server/lot-report.ts`, `src/server/report.ts`,
-- modelu, `max_tokens`, nagłówkach, prompt cachingu.
+`ResumeJobBanner` i `ActiveJobsPanel` migrują do topbara jako kompaktowy „pill" + drawer — przestają zajmować miejsce na każdym ekranie.
 
-## Co dokładnie się zmienia
+## Route'y po podziale
 
-W bloku wykonującym `fetch` w `callAnthropic`:
+| Route | Zawartość (wyciągane z `Panel()` w `src/routes/index.tsx`) |
+|---|---|
+| `/` (Szukaj) | Tylko formularz wyszukiwania + „Parse client message" + ostatni status uruchomionego job-a. Krótkie podsumowanie wyników → CTA „Zobacz w rekordach". |
+| `/jobs` | `ActiveJobsPanel`, `BatchJobCard`, `LiveJobLogs`, `ScraperProgress`, `AnalysisProgress`. |
+| `/records` | `BackendRecordsPanel` + `RecordDetailView` w split-pane (lista po lewej, detal po prawej). Dziś już istnieje `database.tsx` — zamieniamy go w pełnoprawny widok rekordów. |
+| `/reports` | `ScraperReportsSection` + `ReportUrlsPanel` (broker_bundle, client_bundle itp.) jako galeria kart per job. |
+| `/audit` | `SearchAuditPanel` z filtrami. |
+| `/watchlist` | Istnieje, zostaje. |
+| `/calculator`, `/settings`, `/dev/logs` | Istnieją, dostają tylko nowy chrome. |
 
-1. Tworzony jest `AbortController` i `setTimeout(() => ctrl.abort(), 110_000)`.
-2. `fetch` dostaje `signal: ctrl.signal`.
-3. `try / catch / finally`:
-   - `catch` rozpoznaje `AbortError` i rzuca: `Anthropic timeout po 110s — model nie zdążył odpowiedzieć. Spróbuj ponownie lub zmniejsz prompt/max_tokens.`
-   - inne błędy sieciowe są re-throw bez zmian (zachowujemy obecne zachowanie),
-   - `finally` zawsze robi `clearTimeout(timer)` (brak wycieku timera po sukcesie).
-4. Pozostała obsługa odpowiedzi (`!res.ok` → `Anthropic HTTP ${status}: ...`, parsowanie JSON, mapowanie na `AnthropicResult`) bez zmian.
+`PasswordGate` zostaje bez zmian funkcjonalnie — tylko delikatny refresh wizualny (mniejsza diagnostyka schowana pod `<details>`).
 
-## Dlaczego 110 s
+## Odświeżenie wizualne
 
-- Limit CF dla pojedynczego sub-requestu daje błąd 524 około 100 s.
-- 110 s zostawia margines, żeby:
-  - nasz `AbortError` zadziałał *zanim* CF wstrzyknie HTML 524,
-  - logi w `operation_logs` (`ai_analysis · anthropic_call`) pokazały sensowną przyczynę (`Anthropic timeout po 110s ...`) zamiast `Anthropic HTTP 524: error code: 524`.
+- **Layout shell**: `SidebarProvider` + `AppSidebar` w `__root.tsx`, `SidebarTrigger` w topbarze (zawsze widoczny, sidebar `collapsible="icon"`).
+- **Typografia**: nagłówki sekcji `text-2xl font-semibold tracking-tight`, opisy `text-sm text-muted-foreground`. Spójna struktura każdej strony: `PageHeader` (tytuł + opis + akcje po prawej) → content w `Card`.
+- **Tokeny** (`src/styles.css`, oklch): dorzucam `--surface-elevated`, `--surface-muted`, subtelny `--shadow-card`, akcent statusu (`--success`, `--warning`) — bez zmiany istniejących `--primary/--background`.
+- **Karty**: zaokrąglenie `rounded-xl`, cieniem `shadow-sm`, hover `shadow-md` na klikalnych. Lista rekordów: zebra + status badge po lewej.
+- **CTA hierarchy**: jeden primary button per sekcja (np. „Uruchom wyszukiwanie"), reszta `variant="outline"` / `"ghost"`. Dziś wszystkie przyciski wyglądają tak samo.
+- **Status pill w topbarze**: gdy job działa — pulsujący kolor + nazwa + link „Pokaż" do `/jobs`.
 
-## Co świadomie pomijamy w tej zmianie
+## Szczegóły techniczne
 
-Aby zminimalizować ryzyko regresji, w tym kroku **nie** ruszamy:
-- streamingu (`stream: true`) — wymaga osobnej logiki SSE i zmiany kontraktu,
-- automatycznego retry / backoff dla 5xx,
-- domyślnego `max_tokens` (zostaje 8192),
-- domyślnego modelu.
+- Nowe pliki:
+  - `src/components/app-sidebar.tsx` — `Sidebar` wg wzoru z knowledge file, `Link` + `useRouterState` dla active state.
+  - `src/components/app-topbar.tsx` — breadcrumb (z `useRouterState`), `ActiveJobPill`, `ThemeToggle`, menu profilu.
+  - `src/components/page-header.tsx` — reużywalny header (`title`, `description`, `actions`).
+  - `src/components/active-job-pill.tsx` — wyciągnięte z `ActiveJobsPanel`, używa już istniejącego `listActiveScraperJobs`.
+  - `src/routes/jobs.tsx`, `src/routes/records.tsx` (zamiana `database.tsx`), `src/routes/reports.tsx`, `src/routes/audit.tsx`.
+- Refactor `src/routes/index.tsx`:
+  - `Panel()` zostaje tylko z formularzem i krótkim podsumowaniem ostatniego job-a.
+  - Wyekstrahowane komponenty (`BackendRecordsPanel`, `RecordDetailView`, `ScraperReportsSection`, `SearchAuditPanel`, `ActiveJobsPanel`, `BatchJobCard`) przenoszę do `src/components/panels/` i importuję w nowych route'ach. Zachowuję sygnatury propsów, żeby nie ruszać logiki.
+- `__root.tsx`:
+  - Wrap `Outlet` w `SidebarProvider` → `<div className="flex min-h-screen w-full">` → `<AppSidebar />` + kolumna `<AppTopbar />` + `<main className="flex-1 p-6">{children}</main>`.
+  - `PasswordGate` zostaje na zewnątrz shell-a (jak dziś), żeby nie renderować sidebara dla niezalogowanych.
+- Stan globalny job-a: lekki context `ActiveJobContext` (zasilany istniejącym pollingiem) wystawiany przez topbar — żeby przejście między route'ami nie gubiło info o trwającym scrape.
+- Bez zmian backendowych: żadne `server functions`, schema DB, ani kontrakt API nie są dotykane. To wyłącznie reorganizacja front-endu + nowe tokeny CSS.
+- Trasy są typowane — `routeTree.gen.ts` przegeneruje się sam.
 
-Jeśli po wdrożeniu timeouty będą się powtarzać przy długich generacjach, kolejnym krokiem będzie streaming + obniżenie domyślnego `max_tokens`. To zostawiamy do osobnego release’u.
+## Czego NIE zmieniam
 
-## Weryfikacja po wdrożeniu
+- Logiki scrapera, AI, raportów, cache'u, watchlisty.
+- Kontraktu `POST /api/search` ani `pollScraperJob`.
+- `PasswordGate` (poza drobnym refreshem wizualnym i ukryciem diagnostyki za `<details>`).
+- Istniejących route'ów `calculator`, `settings`, `watchlist`, `dev.logs` — tylko nowy chrome wokół nich.
 
-1. Wywołanie analizy ofert z dużym promptem — gdy Anthropic odpowiada szybko, zachowanie bez zmian (sukces, ten sam `AnthropicResult`).
-2. Gdy Anthropic „wisi” > 110 s: w UI / `operation_logs` pojawia się `error · ai_analysis · anthropic_call` z komunikatem `Anthropic timeout po 110s ...`, a nie `HTTP 524`.
-3. Brak wycieków timerów (sprawdzane przez `finally { clearTimeout(timer) }`).
+## Kolejność wdrożenia
 
-## Pliki
-
-- **Edycja:** `src/server/anthropic.server.ts` (linie obejmujące `fetch(...)` i obsługę `!res.ok`).
-- Brak nowych plików, brak nowych zależności, brak migracji DB, brak zmian w sekretach.
+1. Tokeny CSS + `PageHeader` + sidebar/topbar shell w `__root.tsx`.
+2. Wydzielenie paneli z `index.tsx` do `src/components/panels/` (bez zmian zachowania).
+3. Nowe route'y `jobs`, `records`, `reports`, `audit` — każdy montuje swój panel + `PageHeader`.
+4. Slim-down `Panel()` w `index.tsx` do formularza + krótkiego podsumowania.
+5. `ActiveJobPill` w topbarze + `ActiveJobContext`.
+6. QA wizualne na obecnym viewport (857×593) i desktop 1440.
