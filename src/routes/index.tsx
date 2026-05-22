@@ -2371,7 +2371,7 @@ function Panel() {
     setScrapeJob({ status: "queued", startedAt, elapsedMs: 0 });
     try {
       const start = (await fnStartScraper({
-        data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
+        data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined, disable_auction_filter: disableAuctionFilter },
       })) as
         | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
         | { mode: "job"; job_id: string; source: string; cache_key: string };
