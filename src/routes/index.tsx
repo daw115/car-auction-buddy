@@ -208,11 +208,7 @@ function downloadFile(filename: string, content: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-function recommendationBadge(r: string) {
-  if (r === "POLECAM") return "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]";
-  if (r === "RYZYKO") return "bg-[oklch(0.92_0.10_85)] text-[oklch(0.35_0.12_85)]";
-  return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
-}
+// recommendationBadge -> @/components/panels/analysis-results
 
 import type { ScraperReportUrls } from "@/components/panels/batch-job-card";
 import {
