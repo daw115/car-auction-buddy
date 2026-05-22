@@ -236,13 +236,10 @@ import { ClientsAside } from "@/components/panels/clients-aside";
 
 // ---------- Batch search types + card ----------
 // BatchJobCard + BatchJobEntry przeniesione do src/components/panels/batch-job-card.tsx
-import { BatchJobCard, type BatchJobEntry } from "@/components/panels/batch-job-card";
+import { type BatchJobEntry } from "@/components/panels/batch-job-card";
+import { ClientMessageCard, type ParsedCarsResult } from "@/components/panels/client-message-card";
+import { BatchJobsPanel } from "@/components/panels/batch-jobs-panel";
 
-type ParsedCarsResult = {
-  criteria_list: ClientCriteria[];
-  summary: string;
-  warnings: string[];
-};
 
 
 // Backend Records / Search Audit / Record Detail — przeniesione do panels/records-panel.tsx
