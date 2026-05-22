@@ -1,9 +1,8 @@
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Client } from "@/lib/types";
 
 type Props = {
-  activeClient: Client | null | undefined;
+  activeClient: { name: string } | null | undefined;
   activeRecordId: string | null;
   busy: string | null;
   onNewSession: () => void;
