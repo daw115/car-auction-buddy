@@ -18,14 +18,37 @@ const SITE_PASSWORD = "carbuddy2026";
 // Sesja unlocked dla danego użytkownika (tylko nazwa, nie hasło).
 const UNLOCKED_KEY = "site_unlocked_user_v1";
 
-async function fetchUserHash(username: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("site_user_passwords")
-    .select("password_hash")
-    .eq("username", username)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.password_hash ?? null;
+const CHUNK_ERROR_RE =
+  /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk \S+ failed|ChunkLoadError/i;
+
+function isChunkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return CHUNK_ERROR_RE.test(msg);
+}
+
+async function fetchUserHashWithRetry(
+  username: string,
+  attempts = 2,
+): Promise<string | null> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const { data, error } = await supabase
+        .from("site_user_passwords")
+        .select("password_hash")
+        .eq("username", username)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.password_hash ?? null;
+    } catch (err) {
+      lastErr = err;
+      // Chunk-load fail — od razu propaguj, ChunkErrorOverlay to pokaże.
+      if (isChunkError(err)) throw err;
+      // Krótki backoff przed kolejną próbą.
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 async function saveUserHash(username: string, hash: string): Promise<void> {
@@ -140,13 +163,26 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     setUser(u);
     setError("");
     try {
-      const stored = await fetchUserHash(u);
+      const stored = await fetchUserHashWithRetry(u);
       diag(`pickUser OK — fetchUserHash zwróciło: ${stored ? "tak" : "nie"}`);
       setStep(stored ? "enterPersonal" : "setPersonal");
     } catch (err) {
-      diag(`pickUser BŁĄD — ${err instanceof Error ? err.message : String(err)}`);
-      setError("Błąd połączenia z bazą");
+      const msg = err instanceof Error ? err.message : String(err);
+      diag(`pickUser BŁĄD — ${msg}`);
       console.error(err);
+
+      if (isChunkError(err)) {
+        // Re-dispatch żeby ChunkErrorOverlay (globalny) pokazał overlay z reloadem.
+        window.dispatchEvent(new ErrorEvent("error", { message: msg, error: err }));
+        setError("Aplikacja wymaga odświeżenia (chunk nie załadował się).");
+        return;
+      }
+
+      // Sieć/Supabase padło — pozwól przejść dalej, żeby przycisk „Wejdź"
+      // mógł ponowić zapytanie. Brak hasha = traktuj jak pierwsze logowanie.
+      diag("pickUser FALLBACK — przechodzę do ekranu hasła mimo błędu");
+      setError("Połączenie z bazą zawiodło — spróbuj ponownie wpisując hasło.");
+      setStep("enterPersonal");
     }
   }
 
@@ -154,7 +190,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     e.preventDefault();
     if (!user) return;
     try {
-      const stored = await fetchUserHash(user);
+      const stored = await fetchUserHashWithRetry(user);
       const hash = await sha256(personalPw);
       if (stored && hash === stored) {
         localStorage.setItem(UNLOCKED_KEY, user);
