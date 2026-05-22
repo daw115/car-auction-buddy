@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RecordsRouteImport } from './routes/records'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
@@ -39,6 +40,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecordsRoute = RecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DatabaseRoute = DatabaseRouteImport.update({
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/records': typeof RecordsRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/records': typeof RecordsRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/records': typeof RecordsRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/calculator'
     | '/dashboard'
     | '/database'
+    | '/records'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/calculator'
     | '/dashboard'
     | '/database'
+    | '/records'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/calculator'
     | '/dashboard'
     | '/database'
+    | '/records'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
@@ -225,6 +237,7 @@ export interface RootRouteChildren {
   CalculatorRoute: typeof CalculatorRoute
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
+  RecordsRoute: typeof RecordsRoute
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WatchlistRoute: typeof WatchlistRoute
@@ -260,6 +273,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/records': {
+      id: '/records'
+      path: '/records'
+      fullPath: '/records'
+      preLoaderRoute: typeof RecordsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/database': {
@@ -361,6 +381,7 @@ const rootRouteChildren: RootRouteChildren = {
   CalculatorRoute: CalculatorRoute,
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
+  RecordsRoute: RecordsRoute,
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WatchlistRoute: WatchlistRoute,

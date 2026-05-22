@@ -6,13 +6,15 @@ import { Separator } from "@/components/ui/separator";
 
 const ROUTE_LABELS: Record<string, string> = {
   "/": "Szukaj",
-  "/database": "Rekordy",
+  "/records": "Rekordy",
+  "/database": "Baza danych",
   "/watchlist": "Watchlist",
   "/dashboard": "Dashboard",
   "/calculator": "Kalkulator",
   "/settings": "Ustawienia",
   "/dev/logs": "Logi (dev)",
 };
+
 
 export function AppTopbar() {
   const pathname = useRouterState({

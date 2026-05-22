@@ -32,10 +32,11 @@ type NavItem = {
 
 const workItems: NavItem[] = [
   { title: "Szukaj", url: "/", icon: Search, exact: true },
-  { title: "Rekordy", url: "/database", icon: Database },
+  { title: "Rekordy", url: "/records", icon: Database },
   { title: "Watchlist", url: "/watchlist", icon: Bookmark },
   { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
 ];
+
 
 const toolItems: NavItem[] = [
   { title: "Kalkulator", url: "/calculator", icon: Calculator },
