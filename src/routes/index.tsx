@@ -223,7 +223,7 @@ type ScraperReportUrls = {
   polecane_index_url?: string;
   client_reports_html?: string[];
   broker_reports_html?: string[];
-  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
+  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string; broker_bundle?: string; client_bundle?: string; client_short_bundle?: string };
   report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
 };
 
@@ -3499,6 +3499,9 @@ function ScraperReportsSection({
     (reportUrls.client_reports_html?.length ?? 0) > 0 ||
     (reportUrls.broker_reports_html?.length ?? 0) > 0 ||
     reportUrls.artifact_urls?.analysis_json ||
+    reportUrls.artifact_urls?.broker_bundle ||
+    reportUrls.artifact_urls?.client_bundle ||
+    reportUrls.artifact_urls?.client_short_bundle ||
     reportUrls.report_endpoints?.client_html ||
     reportUrls.report_endpoints?.broker_html;
 
@@ -3568,6 +3571,27 @@ function ScraperReportsSection({
             onClick={() => window.open(reportUrls.artifact_urls!.analysis_json, "_blank")}>
             <Download className="h-3.5 w-3.5" />
             Pobierz pełną analizę (JSON)
+          </Button>
+        )}
+        {reportUrls.artifact_urls?.broker_bundle && (
+          <Button variant="default" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.broker_bundle, "_blank")}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            📋 Zbiorczy raport brokerski (audyt wszystkich pojazdów)
+          </Button>
+        )}
+        {reportUrls.artifact_urls?.client_bundle && (
+          <Button variant="outline" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.client_bundle, "_blank")}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            📄 Zbiorczy klient
+          </Button>
+        )}
+        {reportUrls.artifact_urls?.client_short_bundle && (
+          <Button variant="outline" size="sm"
+            onClick={() => window.open(reportUrls.artifact_urls!.client_short_bundle, "_blank")}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            ⚡ Zbiorczy krótki klient
           </Button>
         )}
         {reportUrls.report_endpoints?.client_html && (
