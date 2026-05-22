@@ -214,14 +214,7 @@ function recommendationBadge(r: string) {
   return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
 }
 
-type ScraperReportUrls = {
-  client_report_url?: string;
-  polecane_index_url?: string;
-  client_reports_html?: string[];
-  broker_reports_html?: string[];
-  artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string; broker_bundle?: string; client_bundle?: string; client_short_bundle?: string };
-  report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
-};
+import type { ScraperReportUrls } from "@/components/panels/batch-job-card";
 
 type ScrapeJobState = {
   status: string;
