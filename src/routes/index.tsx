@@ -1395,87 +1395,23 @@ function Panel() {
               </div>
             </div>
 
-            <Card className="p-4 mb-4 border-primary/30 bg-primary/5">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">📝</span>
-                <h3 className="font-semibold">Wiadomość od klienta</h3>
-                <span className="text-xs text-muted-foreground">
-                  AI wyciągnie filtry (make, model, rocznik, budżet, przebieg, etc.)
-                </span>
-              </div>
-              <Textarea
-                placeholder='np. "Szukam BMW M5 z 2018-2020, najlepiej East Coast, budżet 30k USD, do 60 tys mil"'
-                value={clientMessage}
-                onChange={(e) => setClientMessage(e.target.value)}
-                rows={3}
-                className="mb-3"
-              />
-              <div className="flex items-center gap-3">
-                <Button onClick={handleParseMessage} disabled={parsing || !clientMessage.trim()}>
-                  {parsing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <span className="mr-1">🤖</span>}
-                  {parsing ? "Parsuję..." : "Parsuj filtry"}
-                </Button>
-              </div>
-              {lastParseResult && (
-                <div className="mt-3 p-3 rounded-md bg-muted/50">
-                  <div className="text-sm mb-2 italic">{lastParseResult.summary}</div>
-                  {lastParseResult.warnings.length > 0 && (
-                    <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/40 rounded">
-                      <div className="text-xs font-semibold mb-1">⚠️ Normalizacja modeli:</div>
-                      {lastParseResult.warnings.map((w, i) => (
-                        <div key={i} className="text-xs text-amber-700 dark:text-amber-400">• {w}</div>
-                      ))}
-                      <div className="text-xs text-muted-foreground mt-1 italic">
-                        Backend automatycznie znormalizował model do nazwy używanej przez Copart/IAAI
-                        (np. M440i → 4 Series). Cache zapisuje mapping żeby kolejne te same modele
-                        nie wymagały re-parsingu.
-                      </div>
-                    </div>
-                  )}
-                  {parsedCars && parsedCars.criteria_list.length > 1 && (
-                    <div className="mt-3 space-y-2">
-                      <div className="text-xs text-muted-foreground">
-                        Wykryto <span className="font-bold text-foreground">{parsedCars.criteria_list.length}</span> aut:{" "}
-                        {parsedCars.criteria_list.map((c, i) => (
-                          <Badge key={i} variant="outline" className="mr-1 text-[10px]">
-                            {c.make} {c.model || ""} {c.year_from ? `${c.year_from}` : ""}{c.year_to ? `-${c.year_to}` : ""}
-                          </Badge>
-                        ))}
-                      </div>
-                      <Button onClick={handleBatchSearch} size="sm">
-                        <Search className="h-4 w-4 mr-1" />
-                        Wyszukaj wszystkie ({parsedCars.criteria_list.length})
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
+            <ClientMessageCard
+              clientMessage={clientMessage}
+              setClientMessage={setClientMessage}
+              parsing={parsing}
+              lastParseResult={lastParseResult}
+              parsedCars={parsedCars}
+              onParse={handleParseMessage}
+              onBatchSearch={handleBatchSearch}
+            />
 
             {/* Batch jobs panel */}
-            {batchJobs.length > 0 && (
-              <Card className="p-4 mb-4 border-primary/30">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">📦</span>
-                    <h3 className="font-semibold">Batch wyszukiwanie</h3>
-                    <Badge variant="outline" className="text-[10px]">
-                      {batchJobs.filter((j) => j.status === "done").length}/{batchJobs.length} gotowe
-                    </Badge>
-                  </div>
-                  {batchJobs.every((j) => j.status === "done" || j.status === "error" || j.status === "cancelled") && (
-                    <Button size="sm" variant="ghost" onClick={() => setBatchJobs([])}>
-                      <X className="h-3.5 w-3.5 mr-1" /> Zamknij
-                    </Button>
-                  )}
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {batchJobs.map((job) => (
-                    <BatchJobCard key={job.jobId} job={job} onPollUpdate={handleBatchJobUpdate} />
-                  ))}
-                </div>
-              </Card>
-            )}
+            <BatchJobsPanel
+              batchJobs={batchJobs}
+              onClear={() => setBatchJobs([])}
+              onPollUpdate={handleBatchJobUpdate}
+            />
+
 
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Kryteria
