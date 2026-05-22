@@ -2103,10 +2103,7 @@ function Panel() {
         </div>
       </div>
 
-      {/* Aktywne joby */}
-      <div className="px-4 pt-3 sm:px-6">
-        <ActiveJobsPanel />
-      </div>
+      {/* Aktywne joby — pełna lista na /jobs, tu tylko pill w topbarze */}
 
       <main className="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* ---- Clients column ---- */}
