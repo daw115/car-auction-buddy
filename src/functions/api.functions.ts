@@ -738,6 +738,7 @@ const SCRAPE_CACHE_TTL_SECONDS = (() => {
 // Build a stable cache key from criteria + config fields that affect scrape output.
 async function buildScrapeCacheKey(
   criteria: ClientCriteria,
+  disableAuctionFilter: boolean = false,
 ): Promise<{ key: string; configSnapshot: Record<string, unknown> }> {
   const { data: cfg } = await supabaseAdmin
     .from("app_config")
@@ -753,6 +754,7 @@ async function buildScrapeCacheKey(
     filter_seller_insurance_only: cfg?.filter_seller_insurance_only ?? null,
     open_all_prefiltered_details: cfg?.open_all_prefiltered_details ?? null,
     collect_all_prefiltered_results: cfg?.collect_all_prefiltered_results ?? null,
+    disable_auction_filter: disableAuctionFilter,
   };
 
   // Normalize criteria: lower-case strings, sort arrays, drop undefined.
