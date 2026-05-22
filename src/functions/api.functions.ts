@@ -1051,7 +1051,8 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     }
 
     // Cache lookup BEFORE hitting scraper.
-    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria);
+    const disableAuctionFilter = data.disable_auction_filter ?? false;
+    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria, disableAuctionFilter);
     const cached = await readScrapeCache(cacheKey);
     if (cached) {
       await log.info(
