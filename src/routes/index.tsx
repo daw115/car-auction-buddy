@@ -228,6 +228,7 @@ import {
 import { Field, DownloadBtn } from "@/components/panels/form-helpers";
 import { ListingsTable } from "@/components/panels/listings-table";
 import { ScraperReportsSection } from "@/components/panels/scraper-reports-section";
+import { ClientsAside } from "@/components/panels/clients-aside";
 
 // ActiveJobsPanel / ActiveJobRow / phaseLine / PHASE_LABELS / ActiveJob
 // zostały przeniesione do src/components/panels/jobs-panel.tsx (route /jobs).
