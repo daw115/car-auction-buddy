@@ -224,6 +224,8 @@ import {
 import { Field, DownloadBtn } from "@/components/panels/form-helpers";
 import { ListingsTable } from "@/components/panels/listings-table";
 import { ScraperReportsSection } from "@/components/panels/scraper-reports-section";
+import { CriteriaForm } from "@/components/panels/criteria-form";
+import { AnalysisResults } from "@/components/panels/analysis-results";
 import { ClientsAside } from "@/components/panels/clients-aside";
 
 // ActiveJobsPanel / ActiveJobRow / phaseLine / PHASE_LABELS / ActiveJob
