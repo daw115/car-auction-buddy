@@ -226,6 +226,9 @@ import { ListingsTable } from "@/components/panels/listings-table";
 import { ScraperReportsSection } from "@/components/panels/scraper-reports-section";
 import { CriteriaForm } from "@/components/panels/criteria-form";
 import { AnalysisResults } from "@/components/panels/analysis-results";
+import { SessionHeader } from "@/components/panels/session-header";
+import { ScraperToolbar } from "@/components/panels/scraper-toolbar";
+import { AiActionsBar } from "@/components/panels/ai-actions-bar";
 import { ClientsAside } from "@/components/panels/clients-aside";
 
 // ActiveJobsPanel / ActiveJobRow / phaseLine / PHASE_LABELS / ActiveJob
@@ -1373,25 +1376,13 @@ function Panel() {
           <>
 
           <Card className="p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold">
-                  {activeClient ? `Sesja: ${activeClient.name}` : "Nowa sesja"}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {activeRecordId ? `Rekord ${activeRecordId.slice(0, 8)}…` : "(nie zapisano)"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={newSession}>
-                  Nowa sesja
-                </Button>
-                <Button size="sm" onClick={persistRecord} disabled={busy === "save" || !activeClient}>
-                  {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Zapisz rekord
-                </Button>
-              </div>
-            </div>
+            <SessionHeader
+              activeClient={activeClient}
+              activeRecordId={activeRecordId}
+              busy={busy}
+              onNewSession={newSession}
+              onSave={persistRecord}
+            />
 
             <ClientMessageCard
               clientMessage={clientMessage}
@@ -1416,56 +1407,17 @@ function Panel() {
             <Separator className="my-4" />
 
 
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Loty z aukcji ({listings.length})
-              </h3>
-              <div className="flex items-center gap-3">
-                <label
-                  className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
-                  title="Domyślnie pokazujemy aukcje kończące się w ciągu 12–120h. Włącz, aby znaleźć też aukcje dalej w przyszłości oraz loty bez ustalonej daty aukcji."
-                >
-                  <Checkbox
-                    checked={disableAuctionFilter}
-                    onCheckedChange={(v) => setDisableAuctionFilter(v === true)}
-                  />
-                  Pokaż też aukcje przyszłe (poza oknem 12–120h)
-                </label>
-
-                <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={parseListingsFromText}
-                  disabled={!listingsRaw.trim()}
-                >
-                  Wczytaj z JSON
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={callScraper}
-                  disabled={busy === "scraper" || !env?.SCRAPER_BASE_URL}
-                  title={!env?.SCRAPER_BASE_URL ? "Ustaw SCRAPER_BASE_URL w sekretach" : ""}
-                >
-                  {busy === "scraper" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Search className="h-4 w-4" />
-                  )}
-                  Wyszukaj online
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={clearCacheAll}
-                  title="Wyczyść cache wyników (wymusi nowy scrape)"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Wyczyść cache
-                </Button>
-                </div>
-              </div>
-            </div>
+            <ScraperToolbar
+              listingsCount={listings.length}
+              disableAuctionFilter={disableAuctionFilter}
+              setDisableAuctionFilter={setDisableAuctionFilter}
+              busy={busy}
+              hasScraperUrl={!!env?.SCRAPER_BASE_URL}
+              hasListingsRaw={!!listingsRaw.trim()}
+              onParseFromText={parseListingsFromText}
+              onScrape={callScraper}
+              onClearCache={clearCacheAll}
+            />
             <ResumeJobBanner
               pendingResume={pendingResume}
               validationErrors={resumeValidationErrors}
@@ -1521,57 +1473,15 @@ function Panel() {
 
             <Separator className="my-4" />
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={runAi} disabled={busy === "ai" || listings.length === 0}>
-                {busy === "ai" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                {analysis && analysis.length > 0 ? "Uruchom analizę AI ponownie" : "Uruchom analizę AI"}
-              </Button>
-              {analysis && analysis.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={runAi}
-                  disabled={busy === "ai" || listings.length === 0}
-                  title="Ponowna analiza AI tych samych lotów (bez scrapingu)"
-                >
-                  {busy === "ai" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  Ponów analizę ({listings.length} lotów)
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={makeReport}
-                disabled={busy === "report" || !analysis}
-              >
-                {busy === "report" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                Wygeneruj raport (prosty)
-              </Button>
-              <Button
-                onClick={makeLotReports}
-                disabled={busy === "lot" || listings.length === 0}
-                className="bg-primary"
-              >
-                {busy === "lot" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                Generuj raporty LOT (broker + klient TOP3+2)
-              </Button>
-              {!env?.ANTHROPIC_API_KEY && (
-                <span className="inline-flex items-center gap-1 text-xs text-destructive">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Brak ANTHROPIC_API_KEY
-                </span>
-              )}
-            </div>
+            <AiActionsBar
+              busy={busy}
+              listingsCount={listings.length}
+              hasAnalysis={!!(analysis && analysis.length > 0)}
+              hasAnthropicKey={!!env?.ANTHROPIC_API_KEY}
+              onRunAi={runAi}
+              onMakeReport={makeReport}
+              onMakeLotReports={makeLotReports}
+            />
             {analysisJob && <AnalysisProgress job={analysisJob} />}
           </Card>
 
