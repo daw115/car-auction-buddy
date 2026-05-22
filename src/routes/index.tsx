@@ -3071,7 +3071,7 @@ function Panel() {
                   }
                 />
               </Field>
-              <Field label="Typ paliwa">
+              <Field label="Rodzaj paliwa (opcjonalnie)">
                 <Select
                   value={criteria.fuel_type ?? "any"}
                   onValueChange={(v) =>
@@ -3082,10 +3082,10 @@ function Panel() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Dowolny" />
+                    <SelectValue placeholder="(dowolny)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="any">Dowolny</SelectItem>
+                    <SelectItem value="any">(dowolny)</SelectItem>
                     <SelectItem value="Gas">Gas</SelectItem>
                     <SelectItem value="Hybrid">Hybrid</SelectItem>
                     <SelectItem value="Diesel">Diesel</SelectItem>
@@ -3093,6 +3093,7 @@ function Panel() {
                   </SelectContent>
                 </Select>
               </Field>
+
               <Field label="Max wyników (maks. 15)">
                 <Input
                   type="number"
@@ -3135,14 +3136,15 @@ function Panel() {
               <div className="flex items-center gap-3">
                 <label
                   className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
-                  title="Wyłącza filtr okna aukcji po stronie scrapera — zwraca też loty bez nadchodzącej daty aukcji."
+                  title="Domyślnie pokazujemy aukcje kończące się w ciągu 12–120h. Włącz, aby znaleźć też aukcje dalej w przyszłości oraz loty bez ustalonej daty aukcji."
                 >
                   <Checkbox
                     checked={disableAuctionFilter}
                     onCheckedChange={(v) => setDisableAuctionFilter(v === true)}
                   />
-                  Bez filtra aukcji
+                  Pokaż też aukcje przyszłe (poza oknem 12–120h)
                 </label>
+
                 <div className="flex gap-2">
                 <Button
                   size="sm"
