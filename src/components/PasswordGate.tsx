@@ -18,14 +18,37 @@ const SITE_PASSWORD = "carbuddy2026";
 // Sesja unlocked dla danego użytkownika (tylko nazwa, nie hasło).
 const UNLOCKED_KEY = "site_unlocked_user_v1";
 
-async function fetchUserHash(username: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("site_user_passwords")
-    .select("password_hash")
-    .eq("username", username)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.password_hash ?? null;
+const CHUNK_ERROR_RE =
+  /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk \S+ failed|ChunkLoadError/i;
+
+function isChunkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return CHUNK_ERROR_RE.test(msg);
+}
+
+async function fetchUserHashWithRetry(
+  username: string,
+  attempts = 2,
+): Promise<string | null> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const { data, error } = await supabase
+        .from("site_user_passwords")
+        .select("password_hash")
+        .eq("username", username)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.password_hash ?? null;
+    } catch (err) {
+      lastErr = err;
+      // Chunk-load fail — od razu propaguj, ChunkErrorOverlay to pokaże.
+      if (isChunkError(err)) throw err;
+      // Krótki backoff przed kolejną próbą.
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 async function saveUserHash(username: string, hash: string): Promise<void> {
