@@ -1106,14 +1106,21 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       },
     );
 
-    logCriteriaSent("startScraperSearch", data.criteria, { endpoint: `${baseUrl}/search`, cache_key: cacheKey });
+    logCriteriaSent("startScraperSearch", data.criteria, {
+      endpoint: `${baseUrl}/search`,
+      cache_key: cacheKey,
+      disable_auction_filter: disableAuctionFilter,
+    });
     const res = await fetch(`${baseUrl}/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ criteria: data.criteria }),
+      body: JSON.stringify({
+        criteria: data.criteria,
+        disable_auction_filter: disableAuctionFilter,
+      }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
