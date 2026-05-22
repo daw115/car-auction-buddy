@@ -226,6 +226,9 @@ import { ListingsTable } from "@/components/panels/listings-table";
 import { ScraperReportsSection } from "@/components/panels/scraper-reports-section";
 import { CriteriaForm } from "@/components/panels/criteria-form";
 import { AnalysisResults } from "@/components/panels/analysis-results";
+import { SessionHeader } from "@/components/panels/session-header";
+import { ScraperToolbar } from "@/components/panels/scraper-toolbar";
+import { AiActionsBar } from "@/components/panels/ai-actions-bar";
 import { ClientsAside } from "@/components/panels/clients-aside";
 
 // ActiveJobsPanel / ActiveJobRow / phaseLine / PHASE_LABELS / ActiveJob
