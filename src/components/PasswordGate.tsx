@@ -163,13 +163,26 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     setUser(u);
     setError("");
     try {
-      const stored = await fetchUserHash(u);
+      const stored = await fetchUserHashWithRetry(u);
       diag(`pickUser OK — fetchUserHash zwróciło: ${stored ? "tak" : "nie"}`);
       setStep(stored ? "enterPersonal" : "setPersonal");
     } catch (err) {
-      diag(`pickUser BŁĄD — ${err instanceof Error ? err.message : String(err)}`);
-      setError("Błąd połączenia z bazą");
+      const msg = err instanceof Error ? err.message : String(err);
+      diag(`pickUser BŁĄD — ${msg}`);
       console.error(err);
+
+      if (isChunkError(err)) {
+        // Re-dispatch żeby ChunkErrorOverlay (globalny) pokazał overlay z reloadem.
+        window.dispatchEvent(new ErrorEvent("error", { message: msg, error: err }));
+        setError("Aplikacja wymaga odświeżenia (chunk nie załadował się).");
+        return;
+      }
+
+      // Sieć/Supabase padło — pozwól przejść dalej, żeby przycisk „Wejdź"
+      // mógł ponowić zapytanie. Brak hasha = traktuj jak pierwsze logowanie.
+      diag("pickUser FALLBACK — przechodzę do ekranu hasła mimo błędu");
+      setError("Połączenie z bazą zawiodło — spróbuj ponownie wpisując hasło.");
+      setStep("enterPersonal");
     }
   }
 
