@@ -37,15 +37,14 @@ import {
   clearLlmCache,
   parseClientMessage,
   batchSearch,
-  getBackendRecordsList,
-  getBackendRecordDetails,
-  deleteBackendRecord,
-  regenerateBundles,
-  listSearchAudit,
 } from "@/functions/api.functions";
-import type { SearchAuditEntry } from "@/functions/api.functions";
-import type { BackendRecord } from "@/functions/api.functions";
+import {
+  BackendRecordsPanel,
+  SearchAuditPanel,
+  RecordDetailView,
+} from "@/components/panels/records-panel";
 import { addToWatchlist } from "@/functions/watchlist.functions";
+
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
 import { getCurrentSiteUser, SITE_USERS } from "@/lib/site-user";
 import {
