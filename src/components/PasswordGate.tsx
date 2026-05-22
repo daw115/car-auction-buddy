@@ -215,19 +215,32 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         </div>
 
         {step === "pickUser" && (
-          <div className="grid grid-cols-2 gap-2">
-            {SITE_USERS.map((u) => (
-              <Button
-                key={u}
-                variant="outline"
-                className="h-12 justify-start gap-2"
-                onClick={() => pickUser(u)}
-              >
-                <User className="h-4 w-4" />
-                {u}
-              </Button>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {SITE_USERS.map((u) => (
+                <Button
+                  key={u}
+                  variant="outline"
+                  className="h-12 justify-start gap-2"
+                  onClick={() => pickUser(u)}
+                >
+                  <User className="h-4 w-4" />
+                  {u}
+                </Button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-3 w-full text-xs text-muted-foreground"
+              onClick={hardRefreshApp}
+              title="Wymuś ponowną inicjalizację aplikacji (czyści cache modułów i sesji UI)"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Odśwież UI
+            </Button>
+          </>
         )}
 
         {step === "enterPersonal" && (
