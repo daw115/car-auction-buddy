@@ -3,6 +3,7 @@ import { Activity } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { ActiveJobsPanel } from "@/components/panels/jobs-panel";
+import { ConnectionStatusPanel } from "@/components/panels/connection-status-panel";
 import { Card } from "@/components/ui/card";
 
 export const Route = createFileRoute("/jobs")({
@@ -32,13 +33,17 @@ function JobsPage() {
         description="Joby scrapera w toku, w kolejce i niedawno zakończone. Lista odświeża się co 2 sekundy."
         icon={<Activity className="h-5 w-5" />}
       />
-      <ActiveJobsPanel
-        emptyState={
-          <Card className="p-8 text-center text-sm text-muted-foreground">
-            Brak aktywnych zadań. Uruchom wyszukiwanie na stronie głównej, żeby zobaczyć tu postęp.
-          </Card>
-        }
-      />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <ActiveJobsPanel
+          emptyState={
+            <Card className="p-8 text-center text-sm text-muted-foreground">
+              Brak aktywnych zadań. Uruchom wyszukiwanie na stronie głównej, żeby zobaczyć tu postęp.
+            </Card>
+          }
+        />
+        <ConnectionStatusPanel />
+      </div>
     </div>
   );
 }
+
