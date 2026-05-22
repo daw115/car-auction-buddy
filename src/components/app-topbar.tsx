@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 
 const ROUTE_LABELS: Record<string, string> = {
   "/": "Szukaj",
+  "/jobs": "Aktywne joby",
   "/records": "Rekordy",
   "/database": "Baza danych",
   "/watchlist": "Watchlist",
