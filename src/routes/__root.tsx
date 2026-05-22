@@ -91,6 +91,7 @@ function RootComponent() {
           </main>
         </PasswordGate>
         <Toaster richColors position="top-right" />
+        <ChunkErrorOverlay />
       </ThemeProvider>
     </QueryClientProvider>
   );
