@@ -892,14 +892,20 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 
     let res: Response;
     try {
-      logCriteriaSent("runScraperSearch", data.criteria, { endpoint: `${baseUrl}/search` });
+      logCriteriaSent("runScraperSearch", data.criteria, {
+        endpoint: `${baseUrl}/search`,
+        disable_auction_filter: data.disable_auction_filter ?? false,
+      });
       res = await fetch(`${baseUrl}/search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ criteria: data.criteria }),
+        body: JSON.stringify({
+          criteria: data.criteria,
+          disable_auction_filter: data.disable_auction_filter ?? false,
+        }),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
