@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Lock, LogOut, User } from "lucide-react";
+import { Lock, LogOut, RefreshCw, User } from "lucide-react";
 import {
   SITE_USERS,
   SITE_CURRENT_USER_KEY,
