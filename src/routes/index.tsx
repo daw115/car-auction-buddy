@@ -3071,7 +3071,7 @@ function Panel() {
                   }
                 />
               </Field>
-              <Field label="Typ paliwa">
+              <Field label="Rodzaj paliwa (opcjonalnie)">
                 <Select
                   value={criteria.fuel_type ?? "any"}
                   onValueChange={(v) =>
@@ -3082,10 +3082,10 @@ function Panel() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Dowolny" />
+                    <SelectValue placeholder="(dowolny)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="any">Dowolny</SelectItem>
+                    <SelectItem value="any">(dowolny)</SelectItem>
                     <SelectItem value="Gas">Gas</SelectItem>
                     <SelectItem value="Hybrid">Hybrid</SelectItem>
                     <SelectItem value="Diesel">Diesel</SelectItem>
@@ -3093,6 +3093,7 @@ function Panel() {
                   </SelectContent>
                 </Select>
               </Field>
+
               <Field label="Max wyników (maks. 15)">
                 <Input
                   type="number"
