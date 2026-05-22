@@ -1473,57 +1473,15 @@ function Panel() {
 
             <Separator className="my-4" />
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={runAi} disabled={busy === "ai" || listings.length === 0}>
-                {busy === "ai" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                {analysis && analysis.length > 0 ? "Uruchom analizę AI ponownie" : "Uruchom analizę AI"}
-              </Button>
-              {analysis && analysis.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={runAi}
-                  disabled={busy === "ai" || listings.length === 0}
-                  title="Ponowna analiza AI tych samych lotów (bez scrapingu)"
-                >
-                  {busy === "ai" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  Ponów analizę ({listings.length} lotów)
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={makeReport}
-                disabled={busy === "report" || !analysis}
-              >
-                {busy === "report" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                Wygeneruj raport (prosty)
-              </Button>
-              <Button
-                onClick={makeLotReports}
-                disabled={busy === "lot" || listings.length === 0}
-                className="bg-primary"
-              >
-                {busy === "lot" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                Generuj raporty LOT (broker + klient TOP3+2)
-              </Button>
-              {!env?.ANTHROPIC_API_KEY && (
-                <span className="inline-flex items-center gap-1 text-xs text-destructive">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Brak ANTHROPIC_API_KEY
-                </span>
-              )}
-            </div>
+            <AiActionsBar
+              busy={busy}
+              listingsCount={listings.length}
+              hasAnalysis={!!(analysis && analysis.length > 0)}
+              hasAnthropicKey={!!env?.ANTHROPIC_API_KEY}
+              onRunAi={runAi}
+              onMakeReport={makeReport}
+              onMakeLotReports={makeLotReports}
+            />
             {analysisJob && <AnalysisProgress job={analysisJob} />}
           </Card>
 
