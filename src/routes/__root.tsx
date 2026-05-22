@@ -4,12 +4,16 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
 import { PasswordGate } from "@/components/PasswordGate";
 import { ChunkErrorOverlay } from "@/components/ChunkErrorOverlay";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { AppTopbar } from "@/components/app-topbar";
 
 import appCss from "../styles.css?url";
 
 interface RouterContext {
   queryClient: QueryClient;
 }
+
 
 function NotFoundComponent() {
   return (
