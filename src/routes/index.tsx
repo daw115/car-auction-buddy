@@ -2763,56 +2763,18 @@ function Panel() {
     setAnalysisJob(null);
   }
 
-  // ---- render
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Top bar */}
-      <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
-              UC
-            </div>
-            <div>
-              <h1 className="text-base font-semibold leading-tight">USA Car Finder</h1>
-              <p className="text-xs text-muted-foreground leading-tight">
-                Panel operatora · Copart + IAAI · analiza AI
-              </p>
-            </div>
+    <div className="text-foreground -m-4 sm:-m-6">
+      {/* Sub-header: status środowiska + ustawienia (nawigacja jest w sidebarze) */}
+      <div className="sticky top-14 z-20 border-b border-border bg-background/95 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 sm:px-6">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-sm font-semibold text-foreground truncate">
+              Panel operatora · Copart + IAAI · analiza AI
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             <EnvStatus env={env} />
-            <ThemeToggle />
-            <Link
-              to="/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <BarChart3 className="h-3.5 w-3.5" /> Dashboard
-            </Link>
-            <Link
-              to="/watchlist"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <Eye className="h-3.5 w-3.5" /> Watchlist
-            </Link>
-            <Link
-              to="/calculator"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <Calculator className="h-3.5 w-3.5" /> Kalkulator + VIN
-            </Link>
-            <Link
-              to="/database"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <HardDrive className="h-3.5 w-3.5" /> 🗄️ Baza danych
-            </Link>
-            <Link
-              to="/settings"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <KeyRound className="h-3.5 w-3.5" /> Anthropic
-            </Link>
             <SettingsSheet
               config={config}
               env={env}
@@ -2828,14 +2790,14 @@ function Panel() {
             />
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Sticky active jobs panel */}
-      <div className="px-4 pt-3">
+      {/* Aktywne joby */}
+      <div className="px-4 pt-3 sm:px-6">
         <ActiveJobsPanel />
       </div>
 
-      <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <main className="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* ---- Clients column ---- */}
         <aside className="space-y-3">
           <Card className="p-3">
@@ -2843,6 +2805,7 @@ function Panel() {
             <div className="space-y-2">
               <Input
                 placeholder="Imię i nazwisko / firma"
+
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
               />
