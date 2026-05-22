@@ -208,11 +208,7 @@ function downloadFile(filename: string, content: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-function recommendationBadge(r: string) {
-  if (r === "POLECAM") return "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]";
-  if (r === "RYZYKO") return "bg-[oklch(0.92_0.10_85)] text-[oklch(0.35_0.12_85)]";
-  return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
-}
+// recommendationBadge -> @/components/panels/analysis-results
 
 import type { ScraperReportUrls } from "@/components/panels/batch-job-card";
 import {
@@ -228,6 +224,8 @@ import {
 import { Field, DownloadBtn } from "@/components/panels/form-helpers";
 import { ListingsTable } from "@/components/panels/listings-table";
 import { ScraperReportsSection } from "@/components/panels/scraper-reports-section";
+import { CriteriaForm } from "@/components/panels/criteria-form";
+import { AnalysisResults } from "@/components/panels/analysis-results";
 import { ClientsAside } from "@/components/panels/clients-aside";
 
 // ActiveJobsPanel / ActiveJobRow / phaseLine / PHASE_LABELS / ActiveJob
@@ -1413,114 +1411,7 @@ function Panel() {
             />
 
 
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Kryteria
-            </h3>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Field label="Marka *">
-                <Input
-                  value={criteria.make}
-                  onChange={(e) => setCriteria({ ...criteria, make: e.target.value })}
-                  placeholder="Audi"
-                />
-              </Field>
-              <Field label="Model">
-                <Input
-                  value={criteria.model ?? ""}
-                  onChange={(e) => setCriteria({ ...criteria, model: e.target.value })}
-                  placeholder="A5"
-                />
-              </Field>
-              <Field label="Rocznik od">
-                <Input
-                  type="number"
-                  value={criteria.year_from ?? ""}
-                  onChange={(e) =>
-                    setCriteria({ ...criteria, year_from: e.target.value ? +e.target.value : null })
-                  }
-                />
-              </Field>
-              <Field label="Rocznik do">
-                <Input
-                  type="number"
-                  value={criteria.year_to ?? ""}
-                  onChange={(e) =>
-                    setCriteria({ ...criteria, year_to: e.target.value ? +e.target.value : null })
-                  }
-                />
-              </Field>
-              <Field label="Budżet USD">
-                <Input
-                  type="number"
-                  placeholder="(opcjonalne)"
-                  value={criteria.budget_usd ?? ""}
-                  onChange={(e) => setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : null })}
-                />
-              </Field>
-              <Field label="Max przebieg (mil)">
-                <Input
-                  type="number"
-                  placeholder="(opcjonalne)"
-                  value={criteria.max_odometer_mi ?? ""}
-                  onChange={(e) =>
-                    setCriteria({ ...criteria, max_odometer_mi: e.target.value ? +e.target.value : null })
-                  }
-                />
-              </Field>
-              <Field label="Rodzaj paliwa (opcjonalnie)">
-                <Select
-                  value={criteria.fuel_type ?? "any"}
-                  onValueChange={(v) =>
-                    setCriteria({
-                      ...criteria,
-                      fuel_type: v === "any" ? null : (v as "Gas" | "Hybrid" | "Diesel" | "Electric"),
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="(dowolny)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">(dowolny)</SelectItem>
-                    <SelectItem value="Gas">Gas</SelectItem>
-                    <SelectItem value="Hybrid">Hybrid</SelectItem>
-                    <SelectItem value="Diesel">Diesel</SelectItem>
-                    <SelectItem value="Electric">Electric</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              <Field label="Max wyników (maks. 15)">
-                <Input
-                  type="number"
-                  min={1}
-                  max={15}
-                  placeholder="Maks. 15"
-                  value={criteria.max_results ?? 15}
-                  onChange={(e) => {
-                    const raw = +e.target.value;
-                    if (!raw) return setCriteria({ ...criteria, max_results: 15 });
-                    const clamped = Math.min(Math.max(raw, 1), 15);
-                    setCriteria({ ...criteria, max_results: clamped });
-                  }}
-                />
-              </Field>
-              <Field label="Wykluczone uszkodzenia">
-                <Input
-                  value={(criteria.excluded_damage_types ?? []).join(", ")}
-                  onChange={(e) =>
-                    setCriteria({
-                      ...criteria,
-                      excluded_damage_types: e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  placeholder="Flood, Fire"
-                />
-              </Field>
-            </div>
+            <CriteriaForm criteria={criteria} setCriteria={setCriteria} />
 
             <Separator className="my-4" />
 
@@ -1684,153 +1575,9 @@ function Panel() {
             {analysisJob && <AnalysisProgress job={analysisJob} />}
           </Card>
 
-          {analysis && analysis.length > 0 && (() => {
-            const showcase = analysis.filter((a) => a.is_top_recommendation);
-            const rest = analysis.filter((a) => !a.is_top_recommendation);
-            const showcaseCount = showcase.length;
-
-            function auctionBadge(dateStr?: string | null) {
-              if (!dateStr) return null;
-              const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
-              if (diff <= 0) return null;
-              const label = diff === 1 ? "⏰ jutro" : diff <= 3 ? `⏰ za ${diff} dni` : null;
-              if (!label) return null;
-              return <Badge variant="outline" className="text-[10px] ml-1">{label}</Badge>;
-            }
-
-            function LotCard({ a }: { a: AnalyzedLot }) {
-              return (
-                <div className="rounded-md border p-3">
-                  <div className="mb-2 flex items-start justify-between">
-                    <div>
-                      <div className="font-semibold">
-                        {a.lot.year} {a.lot.make} {a.lot.model}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {a.lot.source?.toUpperCase()} · Lot {a.lot.lot_id} · {a.lot.location_state ?? "—"}
-                        {a.lot.auction_date && <span className="ml-1">· Aukcja: {new Date(a.lot.auction_date).toLocaleDateString("pl-PL")}</span>}
-                        {auctionBadge(a.lot.auction_date)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold">{a.analysis.score.toFixed(1)}</span>
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs font-semibold ${recommendationBadge(
-                          a.analysis.recommendation,
-                        )}`}
-                      >
-                        {a.analysis.recommendation}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm">{a.analysis.client_description_pl}</p>
-                  {a.analysis.red_flags.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {a.analysis.red_flags.map((f, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">
-                          ⚠ {f}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="flex gap-2">
-                      {a.auto_reports?.client_hybrid_url && (
-                        <Button size="sm" variant="outline" asChild>
-                          <a href={a.auto_reports.client_hybrid_url} target="_blank" rel="noopener">
-                            📄 Klient
-                          </a>
-                        </Button>
-                      )}
-                      {a.auto_reports?.broker_hybrid_url && (
-                        <Button size="sm" variant="outline" asChild>
-                          <a href={a.auto_reports.broker_hybrid_url} target="_blank" rel="noopener">
-                            📋 Broker
-                          </a>
-                        </Button>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => watchLot(a)}
-                    >
-                      <Eye className="h-3 w-3 mr-1" /> Obserwuj
-                    </Button>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <>
-                {showcaseCount > 0 && (
-                  <Card className="p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        🎯 Showcase — auto-raporty ({showcaseCount})
-                      </h3>
-                      <Badge>🤖 Auto-raporty: {showcaseCount} wygenerowanych</Badge>
-                    </div>
-                    <div className="space-y-3">
-                      {showcase
-                        .sort((a, b) => {
-                          const da = a.lot.auction_date ? new Date(a.lot.auction_date).getTime() : Infinity;
-                          const db = b.lot.auction_date ? new Date(b.lot.auction_date).getTime() : Infinity;
-                          return da - db;
-                        })
-                        .map((a) => <LotCard key={a.lot.lot_id} a={a} />)}
-                    </div>
-                  </Card>
-                )}
-
-                {rest.length > 0 && (
-                  <Card className="p-4">
-                    <details>
-                      <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        📋 Pełna lista ({rest.length} pozostałych)
-                      </summary>
-                      <div className="mt-3 space-y-3">
-                        {rest.map((a) => <LotCard key={a.lot.lot_id} a={a} />)}
-                      </div>
-                    </details>
-                  </Card>
-                )}
-
-                {showcaseCount === 0 && (
-                  <Card className="p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Wyniki analizy AI ({analysis.length})
-                      </h3>
-                      {aiMeta && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${
-                            aiMeta.provider === "gemini"
-                              ? "bg-blue-500/15 text-blue-700 dark:text-blue-400"
-                              : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                          }`}>
-                            {aiMeta.provider === "gemini" ? "Gemini" : "Anthropic"}
-                            {aiMeta.usedFallback && " (fallback)"}
-                          </span>
-                          <span className="text-muted-foreground" title={`Model: ${aiMeta.model}`}>
-                            {aiMeta.model}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {aiMeta.usage.input_tokens + aiMeta.usage.output_tokens} tok
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      {analysis.map((a) => <LotCard key={a.lot.lot_id} a={a} />)}
-                    </div>
-                  </Card>
-                )}
-              </>
-            );
-          })()}
+          {analysis && analysis.length > 0 && (
+            <AnalysisResults analysis={analysis} aiMeta={aiMeta} onWatch={watchLot} />
+          )}
 
           {reportHtml && (
             <Card className="p-4">
