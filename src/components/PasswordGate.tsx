@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Lock, LogOut, User } from "lucide-react";
+import { Lock, LogOut, RefreshCw, User } from "lucide-react";
 import {
   SITE_USERS,
   SITE_CURRENT_USER_KEY,
@@ -107,6 +107,26 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     setPersonalPw("");
     setPersonalPw2("");
     setError("");
+  }
+
+  async function hardRefreshApp() {
+    try {
+      // Czyść SW/cache jeśli istnieją — wymusza ponowny pobór modułów po stale-deploy.
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+    } catch (err) {
+      console.warn("hardRefreshApp cleanup failed", err);
+    }
+    // Bust query string żeby ominąć HTTP cache.
+    const url = new URL(window.location.href);
+    url.searchParams.set("_r", String(Date.now()));
+    window.location.replace(url.toString());
   }
 
   async function pickUser(u: SiteUser) {
@@ -215,19 +235,32 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         </div>
 
         {step === "pickUser" && (
-          <div className="grid grid-cols-2 gap-2">
-            {SITE_USERS.map((u) => (
-              <Button
-                key={u}
-                variant="outline"
-                className="h-12 justify-start gap-2"
-                onClick={() => pickUser(u)}
-              >
-                <User className="h-4 w-4" />
-                {u}
-              </Button>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {SITE_USERS.map((u) => (
+                <Button
+                  key={u}
+                  variant="outline"
+                  className="h-12 justify-start gap-2"
+                  onClick={() => pickUser(u)}
+                >
+                  <User className="h-4 w-4" />
+                  {u}
+                </Button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-3 w-full text-xs text-muted-foreground"
+              onClick={hardRefreshApp}
+              title="Wymuś ponowną inicjalizację aplikacji (czyści cache modułów i sesji UI)"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Odśwież UI
+            </Button>
+          </>
         )}
 
         {step === "enterPersonal" && (
