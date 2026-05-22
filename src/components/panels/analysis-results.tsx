@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import type { AnalyzedLot, AIAnalysis } from "@/lib/types";
 
 function recommendationBadge(r: string) {
-  if (r === "TAK") return "bg-[oklch(0.92_0.10_145)] text-[oklch(0.35_0.15_145)]";
-  if (r === "MOŻE") return "bg-[oklch(0.92_0.10_85)] text-[oklch(0.35_0.15_85)]";
+  if (r === "POLECAM") return "bg-[oklch(0.92_0.08_145)] text-[oklch(0.30_0.10_145)]";
+  if (r === "RYZYKO") return "bg-[oklch(0.92_0.10_85)] text-[oklch(0.35_0.12_85)]";
   return "bg-[oklch(0.92_0.10_25)] text-[oklch(0.35_0.15_25)]";
 }
 
