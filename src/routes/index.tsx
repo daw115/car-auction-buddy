@@ -3136,14 +3136,15 @@ function Panel() {
               <div className="flex items-center gap-3">
                 <label
                   className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
-                  title="Wyłącza filtr okna aukcji po stronie scrapera — zwraca też loty bez nadchodzącej daty aukcji."
+                  title="Domyślnie pokazujemy aukcje kończące się w ciągu 12–120h. Włącz, aby znaleźć też aukcje dalej w przyszłości oraz loty bez ustalonej daty aukcji."
                 >
                   <Checkbox
                     checked={disableAuctionFilter}
                     onCheckedChange={(v) => setDisableAuctionFilter(v === true)}
                   />
-                  Bez filtra aukcji
+                  Pokaż też aukcje przyszłe (poza oknem 12–120h)
                 </label>
+
                 <div className="flex gap-2">
                 <Button
                   size="sm"
