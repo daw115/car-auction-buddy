@@ -142,7 +142,17 @@
   --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.551 0.027 264.364);
+
+  --surface-elevated: oklch(0.23 0.042 265.755);
+  --surface-muted: oklch(0.18 0.042 265.755);
+  --success: oklch(0.70 0.17 160);
+  --success-foreground: oklch(0.129 0.042 264.695);
+  --warning: oklch(0.80 0.17 80);
+  --warning-foreground: oklch(0.129 0.042 264.695);
+  --shadow-card: 0 1px 2px 0 oklch(0 0 0 / 0.3), 0 1px 3px 0 oklch(0 0 0 / 0.4);
+  --shadow-card-hover: 0 4px 12px -2px oklch(0 0 0 / 0.5);
 }
+
 
 @layer base {
   * {
