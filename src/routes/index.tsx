@@ -1811,6 +1811,7 @@ function Panel() {
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
   const [criteria, setCriteria] = useState<ClientCriteria>(DEFAULT_CRITERIA);
+  const [disableAuctionFilter, setDisableAuctionFilter] = useState<boolean>(false);
   const [clientMessage, setClientMessage] = useState("");
   const [parsing, setParsing] = useState(false);
   const [lastParseResult, setLastParseResult] = useState<{ summary: string; warnings: string[] } | null>(null);
