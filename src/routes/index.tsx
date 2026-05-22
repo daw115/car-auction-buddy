@@ -3499,6 +3499,9 @@ function ScraperReportsSection({
     (reportUrls.client_reports_html?.length ?? 0) > 0 ||
     (reportUrls.broker_reports_html?.length ?? 0) > 0 ||
     reportUrls.artifact_urls?.analysis_json ||
+    reportUrls.artifact_urls?.broker_bundle ||
+    reportUrls.artifact_urls?.client_bundle ||
+    reportUrls.artifact_urls?.client_short_bundle ||
     reportUrls.report_endpoints?.client_html ||
     reportUrls.report_endpoints?.broker_html;
 
