@@ -96,7 +96,18 @@
   --sidebar-accent-foreground: oklch(0.25 0.012 140);
   --sidebar-border: oklch(0.88 0.008 130);
   --sidebar-ring: oklch(0.45 0.15 260);
+
+  /* Extended surface + status tokens (refresh) */
+  --surface-elevated: oklch(0.99 0.003 100);
+  --surface-muted: oklch(0.96 0.005 100);
+  --success: oklch(0.62 0.15 145);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.75 0.15 80);
+  --warning-foreground: oklch(0.22 0.012 140);
+  --shadow-card: 0 1px 2px 0 oklch(0.22 0.012 140 / 0.05), 0 1px 3px 0 oklch(0.22 0.012 140 / 0.08);
+  --shadow-card-hover: 0 4px 12px -2px oklch(0.22 0.012 140 / 0.12);
 }
+
 
 .dark {
   --background: oklch(0.129 0.042 264.695);
