@@ -692,7 +692,7 @@ function Panel() {
   const fnSaveRecord = useServerFn(saveRecord);
   const fnDeleteRecord = useServerFn(deleteRecord);
   const fnGetConfig = useServerFn(getConfig);
-  const fnUpdateConfig = useServerFn(updateConfig);
+  // fnUpdateConfig usunięty wraz z SettingsSheet (pełne ustawienia są na /settings)
   const fnRunAnalysis = useServerFn(runAnalysis);
   const fnRenderReport = useServerFn(renderReport);
   const fnRunScraper = useServerFn(runScraperSearch);
@@ -1783,35 +1783,10 @@ function Panel() {
   }
 
   return (
-    <div className="text-foreground -m-4 sm:-m-6">
-      {/* Sub-header: status środowiska + ustawienia (nawigacja jest w sidebarze) */}
-      <div className="sticky top-14 z-20 border-b border-border bg-background/95 backdrop-blur">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 sm:px-6">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold text-foreground truncate">
-              Panel operatora · Copart + IAAI · analiza AI
-            </h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <EnvStatus env={env} />
-            <SettingsSheet
-              config={config}
-              env={env}
-              onSave={async (patch) => {
-                try {
-                  const r = (await fnUpdateConfig({ data: patch })) as ConfigRow;
-                  setConfig(r);
-                  toast.success("Konfiguracja zapisana");
-                } catch (e) {
-                  toast.error((e as Error).message);
-                }
-              }}
-            />
-          </div>
-        </div>
-      </div>
+    <div className="text-foreground">
+      {/* Sub-header usunięty — ustawienia masz na /settings, status połączeń na /jobs */}
 
-      {/* Aktywne joby — pełna lista na /jobs, tu tylko pill w topbarze */}
+
 
       <main className="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* ---- Clients column ---- */}
@@ -2663,143 +2638,6 @@ function ListingsTable({
   );
 }
 
-function EnvStatus({ env }: { env: ConfigEnv | null }) {
-  if (!env) return null;
-  const Item = ({ ok, label }: { ok: boolean; label: string }) => (
-    <span className="inline-flex items-center gap-1 text-xs">
-      {ok ? (
-        <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.55_0.16_145)]" />
-      ) : (
-        <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-      )}
-      {label}
-    </span>
-  );
-  return (
-    <div className="hidden items-center gap-3 rounded-md border bg-card px-3 py-1.5 md:flex">
-      <Item ok={env.ANTHROPIC_API_KEY} label="AI" />
-      <Item ok={env.SCRAPER_BASE_URL && env.SCRAPER_API_TOKEN} label="Scraper" />
-    </div>
-  );
-}
-
-function SettingsSheet({
-  config,
-  env,
-  onSave,
-}: {
-  config: ConfigRow | null;
-  env: ConfigEnv | null;
-  onSave: (patch: Partial<ConfigRow>) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState<ConfigRow | null>(config);
-  useEffect(() => setDraft(config), [config]);
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Settings className="h-4 w-4" /> Ustawienia
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-[400px] overflow-y-auto sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Ustawienia operacyjne</SheetTitle>
-        </SheetHeader>
-        {draft && (
-          <div className="mt-4 space-y-4">
-            <ToggleRow
-              label="Tryb demo (mock data)"
-              value={draft.use_mock_data}
-              onChange={(v) => setDraft({ ...draft, use_mock_data: v })}
-            />
-            <ToggleRow
-              label="Filtruj tylko Seller-Type Insurance"
-              value={draft.filter_seller_insurance_only}
-              onChange={(v) => setDraft({ ...draft, filter_seller_insurance_only: v })}
-            />
-            <ToggleRow
-              label="Zbieraj wszystkie wstępnie odfiltrowane wyniki"
-              value={draft.collect_all_prefiltered_results}
-              onChange={(v) => setDraft({ ...draft, collect_all_prefiltered_results: v })}
-            />
-            <ToggleRow
-              label="Otwieraj wszystkie szczegóły wstępnie odfiltrowanych"
-              value={draft.open_all_prefiltered_details}
-              onChange={(v) => setDraft({ ...draft, open_all_prefiltered_details: v })}
-            />
-            <Field label="Tryb analizy AI">
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={draft.ai_analysis_mode}
-                onChange={(e) => setDraft({ ...draft, ai_analysis_mode: e.target.value })}
-              >
-                <option value="anthropic">Anthropic Claude</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="auto">Auto (wykryj wg kluczy)</option>
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Min okno aukcji (h)">
-                <Input
-                  type="number"
-                  value={draft.min_auction_window_hours}
-                  onChange={(e) =>
-                    setDraft({ ...draft, min_auction_window_hours: +e.target.value || 0 })
-                  }
-                />
-              </Field>
-              <Field label="Max okno aukcji (h)">
-                <Input
-                  type="number"
-                  value={draft.max_auction_window_hours}
-                  onChange={(e) =>
-                    setDraft({ ...draft, max_auction_window_hours: +e.target.value || 0 })
-                  }
-                />
-              </Field>
-            </div>
-            <Button
-              className="w-full"
-              onClick={() => void onSave(draft)}
-            >
-              Zapisz ustawienia
-            </Button>
-            <Separator />
-            <div>
-              <h4 className="mb-2 text-sm font-semibold">Sekrety środowiska</h4>
-              <ul className="space-y-1 text-xs">
-                <li>ANTHROPIC_API_KEY: {env?.ANTHROPIC_API_KEY ? "✓ ustawiony" : "✗ brak"}</li>
-                <li>ANTHROPIC_MODEL: {env?.ANTHROPIC_MODEL}</li>
-                <li>ANTHROPIC_BASE_URL: {env?.ANTHROPIC_BASE_URL}</li>
-                <li>SCRAPER_BASE_URL: {env?.SCRAPER_BASE_URL ? "✓ ustawiony" : "✗ brak"}</li>
-                <li>SCRAPER_API_TOKEN: {env?.SCRAPER_API_TOKEN ? "✓ ustawiony" : "✗ brak"}</li>
-              </ul>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Sekrety dodajesz w Lovable Cloud (Connectors → secrets). Aplikacja czyta je w server functions.
-              </p>
-            </div>
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function ToggleRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <Label className="text-sm">{label}</Label>
-      <Switch checked={value} onCheckedChange={onChange} />
-    </div>
-  );
-}
-
+// EnvStatus / SettingsSheet / ToggleRow usunięte — pełne ustawienia są na /settings.
 // ConnectionStatusPanel przeniesiony do src/components/panels/connection-status-panel.tsx (route /jobs).
+
