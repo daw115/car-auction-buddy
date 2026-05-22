@@ -55,6 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LogsPanel } from "@/components/LogsPanel";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -1810,6 +1811,7 @@ function Panel() {
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
   const [criteria, setCriteria] = useState<ClientCriteria>(DEFAULT_CRITERIA);
+  const [disableAuctionFilter, setDisableAuctionFilter] = useState<boolean>(false);
   const [clientMessage, setClientMessage] = useState("");
   const [parsing, setParsing] = useState(false);
   const [lastParseResult, setLastParseResult] = useState<{ summary: string; warnings: string[] } | null>(null);
@@ -2369,7 +2371,7 @@ function Panel() {
     setScrapeJob({ status: "queued", startedAt, elapsedMs: 0 });
     try {
       const start = (await fnStartScraper({
-        data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
+        data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined, disable_auction_filter: disableAuctionFilter },
       })) as
         | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
         | { mode: "job"; job_id: string; source: string; cache_key: string };
@@ -3130,7 +3132,18 @@ function Panel() {
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Loty z aukcji ({listings.length})
               </h3>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-3">
+                <label
+                  className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
+                  title="Wyłącza filtr okna aukcji po stronie scrapera — zwraca też loty bez nadchodzącej daty aukcji."
+                >
+                  <Checkbox
+                    checked={disableAuctionFilter}
+                    onCheckedChange={(v) => setDisableAuctionFilter(v === true)}
+                  />
+                  Bez filtra aukcji
+                </label>
+                <div className="flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -3161,6 +3174,7 @@ function Panel() {
                   <Trash2 className="h-4 w-4" />
                   Wyczyść cache
                 </Button>
+                </div>
               </div>
             </div>
             <ResumeJobBanner

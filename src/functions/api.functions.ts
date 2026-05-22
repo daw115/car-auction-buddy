@@ -738,6 +738,7 @@ const SCRAPE_CACHE_TTL_SECONDS = (() => {
 // Build a stable cache key from criteria + config fields that affect scrape output.
 async function buildScrapeCacheKey(
   criteria: ClientCriteria,
+  disableAuctionFilter: boolean = false,
 ): Promise<{ key: string; configSnapshot: Record<string, unknown> }> {
   const { data: cfg } = await supabaseAdmin
     .from("app_config")
@@ -753,6 +754,7 @@ async function buildScrapeCacheKey(
     filter_seller_insurance_only: cfg?.filter_seller_insurance_only ?? null,
     open_all_prefiltered_details: cfg?.open_all_prefiltered_details ?? null,
     collect_all_prefiltered_results: cfg?.collect_all_prefiltered_results ?? null,
+    disable_auction_filter: disableAuctionFilter,
   };
 
   // Normalize criteria: lower-case strings, sort arrays, drop undefined.
@@ -826,6 +828,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
       criteria: z.unknown().transform(parseCriteria),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
+      disable_auction_filter: z.boolean().optional(),
     }).parse,
   )
   .handler(async ({ data }): Promise<{ listings: CarLot[]; source: string }> => {
@@ -889,14 +892,20 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 
     let res: Response;
     try {
-      logCriteriaSent("runScraperSearch", data.criteria, { endpoint: `${baseUrl}/search` });
+      logCriteriaSent("runScraperSearch", data.criteria, {
+        endpoint: `${baseUrl}/search`,
+        disable_auction_filter: data.disable_auction_filter ?? false,
+      });
       res = await fetch(`${baseUrl}/search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ criteria: data.criteria }),
+        body: JSON.stringify({
+          criteria: data.criteria,
+          disable_auction_filter: data.disable_auction_filter ?? false,
+        }),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1012,6 +1021,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       criteria: z.unknown().transform(parseCriteria),
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
+      disable_auction_filter: z.boolean().optional(),
     }).parse,
   )
   .handler(async ({ data }): Promise<
@@ -1041,7 +1051,8 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     }
 
     // Cache lookup BEFORE hitting scraper.
-    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria);
+    const disableAuctionFilter = data.disable_auction_filter ?? false;
+    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria, disableAuctionFilter);
     const cached = await readScrapeCache(cacheKey);
     if (cached) {
       await log.info(
@@ -1095,14 +1106,21 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       },
     );
 
-    logCriteriaSent("startScraperSearch", data.criteria, { endpoint: `${baseUrl}/search`, cache_key: cacheKey });
+    logCriteriaSent("startScraperSearch", data.criteria, {
+      endpoint: `${baseUrl}/search`,
+      cache_key: cacheKey,
+      disable_auction_filter: disableAuctionFilter,
+    });
     const res = await fetch(`${baseUrl}/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ criteria: data.criteria }),
+      body: JSON.stringify({
+        criteria: data.criteria,
+        disable_auction_filter: disableAuctionFilter,
+      }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
