@@ -55,6 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LogsPanel } from "@/components/LogsPanel";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import { ThemeToggle } from "@/components/theme-toggle";
