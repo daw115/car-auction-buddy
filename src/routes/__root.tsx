@@ -90,9 +90,15 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <PasswordGate>
-          <main>
-            <Outlet />
-          </main>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset className="min-w-0">
+              <AppTopbar />
+              <main className="flex-1 p-4 sm:p-6 min-w-0">
+                <Outlet />
+              </main>
+            </SidebarInset>
+          </SidebarProvider>
         </PasswordGate>
         <Toaster richColors position="top-right" />
         <ChunkErrorOverlay />
@@ -100,3 +106,4 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
+
