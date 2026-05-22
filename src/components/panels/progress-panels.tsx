@@ -2,14 +2,8 @@ import { Loader2, AlertCircle, X, CheckCircle2, Download, RotateCcw } from "luci
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
-// ---------- Shared types ----------
-
-export type ScraperReportUrls = {
-  json_url?: string | null;
-  csv_url?: string | null;
-  ndjson_url?: string | null;
-  parquet_url?: string | null;
-};
+import type { ScraperReportUrls } from "./batch-job-card";
+export type { ScraperReportUrls };
 
 export type ScrapeJobState = {
   status: string;
