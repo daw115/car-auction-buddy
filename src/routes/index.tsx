@@ -1376,25 +1376,13 @@ function Panel() {
           <>
 
           <Card className="p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold">
-                  {activeClient ? `Sesja: ${activeClient.name}` : "Nowa sesja"}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {activeRecordId ? `Rekord ${activeRecordId.slice(0, 8)}…` : "(nie zapisano)"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={newSession}>
-                  Nowa sesja
-                </Button>
-                <Button size="sm" onClick={persistRecord} disabled={busy === "save" || !activeClient}>
-                  {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Zapisz rekord
-                </Button>
-              </div>
-            </div>
+            <SessionHeader
+              activeClient={activeClient}
+              activeRecordId={activeRecordId}
+              busy={busy}
+              onNewSession={newSession}
+              onSave={persistRecord}
+            />
 
             <ClientMessageCard
               clientMessage={clientMessage}
