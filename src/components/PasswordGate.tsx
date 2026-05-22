@@ -190,7 +190,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     e.preventDefault();
     if (!user) return;
     try {
-      const stored = await fetchUserHash(user);
+      const stored = await fetchUserHashWithRetry(user);
       const hash = await sha256(personalPw);
       if (stored && hash === stored) {
         localStorage.setItem(UNLOCKED_KEY, user);
