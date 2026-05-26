@@ -417,6 +417,47 @@ function Panel() {
 
   const [busy, setBusy] = useState<string | null>(null);
 
+  // No-results -> "add to queue" dialog
+  const [noResultsDialog, setNoResultsDialog] = useState<{
+    search: { criteria: ClientCriteria; disable_auction_filter: boolean };
+    defaultLabel: string;
+  } | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const fnCreateWatchQueue = useServerFn(createWatchQueue);
+
+  async function handleQueueConfirm(params: { interval_hours: number; label: string }) {
+    if (!noResultsDialog) return;
+    setQueueBusy(true);
+    try {
+      const r = await fnCreateWatchQueue({
+        data: {
+          search: noResultsDialog.search,
+          interval_hours: params.interval_hours,
+          label: params.label || noResultsDialog.defaultLabel || undefined,
+        },
+      });
+      toast.success(
+        `Dodano do kolejki — sprawdzę ponownie za ${r.interval_hours}h${r.next_run_at ? ` (${new Date(r.next_run_at).toLocaleString("pl-PL")})` : ""}`,
+      );
+      setNoResultsDialog(null);
+    } catch (e) {
+      toast.error(`Nie udało się dodać do kolejki: ${(e as Error).message}`);
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
+  function openNoResultsDialogFor(c: ClientCriteria, disable: boolean) {
+    const label = [c.make, c.model, c.year_from, c.budget_usd ? `<$${c.budget_usd}` : null]
+      .filter(Boolean)
+      .join(" ");
+    setNoResultsDialog({
+      search: { criteria: c, disable_auction_filter: disable },
+      defaultLabel: label,
+    });
+  }
+
+
   // Retry state for analysis
   const currentRetryRef = useRef(0);
   const maxRetriesRef = useRef(3);
