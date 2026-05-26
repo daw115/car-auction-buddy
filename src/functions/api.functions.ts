@@ -1131,7 +1131,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
     }
     const json = (await res.json()) as
-      | { job_id?: string; status?: string; listings?: CarLot[] }
+      | { job_id?: string; status?: string; listings?: CarLot[]; no_results?: boolean }
       | CarLot[];
 
     if (Array.isArray(json)) {
@@ -1142,7 +1142,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
         listings: json,
         source: baseUrl,
       });
-      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey };
+      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey, no_results: json.length === 0 };
     }
     if (json.job_id) {
       await log.info("queued", `Job ${json.job_id} w kolejce`, {
@@ -1165,6 +1165,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
         source: baseUrl,
         cache_hit: false,
         cache_key: cacheKey,
+        no_results: json.no_results === true || json.listings.length === 0,
       };
     }
     throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
