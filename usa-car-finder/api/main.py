@@ -5,7 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 
@@ -131,6 +131,19 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("[lifespan] Telegram polling startup nieudany")
 
+    # Startup: watch-queue worker (kolejka ponownego sprawdzania przy 0 wyników)
+    watch_task = None
+    try:
+        from api import watch_queue_db as _wqdb
+        _wqdb.init_db()
+        watch_task = asyncio.create_task(_watch_queue_loop(), name="watch-queue-worker")
+        logger.info(
+            "[lifespan] Watch-queue worker uruchomiony (aktywnych wpisów: %d)",
+            _wqdb.count_active(),
+        )
+    except Exception:
+        logger.exception("[lifespan] Watch-queue startup nieudany")
+
     yield
 
     # Shutdown: stop Telegram polling task
@@ -141,6 +154,15 @@ async def lifespan(app: FastAPI):
         except (asyncio.CancelledError, Exception):
             pass
         logger.info("[lifespan] Telegram polling stopped")
+
+    # Shutdown: stop watch-queue worker
+    if watch_task is not None:
+        watch_task.cancel()
+        try:
+            await watch_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        logger.info("[lifespan] Watch-queue worker stopped")
 
     try:
         from scraper.browser_context import close_shared_extension_context
@@ -215,6 +237,9 @@ class SearchRequest(BaseModel):
     # Gdy True — całkowicie wyłącza filtr okna aukcji (znajduje też aukcje
     # "future" poza standardowym oknem 12–120h ORAZ loty bez daty aukcji).
     disable_auction_filter: bool = False
+    # Wewnętrzne: True dla re-runów z kolejki (watch) — wycisza standardowe
+    # powiadomienie Telegram "done" (worker sam powiadamia TYLKO gdy znajdzie).
+    suppress_completion_notify: bool = False
     client: Optional[ClientContext] = None
 
 
@@ -975,10 +1000,17 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
         logger.exception("Persisting search record failed")
         record_id = None
 
-    # Telegram broadcast — powiadom wszystkich aktywnych subskrybentów
+    # Sygnalizuj brak wyników (UI proponuje wtedy kolejkę ponownego sprawdzania)
+    response_payload.no_results = (
+        response_payload.collected_count == 0 or not response_payload.all_results
+    )
+
+    # Telegram broadcast — powiadom wszystkich aktywnych subskrybentów.
+    # suppress_completion_notify=True (re-run z kolejki) → pomiń; worker
+    # kolejki powiadamia sam TYLKO gdy realnie znajdzie loty.
     try:
         from notify.telegram import notify_job_completion, is_configured as _tg_configured
-        if _tg_configured():
+        if _tg_configured() and not request.suppress_completion_notify:
             polecam_count = sum(
                 1 for r in (response_payload.all_results or [])
                 if (getattr(r.analysis, "recommendation", "") == "POLECAM")
@@ -1535,6 +1567,158 @@ async def _run_job_with_queue(request: SearchRequest, job: jobs_store.Job) -> No
         except Exception:
             pass
         await _run_job(request, job)
+
+
+# ============ WATCH QUEUE — kolejka ponownego sprawdzania (0 wyników) ============
+_WATCH_TICK_SECONDS = int(os.getenv("WATCH_QUEUE_TICK_SECONDS", "60"))
+_WATCH_MIN_INTERVAL_H = max(1, int(os.getenv("WATCH_QUEUE_MIN_INTERVAL_H", "1")))
+_WATCH_MAX_INTERVAL_H = max(_WATCH_MIN_INTERVAL_H, int(os.getenv("WATCH_QUEUE_MAX_INTERVAL_H", "168")))
+
+
+def _clamp_interval_hours(h) -> int:
+    try:
+        h = int(h)
+    except (TypeError, ValueError):
+        h = 12
+    return max(_WATCH_MIN_INTERVAL_H, min(_WATCH_MAX_INTERVAL_H, h))
+
+
+class QueueWatchRequest(BaseModel):
+    """Dodanie wyszukiwania do kolejki ponownego sprawdzania."""
+    search: SearchRequest
+    interval_hours: int = 12
+    label: Optional[str] = None
+    chat_id: Optional[int] = None
+
+
+@app.post("/api/queue", status_code=201)
+async def create_watch(req: QueueWatchRequest, _auth: None = Depends(_require_bearer)):
+    """Zapisuje wyszukiwanie do kolejki — worker re-runuje je co interval_hours
+    i powiadamia (Telegram) gdy w końcu pojawią się loty. Używane gdy search
+    zwrócił 0 wyników i user chce monitorować."""
+    from api import watch_queue_db
+    from api._time_utils import utc_now
+    interval = _clamp_interval_hours(req.interval_hours)
+    label = req.label or search_title(req.search.criteria)
+    now = utc_now()
+    next_run = now + timedelta(hours=interval)
+    wid = await asyncio.to_thread(
+        watch_queue_db.add_watch,
+        request_json=req.search.model_dump_json(),
+        label=label,
+        interval_hours=interval,
+        chat_id=req.chat_id,
+        created_at=now.isoformat(timespec="seconds"),
+        next_run_at=next_run.isoformat(timespec="seconds"),
+    )
+    logger.info("[watch-queue] dodano wpis %s '%s' co %dh", wid, label, interval)
+    return {
+        "id": wid,
+        "label": label,
+        "interval_hours": interval,
+        "next_run_at": next_run.isoformat(timespec="seconds"),
+    }
+
+
+@app.get("/api/queue")
+async def list_watches(_auth: None = Depends(_require_bearer)):
+    """Lista aktywnych wpisów kolejki (bez surowego request_json)."""
+    from api import watch_queue_db
+    items = await asyncio.to_thread(watch_queue_db.list_active)
+    meta_keys = (
+        "id", "label", "interval_hours", "created_at", "last_run_at",
+        "next_run_at", "runs_count", "last_result_count", "status",
+    )
+    out = [{k: w.get(k) for k in meta_keys} for w in items]
+    return {"watches": out, "count": len(out)}
+
+
+@app.delete("/api/queue/{watch_id}")
+async def cancel_watch(watch_id: int, _auth: None = Depends(_require_bearer)):
+    """Anuluje (dezaktywuje) wpis kolejki."""
+    from api import watch_queue_db
+    ok = await asyncio.to_thread(watch_queue_db.deactivate, watch_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Nie znaleziono aktywnego wpisu kolejki")
+    return {"id": watch_id, "status": "cancelled"}
+
+
+async def _run_one_watch(w: dict) -> None:
+    """Pojedynczy re-run wpisu kolejki — serializowany _search_semaforem."""
+    from api import watch_queue_db
+    from api._time_utils import utc_now
+    wid = w["id"]
+    try:
+        req = SearchRequest(**json.loads(w["request_json"]))
+        req.suppress_completion_notify = True  # worker sam powiadomi tylko gdy znajdzie
+    except Exception:
+        logger.exception("[watch-queue] zły request_json wpisu %s — dezaktywuję", wid)
+        await asyncio.to_thread(watch_queue_db.deactivate, wid)
+        return
+
+    job = jobs_store.create_job(
+        criteria_hash=_compute_criteria_hash(req),
+        request_snapshot=req.model_dump(mode="json"),
+    )
+    logger.info("[watch-queue] re-run wpisu %s ('%s') job=%s", wid, w.get("label"), job.id)
+    try:
+        await _run_job_with_queue(req, job)  # semafor serializuje z user-searchami
+    except Exception:
+        logger.exception("[watch-queue] re-run wpisu %s nieudany", wid)
+
+    result = job.result or {}
+    count = int(result.get("collected_count") or len(result.get("all_results") or []))
+    now = utc_now()
+    if count > 0:
+        await asyncio.to_thread(
+            watch_queue_db.mark_found, wid,
+            last_run_at=now.isoformat(timespec="seconds"), result_count=count,
+        )
+        logger.info("[watch-queue] wpis %s SPEŁNIONY — %d lotów, dezaktywuję", wid, count)
+        try:
+            from notify.telegram import notify_job_completion, is_configured as _tg_configured
+            if _tg_configured():
+                await asyncio.to_thread(
+                    notify_job_completion,
+                    status="done",
+                    title=f"🔔 KOLEJKA: {w.get('label') or 'wyszukiwanie'} — znaleziono {count} aut",
+                    record_id=result.get("record_id"),
+                    job_id=job.id,
+                    collected_count=count,
+                )
+        except Exception:
+            logger.exception("[watch-queue] notify found wpisu %s nieudany", wid)
+    else:
+        next_run = now + timedelta(hours=int(w["interval_hours"]))
+        await asyncio.to_thread(
+            watch_queue_db.mark_run, wid,
+            last_run_at=now.isoformat(timespec="seconds"),
+            next_run_at=next_run.isoformat(timespec="seconds"), result_count=0,
+        )
+        logger.info(
+            "[watch-queue] wpis %s nadal 0 — następne sprawdzenie %s",
+            wid, next_run.isoformat(timespec="seconds"),
+        )
+
+
+async def _watch_queue_loop() -> None:
+    """Co _WATCH_TICK_SECONDS sprawdza due wpisy i re-runuje search."""
+    from api import watch_queue_db
+    from api._time_utils import utc_now
+    logger.info("[watch-queue] worker start (tick=%ds)", _WATCH_TICK_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(_WATCH_TICK_SECONDS)
+            due = await asyncio.to_thread(
+                watch_queue_db.list_due, utc_now().isoformat(timespec="seconds")
+            )
+            for w in due:
+                await _run_one_watch(w)
+        except asyncio.CancelledError:
+            logger.info("[watch-queue] worker cancelled")
+            raise
+        except Exception:
+            logger.exception("[watch-queue] tick failed — kontynuuję")
 
 
 class BatchSearchRequest(BaseModel):

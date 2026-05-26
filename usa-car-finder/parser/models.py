@@ -159,3 +159,6 @@ class SearchResponse(BaseModel):
     analysis_notice: Optional[str] = None
     collected_count: int = 0  # Ile lotów zebrano przed skróceniem odpowiedzi UI
     vin_coverage: dict[str, int] = Field(default_factory=dict)  # {"with_full_vin": N, "total": M}
+    # True gdy wyszukiwanie nie znalazło żadnych lotów — UI może wtedy
+    # zaproponować dodanie zapytania do kolejki ponownego sprawdzania.
+    no_results: bool = False
