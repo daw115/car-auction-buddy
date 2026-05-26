@@ -1306,6 +1306,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current: typeof j.current === "number" ? j.current : undefined,
       total: typeof j.total === "number" ? j.total : undefined,
       phase: j.phase,
+      no_results: j.no_results === true || (DONE_STATUSES.includes(status) && (j.listings?.length ?? 0) === 0),
       client_report_url: j.client_report_url,
       polecane_index_url: j.polecane_index_url,
       client_reports_html: j.client_reports_html,
