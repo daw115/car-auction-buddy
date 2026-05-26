@@ -9,6 +9,7 @@ import {
   Terminal,
   Car,
   Activity,
+  HardDrive,
 } from "lucide-react";
 
 
