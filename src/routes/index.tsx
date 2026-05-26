@@ -41,6 +41,8 @@ import {
 // BackendRecordsPanel / SearchAuditPanel / RecordDetailView -> /records
 // ConnectionStatusPanel -> /jobs
 import { addToWatchlist } from "@/functions/watchlist.functions";
+import { createWatchQueue } from "@/functions/queue.functions";
+import { NoResultsQueueDialog } from "@/components/panels/no-results-queue-dialog";
 
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
 import { getCurrentSiteUser, SITE_USERS } from "@/lib/site-user";
@@ -415,6 +417,47 @@ function Panel() {
 
   const [busy, setBusy] = useState<string | null>(null);
 
+  // No-results -> "add to queue" dialog
+  const [noResultsDialog, setNoResultsDialog] = useState<{
+    search: { criteria: ClientCriteria; disable_auction_filter: boolean };
+    defaultLabel: string;
+  } | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const fnCreateWatchQueue = useServerFn(createWatchQueue);
+
+  async function handleQueueConfirm(params: { interval_hours: number; label: string }) {
+    if (!noResultsDialog) return;
+    setQueueBusy(true);
+    try {
+      const r = await fnCreateWatchQueue({
+        data: {
+          search: noResultsDialog.search,
+          interval_hours: params.interval_hours,
+          label: params.label || noResultsDialog.defaultLabel || undefined,
+        },
+      });
+      toast.success(
+        `Dodano do kolejki — sprawdzę ponownie za ${r.interval_hours}h${r.next_run_at ? ` (${new Date(r.next_run_at).toLocaleString("pl-PL")})` : ""}`,
+      );
+      setNoResultsDialog(null);
+    } catch (e) {
+      toast.error(`Nie udało się dodać do kolejki: ${(e as Error).message}`);
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
+  function openNoResultsDialogFor(c: ClientCriteria, disable: boolean) {
+    const label = [c.make, c.model, c.year_from, c.budget_usd ? `<$${c.budget_usd}` : null]
+      .filter(Boolean)
+      .join(" ");
+    setNoResultsDialog({
+      search: { criteria: c, disable_auction_filter: disable },
+      defaultLabel: label,
+    });
+  }
+
+
   // Retry state for analysis
   const currentRetryRef = useRef(0);
   const maxRetriesRef = useRef(3);
@@ -492,6 +535,7 @@ function Panel() {
           message?: string;
           current?: number;
           total?: number;
+          no_results?: boolean;
           client_report_url?: string;
           polecane_index_url?: string;
           client_reports_html?: string[];
@@ -556,6 +600,9 @@ function Panel() {
             toast.success(`Scraper + AI gotowe: ${result.length} lotów, ${polecam} polecanych`);
           } else {
             toast.success(`Scraper zakończył pracę — zwrócono ${result.length} lotów`);
+          }
+          if (p.no_results || result.length === 0) {
+            openNoResultsDialogFor(ctx.criteria, disableAuctionFilter);
           }
           setBusy(null);
           scrapeContextRef.current = null;
@@ -957,7 +1004,7 @@ function Panel() {
       const start = (await fnStartScraper({
         data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined, disable_auction_filter: disableAuctionFilter },
       })) as
-        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string; no_results?: boolean }
         | { mode: "job"; job_id: string; source: string; cache_key: string };
 
       if (start.mode === "sync") {
@@ -970,6 +1017,9 @@ function Panel() {
           );
         } else {
           toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
+        }
+        if (start.no_results || start.listings.length === 0) {
+          openNoResultsDialogFor(criteria, disableAuctionFilter);
         }
         return;
       }
@@ -1505,6 +1555,14 @@ function Panel() {
           </>
         </section>
       </main>
+
+      <NoResultsQueueDialog
+        open={!!noResultsDialog}
+        onOpenChange={(o) => { if (!o) setNoResultsDialog(null); }}
+        defaultLabel={noResultsDialog?.defaultLabel ?? ""}
+        busy={queueBusy}
+        onConfirm={handleQueueConfirm}
+      />
     </div>
   );
 }

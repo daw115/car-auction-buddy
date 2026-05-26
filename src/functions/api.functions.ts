@@ -1025,7 +1025,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     }).parse,
   )
   .handler(async ({ data }): Promise<
-    | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+    | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string; no_results?: boolean }
     | { mode: "job"; job_id: string; source: string; cache_key: string }
   > => {
     const log = makeLogger({
@@ -1131,7 +1131,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
     }
     const json = (await res.json()) as
-      | { job_id?: string; status?: string; listings?: CarLot[] }
+      | { job_id?: string; status?: string; listings?: CarLot[]; no_results?: boolean }
       | CarLot[];
 
     if (Array.isArray(json)) {
@@ -1142,7 +1142,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
         listings: json,
         source: baseUrl,
       });
-      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey };
+      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey, no_results: json.length === 0 };
     }
     if (json.job_id) {
       await log.info("queued", `Job ${json.job_id} w kolejce`, {
@@ -1165,6 +1165,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
         source: baseUrl,
         cache_hit: false,
         cache_key: cacheKey,
+        no_results: json.no_results === true || json.listings.length === 0,
       };
     }
     throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
@@ -1189,6 +1190,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
     current?: number;
     total?: number;
     phase?: string;
+    no_results?: boolean;
     client_report_url?: string;
     polecane_index_url?: string;
     client_reports_html?: string[];
@@ -1227,6 +1229,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current?: number;
       total?: number;
       phase?: string;
+      no_results?: boolean;
       client_report_url?: string;
       polecane_index_url?: string;
       client_reports_html?: string[];
@@ -1303,6 +1306,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current: typeof j.current === "number" ? j.current : undefined,
       total: typeof j.total === "number" ? j.total : undefined,
       phase: j.phase,
+      no_results: j.no_results === true || (DONE_STATUSES.includes(status) && (j.listings?.length ?? 0) === 0),
       client_report_url: j.client_report_url,
       polecane_index_url: j.polecane_index_url,
       client_reports_html: j.client_reports_html,
