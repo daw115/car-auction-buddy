@@ -1000,7 +1000,7 @@ function Panel() {
       const start = (await fnStartScraper({
         data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined, disable_auction_filter: disableAuctionFilter },
       })) as
-        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string; no_results?: boolean }
         | { mode: "job"; job_id: string; source: string; cache_key: string };
 
       if (start.mode === "sync") {
