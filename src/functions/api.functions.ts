@@ -1025,7 +1025,7 @@ export const startScraperSearch = createServerFn({ method: "POST" })
     }).parse,
   )
   .handler(async ({ data }): Promise<
-    | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string }
+    | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string; no_results?: boolean }
     | { mode: "job"; job_id: string; source: string; cache_key: string }
   > => {
     const log = makeLogger({
