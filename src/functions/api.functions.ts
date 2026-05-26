@@ -1229,6 +1229,7 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       current?: number;
       total?: number;
       phase?: string;
+      no_results?: boolean;
       client_report_url?: string;
       polecane_index_url?: string;
       client_reports_html?: string[];
