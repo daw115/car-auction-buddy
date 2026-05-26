@@ -1014,6 +1014,9 @@ function Panel() {
         } else {
           toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
         }
+        if (start.no_results || start.listings.length === 0) {
+          openNoResultsDialogFor(criteria, disableAuctionFilter);
+        }
         return;
       }
 
