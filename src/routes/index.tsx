@@ -601,6 +601,9 @@ function Panel() {
           } else {
             toast.success(`Scraper zakończył pracę — zwrócono ${result.length} lotów`);
           }
+          if (p.no_results || result.length === 0) {
+            openNoResultsDialogFor(ctx.criteria, disableAuctionFilter);
+          }
           setBusy(null);
           scrapeContextRef.current = null;
           clearPersistedScrapeJob();
