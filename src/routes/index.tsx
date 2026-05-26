@@ -1555,6 +1555,14 @@ function Panel() {
           </>
         </section>
       </main>
+
+      <NoResultsQueueDialog
+        open={!!noResultsDialog}
+        onOpenChange={(o) => { if (!o) setNoResultsDialog(null); }}
+        defaultLabel={noResultsDialog?.defaultLabel ?? ""}
+        busy={queueBusy}
+        onConfirm={handleQueueConfirm}
+      />
     </div>
   );
 }
