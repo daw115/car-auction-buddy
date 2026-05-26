@@ -41,6 +41,8 @@ import {
 // BackendRecordsPanel / SearchAuditPanel / RecordDetailView -> /records
 // ConnectionStatusPanel -> /jobs
 import { addToWatchlist } from "@/functions/watchlist.functions";
+import { createWatchQueue } from "@/functions/queue.functions";
+import { NoResultsQueueDialog } from "@/components/panels/no-results-queue-dialog";
 
 import type { CarLot, ClientCriteria, AnalyzedLot, AIAnalysis } from "@/lib/types";
 import { getCurrentSiteUser, SITE_USERS } from "@/lib/site-user";
