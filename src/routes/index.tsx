@@ -535,6 +535,7 @@ function Panel() {
           message?: string;
           current?: number;
           total?: number;
+          no_results?: boolean;
           client_report_url?: string;
           polecane_index_url?: string;
           client_reports_html?: string[];
