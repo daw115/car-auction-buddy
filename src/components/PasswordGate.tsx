@@ -145,25 +145,22 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     setUser(u);
     setError("");
     try {
-      const stored = await fetchUserHashWithRetry(u);
-      diag(`pickUser OK — fetchUserHash zwróciło: ${stored ? "tak" : "nie"}`);
-      setStep(stored ? "enterPersonal" : "setPersonal");
+      const exists = await userHasPasswordWithRetry(u);
+      diag(`pickUser OK — userHasPassword zwróciło: ${exists ? "tak" : "nie"}`);
+      setStep(exists ? "enterPersonal" : "setPersonal");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       diag(`pickUser BŁĄD — ${msg}`);
       console.error(err);
 
       if (isChunkError(err)) {
-        // Re-dispatch żeby ChunkErrorOverlay (globalny) pokazał overlay z reloadem.
         window.dispatchEvent(new ErrorEvent("error", { message: msg, error: err }));
         setError("Aplikacja wymaga odświeżenia (chunk nie załadował się).");
         return;
       }
 
-      // Sieć/Supabase padło — pozwól przejść dalej, żeby przycisk „Wejdź"
-      // mógł ponowić zapytanie. Brak hasha = traktuj jak pierwsze logowanie.
       diag("pickUser FALLBACK — przechodzę do ekranu hasła mimo błędu");
-      setError("Połączenie z bazą zawiodło — spróbuj ponownie wpisując hasło.");
+      setError("Połączenie z serwerem zawiodło — spróbuj ponownie wpisując hasło.");
       setStep("enterPersonal");
     }
   }
@@ -172,9 +169,8 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     e.preventDefault();
     if (!user) return;
     try {
-      const stored = await fetchUserHashWithRetry(user);
-      const hash = await sha256(personalPw);
-      if (stored && hash === stored) {
+      const res = await siteUserLogin({ data: { username: user, password: personalPw } });
+      if (res.ok) {
         localStorage.setItem(UNLOCKED_KEY, user);
         localStorage.setItem(SITE_CURRENT_USER_KEY, user);
         bumpSiteActivity();
@@ -185,7 +181,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         setPersonalPw("");
       }
     } catch (err) {
-      setError("Błąd połączenia z bazą");
+      setError("Błąd połączenia z serwerem");
       console.error(err);
     }
   }
@@ -193,11 +189,6 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   async function submitSetup(e: FormEvent) {
     e.preventDefault();
     if (!user) return;
-    if (masterPw !== SITE_PASSWORD) {
-      setError("Nieprawidłowe hasło ogólne");
-      setMasterPw("");
-      return;
-    }
     if (personalPw.length < 4) {
       setError("Hasło osobiste musi mieć min. 4 znaki");
       return;
@@ -207,8 +198,14 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const hash = await sha256(personalPw);
-      await saveUserHash(user, hash);
+      const res = await siteUserSetPassword({
+        data: { username: user, masterPassword: masterPw, newPassword: personalPw },
+      });
+      if (!res.ok) {
+        setError("Nieprawidłowe hasło ogólne");
+        setMasterPw("");
+        return;
+      }
       localStorage.setItem(UNLOCKED_KEY, user);
       localStorage.setItem(SITE_CURRENT_USER_KEY, user);
       bumpSiteActivity();
