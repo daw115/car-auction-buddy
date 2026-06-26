@@ -4,9 +4,14 @@
 
 import { callAnthropic, type AnthropicResult } from "./anthropic.server";
 import { callGemini } from "./gemini.server";
+import { callGeminiEnterprise } from "./gemini-enterprise.server";
 
-export type AIProvider = "anthropic" | "gemini";
+export type AIProvider = "anthropic" | "gemini" | "gemini_enterprise";
 export type AIFallbackMode = "error_only" | "race_both";
+
+function hasGeminiEnterprise(): boolean {
+  return Boolean(process.env.GEMINI_ENTERPRISE_SA_JSON && process.env.GEMINI_ENTERPRISE_PROJECT_ID);
+}
 
 /**
  * Detect primary provider.
@@ -14,21 +19,30 @@ export type AIFallbackMode = "error_only" | "race_both";
  */
 export function detectProvider(dbPreference?: string | null): AIProvider {
   const db = dbPreference?.toLowerCase();
+  if (db === "gemini_enterprise" || db === "vertex") return "gemini_enterprise";
   if (db === "gemini") return "gemini";
   if (db === "anthropic") return "anthropic";
 
   const explicit = process.env.AI_PROVIDER?.toLowerCase();
+  if (explicit === "gemini_enterprise" || explicit === "vertex") return "gemini_enterprise";
   if (explicit === "gemini") return "gemini";
   if (explicit === "anthropic") return "anthropic";
 
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (process.env.GEMINI_API_KEY) return "gemini";
+  if (hasGeminiEnterprise()) return "gemini_enterprise";
   return "anthropic";
 }
 
 function fallbackProvider(primary: AIProvider): AIProvider | null {
-  if (primary === "anthropic" && process.env.GEMINI_API_KEY) return "gemini";
-  if (primary === "gemini" && process.env.ANTHROPIC_API_KEY) return "anthropic";
+  // Preference order for fallback: gemini -> anthropic -> gemini_enterprise
+  const candidates: AIProvider[] = ["anthropic", "gemini", "gemini_enterprise"];
+  for (const p of candidates) {
+    if (p === primary) continue;
+    if (p === "anthropic" && process.env.ANTHROPIC_API_KEY) return p;
+    if (p === "gemini" && process.env.GEMINI_API_KEY) return p;
+    if (p === "gemini_enterprise" && hasGeminiEnterprise()) return p;
+  }
   return null;
 }
 
@@ -39,6 +53,7 @@ function callProvider(provider: AIProvider, opts: {
   maxTokens?: number;
 }): Promise<AnthropicResult> {
   if (provider === "gemini") return callGemini(opts);
+  if (provider === "gemini_enterprise") return callGeminiEnterprise(opts);
   return callAnthropic(opts);
 }
 
