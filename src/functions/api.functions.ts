@@ -20,6 +20,11 @@ import {
   type Lot,
 } from "@/server/lot-report";
 import { validateArtifactsMeta } from "@/server/validate-artifacts-meta";
+import {
+  parseClientMessageInputSchema,
+  parseClientMessageServer,
+  type ParsedClientMessage,
+} from "@/server/client-message-parser.server";
 
 // ---------- Clients ----------
 
@@ -2682,55 +2687,8 @@ export const regenerateBundles = createServerFn({ method: "POST" })
 
 export const parseClientMessage = createServerFn({ method: "POST" })
   .middleware([siteSessionMiddleware])
-  .inputValidator(z.object({ message: z.string().min(1).max(5000) }).parse)
-  .handler(async ({ data }) => {
-    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-    const token = process.env.SCRAPER_API_TOKEN;
-    if (!baseUrl || !token) throw new Error("Backend not configured");
-
-    const res = await fetch(`${baseUrl}/api/parse-client-message`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message: data.message }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      throw new Error(`Parser failed (HTTP ${res.status}): ${err.slice(0, 200)}`);
-    }
-
-    return res.json() as Promise<{
-      criteria: {
-        make: string;
-        model?: string | null;
-        year_from?: number | null;
-        year_to?: number | null;
-        budget_usd?: number | null;
-        max_odometer_mi?: number | null;
-        excluded_damage_types?: string[];
-        allowed_damage_types?: string[];
-        sources?: string[];
-        max_results?: number;
-      };
-      criteria_list?: Array<{
-        make: string;
-        model?: string | null;
-        year_from?: number | null;
-        year_to?: number | null;
-        budget_usd?: number | null;
-        max_odometer_mi?: number | null;
-        excluded_damage_types?: string[];
-        allowed_damage_types?: string[];
-        sources?: string[];
-        max_results?: number;
-      }>;
-      summary: string;
-      warnings: string[];
-    }>;
-  });
+  .inputValidator(parseClientMessageInputSchema.parse)
+  .handler(async ({ data }): Promise<ParsedClientMessage> => parseClientMessageServer(data));
 
 // ---------- Batch Search ----------
 
