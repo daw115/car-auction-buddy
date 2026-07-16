@@ -1,17 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { siteSessionGuard } from "@/server/site-session.server";
 
 // SSE proxy: streams logs from upstream scraper. Tries several known paths
 // and falls back through them. Keeps SCRAPER_API_TOKEN server-side.
-const CANDIDATE_PATHS = [
-  "/api/logs/stream",
-  "/logs/stream",
-  "/api/stream/logs",
-];
+const CANDIDATE_PATHS = ["/api/logs/stream", "/logs/stream", "/api/stream/logs"];
 
 export const Route = createFileRoute("/api/scraper-logs/stream")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const unauthorized = await siteSessionGuard();
+        if (unauthorized) return unauthorized;
+
         const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
         const token = process.env.SCRAPER_API_TOKEN;
 
@@ -22,8 +22,7 @@ export const Route = createFileRoute("/api/scraper-logs/stream")({
         let lastStatus = 0;
         let lastPath = "";
         for (const path of CANDIDATE_PATHS) {
-          const sep = path.includes("?") ? "&" : "?";
-          const upstreamUrl = `${baseUrl}${path}${sep}token=${encodeURIComponent(token)}`;
+          const upstreamUrl = `${baseUrl}${path}`;
           try {
             const upstream = await fetch(upstreamUrl, {
               method: "GET",
@@ -53,10 +52,9 @@ export const Route = createFileRoute("/api/scraper-logs/stream")({
             return new Response(`Proxy error: ${(e as Error).message}`, { status: 502 });
           }
         }
-        return new Response(
-          `Upstream not found. Last tried: ${lastPath} → ${lastStatus}`,
-          { status: lastStatus || 502 },
-        );
+        return new Response(`Upstream not found. Last tried: ${lastPath} → ${lastStatus}`, {
+          status: lastStatus || 502,
+        });
       },
     },
   },

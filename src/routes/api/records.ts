@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { siteSessionGuard } from "@/server/site-session.server";
 
 export const Route = createFileRoute("/api/records")({
   server: {
     handlers: {
       GET: async () => {
+        const unauthorized = await siteSessionGuard();
+        if (unauthorized) return unauthorized;
+
         const { data, error } = await supabaseAdmin
           .from("records")
           .select("id, client_id, title, status, created_at, updated_at, clients(name)")

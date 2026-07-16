@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "@/server/prompts/system-prompt";
@@ -8,23 +9,33 @@ import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
 import { renderReportHtml, renderMailHtml } from "@/server/report";
 import { makeLogger, writeLog } from "@/server/logger.server";
 import { devLog } from "@/server/dev-logger.server";
+import type { Json } from "@/integrations/supabase/types";
 import type { CarLot, ClientCriteria, AIAnalysis, AnalyzedLot } from "@/lib/types";
 import { LOT_SYSTEM_PROMPT } from "@/server/prompts/lot-prompt";
-import { buildBrokerHtml, buildClientHtml, fetchImagesAsBase64, type Lot } from "@/server/lot-report";
+import {
+  buildBrokerHtml,
+  buildClientHtml,
+  createReportImageBudget,
+  fetchImagesAsBase64,
+  type Lot,
+} from "@/server/lot-report";
 import { validateArtifactsMeta } from "@/server/validate-artifacts-meta";
 
 // ---------- Clients ----------
 
-export const listClients = createServerFn({ method: "GET" }).handler(async () => {
-  const { data, error } = await supabaseAdmin
-    .from("clients")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return data ?? [];
-});
+export const listClients = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const { data, error } = await supabaseAdmin
+      .from("clients")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
 
 export const createClient = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       name: z.string().min(1).max(200),
@@ -43,6 +54,7 @@ export const createClient = createServerFn({ method: "POST" })
   });
 
 export const deleteClient = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().uuid() }).parse)
   .handler(async ({ data }) => {
     const { error } = await supabaseAdmin.from("clients").delete().eq("id", data.id);
@@ -53,11 +65,14 @@ export const deleteClient = createServerFn({ method: "POST" })
 // ---------- Records ----------
 
 export const listRecords = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ clientId: z.string().uuid().optional() }).parse)
   .handler(async ({ data }) => {
     let q = supabaseAdmin
       .from("records")
-      .select("id, client_id, title, status, created_at, updated_at, analysis_status, analysis_started_at, analysis_completed_at, artifacts_meta, analysis_error, retry_count, max_retries, next_retry_at, last_error_at")
+      .select(
+        "id, client_id, title, status, created_at, updated_at, analysis_status, analysis_started_at, analysis_completed_at, artifacts_meta, analysis_error, retry_count, max_retries, next_retry_at, last_error_at",
+      )
       .order("created_at", { ascending: false })
       .limit(200);
     if (data.clientId) q = q.eq("client_id", data.clientId);
@@ -67,6 +82,7 @@ export const listRecords = createServerFn({ method: "GET" })
   });
 
 export const loadRecord = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().uuid() }).parse)
   .handler(async ({ data }) => {
     const { data: row, error } = await supabaseAdmin
@@ -105,6 +121,7 @@ const recordPayloadSchema = z.object({
 // validateArtifactsMeta is imported from ./validate-artifacts-meta
 
 export const saveRecord = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(recordPayloadSchema.parse)
   .handler(async ({ data }) => {
     const payload = { ...data, updated_at: new Date().toISOString() };
@@ -141,14 +158,21 @@ export const saveRecord = createServerFn({ method: "POST" })
         row.artifacts_meta = validation.corrected_meta;
       }
       if (validation.warnings.length > 0) {
-        console.warn(`[saveRecord] artifacts_meta corrected for ${String(row.id)}:`, validation.warnings);
+        console.warn(
+          `[saveRecord] artifacts_meta corrected for ${String(row.id)}:`,
+          validation.warnings,
+        );
       }
     }
 
-    return { ...row, _artifacts_warnings: validation.warnings.length > 0 ? validation.warnings : undefined };
+    return {
+      ...row,
+      _artifacts_warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+    };
   });
 
 export const deleteRecord = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().uuid() }).parse)
   .handler(async ({ data }) => {
     const { error } = await supabaseAdmin.from("records").delete().eq("id", data.id);
@@ -158,26 +182,29 @@ export const deleteRecord = createServerFn({ method: "POST" })
 
 // ---------- App config ----------
 
-export const getConfig = createServerFn({ method: "GET" }).handler(async () => {
-  const { data, error } = await supabaseAdmin.from("app_config").select("*").eq("id", 1).single();
-  if (error) throw new Error(error.message);
-  const provider = detectProvider(data?.ai_analysis_mode);
-  return {
-    config: data,
-    env: {
-      ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-      ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
-      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
-      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
-      GEMINI_MODEL: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
-      AI_PROVIDER: provider,
-      SCRAPER_BASE_URL: !!process.env.SCRAPER_BASE_URL,
-      SCRAPER_API_TOKEN: !!process.env.SCRAPER_API_TOKEN,
-    },
-  };
-});
+export const getConfig = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const { data, error } = await supabaseAdmin.from("app_config").select("*").eq("id", 1).single();
+    if (error) throw new Error(error.message);
+    const provider = detectProvider(data?.ai_analysis_mode);
+    return {
+      config: data,
+      env: {
+        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+        ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
+        ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
+        GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+        GEMINI_MODEL: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+        AI_PROVIDER: provider,
+        SCRAPER_BASE_URL: !!process.env.SCRAPER_BASE_URL,
+        SCRAPER_API_TOKEN: !!process.env.SCRAPER_API_TOKEN,
+      },
+    };
+  });
 
 export const updateConfig = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       use_mock_data: z.boolean().optional(),
@@ -204,6 +231,7 @@ export const updateConfig = createServerFn({ method: "POST" })
 // ---------- Anthropic connection test ----------
 
 export const testAnthropic = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ model: z.string().max(100).optional() }).parse)
   .handler(async ({ data }) => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -214,7 +242,10 @@ export const testAnthropic = createServerFn({ method: "POST" })
         error: "Brak ANTHROPIC_API_KEY w sekretach Lovable Cloud. Dodaj sekret i spróbuj ponownie.",
       };
     }
-    const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "");
+    const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(
+      /\/+$/,
+      "",
+    );
     const model = data.model || process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
     try {
       const res = await fetch(`${baseUrl}/v1/messages`, {
@@ -245,7 +276,10 @@ export const testAnthropic = createServerFn({ method: "POST" })
         usage?: { input_tokens?: number; output_tokens?: number };
         model?: string;
       } = await res.json();
-      const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("");
+      const text = (json.content ?? [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
       return {
         ok: true,
         configured: true,
@@ -270,6 +304,7 @@ export const testAnthropic = createServerFn({ method: "POST" })
 // ---------- Gemini connection test ----------
 
 export const testGemini = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ model: z.string().max(100).optional() }).parse)
   .handler(async ({ data }) => {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -301,7 +336,7 @@ export const testGemini = createServerFn({ method: "POST" })
           error: `Gemini HTTP ${res.status}: ${body.slice(0, 300)}`,
         };
       }
-      const json = await res.json() as {
+      const json = (await res.json()) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
         modelVersion?: string;
@@ -507,14 +542,23 @@ import { criteriaSchema, parseCriteria as parseCriteriaPure } from "@/lib/criter
  */
 function parseCriteria(raw: unknown): z.infer<typeof criteriaSchema> {
   return parseCriteriaPure(raw, (unknownKeys) => {
-    devLog("warn", "criteria:validate", `Nieznane pola w kryteriach pominięto: ${unknownKeys.join(", ")}`, {
-      unknown_keys: unknownKeys,
-    });
+    devLog(
+      "warn",
+      "criteria:validate",
+      `Nieznane pola w kryteriach pominięto: ${unknownKeys.join(", ")}`,
+      {
+        unknown_keys: unknownKeys,
+      },
+    );
   });
 }
 
 /** Loguje do strumienia /dev/logs dokładny payload kryteriów wysyłanych do backendu. */
-function logCriteriaSent(scope: string, criteria: z.infer<typeof criteriaSchema>, extra?: Record<string, unknown>) {
+function logCriteriaSent(
+  scope: string,
+  criteria: z.infer<typeof criteriaSchema>,
+  extra?: Record<string, unknown>,
+) {
   devLog("http", `criteria:sent:${scope}`, `→ ${scope}: kryteria wysłane do backendu`, {
     criteria,
     ...(extra ?? {}),
@@ -529,6 +573,7 @@ const lotSchema: z.ZodType<CarLot> = z
   .passthrough() as unknown as z.ZodType<CarLot>;
 
 export const runAnalysis = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       criteria: z.unknown().transform(parseCriteria),
@@ -537,168 +582,201 @@ export const runAnalysis = createServerFn({ method: "POST" })
       recordId: z.string().uuid().nullable().optional(),
     }).parse,
   )
-  .handler(async ({ data }): Promise<{
-    ai_input: { criteria: ClientCriteria; listings: CarLot[] };
-    ai_prompt: string;
-    analysis: AnalyzedLot[];
-    ai_meta?: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
-  }> => {
-    const log = makeLogger({
-      operation: "ai_analysis",
-      clientId: data.clientId ?? null,
-      recordId: data.recordId ?? null,
-    });
-    const startedAt = Date.now();
-    const criteria = data.criteria as ClientCriteria;
-    const listings = data.listings as CarLot[];
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      ai_input: { criteria: ClientCriteria; listings: CarLot[] };
+      ai_prompt: string;
+      analysis: AnalyzedLot[];
+      ai_meta?: {
+        provider: string;
+        model: string;
+        usedFallback: boolean;
+        fallbackMode: string;
+        usage: { input_tokens: number; output_tokens: number };
+      };
+    }> => {
+      const log = makeLogger({
+        operation: "ai_analysis",
+        clientId: data.clientId ?? null,
+        recordId: data.recordId ?? null,
+      });
+      const startedAt = Date.now();
+      const criteria = data.criteria as ClientCriteria;
+      const listings = data.listings as CarLot[];
 
-    // Read DB-stored AI provider preference
-    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode, ai_fallback_mode").eq("id", 1).single();
-    const dbPreference = cfgRow?.ai_analysis_mode ?? null;
-    const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
-    // Default 4096 — Anthropic responses for typical batches (≤30 lots) fit in
-    // ~3-4k tokens. Cap higher only via env override. Keeps response time and
-    // cost predictable, also reduces 524 timeout risk.
-    const maxTokens = Math.min(
-      parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? "0", 10) ||
-        Math.max(1500, listings.length * 300),
-      4096,
-    );
-
-    // Auto-trim prompt if input + reserved output would overflow context window.
-    const built = buildPromptWithinBudget(criteria, listings, maxTokens);
-    const userPrompt = built.prompt;
-    const trimmedListings =
-      built.trimmed.droppedLots > 0
-        ? listings.filter((l) => built.includedLotIds.includes(l.lot_id))
-        : listings;
-
-    await log.info("start", `Rozpoczęto analizę AI ${trimmedListings.length} lotów`, {
-      listings_count: trimmedListings.length,
-      original_listings_count: listings.length,
-      criteria_make: criteria.make,
-      criteria_model: criteria.model ?? null,
-      budget_usd: criteria.budget_usd,
-      prompt_chars: userPrompt.length,
-      max_tokens: maxTokens,
-      auto_trimmed: built.trimmed.droppedLots > 0 || built.trimmed.droppedFields,
-      dropped_optional_fields: built.trimmed.droppedFields,
-      dropped_lots: built.trimmed.droppedLots,
-    });
-
-    if (built.trimmed.droppedLots > 0 || built.trimmed.droppedFields) {
-      await log.warn(
-        "prompt_trimmed",
-        `Prompt skrócony automatycznie: ${built.trimmed.droppedLots > 0 ? `pominięto ${built.trimmed.droppedLots} lotów, ` : ""}${built.trimmed.droppedFields ? "usunięto opcjonalne pola (url, vin, trim, city, …)" : ""}`,
-        {
-          dropped_lots: built.trimmed.droppedLots,
-          dropped_optional_fields: built.trimmed.droppedFields,
-          final_lot_count: built.trimmed.finalCount,
-        },
+      // Read DB-stored AI provider preference
+      const { data: cfgRow } = await supabaseAdmin
+        .from("app_config")
+        .select("ai_analysis_mode, ai_fallback_mode")
+        .eq("id", 1)
+        .single();
+      const dbPreference = cfgRow?.ai_analysis_mode ?? null;
+      const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
+      // Default 4096 — Anthropic responses for typical batches (≤30 lots) fit in
+      // ~3-4k tokens. Cap higher only via env override. Keeps response time and
+      // cost predictable, also reduces 524 timeout risk.
+      const maxTokens = Math.min(
+        parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? "0", 10) ||
+          Math.max(1500, listings.length * 300),
+        4096,
       );
-    }
 
-    let raw: string;
-    let aiMeta: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
-    try {
-      const result = await callAI({ system: SYSTEM_PROMPT, userPrompt, maxTokens, dbPreference, fallbackMode });
-      raw = result.text;
-      aiMeta = { provider: result.provider, model: result.model, usedFallback: result.usedFallback, fallbackMode: result.fallbackMode, usage: result.usage };
-      await log.info(
-        "ai_response",
-        `Odpowiedź AI [${result.provider}${result.usedFallback ? " (fallback)" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
-        {
-          response_chars: raw.length,
-          model: result.model,
+      // Auto-trim prompt if input + reserved output would overflow context window.
+      const built = buildPromptWithinBudget(criteria, listings, maxTokens);
+      const userPrompt = built.prompt;
+      const trimmedListings =
+        built.trimmed.droppedLots > 0
+          ? listings.filter((l) => built.includedLotIds.includes(l.lot_id))
+          : listings;
+
+      await log.info("start", `Rozpoczęto analizę AI ${trimmedListings.length} lotów`, {
+        listings_count: trimmedListings.length,
+        original_listings_count: listings.length,
+        criteria_make: criteria.make,
+        criteria_model: criteria.model ?? null,
+        budget_usd: criteria.budget_usd,
+        prompt_chars: userPrompt.length,
+        max_tokens: maxTokens,
+        auto_trimmed: built.trimmed.droppedLots > 0 || built.trimmed.droppedFields,
+        dropped_optional_fields: built.trimmed.droppedFields,
+        dropped_lots: built.trimmed.droppedLots,
+      });
+
+      if (built.trimmed.droppedLots > 0 || built.trimmed.droppedFields) {
+        await log.warn(
+          "prompt_trimmed",
+          `Prompt skrócony automatycznie: ${built.trimmed.droppedLots > 0 ? `pominięto ${built.trimmed.droppedLots} lotów, ` : ""}${built.trimmed.droppedFields ? "usunięto opcjonalne pola (url, vin, trim, city, …)" : ""}`,
+          {
+            dropped_lots: built.trimmed.droppedLots,
+            dropped_optional_fields: built.trimmed.droppedFields,
+            final_lot_count: built.trimmed.finalCount,
+          },
+        );
+      }
+
+      let raw: string;
+      let aiMeta: {
+        provider: string;
+        model: string;
+        usedFallback: boolean;
+        fallbackMode: string;
+        usage: { input_tokens: number; output_tokens: number };
+      };
+      try {
+        const result = await callAI({
+          system: SYSTEM_PROMPT,
+          userPrompt,
+          maxTokens,
+          dbPreference,
+          fallbackMode,
+        });
+        raw = result.text;
+        aiMeta = {
           provider: result.provider,
-          used_fallback: result.usedFallback,
-          stop_reason: result.stop_reason,
+          model: result.model,
+          usedFallback: result.usedFallback,
+          fallbackMode: result.fallbackMode,
           usage: result.usage,
-        },
+        };
+        await log.info(
+          "ai_response",
+          `Odpowiedź AI [${result.provider}${result.usedFallback ? " (fallback)" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
+          {
+            response_chars: raw.length,
+            model: result.model,
+            provider: result.provider,
+            used_fallback: result.usedFallback,
+            stop_reason: result.stop_reason,
+            usage: result.usage,
+          },
+          Date.now() - startedAt,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await log.error("ai_call", `Błąd AI: ${msg}`, {
+          error: msg,
+          prompt_chars: userPrompt.length,
+        });
+        throw new Error(`AI API: ${msg}`);
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = parseAnalysisJson(raw);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await log.error("parse_json", `AI zwróciło niepoprawny JSON: ${msg}`, {
+          error: msg,
+          response_preview: raw.slice(0, 300),
+        });
+        throw new Error(
+          `AI zwróciło niepoprawny JSON: ${msg}\nPierwsze 500 znaków odpowiedzi: ${raw.slice(0, 500)}`,
+        );
+      }
+      if (!Array.isArray(parsed)) {
+        await log.error("parse_json", "AI nie zwróciło tablicy JSON", {
+          type: typeof parsed,
+        });
+        throw new Error("AI nie zwróciło tablicy JSON.");
+      }
+
+      const lotsById = new Map(listings.map((l) => [l.lot_id, l]));
+      const analyzed: AnalyzedLot[] = [];
+      let skipped = 0;
+      for (const a of parsed as AIAnalysis[]) {
+        const lot = lotsById.get(a.lot_id);
+        if (!lot) {
+          skipped++;
+          continue;
+        }
+        analyzed.push({
+          lot,
+          analysis: {
+            lot_id: a.lot_id,
+            score: typeof a.score === "number" ? a.score : 0,
+            recommendation: a.recommendation || "RYZYKO",
+            red_flags: Array.isArray(a.red_flags) ? a.red_flags : [],
+            estimated_repair_usd: a.estimated_repair_usd ?? null,
+            estimated_total_cost_usd: a.estimated_total_cost_usd ?? null,
+            client_description_pl: a.client_description_pl || "",
+            ai_notes: a.ai_notes ?? null,
+          },
+        });
+      }
+      analyzed.sort((a, b) => b.analysis.score - a.analysis.score);
+
+      if (skipped > 0) {
+        await log.warn("match_lots", `Pominięto ${skipped} pozycji AI bez dopasowanego lota`, {
+          skipped,
+        });
+      }
+
+      const recs = analyzed.reduce<Record<string, number>>((acc, a) => {
+        acc[a.analysis.recommendation] = (acc[a.analysis.recommendation] ?? 0) + 1;
+        return acc;
+      }, {});
+      await log.info(
+        "done",
+        `Analiza zakończona: ${analyzed.length} lotów`,
+        { analyzed_count: analyzed.length, recommendations: recs },
         Date.now() - startedAt,
       );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await log.error("ai_call", `Błąd AI: ${msg}`, {
-        error: msg,
-        prompt_chars: userPrompt.length,
-      });
-      throw new Error(`AI API: ${msg}`);
-    }
 
-    let parsed: unknown;
-    try {
-      parsed = parseAnalysisJson(raw);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await log.error("parse_json", `AI zwróciło niepoprawny JSON: ${msg}`, {
-        error: msg,
-        response_preview: raw.slice(0, 300),
-      });
-      throw new Error(
-        `AI zwróciło niepoprawny JSON: ${msg}\nPierwsze 500 znaków odpowiedzi: ${raw.slice(0, 500)}`,
-      );
-    }
-    if (!Array.isArray(parsed)) {
-      await log.error("parse_json", "AI nie zwróciło tablicy JSON", {
-        type: typeof parsed,
-      });
-      throw new Error("AI nie zwróciło tablicy JSON.");
-    }
-
-    const lotsById = new Map(listings.map((l) => [l.lot_id, l]));
-    const analyzed: AnalyzedLot[] = [];
-    let skipped = 0;
-    for (const a of parsed as AIAnalysis[]) {
-      const lot = lotsById.get(a.lot_id);
-      if (!lot) {
-        skipped++;
-        continue;
-      }
-      analyzed.push({
-        lot,
-        analysis: {
-          lot_id: a.lot_id,
-          score: typeof a.score === "number" ? a.score : 0,
-          recommendation: a.recommendation || "RYZYKO",
-          red_flags: Array.isArray(a.red_flags) ? a.red_flags : [],
-          estimated_repair_usd: a.estimated_repair_usd ?? null,
-          estimated_total_cost_usd: a.estimated_total_cost_usd ?? null,
-          client_description_pl: a.client_description_pl || "",
-          ai_notes: a.ai_notes ?? null,
-        },
-      });
-    }
-    analyzed.sort((a, b) => b.analysis.score - a.analysis.score);
-
-    if (skipped > 0) {
-      await log.warn("match_lots", `Pominięto ${skipped} pozycji AI bez dopasowanego lota`, {
-        skipped,
-      });
-    }
-
-    const recs = analyzed.reduce<Record<string, number>>((acc, a) => {
-      acc[a.analysis.recommendation] = (acc[a.analysis.recommendation] ?? 0) + 1;
-      return acc;
-    }, {});
-    await log.info(
-      "done",
-      `Analiza zakończona: ${analyzed.length} lotów`,
-      { analyzed_count: analyzed.length, recommendations: recs },
-      Date.now() - startedAt,
-    );
-
-    return {
-      ai_input: { criteria, listings },
-      ai_prompt: userPrompt,
-      analysis: analyzed,
-      ai_meta: aiMeta,
-    };
-  });
+      return {
+        ai_input: { criteria, listings },
+        ai_prompt: userPrompt,
+        analysis: analyzed,
+        ai_meta: aiMeta,
+      };
+    },
+  );
 
 // ---------- Report rendering ----------
 
 export const renderReport = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       clientName: z.string().min(1).max(200),
@@ -806,7 +884,7 @@ async function writeScrapeCache(args: {
   source: string;
 }): Promise<void> {
   const expiresAt = new Date(Date.now() + SCRAPE_CACHE_TTL_SECONDS * 1000).toISOString();
-  await (supabaseAdmin.from("scrape_cache") as any).upsert(
+  await supabaseAdmin.from("scrape_cache").upsert(
     {
       cache_key: args.cacheKey,
       criteria: args.criteria,
@@ -821,8 +899,8 @@ async function writeScrapeCache(args: {
   );
 }
 
-
 export const runScraperSearch = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       criteria: z.unknown().transform(parseCriteria),
@@ -918,11 +996,10 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      await log.error(
-        "http_error",
-        `Scraper zwrócił HTTP ${res.status}`,
-        { status: res.status, body_preview: body.slice(0, 300) },
-      );
+      await log.error("http_error", `Scraper zwrócił HTTP ${res.status}`, {
+        status: res.status,
+        body_preview: body.slice(0, 300),
+      });
       throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
     }
 
@@ -961,7 +1038,10 @@ export const runScraperSearch = createServerFn({ method: "POST" })
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          await log.warn("poll_network", `Polling network error: ${msg}`, { job_id: jobId, error: msg });
+          await log.warn("poll_network", `Polling network error: ${msg}`, {
+            job_id: jobId,
+            error: msg,
+          });
           continue;
         }
         if (!pollRes.ok) {
@@ -983,7 +1063,14 @@ export const runScraperSearch = createServerFn({ method: "POST" })
           lastStatus = pj.status;
           await log.info("poll", `Job status: ${pj.status}`, { job_id: jobId, status: pj.status });
         }
-        if (pj.status === "done" || pj.status === "completed" || pj.status === "finished" || pj.status === "success" || pj.status === "complete" || (typeof pj.progress === "number" && pj.progress >= 1.0)) {
+        if (
+          pj.status === "done" ||
+          pj.status === "completed" ||
+          pj.status === "finished" ||
+          pj.status === "success" ||
+          pj.status === "complete" ||
+          (typeof pj.progress === "number" && pj.progress >= 1.0)
+        ) {
           listings = Array.isArray(pj.listings) ? pj.listings : [];
           break;
         }
@@ -996,8 +1083,17 @@ export const runScraperSearch = createServerFn({ method: "POST" })
         }
       }
 
-      if (lastStatus !== "done" && lastStatus !== "completed" && lastStatus !== "finished" && lastStatus !== "success" && lastStatus !== "complete") {
-        await log.error("timeout", `Polling timeout po 5 min`, { job_id: jobId, last_status: lastStatus });
+      if (
+        lastStatus !== "done" &&
+        lastStatus !== "completed" &&
+        lastStatus !== "finished" &&
+        lastStatus !== "success" &&
+        lastStatus !== "complete"
+      ) {
+        await log.error("timeout", `Polling timeout po 5 min`, {
+          job_id: jobId,
+          last_status: lastStatus,
+        });
         throw new Error(`Scraper job timeout (job_id=${jobId}, last_status=${lastStatus})`);
       }
     } else {
@@ -1016,6 +1112,7 @@ export const runScraperSearch = createServerFn({ method: "POST" })
 
 // Start scraper job — returns job_id immediately (or listings if backend is sync/mock).
 export const startScraperSearch = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       criteria: z.unknown().transform(parseCriteria),
@@ -1024,203 +1121,191 @@ export const startScraperSearch = createServerFn({ method: "POST" })
       disable_auction_filter: z.boolean().optional(),
     }).parse,
   )
-  .handler(async ({ data }): Promise<
-    | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string; no_results?: boolean }
-    | { mode: "job"; job_id: string; source: string; cache_key: string }
-  > => {
-    const log = makeLogger({
-      operation: "scrape",
-      clientId: data.clientId ?? null,
-      recordId: data.recordId ?? null,
-    });
-
-
-    // Mock mode short-circuit
-    const { data: cfg } = await supabaseAdmin
-      .from("app_config")
-      .select("use_mock_data")
-      .eq("id", 1)
-      .maybeSingle();
-    if (cfg?.use_mock_data) {
-      const listings = buildMockListings(data.criteria);
-      await log.info("done", `Mock: zwrócono ${listings.length} lotów`, {
-        listings_count: listings.length,
-        source: "mock",
+  .handler(
+    async ({
+      data,
+    }): Promise<
+      | {
+          mode: "sync";
+          listings: CarLot[];
+          source: string;
+          cache_hit?: boolean;
+          cache_key?: string;
+          no_results?: boolean;
+        }
+      | { mode: "job"; job_id: string; source: string; cache_key: string }
+    > => {
+      const log = makeLogger({
+        operation: "scrape",
+        clientId: data.clientId ?? null,
+        recordId: data.recordId ?? null,
       });
-      return { mode: "sync", listings, source: "mock" };
-    }
 
-    // Cache lookup BEFORE hitting scraper.
-    const disableAuctionFilter = data.disable_auction_filter ?? false;
-    const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(data.criteria, disableAuctionFilter);
-    const cached = await readScrapeCache(cacheKey);
-    if (cached) {
-      await log.info(
-        "cache_hit",
-        `Cache hit: ${cached.listings.length} lotów (zapisane: ${cached.created_at})`,
-        {
+      // Mock mode short-circuit
+      const { data: cfg } = await supabaseAdmin
+        .from("app_config")
+        .select("use_mock_data")
+        .eq("id", 1)
+        .maybeSingle();
+      if (cfg?.use_mock_data) {
+        const listings = buildMockListings(data.criteria);
+        await log.info("done", `Mock: zwrócono ${listings.length} lotów`, {
+          listings_count: listings.length,
+          source: "mock",
+        });
+        return { mode: "sync", listings, source: "mock" };
+      }
+
+      // Cache lookup BEFORE hitting scraper.
+      const disableAuctionFilter = data.disable_auction_filter ?? false;
+      const { key: cacheKey, configSnapshot } = await buildScrapeCacheKey(
+        data.criteria,
+        disableAuctionFilter,
+      );
+      const cached = await readScrapeCache(cacheKey);
+      if (cached) {
+        await log.info(
+          "cache_hit",
+          `Cache hit: ${cached.listings.length} lotów (zapisane: ${cached.created_at})`,
+          {
+            cache_key: cacheKey,
+            listings_count: cached.listings.length,
+            cached_at: cached.created_at,
+          },
+        );
+        return {
+          mode: "sync",
+          listings: cached.listings,
+          source: `cache:${cached.source}`,
+          cache_hit: true,
           cache_key: cacheKey,
-          listings_count: cached.listings.length,
-          cached_at: cached.created_at,
+        };
+      }
+
+      const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+      const token = process.env.SCRAPER_API_TOKEN;
+      if (!baseUrl) {
+        await log.error("config", "Brak SCRAPER_BASE_URL");
+        throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
+      }
+
+      await log.info("start", "Start wyszukiwania (job)", {
+        endpoint: `${baseUrl}/search`,
+        criteria_make: data.criteria.make,
+        cache_key: cacheKey,
+      });
+
+      // Audit trail: kto uruchomił wyszukiwanie i z jakimi kryteriami.
+      await writeLog(
+        { operation: "audit", clientId: data.clientId ?? null, recordId: data.recordId ?? null },
+        {
+          step: "search.start",
+          level: "info",
+          message: `Wyszukiwanie uruchomione${data.criteria.searched_by ? ` przez ${data.criteria.searched_by}` : " (nieprzypisane)"}`,
+          details: {
+            searched_by: data.criteria.searched_by ?? null,
+            make: data.criteria.make,
+            model: data.criteria.model ?? null,
+            year_from: data.criteria.year_from ?? null,
+            year_to: data.criteria.year_to ?? null,
+            budget_usd: data.criteria.budget_usd ?? null,
+            max_results: data.criteria.max_results ?? null,
+            cache_key: cacheKey,
+          },
         },
       );
-      return {
-        mode: "sync",
-        listings: cached.listings,
-        source: `cache:${cached.source}`,
-        cache_hit: true,
+
+      logCriteriaSent("startScraperSearch", data.criteria, {
+        endpoint: `${baseUrl}/search`,
         cache_key: cacheKey,
-      };
-    }
-
-    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-    const token = process.env.SCRAPER_API_TOKEN;
-    if (!baseUrl) {
-      await log.error("config", "Brak SCRAPER_BASE_URL");
-      throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
-    }
-
-    await log.info("start", "Start wyszukiwania (job)", {
-      endpoint: `${baseUrl}/search`,
-      criteria_make: data.criteria.make,
-      cache_key: cacheKey,
-    });
-
-    // Audit trail: kto uruchomił wyszukiwanie i z jakimi kryteriami.
-    await writeLog(
-      { operation: "audit", clientId: data.clientId ?? null, recordId: data.recordId ?? null },
-      {
-        step: "search.start",
-        level: "info",
-        message: `Wyszukiwanie uruchomione${data.criteria.searched_by ? ` przez ${data.criteria.searched_by}` : " (nieprzypisane)"}`,
-        details: {
-          searched_by: data.criteria.searched_by ?? null,
-          make: data.criteria.make,
-          model: data.criteria.model ?? null,
-          year_from: data.criteria.year_from ?? null,
-          year_to: data.criteria.year_to ?? null,
-          budget_usd: data.criteria.budget_usd ?? null,
-          max_results: data.criteria.max_results ?? null,
-          cache_key: cacheKey,
-        },
-      },
-    );
-
-    logCriteriaSent("startScraperSearch", data.criteria, {
-      endpoint: `${baseUrl}/search`,
-      cache_key: cacheKey,
-      disable_auction_filter: disableAuctionFilter,
-    });
-    const res = await fetch(`${baseUrl}/search`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        criteria: data.criteria,
         disable_auction_filter: disableAuctionFilter,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      await log.error("http_error", `HTTP ${res.status}`, {
-        status: res.status,
-        body_preview: body.slice(0, 300),
       });
-      throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
-    }
-    const json = (await res.json()) as
-      | { job_id?: string; status?: string; listings?: CarLot[]; no_results?: boolean }
-      | CarLot[];
+      const res = await fetch(`${baseUrl}/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          criteria: data.criteria,
+          disable_auction_filter: disableAuctionFilter,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        await log.error("http_error", `HTTP ${res.status}`, {
+          status: res.status,
+          body_preview: body.slice(0, 300),
+        });
+        throw new Error(`Scraper HTTP ${res.status}: ${body.slice(0, 400)}`);
+      }
+      const json = (await res.json()) as
+        | { job_id?: string; status?: string; listings?: CarLot[]; no_results?: boolean }
+        | CarLot[];
 
-    if (Array.isArray(json)) {
-      await writeScrapeCache({
-        cacheKey,
-        criteria: data.criteria,
-        configSnapshot,
-        listings: json,
-        source: baseUrl,
-      });
-      return { mode: "sync", listings: json, source: baseUrl, cache_hit: false, cache_key: cacheKey, no_results: json.length === 0 };
-    }
-    if (json.job_id) {
-      await log.info("queued", `Job ${json.job_id} w kolejce`, {
-        job_id: json.job_id,
-        cache_key: cacheKey,
-      });
-      return { mode: "job", job_id: json.job_id, source: baseUrl, cache_key: cacheKey };
-    }
-    if (json.listings) {
-      await writeScrapeCache({
-        cacheKey,
-        criteria: data.criteria,
-        configSnapshot,
-        listings: json.listings,
-        source: baseUrl,
-      });
-      return {
-        mode: "sync",
-        listings: json.listings,
-        source: baseUrl,
-        cache_hit: false,
-        cache_key: cacheKey,
-        no_results: json.no_results === true || json.listings.length === 0,
-      };
-    }
-    throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
-  });
+      if (Array.isArray(json)) {
+        await writeScrapeCache({
+          cacheKey,
+          criteria: data.criteria,
+          configSnapshot,
+          listings: json,
+          source: baseUrl,
+        });
+        return {
+          mode: "sync",
+          listings: json,
+          source: baseUrl,
+          cache_hit: false,
+          cache_key: cacheKey,
+          no_results: json.length === 0,
+        };
+      }
+      if (json.job_id) {
+        await log.info("queued", `Job ${json.job_id} w kolejce`, {
+          job_id: json.job_id,
+          cache_key: cacheKey,
+        });
+        return { mode: "job", job_id: json.job_id, source: baseUrl, cache_key: cacheKey };
+      }
+      if (json.listings) {
+        await writeScrapeCache({
+          cacheKey,
+          criteria: data.criteria,
+          configSnapshot,
+          listings: json.listings,
+          source: baseUrl,
+        });
+        return {
+          mode: "sync",
+          listings: json.listings,
+          source: baseUrl,
+          cache_hit: false,
+          cache_key: cacheKey,
+          no_results: json.no_results === true || json.listings.length === 0,
+        };
+      }
+      throw new Error("Scraper: brak job_id ani listings w odpowiedzi");
+    },
+  );
 
 // Poll scraper job status (called by UI every 4s).
 export const pollScraperJob = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       jobId: z.string().min(1),
       cacheKey: z.string().min(1).optional(),
-      criteria: z.unknown().transform((v) => v == null ? undefined : parseCriteria(v)).optional(),
+      criteria: z
+        .unknown()
+        .transform((v) => (v == null ? undefined : parseCriteria(v)))
+        .optional(),
     }).parse,
   )
-  .handler(async ({ data }): Promise<{
-    status: string;
-    listings?: CarLot[];
-    error?: string;
-    progress?: number;
-    step?: string;
-    message?: string;
-    current?: number;
-    total?: number;
-    phase?: string;
-    no_results?: boolean;
-    client_report_url?: string;
-    polecane_index_url?: string;
-    client_reports_html?: string[];
-    broker_reports_html?: string[];
-    artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string; broker_bundle?: string; client_bundle?: string; client_short_bundle?: string };
-    report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
-  }> => {
-    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-    const token = process.env.SCRAPER_API_TOKEN;
-    if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
-
-    const log = makeLogger({ operation: "scrape", clientId: null, recordId: null });
-
-    const res = await fetch(`${baseUrl}/api/jobs/${data.jobId}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      await log.warn("poll_http", `Poll HTTP ${res.status} dla job ${data.jobId}`, {
-        job_id: data.jobId,
-        http_status: res.status,
-        body_preview: body.slice(0, 200),
-      });
-      if (res.status === 404) {
-        return { status: "not_found", error: `Job ${data.jobId} nie istnieje na serwerze scrapera.` };
-      }
-      throw new Error(`Poll HTTP ${res.status}: ${body.slice(0, 200)}`);
-    }
-    const j = (await res.json()) as {
-      status?: string;
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      status: string;
       listings?: CarLot[];
       error?: string;
       progress?: number;
@@ -1234,91 +1319,177 @@ export const pollScraperJob = createServerFn({ method: "POST" })
       polecane_index_url?: string;
       client_reports_html?: string[];
       broker_reports_html?: string[];
-      artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string; broker_bundle?: string; client_bundle?: string; client_short_bundle?: string };
-      report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
-    };
+      artifact_urls?: {
+        client_report?: string;
+        analysis_json?: string;
+        ai_prompt?: string;
+        ai_input?: string;
+        polecane_index?: string;
+        broker_bundle?: string;
+        client_bundle?: string;
+        client_short_bundle?: string;
+      };
+      report_endpoints?: {
+        client_html?: string;
+        broker_html?: string;
+        client_llm?: string;
+        broker_llm?: string;
+        offer_email_html?: string;
+        pdf?: string;
+      };
+    }> => {
+      const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+      const token = process.env.SCRAPER_API_TOKEN;
+      if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
 
-    const status = j.status ?? "unknown";
-    const DONE_STATUSES = ["done", "completed", "finished", "success", "complete"];
+      const log = makeLogger({ operation: "scrape", clientId: null, recordId: null });
 
-    // Compose human-readable suffix for log message.
-    const parts: string[] = [`status: ${status}`];
-    if (j.phase) parts.push(`faza: ${j.phase}`);
-    if (j.step) parts.push(`krok: ${j.step}`);
-    if (typeof j.current === "number" && typeof j.total === "number") {
-      parts.push(`${j.current}/${j.total}`);
-    }
-    if (typeof j.progress === "number") {
-      parts.push(`${Math.round(j.progress * 100)}%`);
-    }
-
-    await log.info("poll", `Job ${data.jobId} — ${parts.join(" · ")}`, {
-      job_id: data.jobId,
-      status,
-      progress: j.progress,
-      step: j.step,
-      phase: j.phase,
-      current: j.current,
-      total: j.total,
-      message: j.message,
-    });
-
-    if (DONE_STATUSES.includes(status)) {
-      await log.info("done", `Job ${data.jobId} zakończony, wyników: ${j.listings?.length ?? 0}`, {
-        job_id: data.jobId,
-        listings_count: j.listings?.length ?? 0,
+      const res = await fetch(`${baseUrl}/api/jobs/${data.jobId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-    } else if (status === "failed" || status === "error") {
-      await log.error("job_failed", `Job ${data.jobId} zakończony błędem: ${j.error ?? "brak opisu"}`, {
-        job_id: data.jobId,
-        error: j.error,
-      });
-    }
-
-    // Persist to cache when the job finishes successfully.
-    if (
-      DONE_STATUSES.includes(status) &&
-      Array.isArray(j.listings) &&
-      data.cacheKey &&
-      data.criteria
-    ) {
-      try {
-        const { configSnapshot } = await buildScrapeCacheKey(data.criteria);
-        await writeScrapeCache({
-          cacheKey: data.cacheKey,
-          criteria: data.criteria,
-          configSnapshot,
-          listings: j.listings,
-          source: baseUrl,
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        await log.warn("poll_http", `Poll HTTP ${res.status} dla job ${data.jobId}`, {
+          job_id: data.jobId,
+          http_status: res.status,
+          body_preview: body.slice(0, 200),
         });
-      } catch {
-        // Cache write failures should not break the user-visible flow.
+        if (res.status === 404) {
+          return {
+            status: "not_found",
+            error: `Job ${data.jobId} nie istnieje na serwerze scrapera.`,
+          };
+        }
+        throw new Error(`Poll HTTP ${res.status}: ${body.slice(0, 200)}`);
       }
-    }
+      const j = (await res.json()) as {
+        status?: string;
+        listings?: CarLot[];
+        error?: string;
+        progress?: number;
+        step?: string;
+        message?: string;
+        current?: number;
+        total?: number;
+        phase?: string;
+        no_results?: boolean;
+        client_report_url?: string;
+        polecane_index_url?: string;
+        client_reports_html?: string[];
+        broker_reports_html?: string[];
+        artifact_urls?: {
+          client_report?: string;
+          analysis_json?: string;
+          ai_prompt?: string;
+          ai_input?: string;
+          polecane_index?: string;
+          broker_bundle?: string;
+          client_bundle?: string;
+          client_short_bundle?: string;
+        };
+        report_endpoints?: {
+          client_html?: string;
+          broker_html?: string;
+          client_llm?: string;
+          broker_llm?: string;
+          offer_email_html?: string;
+          pdf?: string;
+        };
+      };
 
-    return {
-      status,
-      listings: j.listings,
-      error: j.error,
-      progress: typeof j.progress === "number" ? j.progress : undefined,
-      step: j.step,
-      message: j.message,
-      current: typeof j.current === "number" ? j.current : undefined,
-      total: typeof j.total === "number" ? j.total : undefined,
-      phase: j.phase,
-      no_results: j.no_results === true || (DONE_STATUSES.includes(status) && (j.listings?.length ?? 0) === 0),
-      client_report_url: j.client_report_url,
-      polecane_index_url: j.polecane_index_url,
-      client_reports_html: j.client_reports_html,
-      broker_reports_html: j.broker_reports_html,
-      artifact_urls: j.artifact_urls,
-      report_endpoints: j.report_endpoints,
-    };
-  });
+      const status = j.status ?? "unknown";
+      const DONE_STATUSES = ["done", "completed", "finished", "success", "complete"];
+
+      // Compose human-readable suffix for log message.
+      const parts: string[] = [`status: ${status}`];
+      if (j.phase) parts.push(`faza: ${j.phase}`);
+      if (j.step) parts.push(`krok: ${j.step}`);
+      if (typeof j.current === "number" && typeof j.total === "number") {
+        parts.push(`${j.current}/${j.total}`);
+      }
+      if (typeof j.progress === "number") {
+        parts.push(`${Math.round(j.progress * 100)}%`);
+      }
+
+      await log.info("poll", `Job ${data.jobId} — ${parts.join(" · ")}`, {
+        job_id: data.jobId,
+        status,
+        progress: j.progress,
+        step: j.step,
+        phase: j.phase,
+        current: j.current,
+        total: j.total,
+        message: j.message,
+      });
+
+      if (DONE_STATUSES.includes(status)) {
+        await log.info(
+          "done",
+          `Job ${data.jobId} zakończony, wyników: ${j.listings?.length ?? 0}`,
+          {
+            job_id: data.jobId,
+            listings_count: j.listings?.length ?? 0,
+          },
+        );
+      } else if (status === "failed" || status === "error") {
+        await log.error(
+          "job_failed",
+          `Job ${data.jobId} zakończony błędem: ${j.error ?? "brak opisu"}`,
+          {
+            job_id: data.jobId,
+            error: j.error,
+          },
+        );
+      }
+
+      // Persist to cache when the job finishes successfully.
+      if (
+        DONE_STATUSES.includes(status) &&
+        Array.isArray(j.listings) &&
+        data.cacheKey &&
+        data.criteria
+      ) {
+        try {
+          const { configSnapshot } = await buildScrapeCacheKey(data.criteria);
+          await writeScrapeCache({
+            cacheKey: data.cacheKey,
+            criteria: data.criteria,
+            configSnapshot,
+            listings: j.listings,
+            source: baseUrl,
+          });
+        } catch {
+          // Cache write failures should not break the user-visible flow.
+        }
+      }
+
+      return {
+        status,
+        listings: j.listings,
+        error: j.error,
+        progress: typeof j.progress === "number" ? j.progress : undefined,
+        step: j.step,
+        message: j.message,
+        current: typeof j.current === "number" ? j.current : undefined,
+        total: typeof j.total === "number" ? j.total : undefined,
+        phase: j.phase,
+        no_results:
+          j.no_results === true ||
+          (DONE_STATUSES.includes(status) && (j.listings?.length ?? 0) === 0),
+        client_report_url: j.client_report_url,
+        polecane_index_url: j.polecane_index_url,
+        client_reports_html: j.client_reports_html,
+        broker_reports_html: j.broker_reports_html,
+        artifact_urls: j.artifact_urls,
+        report_endpoints: j.report_endpoints,
+      };
+    },
+  );
 
 // Cancel a running scraper job.
 // Clear scrape cache. Pass cacheKey to drop a single entry, or omit to wipe all.
 export const clearScrapeCache = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       cacheKey: z.string().min(1).optional(),
@@ -1341,6 +1512,7 @@ export const clearScrapeCache = createServerFn({ method: "POST" })
 
 // Lista aktywnych zadań (running + queued) z Pythona — dla panelu w UI.
 export const listActiveScraperJobs = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .handler(async () => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -1357,15 +1529,15 @@ export const listActiveScraperJobs = createServerFn({ method: "GET" })
           label: string;
           status: "queued" | "running" | "done" | "error" | "cancelled" | "interrupted";
           phase?: string | null;
-          phase_info?: Record<string, any>;
+          phase_info?: Record<string, Json>;
           phases?: Array<{
             name: string;
             status: string;
-            info?: Record<string, any>;
+            info?: Record<string, Json>;
             started_at: string;
             finished_at?: string | null;
           }>;
-          criteria?: Record<string, any>;
+          criteria?: Record<string, Json>;
           created_at: string;
           finished_at?: string | null;
           listings_count?: number;
@@ -1379,6 +1551,7 @@ export const listActiveScraperJobs = createServerFn({ method: "GET" })
   });
 
 export const cancelScraperJob = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       jobId: z.string().min(1),
@@ -1434,12 +1607,16 @@ export const cancelScraperJob = createServerFn({ method: "POST" })
 // ---------- Operation logs ----------
 
 export const listLogs = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       clientId: z.string().uuid().nullable().optional(),
       recordId: z.string().uuid().nullable().optional(),
       operation: z.string().max(40).optional(),
-      levels: z.array(z.enum(["info", "warn", "error", "debug"])).max(4).optional(),
+      levels: z
+        .array(z.enum(["info", "warn", "error", "debug"]))
+        .max(4)
+        .optional(),
       from: z.string().datetime().optional(),
       to: z.string().datetime().optional(),
       limit: z.number().int().min(1).max(500).optional(),
@@ -1448,7 +1625,9 @@ export const listLogs = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     let q = supabaseAdmin
       .from("operation_logs")
-      .select("id, created_at, client_id, record_id, operation, step, level, message, details, duration_ms")
+      .select(
+        "id, created_at, client_id, record_id, operation, step, level, message, details, duration_ms",
+      )
       .order("created_at", { ascending: false })
       .limit(data.limit ?? 100);
     if (data.clientId) q = q.eq("client_id", data.clientId);
@@ -1465,6 +1644,7 @@ export const listLogs = createServerFn({ method: "GET" })
 // Logs scoped to a specific scraper job_id. Combines local operation_logs
 // (filtered by details->>job_id) with the scraper backend's own job logs if available.
 export const getJobLogs = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
   .handler(async ({ data }) => {
     type LogRow = {
@@ -1473,7 +1653,7 @@ export const getJobLogs = createServerFn({ method: "POST" })
       level: string;
       step: string | null;
       message: string;
-      details: any;
+      details: Json | null;
       source: "local" | "scraper";
     };
 
@@ -1485,15 +1665,24 @@ export const getJobLogs = createServerFn({ method: "POST" })
       .order("created_at", { ascending: true })
       .limit(500);
 
-    const local: LogRow[] = (localRows ?? []).map((r: any) => ({
-      id: r.id,
-      created_at: r.created_at,
-      level: r.level,
-      step: r.step,
-      message: r.message,
-      details: r.details,
-      source: "local" as const,
-    }));
+    const local: LogRow[] = (localRows ?? []).map(
+      (r: {
+        id: string;
+        created_at: string;
+        level: string;
+        step: string | null;
+        message: string;
+        details: Json | null;
+      }) => ({
+        id: r.id,
+        created_at: r.created_at,
+        level: r.level,
+        step: r.step,
+        message: r.message,
+        details: r.details,
+        source: "local" as const,
+      }),
+    );
 
     // 2) Scraper backend logs (best-effort, not all backends expose this).
     let scraper: LogRow[] = [];
@@ -1502,9 +1691,7 @@ export const getJobLogs = createServerFn({ method: "POST" })
     const token = process.env.SCRAPER_API_TOKEN;
     if (baseUrl) {
       try {
-        const headers: Record<string, string> = token
-          ? { Authorization: `Bearer ${token}` }
-          : {};
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(`${baseUrl}/api/jobs/${data.jobId}/logs`, { headers });
         if (res.ok) {
           const j = (await res.json()) as
@@ -1515,11 +1702,11 @@ export const getJobLogs = createServerFn({ method: "POST" })
                 step?: string;
                 message?: string;
                 msg?: string;
-                details?: unknown;
+                details?: Json;
               }>
             | { logs?: unknown[] };
           const arr = Array.isArray(j) ? j : Array.isArray(j.logs) ? j.logs : [];
-          scraper = arr.map((r, i) => {
+          scraper = arr.map((r: unknown, i) => {
             const row = r as {
               ts?: string;
               timestamp?: string;
@@ -1527,7 +1714,7 @@ export const getJobLogs = createServerFn({ method: "POST" })
               step?: string;
               message?: string;
               msg?: string;
-              details?: unknown;
+              details?: Json;
             };
             return {
               id: `scraper-${i}`,
@@ -1547,19 +1734,24 @@ export const getJobLogs = createServerFn({ method: "POST" })
       }
     }
 
-    const all = [...local, ...scraper].sort((a, b) =>
-      a.created_at.localeCompare(b.created_at),
-    );
+    const all = [...local, ...scraper].sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+    const localError = error
+      ? typeof error.message === "string"
+        ? error.message
+        : String(error)
+      : null;
 
     return {
       jobId: data.jobId,
       logs: all,
-      local_error: error?.message ?? null,
+      local_error: localError,
       scraper_error: scraperFetchError,
     };
   });
 
 export const clearLogs = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       clientId: z.string().uuid().nullable().optional(),
@@ -1587,24 +1779,28 @@ function getLogRetentionDays(): number {
   return Math.min(parsed, 3650);
 }
 
-export const getLogRetention = createServerFn({ method: "GET" }).handler(async () => {
-  return {
-    days: getLogRetentionDays(),
-    default: DEFAULT_LOG_RETENTION_DAYS,
-    source: process.env.LOG_RETENTION_DAYS ? "env" : "default",
-  };
-});
+export const getLogRetention = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    return {
+      days: getLogRetentionDays(),
+      default: DEFAULT_LOG_RETENTION_DAYS,
+      source: process.env.LOG_RETENTION_DAYS ? "env" : "default",
+    };
+  });
 
-export const cleanupLogs = createServerFn({ method: "POST" }).handler(async () => {
-  const days = getLogRetentionDays();
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const { error, count } = await supabaseAdmin
-    .from("operation_logs")
-    .delete({ count: "exact" })
-    .lt("created_at", cutoff);
-  if (error) throw new Error(error.message);
-  return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
-});
+export const cleanupLogs = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const days = getLogRetentionDays();
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const { error, count } = await supabaseAdmin
+      .from("operation_logs")
+      .delete({ count: "exact" })
+      .lt("created_at", cutoff);
+    if (error) throw new Error(error.message);
+    return { ok: true, retention_days: days, cutoff, deleted: count ?? 0 };
+  });
 
 export type SearchAuditEntry = {
   id: string;
@@ -1619,6 +1815,7 @@ export type SearchAuditEntry = {
 };
 
 export const listSearchAudit = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ limit: z.number().min(1).max(200).optional() }).parse)
   .handler(async ({ data }): Promise<{ entries: SearchAuditEntry[] }> => {
     const { data: rows, error } = await supabaseAdmin
@@ -1656,14 +1853,29 @@ function buildMockListings(criteria: ClientCriteria): CarLot[] {
   const wantCount = Math.min(Math.max(criteria.max_results ?? 12, 1), 50);
 
   const damages = [
-    "FRONT END", "REAR END", "ALL OVER", "MINOR DENT/SCRATCHES",
-    "HAIL", "SIDE", "UNDERCARRIAGE", "ROLLOVER", "MECHANICAL", "NORMAL WEAR",
+    "FRONT END",
+    "REAR END",
+    "ALL OVER",
+    "MINOR DENT/SCRATCHES",
+    "HAIL",
+    "SIDE",
+    "UNDERCARRIAGE",
+    "ROLLOVER",
+    "MECHANICAL",
+    "NORMAL WEAR",
   ];
   const states = ["NJ", "CA", "TX", "NY", "FL", "GA", "IL", "PA", "OH", "AZ"];
   const cities: Record<string, string> = {
-    NJ: "Newark", CA: "Adelanto", TX: "Houston", NY: "Long Island",
-    FL: "Miami", GA: "Atlanta", IL: "Chicago", PA: "Philadelphia",
-    OH: "Columbus", AZ: "Phoenix",
+    NJ: "Newark",
+    CA: "Adelanto",
+    TX: "Houston",
+    NY: "Long Island",
+    FL: "Miami",
+    GA: "Atlanta",
+    IL: "Chicago",
+    PA: "Philadelphia",
+    OH: "Columbus",
+    AZ: "Phoenix",
   };
   const sources: Array<"copart" | "iaai"> = ["copart", "iaai"];
   const titleStatuses = ["CLEAN", "SALVAGE", "REBUILT"];
@@ -1705,6 +1917,7 @@ function buildMockListings(criteria: ClientCriteria): CarLot[] {
 type LotMeta = { rank_group?: "TOP" | "REJECTED"; rank_position?: number; rank_reason?: string };
 
 export const runLotReports = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       criteria: z.unknown().transform(parseCriteria),
@@ -1724,7 +1937,11 @@ export const runLotReports = createServerFn({ method: "POST" })
     const listings = data.listings as CarLot[];
 
     // Read DB-stored AI provider preference
-    const { data: cfgRow } = await supabaseAdmin.from("app_config").select("ai_analysis_mode, ai_fallback_mode").eq("id", 1).single();
+    const { data: cfgRow } = await supabaseAdmin
+      .from("app_config")
+      .select("ai_analysis_mode, ai_fallback_mode")
+      .eq("id", 1)
+      .single();
     const dbPreference = cfgRow?.ai_analysis_mode ?? null;
     const fallbackMode = (cfgRow?.ai_fallback_mode as "error_only" | "race_both") ?? "error_only";
 
@@ -1758,7 +1975,12 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
       await log.info(
         "ai_response",
         `AI [${result.provider}${result.usedFallback ? " fallback" : ""}]: ${raw.length} znaków, ${result.usage.input_tokens}+${result.usage.output_tokens} tokenów`,
-        { response_chars: raw.length, model: result.model, provider: result.provider, usage: result.usage },
+        {
+          response_chars: raw.length,
+          model: result.model,
+          provider: result.provider,
+          usage: result.usage,
+        },
         Date.now() - startedAt,
       );
     } catch (err) {
@@ -1780,17 +2002,24 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
     }
 
     type LotWithMeta = Lot & { _meta?: LotMeta };
-    const lots = (parsed as LotWithMeta[]).filter((x) => x && typeof x === "object" && x.lot_id);
+    const lots = (parsed as LotWithMeta[])
+      .filter((x) => x && typeof x === "object" && x.lot_id)
+      .slice(0, 5);
 
-    const withImages = await Promise.all(
-      lots.map(async (lot) => {
-        const urls = Array.isArray(lot.image_urls) ? lot.image_urls : [];
-        const images = await fetchImagesAsBase64(urls, 8);
-        const meta = (lot._meta ?? {}) as LotMeta;
-        const group: "TOP" | "REJECTED" = meta.rank_group === "REJECTED" ? "REJECTED" : "TOP";
-        return { lot, images, group, meta };
-      }),
-    );
+    const reportImageBudget = createReportImageBudget();
+    const withImages: Array<{
+      lot: LotWithMeta;
+      images: string[];
+      group: "TOP" | "REJECTED";
+      meta: LotMeta;
+    }> = [];
+    for (const lot of lots) {
+      const urls = Array.isArray(lot.image_urls) ? lot.image_urls : [];
+      const images = await fetchImagesAsBase64(urls, 8, reportImageBudget);
+      const meta = (lot._meta ?? {}) as LotMeta;
+      const group: "TOP" | "REJECTED" = meta.rank_group === "REJECTED" ? "REJECTED" : "TOP";
+      withImages.push({ lot, images, group, meta });
+    }
 
     withImages.sort((a, b) => {
       if (a.group !== b.group) return a.group === "TOP" ? -1 : 1;
@@ -1841,94 +2070,101 @@ Wybierz TOP3 + BOTTOM2 i zwróć tablicę kompletnych obiektów LOT zgodnych ze 
     };
   });
 
-
 // ---------- Report bundle (HTML + JSON ZIP) ----------
 
 export const getReportBundle = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ recordId: z.string().uuid() }).parse)
-  .handler(async ({ data }): Promise<{
-    filename: string;
-    base64: string;
-    size: number;
-  }> => {
-    const { zipSync, strToU8 } = await import("fflate");
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      filename: string;
+      base64: string;
+      size: number;
+    }> => {
+      const { zipSync, strToU8 } = await import("fflate");
 
-    const { data: row, error } = await supabaseAdmin
-      .from("records")
-      .select("id, title, status, created_at, criteria, listings, analysis, report_html, mail_html, client_id, clients(name)")
-      .eq("id", data.recordId)
-      .maybeSingle();
+      const { data: row, error } = await supabaseAdmin
+        .from("records")
+        .select(
+          "id, title, status, created_at, criteria, listings, analysis, report_html, mail_html, client_id, clients(name)",
+        )
+        .eq("id", data.recordId)
+        .maybeSingle();
 
-    if (error) throw new Error(error.message);
-    if (!row) throw new Error("Rekord nie istnieje");
+      if (error) throw new Error(error.message);
+      if (!row) throw new Error("Rekord nie istnieje");
 
-    const analyzed = (row.analysis ?? []) as AnalyzedLot[];
-    const clientName =
-      (row.clients as { name?: string } | null)?.name ?? "Klient";
-    const generatedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
+      const analyzed = (row.analysis ?? []) as AnalyzedLot[];
+      const clientName = (row.clients as { name?: string } | null)?.name ?? "Klient";
+      const generatedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
 
-    // Render HTML on-the-fly if not stored yet (handles older records).
-    let reportHtml = row.report_html as string | null;
-    if (!reportHtml && analyzed.length > 0) {
-      reportHtml = renderReportHtml({
-        clientName,
-        generatedAt,
-        lots: [...analyzed].sort((a, b) => b.analysis.score - a.analysis.score),
-        searchedBy: (row.criteria as { searched_by?: string } | null)?.searched_by ?? null,
-      });
-    }
+      // Render HTML on-the-fly if not stored yet (handles older records).
+      let reportHtml = row.report_html as string | null;
+      if (!reportHtml && analyzed.length > 0) {
+        reportHtml = renderReportHtml({
+          clientName,
+          generatedAt,
+          lots: [...analyzed].sort((a, b) => b.analysis.score - a.analysis.score),
+          searchedBy: (row.criteria as { searched_by?: string } | null)?.searched_by ?? null,
+        });
+      }
 
-    const meta = {
-      record_id: row.id,
-      title: row.title,
-      status: row.status,
-      created_at: row.created_at,
-      generated_at: generatedAt,
-      client: { id: row.client_id, name: clientName },
-      criteria: row.criteria,
-      lots_count: Array.isArray(row.listings) ? row.listings.length : 0,
-      analyzed_count: analyzed.length,
-    };
+      const meta = {
+        record_id: row.id,
+        title: row.title,
+        status: row.status,
+        created_at: row.created_at,
+        generated_at: generatedAt,
+        client: { id: row.client_id, name: clientName },
+        criteria: row.criteria,
+        lots_count: Array.isArray(row.listings) ? row.listings.length : 0,
+        analyzed_count: analyzed.length,
+      };
 
-    const files: Record<string, Uint8Array> = {
-      "report.html": strToU8(reportHtml ?? "<!doctype html><p>Brak raportu</p>"),
-      "analysis.json": strToU8(JSON.stringify(analyzed, null, 2)),
-      "lots.json": strToU8(JSON.stringify(row.listings ?? [], null, 2)),
-      "meta.json": strToU8(JSON.stringify(meta, null, 2)),
-    };
-    if (row.mail_html) {
-      files["mail.html"] = strToU8(row.mail_html as string);
-    }
+      const files: Record<string, Uint8Array> = {
+        "report.html": strToU8(reportHtml ?? "<!doctype html><p>Brak raportu</p>"),
+        "analysis.json": strToU8(JSON.stringify(analyzed, null, 2)),
+        "lots.json": strToU8(JSON.stringify(row.listings ?? [], null, 2)),
+        "meta.json": strToU8(JSON.stringify(meta, null, 2)),
+      };
+      if (row.mail_html) {
+        files["mail.html"] = strToU8(row.mail_html as string);
+      }
 
-    const zipped = zipSync(files, { level: 6 });
-    // Convert to base64 (chunked to avoid call-stack issues on Workers).
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < zipped.length; i += chunk) {
-      binary += String.fromCharCode(...zipped.subarray(i, i + chunk));
-    }
-    const base64 = btoa(binary);
+      const zipped = zipSync(files, { level: 6 });
+      // Convert to base64 (chunked to avoid call-stack issues on Workers).
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < zipped.length; i += chunk) {
+        binary += String.fromCharCode(...zipped.subarray(i, i + chunk));
+      }
+      const base64 = btoa(binary);
 
-    const safeTitle = (row.title ?? "raport")
-      .replace(/[^a-zA-Z0-9_-]+/g, "_")
-      .slice(0, 60) || "raport";
-    const datePart = new Date(row.created_at as string).toISOString().slice(0, 10);
-    const filename = `${safeTitle}_${datePart}.zip`;
+      const safeTitle =
+        (row.title ?? "raport").replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 60) || "raport";
+      const datePart = new Date(row.created_at as string).toISOString().slice(0, 10);
+      const filename = `${safeTitle}_${datePart}.zip`;
 
-    return { filename, base64, size: zipped.length };
-  });
+      return { filename, base64, size: zipped.length };
+    },
+  );
 
 // ---------- Retry logging ----------
 
 export const logRetryEvent = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator((d: unknown) =>
-    z.object({
-      recordId: z.string(),
-      clientId: z.string().optional(),
-      criteria: z.record(z.unknown()),
-      retryCount: z.number(),
-      source: z.enum(["manual", "auto"]).default("manual"),
-    }).parse(d),
+    z
+      .object({
+        recordId: z.string(),
+        clientId: z.string().optional(),
+        criteria: z.record(z.unknown()),
+        retryCount: z.number(),
+        source: z.enum(["manual", "auto"]).default("manual"),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const log = makeLogger({
@@ -1936,11 +2172,15 @@ export const logRetryEvent = createServerFn({ method: "POST" })
       recordId: data.recordId,
       clientId: data.clientId ?? null,
     });
-    await log.info("retry_start", `Ponowne uruchomienie analizy (${data.source}), próba ${data.retryCount + 1}`, {
-      criteria: data.criteria,
-      source: data.source,
-      retry_count: data.retryCount,
-    });
+    await log.info(
+      "retry_start",
+      `Ponowne uruchomienie analizy (${data.source}), próba ${data.retryCount + 1}`,
+      {
+        criteria: data.criteria,
+        source: data.source,
+        retry_count: data.retryCount,
+      },
+    );
     return { ok: true };
   });
 
@@ -1948,77 +2188,102 @@ export const logRetryEvent = createServerFn({ method: "POST" })
 
 type ServiceStatus = "ok" | "down" | "unconfigured";
 
-export const checkHealth = createServerFn({ method: "GET" }).handler(async (): Promise<{
-  checkedAt: string;
-  durationMs: number;
-  services: {
-    database: { status: ServiceStatus; error?: string };
-    scraper: { status: ServiceStatus; url?: string; error?: string };
-    ai: { status: ServiceStatus; provider?: string; model?: string };
-  };
-}> => {
-  const startedAt = Date.now();
+export const checkHealth = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(
+    async (): Promise<{
+      checkedAt: string;
+      durationMs: number;
+      services: {
+        database: { status: ServiceStatus; error?: string };
+        scraper: { status: ServiceStatus; url?: string; error?: string };
+        ai: { status: ServiceStatus; provider?: string; model?: string };
+      };
+    }> => {
+      const startedAt = Date.now();
 
-  // Database
-  let dbStatus: ServiceStatus = "ok";
-  let dbError: string | undefined;
-  try {
-    const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
-    if (error) { dbStatus = "down"; dbError = error.message; }
-  } catch (e) {
-    dbStatus = "down";
-    dbError = (e as Error).message;
-  }
-
-  // Scraper
-  const scraperUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-  const scraperToken = process.env.SCRAPER_API_TOKEN;
-  let scraperStatus: ServiceStatus = "unconfigured";
-  let scraperError: string | undefined;
-  if (scraperUrl) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 5000);
-      const res = await fetch(`${scraperUrl}/health`, {
-        signal: ctrl.signal,
-        headers: scraperToken ? { Authorization: `Bearer ${scraperToken}` } : {},
-      });
-      clearTimeout(timer);
-      if (res.ok) {
-        scraperStatus = "ok";
-      } else {
-        scraperStatus = "down";
-        scraperError = `HTTP ${res.status}`;
+      // Database
+      let dbStatus: ServiceStatus = "ok";
+      let dbError: string | undefined;
+      try {
+        const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
+        if (error) {
+          dbStatus = "down";
+          dbError = error.message;
+        }
+      } catch (e) {
+        dbStatus = "down";
+        dbError = (e as Error).message;
       }
-    } catch (e) {
-      scraperStatus = "down";
-      scraperError = (e as Error).message?.includes("abort") ? "Timeout (5s)" : (e as Error).message;
-    }
-  }
 
-  // AI
-  const aiProvider = process.env.AI_PROVIDER || (process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.GEMINI_API_KEY ? "gemini" : "none");
-  const hasAiKey = !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY);
-  const aiModel = aiProvider === "anthropic"
-    ? (process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6")
-    : aiProvider === "gemini"
-      ? (process.env.GEMINI_MODEL || "gemini-2.5-flash")
-      : undefined;
+      // Scraper
+      const scraperUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+      const scraperToken = process.env.SCRAPER_API_TOKEN;
+      let scraperStatus: ServiceStatus = "unconfigured";
+      let scraperError: string | undefined;
+      if (scraperUrl) {
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 5000);
+          const res = await fetch(`${scraperUrl}/health`, {
+            signal: ctrl.signal,
+            headers: scraperToken ? { Authorization: `Bearer ${scraperToken}` } : {},
+          });
+          clearTimeout(timer);
+          if (res.ok) {
+            scraperStatus = "ok";
+          } else {
+            scraperStatus = "down";
+            scraperError = `HTTP ${res.status}`;
+          }
+        } catch (e) {
+          scraperStatus = "down";
+          scraperError = (e as Error).message?.includes("abort")
+            ? "Timeout (5s)"
+            : (e as Error).message;
+        }
+      }
 
-  return {
-    checkedAt: new Date().toISOString(),
-    durationMs: Date.now() - startedAt,
-    services: {
-      database: { status: dbStatus, error: dbError },
-      scraper: { status: scraperStatus, url: scraperUrl ? new URL(scraperUrl).host : undefined, error: scraperError },
-      ai: { status: hasAiKey ? "ok" : "unconfigured", provider: aiProvider !== "none" ? aiProvider : undefined, model: aiModel },
+      // AI
+      const aiProvider =
+        process.env.AI_PROVIDER ||
+        (process.env.ANTHROPIC_API_KEY
+          ? "anthropic"
+          : process.env.GEMINI_API_KEY
+            ? "gemini"
+            : "none");
+      const hasAiKey = !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY);
+      const aiModel =
+        aiProvider === "anthropic"
+          ? process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6"
+          : aiProvider === "gemini"
+            ? process.env.GEMINI_MODEL || "gemini-2.5-flash"
+            : undefined;
+
+      return {
+        checkedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAt,
+        services: {
+          database: { status: dbStatus, error: dbError },
+          scraper: {
+            status: scraperStatus,
+            url: scraperUrl ? new URL(scraperUrl).host : undefined,
+            error: scraperError,
+          },
+          ai: {
+            status: hasAiKey ? "ok" : "unconfigured",
+            provider: aiProvider !== "none" ? aiProvider : undefined,
+            model: aiModel,
+          },
+        },
+      };
     },
-  };
-});
+  );
 
 // ---------- LLM Cache stats ----------
 
 export const getLlmCacheStats = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .handler(async () => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -2041,6 +2306,7 @@ export const getLlmCacheStats = createServerFn({ method: "GET" })
   });
 
 export const clearLlmCache = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .handler(async () => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -2059,36 +2325,40 @@ export const clearLlmCache = createServerFn({ method: "POST" })
 
 // ---------- Database Browser (Python backend) ----------
 
-export const getDbOverview = createServerFn({ method: "GET" }).handler(async () => {
-  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-  const token = process.env.SCRAPER_API_TOKEN;
-  if (!baseUrl || !token) return null;
-  try {
-    const res = await fetch(`${baseUrl}/api/db/overview`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-});
+export const getDbOverview = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return null;
+    try {
+      const res = await fetch(`${baseUrl}/api/db/overview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  });
 
-export const listBackendClients = createServerFn({ method: "GET" }).handler(async () => {
-  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-  const token = process.env.SCRAPER_API_TOKEN;
-  if (!baseUrl || !token) return [];
-  try {
-    const res = await fetch(`${baseUrl}/api/clients`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.clients ?? [];
-  } catch {
-    return [];
-  }
-});
+export const listBackendClients = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return [];
+    try {
+      const res = await fetch(`${baseUrl}/api/clients`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.clients ?? [];
+    } catch {
+      return [];
+    }
+  });
 
 export type BackendRecord = {
   id: number;
@@ -2106,11 +2376,14 @@ export type BackendRecord = {
 };
 
 export const getBackendRecordsList = createServerFn({ method: "GET" })
-  .inputValidator(z.object({
-    query: z.string().optional(),
-    status: z.string().optional(),
-    limit: z.number().optional(),
-  }).parse)
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      query: z.string().optional(),
+      status: z.string().optional(),
+      limit: z.number().optional(),
+    }).parse,
+  )
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
@@ -2124,7 +2397,7 @@ export const getBackendRecordsList = createServerFn({ method: "GET" })
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return { records: [] as BackendRecord[], total: 0 };
-      const json = await res.json() as { records: BackendRecord[]; total: number };
+      const json = (await res.json()) as { records: BackendRecord[]; total: number };
       return { records: json.records ?? [], total: json.total ?? 0 };
     } catch {
       return { records: [] as BackendRecord[], total: 0 };
@@ -2132,6 +2405,7 @@ export const getBackendRecordsList = createServerFn({ method: "GET" })
   });
 
 export const deleteBackendRecord = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2144,24 +2418,39 @@ export const deleteBackendRecord = createServerFn({ method: "POST" })
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as {
+        detail?: string;
+        record_id?: string;
+        files_removed?: number;
+        bytes_freed?: number;
+        skipped?: string[];
+      };
       if (!res.ok) {
-        return { ok: false as const, status: res.status, detail: (json as any)?.detail || `HTTP ${res.status}` };
+        return {
+          ok: false as const,
+          status: res.status,
+          detail: json.detail || `HTTP ${res.status}`,
+        };
       }
       return {
         ok: true as const,
         status: res.status,
-        record_id: (json as any)?.record_id ?? data.id,
-        files_removed: (json as any)?.files_removed ?? 0,
-        bytes_freed: (json as any)?.bytes_freed ?? 0,
-        skipped: (json as any)?.skipped ?? [],
+        record_id: json.record_id ?? data.id,
+        files_removed: json.files_removed ?? 0,
+        bytes_freed: json.bytes_freed ?? 0,
+        skipped: json.skipped ?? [],
       };
-    } catch (e: any) {
-      return { ok: false as const, status: 0, detail: e?.message || "Network error" };
+    } catch (error) {
+      return {
+        ok: false as const,
+        status: 0,
+        detail: error instanceof Error ? error.message : "Network error",
+      };
     }
   });
 
 export const getBackendRecordDetails = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2192,17 +2481,18 @@ async function scraperFetch(path: string, init?: RequestInit) {
       ...(init?.headers || {}),
     },
   });
-  const json = await res.json().catch(() => ({}));
+  const json = (await res.json().catch(() => ({}))) as { detail?: string };
   if (!res.ok) {
-    const detail = (json as any)?.detail || `HTTP ${res.status}`;
-    const err: any = new Error(detail);
-    err.status = res.status;
-    throw err;
+    const detail = json.detail || `HTTP ${res.status}`;
+    const error = new Error(detail) as Error & { status: number };
+    error.status = res.status;
+    throw error;
   }
   return json;
 }
 
 export const getRecordFeedback = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ recordId: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     try {
@@ -2213,13 +2503,16 @@ export const getRecordFeedback = createServerFn({ method: "GET" })
   });
 
 export const submitLotFeedback = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    recordId: z.coerce.string().min(1),
-    lot_id: z.string().min(1),
-    source: z.enum(["copart", "iaai"]),
-    vote: z.enum(["up", "down"]),
-    reason: z.string().max(500).optional(),
-  }).parse)
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      recordId: z.coerce.string().min(1),
+      lot_id: z.string().min(1),
+      source: z.enum(["copart", "iaai"]),
+      vote: z.enum(["up", "down"]),
+      reason: z.string().max(500).optional(),
+    }).parse,
+  )
   .handler(async ({ data }) => {
     const { recordId, ...body } = data;
     return await scraperFetch(`/api/records/${recordId}/feedback`, {
@@ -2229,25 +2522,29 @@ export const submitLotFeedback = createServerFn({ method: "POST" })
   });
 
 export const deleteLotFeedback = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    recordId: z.coerce.string().min(1),
-    lot_id: z.string().min(1),
-    source: z.enum(["copart", "iaai"]),
-  }).parse)
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      recordId: z.coerce.string().min(1),
+      lot_id: z.string().min(1),
+      source: z.enum(["copart", "iaai"]),
+    }).parse,
+  )
   .handler(async ({ data }) => {
     const params = new URLSearchParams({ source: data.source });
-    return await scraperFetch(
-      `/api/records/${data.recordId}/feedback/${data.lot_id}?${params}`,
-      { method: "DELETE" },
-    );
+    return await scraperFetch(`/api/records/${data.recordId}/feedback/${data.lot_id}?${params}`, {
+      method: "DELETE",
+    });
   });
 
 export const analyzeFeedback = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .handler(async () => {
     return await scraperFetch(`/api/feedback/analyze`, { method: "POST" });
   });
 
 export const listAllJobs = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ limit: z.number().optional() }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2268,6 +2565,7 @@ export const listAllJobs = createServerFn({ method: "GET" })
   });
 
 export const getJobDetails = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2285,6 +2583,7 @@ export const getJobDetails = createServerFn({ method: "GET" })
   });
 
 export const listLlmCacheEntries = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ limit: z.number().optional() }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2305,6 +2604,7 @@ export const listLlmCacheEntries = createServerFn({ method: "GET" })
   });
 
 export const deleteLlmCacheEntry = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ key: z.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2319,6 +2619,7 @@ export const deleteLlmCacheEntry = createServerFn({ method: "POST" })
   });
 
 export const listHtmlCache = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ source: z.string().optional(), limit: z.number().optional() }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2340,12 +2641,16 @@ export const listHtmlCache = createServerFn({ method: "GET" })
   });
 
 export const fetchAuthHtml = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ path: z.string().min(1).max(500) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl || !token) throw new Error("Backend not configured");
-    if (!data.path.startsWith("/api/llm-cache/entry/") && !data.path.startsWith("/api/html-cache/")) {
+    if (
+      !data.path.startsWith("/api/llm-cache/entry/") &&
+      !data.path.startsWith("/api/html-cache/")
+    ) {
       throw new Error("Forbidden path");
     }
     const res = await fetch(`${baseUrl}${data.path}`, {
@@ -2358,6 +2663,7 @@ export const fetchAuthHtml = createServerFn({ method: "POST" })
 // ---------- Fetch auth POST (for rich reports) ----------
 
 export const fetchAuthPostHtml = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ path: z.string().min(1).max(500), body: z.any() }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2381,17 +2687,20 @@ export const fetchAuthPostHtml = createServerFn({ method: "POST" })
     return res.text();
   });
 export const regenerateBundles = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    recordId: z.number().int(),
-    engine: z.enum(["template", "hybrid"]).optional().default("template"),
-  }).parse)
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      recordId: z.number().int(),
+      engine: z.enum(["template", "hybrid"]).optional().default("template"),
+    }).parse,
+  )
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl || !token) throw new Error("Backend not configured");
     const res = await fetch(
       `${baseUrl}/api/records/${data.recordId}/regenerate-bundles?engine=${data.engine}`,
-      { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
     );
     if (!res.ok) throw new Error(`Regen HTTP ${res.status}`);
     return res.json();
@@ -2400,6 +2709,7 @@ export const regenerateBundles = createServerFn({ method: "POST" })
 // ---------- Parse client message ----------
 
 export const parseClientMessage = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ message: z.string().min(1).max(5000) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
@@ -2453,22 +2763,24 @@ export const parseClientMessage = createServerFn({ method: "POST" })
 // ---------- Batch Search ----------
 
 export const batchSearch = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
-    z
-      .object({
-        searches: z
-          .array(z.object({ criteria: z.record(z.unknown()) }))
-          .min(1)
-          .max(20),
-      })
-      .parse,
+    z.object({
+      searches: z
+        .array(z.object({ criteria: z.record(z.unknown()) }))
+        .min(1)
+        .max(20),
+    }).parse,
   )
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
     const token = process.env.SCRAPER_API_TOKEN;
     if (!baseUrl || !token) throw new Error("Backend not configured");
 
-    devLog("http", "criteria:sent:batchSearch", `→ batchSearch: payload wysłany do backendu`, { payload: data, endpoint: `${baseUrl}/api/search/batch` });
+    devLog("http", "criteria:sent:batchSearch", `→ batchSearch: payload wysłany do backendu`, {
+      payload: data,
+      endpoint: `${baseUrl}/api/search/batch`,
+    });
     const res = await fetch(`${baseUrl}/api/search/batch`, {
       method: "POST",
       headers: {
@@ -2497,35 +2809,38 @@ export const batchSearch = createServerFn({ method: "POST" })
 
 // ---------- Model Normalizations ----------
 
-export const getModelNormalizations = createServerFn({ method: "GET" }).handler(async () => {
-  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-  const token = process.env.SCRAPER_API_TOKEN;
-  if (!baseUrl || !token) return { items: [] };
-  try {
-    const res = await fetch(`${baseUrl}/api/model-normalizations`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return { items: [] };
-    return res.json() as Promise<{
-      items: Array<{
-        id: string | number;
-        make: string;
-        original_text: string;
-        normalized_model: string;
-        reason?: string;
-        verified_count?: number;
+export const getModelNormalizations = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+    const token = process.env.SCRAPER_API_TOKEN;
+    if (!baseUrl || !token) return { items: [] };
+    try {
+      const res = await fetch(`${baseUrl}/api/model-normalizations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { items: [] };
+      return res.json() as Promise<{
+        items: Array<{
+          id: string | number;
+          make: string;
+          original_text: string;
+          normalized_model: string;
+          reason?: string;
+          verified_count?: number;
+        }>;
+        stats?: {
+          total: number;
+          by_make: Record<string, number>;
+        };
       }>;
-      stats?: {
-        total: number;
-        by_make: Record<string, number>;
-      };
-    }>;
-  } catch {
-    return { items: [] };
-  }
-});
+    } catch {
+      return { items: [] };
+    }
+  });
 
 export const deleteModelNormalization = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");

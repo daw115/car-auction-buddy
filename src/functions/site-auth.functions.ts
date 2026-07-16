@@ -2,14 +2,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  assertSiteAuthRateLimit,
+  getSiteAuthRateLimitKey,
+  registerSiteAuthFailure,
+  resetSiteAuthFailures,
+} from "@/server/site-auth-rate-limit.server";
+import { clearSiteSession, getSiteSession, setSiteSession } from "@/server/site-session.server";
 
 const SITE_USERS = ["Dawid", "Janek", "Iga", "Monte"] as const;
 const usernameSchema = z.enum(SITE_USERS);
-
-// Internal site gate "master" password used only to bootstrap a personal
-// password the first time a user logs in. Kept server-side; can be overridden
-// via the SITE_MASTER_PASSWORD secret.
-const FALLBACK_MASTER_PASSWORD = "carbuddy2026";
 
 function hashPassword(password: string, saltHex: string): string {
   const salt = Buffer.from(saltHex, "hex");
@@ -51,31 +53,38 @@ export const siteUserLogin = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
+    const rateKey = getSiteAuthRateLimitKey(data.username);
+    await assertSiteAuthRateLimit(rateKey);
+
     const { data: row, error } = await supabaseAdmin
       .from("site_user_passwords")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("password_hash, password_salt" as any)
+      .select("password_hash, password_salt")
       .eq("username", data.username)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!row) return { ok: false as const };
+    if (!row) {
+      await registerSiteAuthFailure(rateKey);
+      return { ok: false as const };
+    }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r = row as any;
-    const storedHash: string = r.password_hash;
-    const storedSalt: string | null = r.password_salt ?? null;
+    const storedHash = row.password_hash;
+    const storedSalt = row.password_salt;
 
     if (storedSalt) {
       const candidate = hashPassword(data.password, storedSalt);
-      return { ok: safeEqualHex(candidate, storedHash) };
+      const ok = safeEqualHex(candidate, storedHash);
+      if (ok) {
+        await resetSiteAuthFailures(rateKey);
+        setSiteSession(data.username);
+      } else {
+        await registerSiteAuthFailure(rateKey);
+      }
+      return { ok };
     }
 
     // Legacy: pre-migration rows stored unsalted SHA-256 hex of the password.
     const legacy = Buffer.from(
-      await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(data.password),
-      ),
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data.password)),
     ).toString("hex");
     if (legacy.length === storedHash.length && safeEqualHex(legacy, storedHash)) {
       // Upgrade in place to salted scrypt.
@@ -83,11 +92,17 @@ export const siteUserLogin = createServerFn({ method: "POST" })
       const newHash = hashPassword(data.password, newSalt);
       await supabaseAdmin
         .from("site_user_passwords")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ password_hash: newHash, password_salt: newSalt, updated_at: new Date().toISOString() } as any)
+        .update({
+          password_hash: newHash,
+          password_salt: newSalt,
+          updated_at: new Date().toISOString(),
+        })
         .eq("username", data.username);
+      await resetSiteAuthFailures(rateKey);
+      setSiteSession(data.username);
       return { ok: true as const };
     }
+    await registerSiteAuthFailure(rateKey);
     return { ok: false as const };
   });
 
@@ -102,22 +117,44 @@ export const siteUserSetPassword = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const expectedMaster =
-      process.env.SITE_MASTER_PASSWORD || FALLBACK_MASTER_PASSWORD;
+    const rateKey = getSiteAuthRateLimitKey(data.username);
+    await assertSiteAuthRateLimit(rateKey);
+
+    const expectedMaster = process.env.SITE_MASTER_PASSWORD;
+    if (!expectedMaster) {
+      throw new Error("SITE_MASTER_PASSWORD is not configured.");
+    }
     if (data.masterPassword !== expectedMaster) {
+      await registerSiteAuthFailure(rateKey);
       return { ok: false as const, error: "master" as const };
     }
     const salt = randomBytes(16).toString("hex");
     const hash = hashPassword(data.newPassword, salt);
-    const { error } = await supabaseAdmin
-      .from("site_user_passwords")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .upsert({
-        username: data.username,
-        password_hash: hash,
-        password_salt: salt,
-        updated_at: new Date().toISOString(),
-      } as any);
+    const { error } = await supabaseAdmin.from("site_user_passwords").upsert({
+      username: data.username,
+      password_hash: hash,
+      password_salt: salt,
+      updated_at: new Date().toISOString(),
+    });
     if (error) throw new Error(error.message);
+    await resetSiteAuthFailures(rateKey);
+    setSiteSession(data.username);
     return { ok: true as const };
   });
+
+export const siteUserSession = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    const session = getSiteSession();
+    return session
+      ? { authenticated: true as const, username: session.sub }
+      : { authenticated: false as const, username: null };
+  } catch (error) {
+    console.error("[site-auth] session status failed", error);
+    return { authenticated: false as const, username: null };
+  }
+});
+
+export const siteUserLogout = createServerFn({ method: "POST" }).handler(async () => {
+  clearSiteSession();
+  return { ok: true as const };
+});

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { z } from "zod";
 
 const criteriaSchema = z.object({}).passthrough();
@@ -24,6 +25,7 @@ export type WatchEntry = {
 
 // POST /api/queue — add a recurring watch
 export const createWatchQueue = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       search: z.object({
@@ -54,6 +56,7 @@ export const createWatchQueue = createServerFn({ method: "POST" })
 
 // GET /api/queue — list watches
 export const listWatchQueue = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .handler(async (): Promise<{ watches: WatchEntry[]; count: number }> => {
     const { baseUrl, headers } = scraperBase();
     const res = await fetch(`${baseUrl}/api/queue`, { headers });
@@ -66,6 +69,7 @@ export const listWatchQueue = createServerFn({ method: "GET" })
 
 // DELETE /api/queue/{id} — cancel watch
 export const deleteWatchQueue = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().min(1) }).parse)
   .handler(async ({ data }) => {
     const { baseUrl, headers } = scraperBase();
