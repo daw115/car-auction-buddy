@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SYSTEM_PROMPT } from "@/server/prompts/system-prompt";
 import { parseAnalysisJson, DEFAULT_ANTHROPIC_MODEL } from "@/server/anthropic.server";
 import { callAI, detectProvider } from "@/server/ai.server";
-import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
+import { DEFAULT_GEMINI_MODEL, GEMINI_MODELS, testGeminiConnection } from "@/server/gemini.server";
 import { renderReportHtml, renderMailHtml } from "@/server/report";
 import { makeLogger, writeLog } from "@/server/logger.server";
 import { devLog } from "@/server/dev-logger.server";
@@ -305,10 +305,9 @@ export const testAnthropic = createServerFn({ method: "POST" })
 
 export const testGemini = createServerFn({ method: "POST" })
   .middleware([siteSessionMiddleware])
-  .inputValidator(z.object({ model: z.string().max(100).optional() }).parse)
+  .inputValidator(z.object({ model: z.enum(GEMINI_MODELS).optional() }).parse)
   .handler(async ({ data }) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!process.env.GEMINI_API_KEY) {
       return {
         ok: false,
         configured: false,
@@ -317,40 +316,13 @@ export const testGemini = createServerFn({ method: "POST" })
     }
     const model = data.model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "ping" }] }],
-          generationConfig: { maxOutputTokens: 16 },
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        return {
-          ok: false,
-          configured: true,
-          status: res.status,
-          model,
-          error: `Gemini HTTP ${res.status}: ${body.slice(0, 300)}`,
-        };
-      }
-      const json = (await res.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
-        modelVersion?: string;
-      };
-      const text = (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+      const result = await testGeminiConnection(data.model);
       return {
         ok: true,
         configured: true,
-        model: json.modelVersion ?? model,
-        sample: text.slice(0, 80),
-        usage: {
-          input_tokens: json.usageMetadata?.promptTokenCount ?? 0,
-          output_tokens: json.usageMetadata?.candidatesTokenCount ?? 0,
-        },
+        model: result.model,
+        sample: result.text.slice(0, 80),
+        usage: result.usage,
       };
     } catch (e) {
       return {
@@ -2257,7 +2229,7 @@ export const checkHealth = createServerFn({ method: "GET" })
         aiProvider === "anthropic"
           ? process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6"
           : aiProvider === "gemini"
-            ? process.env.GEMINI_MODEL || "gemini-2.5-flash"
+            ? process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL
             : undefined;
 
       return {

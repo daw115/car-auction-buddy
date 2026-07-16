@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { siteSessionGuard } from "@/server/site-session.server";
+import { DEFAULT_GEMINI_MODEL } from "@/server/gemini.server";
 
 export const Route = createFileRoute("/api/config")({
   server: {
@@ -24,7 +25,7 @@ export const Route = createFileRoute("/api/config")({
             ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
             ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
             GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
-            GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+            GEMINI_MODEL: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
             GEMINI_ENTERPRISE: !!(
               process.env.GEMINI_ENTERPRISE_SA_JSON && process.env.GEMINI_ENTERPRISE_PROJECT_ID
             ),

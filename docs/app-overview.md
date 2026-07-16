@@ -22,32 +22,32 @@ UI po polsku. Auth: bramka hasłem (PasswordGate) + per-user hasło.
 
 ## 2. Stack
 
-| Warstwa     | Technologia                                         |
-|-------------|-----------------------------------------------------|
-| Framework   | TanStack Start v1 (React 19 + SSR) na Vite 7        |
-| Runtime srv | Cloudflare Workers (`nodejs_compat`)                |
-| Routing     | File-based (`src/routes/`, flat dot convention)     |
-| UI          | shadcn/ui + Radix + Tailwind v4 (`oklch` tokeny)    |
-| Backend     | Lovable Cloud (Supabase managed) — DB / auth / fns  |
-| AI          | Anthropic + Gemini (server only)                    |
-| PDF         | `@react-pdf/renderer` (server)                      |
-| Pkg manager | bun                                                 |
+| Warstwa     | Technologia                                        |
+| ----------- | -------------------------------------------------- |
+| Framework   | TanStack Start v1 (React 19 + SSR) na Vite 7       |
+| Runtime srv | Cloudflare Workers (`nodejs_compat`)               |
+| Routing     | File-based (`src/routes/`, flat dot convention)    |
+| UI          | shadcn/ui + Radix + Tailwind v4 (`oklch` tokeny)   |
+| Backend     | Lovable Cloud (Supabase managed) — DB / auth / fns |
+| AI          | Anthropic + Gemini (server only)                   |
+| PDF         | `@react-pdf/renderer` (server)                     |
+| Pkg manager | bun                                                |
 
 ---
 
 ## 3. Mapa routes (frontend)
 
-| URL              | Plik                              | Rola                                              |
-|------------------|-----------------------------------|---------------------------------------------------|
-| `/`              | `src/routes/index.tsx`            | Główny panel: formularz wyszukiwania + status     |
-| `/dashboard`     | `src/routes/dashboard.tsx`        | Przegląd aktywnych jobów                          |
-| `/jobs`          | `src/routes/jobs.tsx`             | Lista joby + progres                              |
-| `/records`       | `src/routes/records.tsx`          | Rekordy z backendu (split-pane)                   |
-| `/watchlist`     | `src/routes/watchlist.tsx`        | Watchlist użytkownika                             |
-| `/calculator`    | `src/routes/calculator.tsx`       | Kalkulator kosztów importu                        |
-| `/database`      | `src/routes/database.tsx`         | Widok zapisanych danych                           |
-| `/settings`      | `src/routes/settings.tsx`         | Ustawienia użytkownika                            |
-| `/dev/logs`      | `src/routes/dev.logs.tsx`         | Stream logów (dev)                                |
+| URL           | Plik                        | Rola                                          |
+| ------------- | --------------------------- | --------------------------------------------- |
+| `/`           | `src/routes/index.tsx`      | Główny panel: formularz wyszukiwania + status |
+| `/dashboard`  | `src/routes/dashboard.tsx`  | Przegląd aktywnych jobów                      |
+| `/jobs`       | `src/routes/jobs.tsx`       | Lista joby + progres                          |
+| `/records`    | `src/routes/records.tsx`    | Rekordy z backendu (split-pane)               |
+| `/watchlist`  | `src/routes/watchlist.tsx`  | Watchlist użytkownika                         |
+| `/calculator` | `src/routes/calculator.tsx` | Kalkulator kosztów importu                    |
+| `/database`   | `src/routes/database.tsx`   | Widok zapisanych danych                       |
+| `/settings`   | `src/routes/settings.tsx`   | Ustawienia użytkownika                        |
+| `/dev/logs`   | `src/routes/dev.logs.tsx`   | Stream logów (dev)                            |
 
 Root layout: [`src/routes/__root.tsx`](../src/routes/__root.tsx) — sidebar +
 topbar + `<Outlet/>`.
@@ -58,16 +58,16 @@ topbar + `<Outlet/>`.
 
 Lokalizacja: `src/routes/api/`
 
-| Endpoint                              | Plik                                            | Opis                            |
-|---------------------------------------|-------------------------------------------------|---------------------------------|
-| `GET  /api/health`                    | `api/health.ts`                                 | Healthcheck                     |
-| `GET  /api/version`                   | `api/version.ts`                                | Wersja builda                   |
-| `GET  /api/config`                    | `api/config.ts`                                 | Status env + app_config         |
-| `GET  /api/records`                   | `api/records.ts`                                | Rekordy z DB                    |
-| `POST /api/reports/pdf`               | `api/reports/pdf.ts`                            | Generowanie PDF                 |
-| `GET  /api/scraper-logs.stream`       | `api/scraper-logs.stream.ts`                    | SSE log stream                  |
-| `POST /api/dev/auth`                  | `api/dev/auth.ts`                               | Dev login                       |
-| `POST /api/public/hooks/cleanup-logs` | `api/public/hooks/cleanup-logs.ts`              | Cron cleanup (public, no auth)  |
+| Endpoint                              | Plik                               | Opis                           |
+| ------------------------------------- | ---------------------------------- | ------------------------------ |
+| `GET  /api/health`                    | `api/health.ts`                    | Healthcheck                    |
+| `GET  /api/version`                   | `api/version.ts`                   | Wersja builda                  |
+| `GET  /api/config`                    | `api/config.ts`                    | Status env + app_config        |
+| `GET  /api/records`                   | `api/records.ts`                   | Rekordy z DB                   |
+| `POST /api/reports/pdf`               | `api/reports/pdf.ts`               | Generowanie PDF                |
+| `GET  /api/scraper-logs.stream`       | `api/scraper-logs.stream.ts`       | SSE log stream                 |
+| `POST /api/dev/auth`                  | `api/dev/auth.ts`                  | Dev login                      |
+| `POST /api/public/hooks/cleanup-logs` | `api/public/hooks/cleanup-logs.ts` | Cron cleanup (public, no auth) |
 
 ---
 
@@ -76,14 +76,14 @@ Lokalizacja: `src/routes/api/`
 Lokalizacja: `src/functions/*.functions.ts` — wywoływane z klienta przez
 typed RPC (`createServerFn` z `@tanstack/react-start`).
 
-| Plik                                                              | Co tam jest                                                    |
-|-------------------------------------------------------------------|----------------------------------------------------------------|
-| [`api.functions.ts`](../src/functions/api.functions.ts)           | Scraper: start / status / cancel / logs / cache + `POST /api/search` proxy |
-| [`queue.functions.ts`](../src/functions/queue.functions.ts)       | Kolejka „re-check": `addToQueue`, `listQueue`, `removeFromQueue` |
-| [`watchlist.functions.ts`](../src/functions/watchlist.functions.ts) | Watchlist CRUD                                                |
-| [`external.functions.ts`](../src/functions/external.functions.ts) | Wywołania zewnętrznych API                                     |
-| [`site-auth.functions.ts`](../src/functions/site-auth.functions.ts) | Bramka hasłem + per-user hasło                               |
-| [`dev-middleware.functions.ts`](../src/functions/dev-middleware.functions.ts) | Dev tooling                                          |
+| Plik                                                                          | Co tam jest                                                                |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [`api.functions.ts`](../src/functions/api.functions.ts)                       | Scraper: start / status / cancel / logs / cache + `POST /api/search` proxy |
+| [`queue.functions.ts`](../src/functions/queue.functions.ts)                   | Kolejka „re-check": `addToQueue`, `listQueue`, `removeFromQueue`           |
+| [`watchlist.functions.ts`](../src/functions/watchlist.functions.ts)           | Watchlist CRUD                                                             |
+| [`external.functions.ts`](../src/functions/external.functions.ts)             | Wywołania zewnętrznych API                                                 |
+| [`site-auth.functions.ts`](../src/functions/site-auth.functions.ts)           | Bramka hasłem + per-user hasło                                             |
+| [`dev-middleware.functions.ts`](../src/functions/dev-middleware.functions.ts) | Dev tooling                                                                |
 
 Server-only helpery (nie importowane z klienta) — `src/server/`:
 `logger.server.ts`, `anthropic.server.ts`, `gemini.server.ts`,
@@ -98,23 +98,23 @@ Server-only helpery (nie importowane z klienta) — `src/server/`:
 
 Lokalizacja: `src/components/panels/`
 
-| Plik                              | Funkcja                                                |
-|-----------------------------------|--------------------------------------------------------|
-| `criteria-form.tsx`               | Formularz kryteriów wyszukiwania                       |
-| `scraper-toolbar.tsx`             | Toolbar (start / cancel / rerun)                       |
-| `progress-panels.tsx`             | Progres scrapowania                                    |
-| `jobs-panel.tsx`                  | Lista aktywnych jobów                                  |
-| `batch-jobs-panel.tsx` + `batch-job-card.tsx` | Joby zbiorcze                              |
-| `listings-table.tsx`              | Tabela wyników (oferty)                                |
-| `records-panel.tsx`               | Widok rekordów                                         |
-| `analysis-results.tsx`            | Wyniki analizy AI                                      |
-| `ai-actions-bar.tsx`              | Akcje AI (analiza, raport)                             |
-| `scraper-reports-section.tsx`     | Raporty scrapera                                       |
-| `connection-status-panel.tsx`     | Status połączenia z backendem                          |
-| `session-header.tsx`              | Header sesji (user, status)                            |
-| `clients-aside.tsx` + `client-message-card.tsx` | Panel klientów                           |
-| `no-results-queue-dialog.tsx`     | Dialog „Dodać do kolejki ponownego sprawdzania?"       |
-| `form-helpers.tsx`                | Helpery formularzy                                     |
+| Plik                                            | Funkcja                                          |
+| ----------------------------------------------- | ------------------------------------------------ |
+| `criteria-form.tsx`                             | Formularz kryteriów wyszukiwania                 |
+| `scraper-toolbar.tsx`                           | Toolbar (start / cancel / rerun)                 |
+| `progress-panels.tsx`                           | Progres scrapowania                              |
+| `jobs-panel.tsx`                                | Lista aktywnych jobów                            |
+| `batch-jobs-panel.tsx` + `batch-job-card.tsx`   | Joby zbiorcze                                    |
+| `listings-table.tsx`                            | Tabela wyników (oferty)                          |
+| `records-panel.tsx`                             | Widok rekordów                                   |
+| `analysis-results.tsx`                          | Wyniki analizy AI                                |
+| `ai-actions-bar.tsx`                            | Akcje AI (analiza, raport)                       |
+| `scraper-reports-section.tsx`                   | Raporty scrapera                                 |
+| `connection-status-panel.tsx`                   | Status połączenia z backendem                    |
+| `session-header.tsx`                            | Header sesji (user, status)                      |
+| `clients-aside.tsx` + `client-message-card.tsx` | Panel klientów                                   |
+| `no-results-queue-dialog.tsx`                   | Dialog „Dodać do kolejki ponownego sprawdzania?" |
+| `form-helpers.tsx`                              | Helpery formularzy                               |
 
 Inne kluczowe komponenty (`src/components/`):
 `PasswordGate.tsx`, `app-sidebar.tsx`, `app-topbar.tsx`, `page-header.tsx`,
@@ -165,9 +165,16 @@ Tabele kluczowe (z kodu): `operation_logs`, `watchlist_items`, `records`,
 
 ## 9. Konfiguracja / env
 
-- `.env` zarządzany przez Lovable — **nie edytować**.
-- Sekrety dodawać przez Lovable Cloud → secrets.
-- Kluczowe zmienne: `SCRAPER_BASE_URL`, `ANTHROPIC_API_KEY`,
+- `.env` zarządzany przez Lovable — **nie edytować ani nie commitować sekretów**.
+- Sekrety produkcyjne dodawać przez Lovable Cloud → secrets.
+- Gemini AI Studio używa server-only `GEMINI_API_KEY`; opcjonalny `GEMINI_MODEL`
+  domyślnie wskazuje `gemini-3.5-flash`.
+- `AI_PROVIDER=gemini` wymusza Gemini, `AI_PROVIDER=anthropic` wymusza Anthropic,
+  a brak wartości uruchamia automatyczne wykrywanie dostępnych kluczy. Ustawienie
+  `app_config.ai_analysis_mode` ma wyższy priorytet niż zmienna środowiskowa.
+- Klucz Gemini jest wysyłany wyłącznie przez backend w nagłówku
+  `x-goog-api-key`; nie może trafić do URL, logów ani kodu klienta.
+- Pozostałe kluczowe zmienne: `SCRAPER_BASE_URL`, `ANTHROPIC_API_KEY`,
   `ANTHROPIC_MODEL`, `SITE_MASTER_PASSWORD`, Telegram bot token.
 
 ---

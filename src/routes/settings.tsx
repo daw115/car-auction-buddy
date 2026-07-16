@@ -10,8 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
-  ArrowLeft, CheckCircle2, XCircle, Loader2, KeyRound,
-  ShieldCheck, Zap, Shield, Gauge, AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  KeyRound,
+  ShieldCheck,
+  Zap,
+  Shield,
+  Gauge,
+  AlertTriangle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
@@ -26,8 +34,7 @@ export const Route = createFileRoute("/settings")({
       { property: "og:title", content: "Ustawienia integracji — USA Car Finder" },
       {
         property: "og:description",
-        content:
-          "Klucze API, wybór dostawcy AI i konfiguracja scrapera w jednym miejscu.",
+        content: "Klucze API, wybór dostawcy AI i konfiguracja scrapera w jednym miejscu.",
       },
       { property: "og:url", content: "https://car-auction-buddy.lovable.app/settings" },
       { name: "robots", content: "noindex, nofollow" },
@@ -71,9 +78,10 @@ const ANTHROPIC_MODEL_OPTIONS = [
 ] as const;
 
 const GEMINI_MODEL_OPTIONS = [
+  "gemini-3.5-flash",
   "gemini-2.5-flash",
   "gemini-2.5-pro",
-  "gemini-2.0-flash",
+  "gemini-2.5-flash-lite",
 ] as const;
 
 function SettingsPage() {
@@ -116,7 +124,9 @@ function SettingsPage() {
     setTestingAnthropic(true);
     setAnthropicResult(null);
     try {
-      const r = (await testAnthropicFn({ data: { model: anthropicModel || undefined } })) as TestResult;
+      const r = (await testAnthropicFn({
+        data: { model: anthropicModel || undefined },
+      })) as TestResult;
       setAnthropicResult(r);
       if (r.ok) toast.success("Połączenie z Anthropic OK");
       else toast.error("Test Anthropic nie powiódł się");
@@ -233,9 +243,11 @@ function SettingsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className={`h-4 w-4 rounded-full border-2 ${
-                    !isRaceBoth ? "border-primary bg-primary" : "border-muted-foreground/40"
-                  }`}>
+                  <div
+                    className={`h-4 w-4 rounded-full border-2 ${
+                      !isRaceBoth ? "border-primary bg-primary" : "border-muted-foreground/40"
+                    }`}
+                  >
                     {!isRaceBoth && (
                       <div className="h-full w-full rounded-full bg-primary flex items-center justify-center">
                         <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
@@ -259,13 +271,16 @@ function SettingsPage() {
                     <div>
                       <div className="font-medium text-sm">Zawsze próbuj obu</div>
                       <div className="text-xs text-muted-foreground mt-0.5">
-                        Oba dostawcy uruchamiani równolegle. Używa odpowiedzi tego, który odpowie pierwszy.
+                        Oba dostawcy uruchamiani równolegle. Używa odpowiedzi tego, który odpowie
+                        pierwszy.
                       </div>
                     </div>
                   </div>
-                  <div className={`h-4 w-4 rounded-full border-2 ${
-                    isRaceBoth ? "border-primary bg-primary" : "border-muted-foreground/40"
-                  }`}>
+                  <div
+                    className={`h-4 w-4 rounded-full border-2 ${
+                      isRaceBoth ? "border-primary bg-primary" : "border-muted-foreground/40"
+                    }`}
+                  >
                     {isRaceBoth && (
                       <div className="h-full w-full rounded-full bg-primary flex items-center justify-center">
                         <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
@@ -335,14 +350,21 @@ function SettingsPage() {
             >
               <option value="">Domyślny ({env?.ANTHROPIC_MODEL || "claude-sonnet-4-6"})</option>
               {ANTHROPIC_MODEL_OPTIONS.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
             </select>
           </div>
 
-          <Button onClick={handleTestAnthropic} disabled={testingAnthropic || !env?.ANTHROPIC_API_KEY}>
+          <Button
+            onClick={handleTestAnthropic}
+            disabled={testingAnthropic || !env?.ANTHROPIC_API_KEY}
+          >
             {testingAnthropic ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testuję...</>
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testuję...
+              </>
             ) : (
               "Testuj Anthropic"
             )}
@@ -361,7 +383,9 @@ function SettingsPage() {
           <div className="mb-4 flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-blue-500" />
             <h2 className="text-lg font-semibold">Google Gemini (AI Studio)</h2>
-            <Badge variant="outline" className="text-xs">Fallback</Badge>
+            <Badge variant="outline" className="text-xs">
+              Fallback
+            </Badge>
           </div>
 
           {loading ? (
@@ -395,7 +419,12 @@ function SettingsPage() {
               </p>
               <p className="mt-1 text-muted-foreground">
                 Aby dodać <code>GEMINI_API_KEY</code>, wygeneruj klucz w{" "}
-                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline text-blue-600 dark:text-blue-400">
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-600 dark:text-blue-400"
+                >
                   Google AI Studio
                 </a>{" "}
                 i poproś Lovable o dodanie sekretu <code>GEMINI_API_KEY</code>.
@@ -413,16 +442,24 @@ function SettingsPage() {
               onChange={(e) => setGeminiModel(e.target.value)}
               className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <option value="">Domyślny ({env?.GEMINI_MODEL || "gemini-2.5-flash"})</option>
+              <option value="">Domyślny ({env?.GEMINI_MODEL || "gemini-3.5-flash"})</option>
               {GEMINI_MODEL_OPTIONS.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
             </select>
           </div>
 
-          <Button onClick={handleTestGemini} disabled={testingGemini || !env?.GEMINI_API_KEY} variant="outline">
+          <Button
+            onClick={handleTestGemini}
+            disabled={testingGemini || !env?.GEMINI_API_KEY}
+            variant="outline"
+          >
             {testingGemini ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testuję...</>
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testuję...
+              </>
             ) : (
               "Testuj Gemini"
             )}
@@ -441,14 +478,14 @@ function SettingsPage() {
           <h3 className="mb-2 text-sm font-semibold">Jak działa fallback?</h3>
           <ul className="space-y-1.5 text-sm text-muted-foreground list-disc pl-5">
             <li>
-              <strong>Fallback tylko przy błędach</strong> — próbuje głównego dostawcę.
-              Jeśli zwróci błąd (timeout, HTTP 5xx, brak klucza), automatycznie próbuje zapasowego.
-              Oszczędza tokeny.
+              <strong>Fallback tylko przy błędach</strong> — próbuje głównego dostawcę. Jeśli zwróci
+              błąd (timeout, HTTP 5xx, brak klucza), automatycznie próbuje zapasowego. Oszczędza
+              tokeny.
             </li>
             <li>
-              <strong>Zawsze próbuj obu</strong> — oba dostawcy uruchamiani równolegle (race).
-              Używa odpowiedzi tego, kto odpowie szybciej. Szybsze czasy odpowiedzi, ale
-              podwójne zużycie tokenów.
+              <strong>Zawsze próbuj obu</strong> — oba dostawcy uruchamiani równolegle (race). Używa
+              odpowiedzi tego, kto odpowie szybciej. Szybsze czasy odpowiedzi, ale podwójne zużycie
+              tokenów.
             </li>
             <li>Jeśli tylko jeden klucz jest skonfigurowany, fallback jest niedostępny.</li>
             <li>Głównego dostawcę zmieniasz w panelu konfiguracji (pole „Tryb analizy AI").</li>
@@ -526,14 +563,27 @@ function TestResultDisplay({ result }: { result: TestResult }) {
           <CheckCircle2 className="h-4 w-4" /> Połączenie OK
         </div>
         <div className="space-y-1 text-muted-foreground">
-          <div>Model: <code>{result.model}</code></div>
-          {result.baseUrl && <div>Endpoint: <code>{result.baseUrl}</code></div>}
-          {result.usage && (
+          <div>
+            Model: <code>{result.model}</code>
+          </div>
+          {result.baseUrl && (
             <div>
-              Tokeny: <code>{result.usage.input_tokens} in + {result.usage.output_tokens} out</code>
+              Endpoint: <code>{result.baseUrl}</code>
             </div>
           )}
-          {result.sample && <div>Odpowiedź: <code>{result.sample}</code></div>}
+          {result.usage && (
+            <div>
+              Tokeny:{" "}
+              <code>
+                {result.usage.input_tokens} in + {result.usage.output_tokens} out
+              </code>
+            </div>
+          )}
+          {result.sample && (
+            <div>
+              Odpowiedź: <code>{result.sample}</code>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -545,7 +595,11 @@ function TestResultDisplay({ result }: { result: TestResult }) {
       </div>
       <div className="space-y-1 text-muted-foreground">
         {result.status && <div>Status HTTP: {result.status}</div>}
-        {result.model && <div>Model: <code>{result.model}</code></div>}
+        {result.model && (
+          <div>
+            Model: <code>{result.model}</code>
+          </div>
+        )}
         <div className="break-words">Błąd: {result.error}</div>
       </div>
     </div>
