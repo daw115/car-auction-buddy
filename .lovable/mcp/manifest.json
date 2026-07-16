@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "sdk_version": "0.22.2",
+  "path": "/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "car-auction-buddy-mcp",
+      "version": "0.1.0",
+      "title": "Car Auction Buddy — narzędzia publiczne"
+    },
+    "tools": [
+      {
+        "name": "calculate_import_cost",
+        "title": "Kalkulator kosztu importu auta USA→PL",
+        "description": "Deterministycznie liczy szacunkowy całkowity koszt importu auta z aukcji w USA do Polski (transport, cło, akcyza, VAT, homologacja, marża brokera). Zwraca rozbicie w USD, PLN i EUR. Brak dostępu do prywatnych danych aplikacji — czysta kalkulacja.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "car_price_usd": {
+              "type": "number",
+              "description": "Cena auta w USD (kwota zakupu z aukcji)."
+            },
+            "estimated_repair_usd": {
+              "description": "Szacunkowy koszt naprawy w USD.",
+              "type": "number"
+            },
+            "state": {
+              "description": "Dwuliterowy kod stanu USA (np. 'NY', 'CA'), używany do doboru stawki transportu.",
+              "type": "string"
+            },
+            "engine_cc": {
+              "description": "Pojemność silnika w cm³ (decyduje o stawce akcyzy).",
+              "type": "number"
+            },
+            "fuel": {
+              "description": "Typ paliwa; wpływa na akcyzę (electric=0%, hybrid<=2000cc=0%).",
+              "type": "string",
+              "enum": [
+                "gasoline",
+                "diesel",
+                "hybrid",
+                "electric",
+                "lpg",
+                "other"
+              ]
+            },
+            "weight_kg": {
+              "description": "Masa auta w kg (informacyjnie).",
+              "type": "number"
+            },
+            "broker_margin_pct": {
+              "description": "Marża brokera w %; domyślnie 8.",
+              "type": "number"
+            },
+            "exchange_rate_buffer_pct": {
+              "description": "Bufor na wahania kursu w %; domyślnie 3.",
+              "type": "number"
+            },
+            "transport_override_usd": {
+              "description": "Nadpisanie kosztu transportu USA→PL w USD.",
+              "type": "number"
+            },
+            "fx_usd_pln": {
+              "type": "number",
+              "description": "Kurs USD→PLN (np. 4.05)."
+            },
+            "fx_usd_eur": {
+              "type": "number",
+              "description": "Kurs USD→EUR (np. 0.92)."
+            }
+          },
+          "required": [
+            "car_price_usd",
+            "fx_usd_pln",
+            "fx_usd_eur"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}

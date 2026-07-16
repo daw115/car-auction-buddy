@@ -1925,7 +1925,7 @@ export const logRetryEvent = createServerFn({ method: "POST" })
     z.object({
       recordId: z.string(),
       clientId: z.string().optional(),
-      criteria: z.record(z.unknown()),
+      criteria: z.record(z.string(), z.unknown()),
       retryCount: z.number(),
       source: z.enum(["manual", "auto"]).default("manual"),
     }).parse(d),
@@ -2457,7 +2457,7 @@ export const batchSearch = createServerFn({ method: "POST" })
     z
       .object({
         searches: z
-          .array(z.object({ criteria: z.record(z.unknown()) }))
+          .array(z.object({ criteria: z.record(z.string(), z.unknown()) }))
           .min(1)
           .max(20),
       })

@@ -5,8 +5,10 @@
 //     error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... } }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { mcpPlugin } from "@lovable.dev/mcp-js/stacks/tanstack/vite";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+
 
 function safeExec(cmd: string, fallback = "unknown"): string {
   try {
@@ -39,6 +41,7 @@ try {
 }
 
 export default defineConfig({
+  plugins: [mcpPlugin()],
   vite: {
     define: {
       __APP_COMMIT_SHA__: JSON.stringify(commitSha),
@@ -49,3 +52,4 @@ export default defineConfig({
     },
   },
 });
+
