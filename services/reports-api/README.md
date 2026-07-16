@@ -1,49 +1,69 @@
 # Reports API — Car Auction Buddy
 
-Standalone FastAPI service for downloading generated reports and JSON artifacts.
+Read-only FastAPI service for downloading generated reports and JSON artifacts from Supabase. It uses a server-only service-role key and must not be exposed without its API-key boundary.
 
 ## Endpoints
 
-| Method | Path | Description | Response |
-|--------|------|-------------|----------|
-| GET | `/clients` | List all clients | JSON array |
-| GET | `/clients/{id}/records` | List records for a client | JSON array (metadata) |
-| GET | `/records/{id}/report.html` | HTML report | `text/html` |
-| GET | `/records/{id}/analysis.json` | AI analysis | `application/json` |
-| GET | `/records/{id}/lots.json` | Raw listings | `application/json` |
-| GET | `/records/{id}/mail.html` | Email HTML | `text/html` |
-| GET | `/health` | Health check | `{"status": "ok"}` |
+| Method | Path                          | Access      | Description                       |
+| ------ | ----------------------------- | ----------- | --------------------------------- |
+| GET    | `/health`                     | Public      | Process liveness only             |
+| GET    | `/clients`                    | `X-API-Key` | List clients                      |
+| GET    | `/clients/{id}/records`       | `X-API-Key` | List report metadata for a client |
+| GET    | `/records/{id}/report.html`   | `X-API-Key` | Download the HTML report          |
+| GET    | `/records/{id}/analysis.json` | `X-API-Key` | Download AI analysis              |
+| GET    | `/records/{id}/lots.json`     | `X-API-Key` | Download raw listings             |
+| GET    | `/records/{id}/mail.html`     | `X-API-Key` | Download email HTML               |
 
-## Auth
+Interactive API documentation is disabled. HTML artifacts are returned as attachments with a sandboxed Content Security Policy. Stored HTML containing scripts, event handlers, active embeds, unsafe URL schemes, or equivalent active content is rejected before download. External image URLs are replaced with an inert placeholder; images embedded as `data:image/...` remain available.
 
-All endpoints (except `/health`) require `X-API-Key` header matching `REPORTS_API_KEY`.
+## Configuration
 
-## Setup
+Copy `.env.example` to a server-only secret store and configure:
 
-```bash
-# 1. Create .env from template
-cp .env.example .env
-# Edit .env with real values
+- `SUPABASE_URL` — required HTTPS project URL;
+- `SUPABASE_SERVICE_ROLE_KEY` — required server-only credential that bypasses RLS;
+- `REPORTS_API_KEY` — required unique random key, at least 32 characters;
+- `REPORTS_API_CORS_ORIGINS` — optional comma-separated exact browser origins. Wildcards are rejected. Leave empty for non-browser clients.
 
-# 2a. Run locally
-pip install -r requirements.txt
-uvicorn main:app --reload
+## Local development
 
-# 2b. Or with Docker
-docker build -t reports-api .
-docker run --env-file .env -p 8000:8000 reports-api
-```
-
-## API docs
-
-Once running: `http://localhost:8000/docs` (Swagger UI) or `/redoc`.
-
-## Example
+Use a dedicated port because the external `usa-car-finder` scraper commonly occupies port 8000:
 
 ```bash
-curl -H "X-API-Key: your-key" http://localhost:8000/clients
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements-dev.txt
 
-curl -H "X-API-Key: your-key" http://localhost:8000/clients/UUID/records
-
-curl -H "X-API-Key: your-key" http://localhost:8000/records/UUID/report.html > report.html
+set -a
+. ./.env
+set +a
+uvicorn main:app --reload --host 127.0.0.1 --port 8001
 ```
+
+Run checks:
+
+```bash
+ruff check .
+ruff format --check .
+python -m pytest -q
+```
+
+Smoke test without printing the API key:
+
+```bash
+curl --fail --silent http://127.0.0.1:8001/health
+curl --fail --silent \
+  -H "X-API-Key: $REPORTS_API_KEY" \
+  http://127.0.0.1:8001/clients
+```
+
+## Docker
+
+The container runs as an unprivileged user and includes a liveness health check. Bind it to loopback unless a trusted reverse proxy provides the external boundary:
+
+```bash
+docker build -t car-auction-reports-api .
+docker run --rm --env-file .env -p 127.0.0.1:8001:8000 car-auction-reports-api
+```
+
+Do not commit `.env`, expose the service-role key to browser code, or reuse `REPORTS_API_KEY` as another application secret.
