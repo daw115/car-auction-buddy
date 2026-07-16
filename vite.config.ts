@@ -41,6 +41,7 @@ try {
 }
 
 export default defineConfig({
+  plugins: [mcpPlugin()],
   vite: {
     define: {
       __APP_COMMIT_SHA__: JSON.stringify(commitSha),
@@ -51,3 +52,4 @@ export default defineConfig({
     },
   },
 });
+
