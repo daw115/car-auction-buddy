@@ -2,6 +2,7 @@
 // Wszystko bez kluczy, bez limitów istotnych dla tego use-case.
 
 import { createServerFn } from "@tanstack/react-start";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { z } from "zod";
 
 // ---------- NHTSA VIN Decoder ----------
@@ -26,6 +27,7 @@ export type VinDecoded = {
 };
 
 export const decodeVin = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ vin: z.string().trim().min(11).max(17) }).parse)
   .handler(async ({ data }): Promise<VinDecoded> => {
     const vin = data.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -41,7 +43,10 @@ export const decodeVin = createServerFn({ method: "POST" })
     };
     const ccFromLiters = num(r.DisplacementL);
     const ccDirect = num(r.DisplacementCC);
-    const errors = (r.ErrorText ?? "").split(";").map((s) => s.trim()).filter((s) => s && s !== "0 - VIN decoded clean. Check Digit (9th position) is correct");
+    const errors = (r.ErrorText ?? "")
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== "0 - VIN decoded clean. Check Digit (9th position) is correct");
     return {
       vin,
       make: r.Make || null,
@@ -74,6 +79,7 @@ export type RecallItem = {
 };
 
 export const fetchRecalls = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       make: z.string().trim().min(1).max(80),
@@ -107,27 +113,34 @@ export type FxRates = {
 
 let fxCache: { value: FxRates; expires: number } | null = null;
 
-export const getFxRates = createServerFn({ method: "GET" }).handler(async (): Promise<FxRates> => {
-  const now = Date.now();
-  if (fxCache && fxCache.expires > now) return fxCache.value;
-  try {
-    const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=PLN,EUR", {
-      headers: { accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as { rates?: { PLN?: number; EUR?: number }; date?: string };
-    const usd_pln = json.rates?.PLN ?? 4.0;
-    const usd_eur = json.rates?.EUR ?? 0.92;
-    const value: FxRates = {
-      usd_pln,
-      usd_eur,
-      fetched_at: json.date ?? new Date().toISOString().slice(0, 10),
-      source: "frankfurter.app",
-    };
-    fxCache = { value, expires: now + 6 * 60 * 60 * 1000 }; // cache 6h
-    return value;
-  } catch {
-    // Fallback gdyby Frankfurter padł — przybliżone, ostrzega w UI
-    return { usd_pln: 4.0, usd_eur: 0.92, fetched_at: new Date().toISOString().slice(0, 10), source: "fallback" };
-  }
-});
+export const getFxRates = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async (): Promise<FxRates> => {
+    const now = Date.now();
+    if (fxCache && fxCache.expires > now) return fxCache.value;
+    try {
+      const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=PLN,EUR", {
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { rates?: { PLN?: number; EUR?: number }; date?: string };
+      const usd_pln = json.rates?.PLN ?? 4.0;
+      const usd_eur = json.rates?.EUR ?? 0.92;
+      const value: FxRates = {
+        usd_pln,
+        usd_eur,
+        fetched_at: json.date ?? new Date().toISOString().slice(0, 10),
+        source: "frankfurter.app",
+      };
+      fxCache = { value, expires: now + 6 * 60 * 60 * 1000 }; // cache 6h
+      return value;
+    } catch {
+      // Fallback gdyby Frankfurter padł — przybliżone, ostrzega w UI
+      return {
+        usd_pln: 4.0,
+        usd_eur: 0.92,
+        fetched_at: new Date().toISOString().slice(0, 10),
+        source: "fallback",
+      };
+    }
+  });

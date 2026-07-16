@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
@@ -20,18 +21,29 @@ const WatchlistInput = z.object({
   snapshot: z.any().optional(),
 });
 
-export const listWatchlist = createServerFn({ method: "GET" }).handler(async () => {
-  const { data, error } = await supabaseAdmin
-    .from("watchlist")
-    .select("*")
-    .eq("active", true)
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (error) throw new Error(error.message);
-  return data ?? [];
-});
+type UnknownRecord = Record<string, unknown>;
+
+function asUnknownRecord(value: unknown): UnknownRecord | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : null;
+}
+
+export const listWatchlist = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const { data, error } = await supabaseAdmin
+      .from("watchlist")
+      .select("*")
+      .eq("active", true)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
 
 export const addToWatchlist = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(WatchlistInput.parse)
   .handler(async ({ data }) => {
     const { data: row, error } = await supabaseAdmin
@@ -44,6 +56,7 @@ export const addToWatchlist = createServerFn({ method: "POST" })
   });
 
 export const updateWatchlist = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().uuid(), patch: WatchlistInput.partial() }).parse)
   .handler(async ({ data }) => {
     const { data: row, error } = await supabaseAdmin
@@ -57,6 +70,7 @@ export const updateWatchlist = createServerFn({ method: "POST" })
   });
 
 export const removeFromWatchlist = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().uuid() }).parse)
   .handler(async ({ data }) => {
     const { error } = await supabaseAdmin.from("watchlist").delete().eq("id", data.id);
@@ -65,6 +79,7 @@ export const removeFromWatchlist = createServerFn({ method: "POST" })
   });
 
 export const getWatchlistHistory = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.string().uuid() }).parse)
   .handler(async ({ data }) => {
     const { data: rows, error } = await supabaseAdmin
@@ -78,13 +93,16 @@ export const getWatchlistHistory = createServerFn({ method: "GET" })
   });
 
 export const recordWatchlistSnapshot = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    id: z.string().uuid(),
-    current_bid_usd: z.number().optional().nullable(),
-    score: z.number().optional().nullable(),
-    status: z.string().max(64).optional().nullable(),
-    payload: z.any().optional(),
-  }).parse)
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      id: z.string().uuid(),
+      current_bid_usd: z.number().optional().nullable(),
+      score: z.number().optional().nullable(),
+      status: z.string().max(64).optional().nullable(),
+      payload: z.any().optional(),
+    }).parse,
+  )
   .handler(async ({ data }) => {
     const { error } = await supabaseAdmin.from("watchlist_history").insert({
       watchlist_id: data.id,
@@ -105,66 +123,87 @@ export const recordWatchlistSnapshot = createServerFn({ method: "POST" })
   });
 
 // ---------- Dashboard stats ----------
-export const getDashboardStats = createServerFn({ method: "GET" }).handler(async () => {
-  const [recordsRes, clientsRes, watchRes] = await Promise.all([
-    supabaseAdmin.from("records").select("id, client_id, status, analysis, listings, created_at").limit(1000),
-    supabaseAdmin.from("clients").select("id").limit(1000),
-    supabaseAdmin.from("watchlist").select("id, active").limit(1000),
-  ]);
-  if (recordsRes.error) throw new Error(recordsRes.error.message);
-  const records = recordsRes.data ?? [];
-  const clients = clientsRes.data ?? [];
-  const watch = watchRes.data ?? [];
+export const getDashboardStats = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    const [recordsRes, clientsRes, watchRes] = await Promise.all([
+      supabaseAdmin
+        .from("records")
+        .select("id, client_id, status, analysis, listings, created_at")
+        .limit(1000),
+      supabaseAdmin.from("clients").select("id").limit(1000),
+      supabaseAdmin.from("watchlist").select("id, active").limit(1000),
+    ]);
+    if (recordsRes.error) throw new Error(recordsRes.error.message);
+    const records = recordsRes.data ?? [];
+    const clients = clientsRes.data ?? [];
+    const watch = watchRes.data ?? [];
 
-  let totalScores = 0;
-  let scoreCount = 0;
-  const makeCount: Record<string, number> = {};
-  const flagCount: Record<string, number> = {};
-  const byDay: Record<string, number> = {};
+    let totalScores = 0;
+    let scoreCount = 0;
+    const makeCount: Record<string, number> = {};
+    const flagCount: Record<string, number> = {};
+    const byDay: Record<string, number> = {};
 
-  for (const r of records as any[]) {
-    const day = new Date(r.created_at).toISOString().slice(0, 10);
-    byDay[day] = (byDay[day] ?? 0) + 1;
-    const analysis = r.analysis;
-    const lots = analysis?.lots ?? analysis?.analyzed ?? [];
-    if (Array.isArray(lots)) {
-      for (const lot of lots) {
-        const score = Number(lot?.score ?? lot?.ai?.score);
-        if (Number.isFinite(score)) {
-          totalScores += score;
-          scoreCount++;
-        }
-        const make = lot?.make ?? lot?.car?.make;
-        if (make) makeCount[make] = (makeCount[make] ?? 0) + 1;
-        const flags: any[] = lot?.red_flags ?? lot?.ai?.red_flags ?? [];
-        if (Array.isArray(flags)) {
-          for (const f of flags) {
-            const key = typeof f === "string" ? f : f?.label ?? f?.title ?? "inne";
-            flagCount[key] = (flagCount[key] ?? 0) + 1;
+    for (const r of records) {
+      const day = new Date(r.created_at).toISOString().slice(0, 10);
+      byDay[day] = (byDay[day] ?? 0) + 1;
+      const analysis = asUnknownRecord(r.analysis);
+      const lots = analysis?.lots ?? analysis?.analyzed ?? [];
+      if (Array.isArray(lots)) {
+        for (const lotValue of lots) {
+          const lot = asUnknownRecord(lotValue);
+          if (!lot) continue;
+          const ai = asUnknownRecord(lot.ai);
+          const score = Number(lot.score ?? ai?.score);
+          if (Number.isFinite(score)) {
+            totalScores += score;
+            scoreCount++;
+          }
+          const car = asUnknownRecord(lot.car);
+          const make = lot.make ?? car?.make;
+          if (typeof make === "string" && make) {
+            makeCount[make] = (makeCount[make] ?? 0) + 1;
+          }
+          const flags = lot.red_flags ?? ai?.red_flags ?? [];
+          if (Array.isArray(flags)) {
+            for (const flag of flags) {
+              const flagRecord = asUnknownRecord(flag);
+              const key =
+                typeof flag === "string"
+                  ? flag
+                  : typeof flagRecord?.label === "string"
+                    ? flagRecord.label
+                    : typeof flagRecord?.title === "string"
+                      ? flagRecord.title
+                      : "inne";
+              flagCount[key] = (flagCount[key] ?? 0) + 1;
+            }
           }
         }
       }
     }
-  }
 
-  const topMakes = Object.entries(makeCount)
-    .sort(([, a], [, b]) => b - a).slice(0, 8)
-    .map(([name, value]) => ({ name, value }));
-  const topFlags = Object.entries(flagCount)
-    .sort(([, a], [, b]) => b - a).slice(0, 8)
-    .map(([name, value]) => ({ name, value }));
-  const timeline = Object.entries(byDay)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-30)
-    .map(([date, count]) => ({ date, count }));
+    const topMakes = Object.entries(makeCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([name, value]) => ({ name, value }));
+    const topFlags = Object.entries(flagCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([name, value]) => ({ name, value }));
+    const timeline = Object.entries(byDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-30)
+      .map(([date, count]) => ({ date, count }));
 
-  return {
-    totalRecords: records.length,
-    totalClients: clients.length,
-    totalWatchlist: watch.filter((w: any) => w.active).length,
-    avgScore: scoreCount > 0 ? totalScores / scoreCount : 0,
-    topMakes,
-    topFlags,
-    timeline,
-  };
-});
+    return {
+      totalRecords: records.length,
+      totalClients: clients.length,
+      totalWatchlist: watch.filter((entry: { active: boolean }) => entry.active).length,
+      avgScore: scoreCount > 0 ? totalScores / scoreCount : 0,
+      topMakes,
+      topFlags,
+      timeline,
+    };
+  });

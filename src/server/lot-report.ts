@@ -3,7 +3,13 @@
 
 export type LotCost = [name: string, opt: string, pess: string, note: string];
 export type LotScoring = [delta: string, criterion: string, reason: string];
-export type LotFlag = [bar: "r" | "a" | "g" | "ok", title: string, lvl: "crit" | "high" | "med" | "low", lvlLabel: string, desc: string];
+export type LotFlag = [
+  bar: "r" | "a" | "g" | "ok",
+  title: string,
+  lvl: "crit" | "high" | "med" | "low",
+  lvlLabel: string,
+  desc: string,
+];
 export type LotRawField = [key: string, val: string, cls: "" | "ok" | "warn" | "bad"];
 export type LotChecklistItem = [cls: "c" | "h" | "m" | "l", label: string, task: string];
 export type LotBidStrategy = [label: string, val: string, isWarn: boolean];
@@ -67,25 +73,191 @@ const PLACEHOLDER_IMG =
     "utf-8",
   ).toString("base64");
 
-export async function fetchImagesAsBase64(urls: string[], max = 8): Promise<string[]> {
-  const out: string[] = [];
-  for (const url of urls.slice(0, max)) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10_000);
-      const r = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (!r.ok) {
-        out.push(PLACEHOLDER_IMG);
-        continue;
+const DEFAULT_ALLOWED_IMAGE_HOSTS = [".copart.com", ".iaai.com"];
+const DEFAULT_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const DEFAULT_TOTAL_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 50 * 1024 * 1024;
+const MAX_IMAGE_REQUESTS = 24;
+const REPORT_IMAGE_DEADLINE_MS = 30_000;
+const MAX_REDIRECTS = 3;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+function getAllowedImageHosts(): string[] {
+  const configured = process.env.REPORT_IMAGE_ALLOWED_HOSTS?.split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return configured?.length ? configured : DEFAULT_ALLOWED_IMAGE_HOSTS;
+}
+
+function getMaxImageBytes(): number {
+  const parsed = Number.parseInt(process.env.REPORT_IMAGE_MAX_BYTES ?? "", 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_MAX_IMAGE_BYTES;
+  return Math.min(Math.max(parsed, 100 * 1024), 10 * 1024 * 1024);
+}
+
+function getTotalImageBytes(): number {
+  const parsed = Number.parseInt(process.env.REPORT_IMAGE_TOTAL_BYTES ?? "", 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_TOTAL_IMAGE_BYTES;
+  return Math.min(Math.max(parsed, 100 * 1024), MAX_TOTAL_IMAGE_BYTES);
+}
+
+export type ReportImageBudget = {
+  totalBytes: number;
+  remainingBytes: number;
+  remainingRequests: number;
+  deadlineAt: number;
+};
+
+export function createReportImageBudget(
+  totalBytes = getTotalImageBytes(),
+  now = Date.now(),
+): ReportImageBudget {
+  const safeTotal = Number.isFinite(totalBytes)
+    ? Math.min(Math.max(Math.floor(totalBytes), 0), MAX_TOTAL_IMAGE_BYTES)
+    : DEFAULT_TOTAL_IMAGE_BYTES;
+  return {
+    totalBytes: safeTotal,
+    remainingBytes: safeTotal,
+    remainingRequests: MAX_IMAGE_REQUESTS,
+    deadlineAt: now + REPORT_IMAGE_DEADLINE_MS,
+  };
+}
+
+export function isAllowedReportImageUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "443")
+    ) {
+      return false;
+    }
+    const hostname = url.hostname.toLowerCase();
+    if (!hostname || hostname === "localhost" || hostname.includes(":")) return false;
+
+    return getAllowedImageHosts().some((rule) => {
+      if (rule.startsWith(".")) {
+        const root = rule.slice(1);
+        return hostname === root || hostname.endsWith(rule);
       }
-      const buf = Buffer.from(await r.arrayBuffer());
-      const ct = r.headers.get("content-type") || "image/jpeg";
-      out.push(`data:${ct};base64,${buf.toString("base64")}`);
-    } catch {
+      return hostname === rule;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function readBodyWithLimit(
+  response: Response,
+  maxBytes: number,
+  budget: ReportImageBudget,
+): Promise<Buffer | null> {
+  const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) return null;
+  if (!response.body) return null;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    // Debit every consumed chunk, even when this response is ultimately rejected.
+    // This prevents repeated oversized streams from bypassing the report-wide cap.
+    budget.remainingBytes = Math.max(0, budget.remainingBytes - value.byteLength);
+    if (total > maxBytes) {
+      await reader.cancel("image exceeds byte limit");
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    total,
+  );
+}
+
+type FetchedReportImage = {
+  dataUrl: string;
+};
+
+async function fetchAllowedImage(
+  rawUrl: string,
+  maxBytes: number,
+  budget: ReportImageBudget,
+  redirects = 0,
+): Promise<FetchedReportImage | null> {
+  if (
+    !isAllowedReportImageUrl(rawUrl) ||
+    budget.remainingRequests <= 0 ||
+    budget.deadlineAt <= Date.now()
+  ) {
+    return null;
+  }
+
+  budget.remainingRequests -= 1;
+  const requestTimeoutMs = Math.min(10_000, budget.deadlineAt - Date.now());
+  if (requestTimeoutMs <= 0) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), requestTimeoutMs);
+  try {
+    const response = await fetch(rawUrl, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      redirect: "manual",
+      signal: ctrl.signal,
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location || redirects >= MAX_REDIRECTS) return null;
+      return fetchAllowedImage(
+        new URL(location, rawUrl).toString(),
+        maxBytes,
+        budget,
+        redirects + 1,
+      );
+    }
+    if (!response.ok) return null;
+
+    const contentType = response.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
+    if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) return null;
+    const body = await readBodyWithLimit(response, maxBytes, budget);
+    return body
+      ? {
+          dataUrl: `data:${contentType};base64,${body.toString("base64")}`,
+        }
+      : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchImagesAsBase64(
+  urls: string[],
+  max = 8,
+  budget = createReportImageBudget(),
+): Promise<string[]> {
+  const out: string[] = [];
+  const maxBytes = getMaxImageBytes();
+  for (const url of urls.slice(0, Math.min(Math.max(max, 0), 8))) {
+    const availableBytes = Math.min(maxBytes, budget.remainingBytes);
+    if (availableBytes <= 0 || budget.remainingRequests <= 0 || budget.deadlineAt <= Date.now()) {
+      out.push(PLACEHOLDER_IMG);
+      continue;
+    }
+    const image = await fetchAllowedImage(url, availableBytes, budget);
+    if (image) {
+      out.push(image.dataUrl);
+    } else {
       out.push(PLACEHOLDER_IMG);
     }
   }
@@ -107,16 +279,28 @@ const scoreColor = (delta: string) =>
   delta.startsWith("+") ? "pos" : delta.startsWith("-") || delta.startsWith("−") ? "neg" : "";
 
 const flagBarColor = (c: string) =>
-  ({ r: "var(--red)", a: "var(--accent)", g: "var(--border)", ok: "var(--ok)" } as Record<string, string>)[c] || "var(--border)";
+  (
+    ({ r: "var(--red)", a: "var(--accent)", g: "var(--border)", ok: "var(--ok)" }) as Record<
+      string,
+      string
+    >
+  )[c] || "var(--border)";
 const flagTitleColor = (c: string) =>
-  ({ r: "var(--red)", a: "var(--amber)", g: "var(--text)", ok: "var(--ok)" } as Record<string, string>)[c] || "var(--text)";
+  (
+    ({ r: "var(--red)", a: "var(--amber)", g: "var(--text)", ok: "var(--ok)" }) as Record<
+      string,
+      string
+    >
+  )[c] || "var(--text)";
 const levelCss = (lvl: string) =>
-  ({
-    crit: "background:#fff0f0;color:#cf222e",
-    high: "background:#fff4ee;color:#9a3412",
-    med: "background:#fffbe6;color:#7a4f00",
-    low: "background:#f6f8fa;color:#57606a",
-  } as Record<string, string>)[lvl] || "";
+  (
+    ({
+      crit: "background:#fff0f0;color:#cf222e",
+      high: "background:#fff4ee;color:#9a3412",
+      med: "background:#fffbe6;color:#7a4f00",
+      low: "background:#f6f8fa;color:#57606a",
+    }) as Record<string, string>
+  )[lvl] || "";
 const statusColors = (status: string): [string, string] => {
   const s = status.toUpperCase();
   if (s.includes("REKOMENDACJA")) return ["#eafbee", "#1a7f37"];
@@ -323,7 +507,9 @@ function brokerLotData(lot: Lot): string {
   const odoCls = lot.odometer_mi ? "" : "bad";
   const keysVal = lot.keys === true ? "TAK" : lot.keys === false ? "NIE &#9888;" : "brak danych";
   const keysCls = lot.keys ? "ok" : "bad";
-  const airVal = !lot.airbags_deployed ? "FALSE &mdash; nie odpalone &#10003;" : "TRUE &mdash; ODPALONE &#9888;";
+  const airVal = !lot.airbags_deployed
+    ? "FALSE &mdash; nie odpalone &#10003;"
+    : "TRUE &mdash; ODPALONE &#9888;";
   const airCls = !lot.airbags_deployed ? "ok" : "bad";
   const tt = lot.title_type.toUpperCase();
   const titleCls = tt.includes("SALVAGE") ? "bad" : tt.includes("CLEAN") ? "ok" : "warn";
@@ -356,7 +542,10 @@ function brokerLotData(lot: Lot): string {
 
 function brokerScoring(lot: Lot): string {
   const rows = lot.scoring
-    .map(([delta, criterion, reason]) => `<tr><td>${h(criterion)}</td><td class="${scoreColor(delta)}">${h(delta)}</td><td>${h(reason)}</td></tr>`)
+    .map(
+      ([delta, criterion, reason]) =>
+        `<tr><td>${h(criterion)}</td><td class="${scoreColor(delta)}">${h(delta)}</td><td>${h(reason)}</td></tr>`,
+    )
     .join("");
   return `
 <table class="htbl" cellspacing="0" cellpadding="0">
@@ -368,7 +557,10 @@ function brokerScoring(lot: Lot): string {
 
 function brokerCosts(lot: Lot): string {
   const rows = lot.costs
-    .map(([name, opt, pess, note]) => `<tr><td>${h(name)}</td><td class="num">${h(opt)}</td><td class="num">${h(pess)}</td><td class="note">${h(note)}</td></tr>`)
+    .map(
+      ([name, opt, pess, note]) =>
+        `<tr><td>${h(name)}</td><td class="num">${h(opt)}</td><td class="num">${h(pess)}</td><td class="note">${h(note)}</td></tr>`,
+    )
     .join("");
   return `
 <table class="ctbl" cellspacing="0" cellpadding="0">
@@ -382,7 +574,8 @@ function brokerCosts(lot: Lot): string {
 
 function brokerFlags(lot: Lot): string {
   return lot.flags
-    .map(([bar, title, lvl, lvlLabel, desc]) => `
+    .map(
+      ([bar, title, lvl, lvlLabel, desc]) => `
 <div style="display:table;width:100%;margin-bottom:7px;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:13px">
   <div style="display:table-cell;width:4px;background:${flagBarColor(bar)}">&nbsp;</div>
   <div style="display:table-cell;padding:9px 13px">
@@ -394,12 +587,15 @@ function brokerFlags(lot: Lot): string {
     </tr></tbody></table>
     <div style="color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:3px">${h(desc)}</div>
   </div>
-</div>`)
+</div>`,
+    )
     .join("");
 }
 
 function brokerRawFields(lot: Lot): string {
-  const rows = lot.raw_fields.map(([k, v, c]) => `<tr><td class="rk">${h(k)}</td><td class="rv ${c}">${h(v)}</td></tr>`).join("");
+  const rows = lot.raw_fields
+    .map(([k, v, c]) => `<tr><td class="rk">${h(k)}</td><td class="rv ${c}">${h(v)}</td></tr>`)
+    .join("");
   return `<table class="rtbl" cellspacing="0" cellpadding="0"><tbody>${rows}</tbody></table>`;
 }
 
@@ -412,7 +608,10 @@ function brokerPhotos(images: string[], lot: Lot): string {
     const chunk = thumbs.slice(i, i + 3);
     while (chunk.length < 3) chunk.push(PLACEHOLDER_IMG);
     const cells = chunk
-      .map((c) => `<td style="padding:0 3px 0 0;width:33%"><img src="${c}" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid var(--border)"></td>`)
+      .map(
+        (c) =>
+          `<td style="padding:0 3px 0 0;width:33%"><img src="${c}" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid var(--border)"></td>`,
+      )
       .join("");
     thumbRows += `<tr>${cells}</tr><tr><td colspan='3' style='height:5px'></td></tr>`;
   }
@@ -424,7 +623,10 @@ function brokerPhotos(images: string[], lot: Lot): string {
 
 function brokerChecklist(lot: Lot): string {
   const rows = lot.checklist
-    .map(([cls, label, task], i) => `<tr><td class="cnum">${i + 1}</td><td>${h(task)}</td><td style="text-align:center"><span class="cprio ${cls}">${h(label)}</span></td><td class="ccheck">&#9744;</td></tr>`)
+    .map(
+      ([cls, label, task], i) =>
+        `<tr><td class="cnum">${i + 1}</td><td>${h(task)}</td><td style="text-align:center"><span class="cprio ${cls}">${h(label)}</span></td><td class="ccheck">&#9744;</td></tr>`,
+    )
     .join("");
   return `
 <table class="chtbl" cellspacing="0" cellpadding="0">
@@ -434,13 +636,18 @@ function brokerChecklist(lot: Lot): string {
 
 function brokerBid(lot: Lot): string {
   const rows = lot.bid_strategy
-    .map(([label, val, isWarn]) => `<tr><td class="bk">${h(label)}</td><td class="${isWarn ? "bv wrn" : "bv"}">${h(val)}</td></tr>`)
+    .map(
+      ([label, val, isWarn]) =>
+        `<tr><td class="bk">${h(label)}</td><td class="${isWarn ? "bv wrn" : "bv"}">${h(val)}</td></tr>`,
+    )
     .join("");
   return `<table class="btbl" cellspacing="0" cellpadding="0"><tbody>${rows}</tbody></table>`;
 }
 
 function brokerStrategy(lot: Lot): string {
-  const rows = lot.strategy_notes.map(([k, v]) => `<tr><td class="nk">${h(k)}</td><td class="nv">${h(v)}</td></tr>`).join("");
+  const rows = lot.strategy_notes
+    .map(([k, v]) => `<tr><td class="nk">${h(k)}</td><td class="nv">${h(v)}</td></tr>`)
+    .join("");
   return `<table class="notes-tbl" cellspacing="0" cellpadding="0"><tbody>${rows}</tbody></table>`;
 }
 
@@ -462,7 +669,9 @@ ${brokerStats(lot)}
 </div>`;
 }
 
-export function buildBrokerHtml(lots: Array<{ lot: Lot; images: string[]; group: "TOP" | "REJECTED" }>): string {
+export function buildBrokerHtml(
+  lots: Array<{ lot: Lot; images: string[]; group: "TOP" | "REJECTED" }>,
+): string {
   const tops = lots.filter((x) => x.group === "TOP");
   const rejs = lots.filter((x) => x.group === "REJECTED");
   const block = (label: string, items: typeof lots, color: string) => {

@@ -70,13 +70,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,8 +137,20 @@ export const Route = createFileRoute("/")({
   component: Panel,
 });
 
-type ClientRow = { id: string; name: string; contact: string | null; notes: string | null; created_at: string };
-type AiMeta = { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
+type ClientRow = {
+  id: string;
+  name: string;
+  contact: string | null;
+  notes: string | null;
+  created_at: string;
+};
+type AiMeta = {
+  provider: string;
+  model: string;
+  usedFallback: boolean;
+  fallbackMode: string;
+  usage: { input_tokens: number; output_tokens: number };
+};
 type ArtifactsMeta = {
   report_html?: { size: number; generated_at: string };
   mail_html?: { size: number; generated_at: string };
@@ -236,18 +242,13 @@ import { ClientsAside } from "@/components/panels/clients-aside";
 // ActiveJobsPanel / ActiveJobRow / phaseLine / PHASE_LABELS / ActiveJob
 // zostały przeniesione do src/components/panels/jobs-panel.tsx (route /jobs).
 
-
 // ---------- Batch search types + card ----------
 // BatchJobCard + BatchJobEntry przeniesione do src/components/panels/batch-job-card.tsx
 import { type BatchJobEntry } from "@/components/panels/batch-job-card";
 import { ClientMessageCard, type ParsedCarsResult } from "@/components/panels/client-message-card";
 import { BatchJobsPanel } from "@/components/panels/batch-jobs-panel";
 
-
-
 // Backend Records / Search Audit / Record Detail — przeniesione do panels/records-panel.tsx
-
-
 
 function Panel() {
   // ---- server fn handles
@@ -362,28 +363,29 @@ function Panel() {
 
   const watchLot = async (a: AnalyzedLot) => {
     try {
+      const lot = a.lot as typeof a.lot & { buy_now_usd?: number | null };
       await fnAddWatch({
         data: {
           client_id: activeClientId ?? null,
-          source: a.lot.source ?? null,
-          lot_id: a.lot.lot_id ?? null,
-          url: (a.lot as any).url ?? null,
-          title: `${a.lot.year ?? ""} ${a.lot.make ?? ""} ${a.lot.model ?? ""}`.trim(),
-          make: a.lot.make ?? null,
-          model: a.lot.model ?? null,
-          year: a.lot.year ?? null,
-          vin: (a.lot as any).vin ?? null,
-          current_bid_usd: a.lot.current_bid_usd ?? null,
-          buy_now_usd: (a.lot as any).buy_now_usd ?? null,
+          source: lot.source ?? null,
+          lot_id: lot.lot_id ?? null,
+          url: lot.url ?? null,
+          title: `${lot.year ?? ""} ${lot.make ?? ""} ${lot.model ?? ""}`.trim(),
+          make: lot.make ?? null,
+          model: lot.model ?? null,
+          year: lot.year ?? null,
+          vin: lot.vin ?? null,
+          current_bid_usd: lot.current_bid_usd ?? null,
+          buy_now_usd: lot.buy_now_usd ?? lot.buy_now_price_usd ?? null,
           score: a.analysis.score,
           category: a.analysis.recommendation,
           notes: a.analysis.client_description_pl ?? null,
-          snapshot: a as any,
+          snapshot: a,
         },
       });
       toast.success("Dodano do watchlist");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Błąd dodawania");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Błąd dodawania");
     }
   };
 
@@ -400,12 +402,15 @@ function Panel() {
   const [disableAuctionFilter, setDisableAuctionFilter] = useState<boolean>(false);
   const [clientMessage, setClientMessage] = useState("");
   const [parsing, setParsing] = useState(false);
-  const [lastParseResult, setLastParseResult] = useState<{ summary: string; warnings: string[] } | null>(null);
+  const [lastParseResult, setLastParseResult] = useState<{
+    summary: string;
+    warnings: string[];
+  } | null>(null);
   const [parsedCars, setParsedCars] = useState<ParsedCarsResult | null>(null);
   const [batchJobs, setBatchJobs] = useState<BatchJobEntry[]>([]);
   const [listings, setListings] = useState<CarLot[]>([]);
   const [listingsRaw, setListingsRaw] = useState<string>("");
-  
+
   // openedBackendRecordId przeniesiony na /records
 
   const [analysis, setAnalysis] = useState<AnalyzedLot[] | null>(null);
@@ -457,7 +462,6 @@ function Panel() {
     });
   }
 
-
   // Retry state for analysis
   const currentRetryRef = useRef(0);
   const maxRetriesRef = useRef(3);
@@ -489,7 +493,17 @@ function Panel() {
     criteria: ClientCriteria;
   } | null>(null);
 
-  const TERMINAL_STATUSES = ["done", "completed", "finished", "success", "complete", "failed", "error", "cancelled", "not_found"];
+  const TERMINAL_STATUSES = [
+    "done",
+    "completed",
+    "finished",
+    "success",
+    "complete",
+    "failed",
+    "error",
+    "cancelled",
+    "not_found",
+  ];
 
   // Background poller: ticks elapsed + polls backend every 2s, pauses on terminal state
   useEffect(() => {
@@ -512,7 +526,14 @@ function Panel() {
       // Timeout after 20 min
       if (elapsed > POLL_TIMEOUT_MS) {
         setScrapeJob((s) =>
-          s ? { ...s, status: "failed", errorMessage: "Timeout – brak odpowiedzi po 20 min", elapsedMs: Date.now() - s.startedAt } : s,
+          s
+            ? {
+                ...s,
+                status: "failed",
+                errorMessage: "Timeout – brak odpowiedzi po 20 min",
+                elapsedMs: Date.now() - s.startedAt,
+              }
+            : s,
         );
         scrapeContextRef.current = null;
         clearPersistedScrapeJob();
@@ -525,7 +546,9 @@ function Panel() {
       if (!ctx?.jobId || polling || cancelRequestedRef.current) return;
       polling = true;
       try {
-        const p = (await fnPollScraper({ data: { jobId: ctx.jobId, cacheKey: ctx.cacheKey, criteria: ctx.criteria } })) as {
+        const p = (await fnPollScraper({
+          data: { jobId: ctx.jobId, cacheKey: ctx.cacheKey, criteria: ctx.criteria },
+        })) as {
           status: string;
           listings?: CarLot[];
           error?: string;
@@ -540,11 +563,29 @@ function Panel() {
           polecane_index_url?: string;
           client_reports_html?: string[];
           broker_reports_html?: string[];
-          artifact_urls?: { client_report?: string; analysis_json?: string; ai_prompt?: string; ai_input?: string; polecane_index?: string };
-          report_endpoints?: { client_html?: string; broker_html?: string; client_llm?: string; broker_llm?: string; offer_email_html?: string; pdf?: string };
+          artifact_urls?: {
+            client_report?: string;
+            analysis_json?: string;
+            ai_prompt?: string;
+            ai_input?: string;
+            polecane_index?: string;
+          };
+          report_endpoints?: {
+            client_html?: string;
+            broker_html?: string;
+            client_llm?: string;
+            broker_llm?: string;
+            offer_email_html?: string;
+            pdf?: string;
+          };
           // Python adapter zwraca już gotową analizę AI (POLECAM/RYZYKO/ODRZUĆ + score)
           // Dzięki temu TS NIE musi dublować callAI() przez runAnalysis (~50% mniej tokenów).
-          analyzed_lots?: Array<{ lot: CarLot; analysis: AIAnalysis; is_top_recommendation?: boolean; auto_reports?: { client_hybrid_url?: string; broker_hybrid_url?: string } }>;
+          analyzed_lots?: Array<{
+            lot: CarLot;
+            analysis: AIAnalysis;
+            is_top_recommendation?: boolean;
+            auto_reports?: { client_hybrid_url?: string; broker_hybrid_url?: string };
+          }>;
         };
         // Phase labels for toast notifications
         const PHASE_TOAST_LABELS: Record<string, string> = {
@@ -558,14 +599,19 @@ function Panel() {
 
         // Notify on phase transitions (for resumed jobs or any active polling)
         const currentPhase = p.phase ?? p.status;
-        if (wasResumedRef.current && currentPhase && currentPhase !== lastNotifiedPhaseRef.current) {
+        if (
+          wasResumedRef.current &&
+          currentPhase &&
+          currentPhase !== lastNotifiedPhaseRef.current
+        ) {
           const label = PHASE_TOAST_LABELS[currentPhase];
           if (label) {
-            const progressSuffix = typeof p.current === "number" && typeof p.total === "number"
-              ? ` (${p.current}/${p.total})`
-              : typeof p.progress === "number"
-                ? ` (${Math.round(p.progress * 100)}%)`
-                : "";
+            const progressSuffix =
+              typeof p.current === "number" && typeof p.total === "number"
+                ? ` (${p.current}/${p.total})`
+                : typeof p.progress === "number"
+                  ? ` (${Math.round(p.progress * 100)}%)`
+                  : "";
             toast.info(`${label}${progressSuffix}`);
           } else if (lastNotifiedPhaseRef.current === null) {
             // First successful poll after resume — confirm connection
@@ -578,17 +624,22 @@ function Panel() {
         if (DONE.includes(p.status) || (typeof p.progress === "number" && p.progress >= 1.0)) {
           const result = Array.isArray(p.listings) ? p.listings : [];
           setScrapeJob((s) =>
-            s ? {
-              ...s, status: "done", progress: 1, elapsedMs: Date.now() - s.startedAt,
-              reportUrls: {
-                client_report_url: p.client_report_url,
-                polecane_index_url: p.polecane_index_url,
-                client_reports_html: p.client_reports_html,
-                broker_reports_html: p.broker_reports_html,
-                artifact_urls: p.artifact_urls,
-                report_endpoints: p.report_endpoints,
-              },
-            } : s,
+            s
+              ? {
+                  ...s,
+                  status: "done",
+                  progress: 1,
+                  elapsedMs: Date.now() - s.startedAt,
+                  reportUrls: {
+                    client_report_url: p.client_report_url,
+                    polecane_index_url: p.polecane_index_url,
+                    client_reports_html: p.client_reports_html,
+                    broker_reports_html: p.broker_reports_html,
+                    artifact_urls: p.artifact_urls,
+                    report_endpoints: p.report_endpoints,
+                  },
+                }
+              : s,
           );
           setListings(result);
           setListingsRaw(JSON.stringify(result, null, 2));
@@ -596,7 +647,9 @@ function Panel() {
           // wstaw ją od razu — bez konieczności wywołania runAnalysis (oszczędność tokenów).
           if (Array.isArray(p.analyzed_lots) && p.analyzed_lots.length > 0) {
             setAnalysis(p.analyzed_lots as AnalyzedLot[]);
-            const polecam = p.analyzed_lots.filter((a) => a.analysis?.recommendation === "POLECAM").length;
+            const polecam = p.analyzed_lots.filter(
+              (a) => a.analysis?.recommendation === "POLECAM",
+            ).length;
             toast.success(`Scraper + AI gotowe: ${result.length} lotów, ${polecam} polecanych`);
           } else {
             toast.success(`Scraper zakończył pracę — zwrócono ${result.length} lotów`);
@@ -613,7 +666,13 @@ function Panel() {
           const errMsg = p.error ?? "Job nie istnieje na serwerze scrapera.";
           setScrapeJob((s) =>
             s
-              ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt, errorMessage: errMsg, errorStep: "not_found" }
+              ? {
+                  ...s,
+                  status: "failed",
+                  elapsedMs: Date.now() - s.startedAt,
+                  errorMessage: errMsg,
+                  errorStep: "not_found",
+                }
               : s,
           );
           toast.error("Zapisany job scrapera już nie istnieje — wyczyszczono dane lokalne.");
@@ -626,7 +685,13 @@ function Panel() {
           const errMsg = p.error ?? "Job failed (brak szczegółów z backendu)";
           setScrapeJob((s) =>
             s
-              ? { ...s, status: "failed", elapsedMs: Date.now() - s.startedAt, errorMessage: errMsg, errorStep: p.status }
+              ? {
+                  ...s,
+                  status: "failed",
+                  elapsedMs: Date.now() - s.startedAt,
+                  errorMessage: errMsg,
+                  errorStep: p.status,
+                }
               : s,
           );
           toast.error(errMsg);
@@ -679,15 +744,23 @@ function Panel() {
     } else if (job) {
       setPendingResume(job);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function resumeScrapeJob() {
     if (!pendingResume) return;
     const saved = pendingResume;
     setPendingResume(null);
-    scrapeContextRef.current = { jobId: saved.jobId, cacheKey: saved.cacheKey, criteria: saved.criteria };
-    setScrapeJob({ status: "running", jobId: saved.jobId, startedAt: saved.startedAt, elapsedMs: Date.now() - saved.startedAt });
+    scrapeContextRef.current = {
+      jobId: saved.jobId,
+      cacheKey: saved.cacheKey,
+      criteria: saved.criteria,
+    };
+    setScrapeJob({
+      status: "running",
+      jobId: saved.jobId,
+      startedAt: saved.startedAt,
+      elapsedMs: Date.now() - saved.startedAt,
+    });
     setCriteria((c) => ({ ...c, ...saved.criteria }));
     setBusy("scraper");
     cancelRequestedRef.current = false;
@@ -767,7 +840,9 @@ function Panel() {
       })) as unknown as { id: string };
       if (!activeRecordId) setActiveRecordId(row.id);
       if (activeClient) await refreshRecords(activeClient.id);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   async function downloadJobLogs(jobId: string, format: "json" | "csv" = "json") {
@@ -795,7 +870,14 @@ function Panel() {
         const header = "timestamp,level,step,source,message,details";
         const escCsv = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
         const rows = r.logs.map((l) =>
-          [l.created_at, l.level, l.step ?? "", l.source, escCsv(l.message), escCsv(typeof l.details === "string" ? l.details : JSON.stringify(l.details ?? ""))].join(","),
+          [
+            l.created_at,
+            l.level,
+            l.step ?? "",
+            l.source,
+            escCsv(l.message),
+            escCsv(typeof l.details === "string" ? l.details : JSON.stringify(l.details ?? "")),
+          ].join(","),
         );
         blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
         filename = `scraper-job-${jobId}-logs.csv`;
@@ -834,7 +916,9 @@ function Panel() {
   const refreshRecords = useCallback(
     async (clientId?: string | null) => {
       try {
-        const r = (await fnListRecords({ data: { clientId: clientId ?? undefined } })) as RecordSummary[];
+        const r = (await fnListRecords({
+          data: { clientId: clientId ?? undefined },
+        })) as RecordSummary[];
         setRecords(r);
       } catch (e) {
         toast.error(`Rekordy: ${(e as Error).message}`);
@@ -877,7 +961,11 @@ function Panel() {
     setBusy("client");
     try {
       const row = (await fnCreateClient({
-        data: { name: newName.trim(), contact: newContact.trim() || null, notes: newNotes.trim() || null },
+        data: {
+          name: newName.trim(),
+          contact: newContact.trim() || null,
+          notes: newNotes.trim() || null,
+        },
       })) as ClientRow;
       setClients((cs) => [row, ...cs]);
       setActiveClientId(row.id);
@@ -958,7 +1046,9 @@ function Panel() {
     try {
       const r = await fnBatchSearch({
         data: {
-          searches: parsedCars.criteria_list.map((c) => ({ criteria: c as unknown as Record<string, unknown> })),
+          searches: parsedCars.criteria_list.map((c) => ({
+            criteria: c as unknown as Record<string, unknown>,
+          })),
         },
       });
 
@@ -970,7 +1060,7 @@ function Panel() {
             parsedCars.criteria_list.find(
               (c) => `${c.make} ${c.model || ""}`.trim().toLowerCase() === j.label.toLowerCase(),
             ) ?? parsedCars.criteria_list[0],
-          status: j.idempotent ? "running" as const : "queued" as const,
+          status: j.idempotent ? ("running" as const) : ("queued" as const),
         })),
       );
 
@@ -982,9 +1072,7 @@ function Panel() {
   }
 
   const handleBatchJobUpdate = useCallback((jobId: string, update: Partial<BatchJobEntry>) => {
-    setBatchJobs((prev) =>
-      prev.map((j) => (j.jobId === jobId ? { ...j, ...update } : j)),
-    );
+    setBatchJobs((prev) => prev.map((j) => (j.jobId === jobId ? { ...j, ...update } : j)));
   }, []);
 
   async function callScraper() {
@@ -1002,9 +1090,21 @@ function Panel() {
     setScrapeJob({ status: "queued", startedAt, elapsedMs: 0 });
     try {
       const start = (await fnStartScraper({
-        data: { criteria, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined, disable_auction_filter: disableAuctionFilter },
+        data: {
+          criteria,
+          clientId: activeClientId ?? undefined,
+          recordId: activeRecordId ?? undefined,
+          disable_auction_filter: disableAuctionFilter,
+        },
       })) as
-        | { mode: "sync"; listings: CarLot[]; source: string; cache_hit?: boolean; cache_key?: string; no_results?: boolean }
+        | {
+            mode: "sync";
+            listings: CarLot[];
+            source: string;
+            cache_hit?: boolean;
+            cache_key?: string;
+            no_results?: boolean;
+          }
         | { mode: "job"; job_id: string; source: string; cache_key: string };
 
       if (start.mode === "sync") {
@@ -1012,9 +1112,7 @@ function Panel() {
         setListingsRaw(JSON.stringify(start.listings, null, 2));
         setScrapeJob({ status: "done", startedAt, elapsedMs: Date.now() - startedAt, progress: 1 });
         if (start.cache_hit) {
-          toast.success(
-            `Z cache: ${start.listings.length} lotów (bez nowego scrape)`,
-          );
+          toast.success(`Z cache: ${start.listings.length} lotów (bez nowego scrape)`);
         } else {
           toast.success(`Scraper zwrócił ${start.listings.length} lotów`);
         }
@@ -1037,7 +1135,9 @@ function Panel() {
         s ? { ...s, status: "failed", errorMessage: s.errorMessage ?? msg } : s,
       );
       toast.error(humanizeError(msg), {
-        description: isScraper404(msg) ? "Sprawdź panel błędu poniżej — znajdziesz tam instrukcję naprawy." : undefined,
+        description: isScraper404(msg)
+          ? "Sprawdź panel błędu poniżej — znajdziesz tam instrukcję naprawy."
+          : undefined,
         duration: isScraper404(msg) ? 8000 : 4000,
       });
       setBusy(null);
@@ -1057,14 +1157,27 @@ function Panel() {
     const startedAt = Date.now();
     setAnalysisJob({ phase: "queued", startedAt, elapsedMs: 0, lotsCount: listings.length });
     try {
-      setAnalysisJob((s) => s ? { ...s, phase: "analyzing", elapsedMs: Date.now() - startedAt } : s);
+      setAnalysisJob((s) =>
+        s ? { ...s, phase: "analyzing", elapsedMs: Date.now() - startedAt } : s,
+      );
       const r = (await fnRunAnalysis({
-        data: { criteria, listings, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
+        data: {
+          criteria,
+          listings,
+          clientId: activeClientId ?? undefined,
+          recordId: activeRecordId ?? undefined,
+        },
       })) as {
         ai_input: unknown;
         ai_prompt: string;
         analysis: AnalyzedLot[];
-        ai_meta?: { provider: string; model: string; usedFallback: boolean; fallbackMode: string; usage: { input_tokens: number; output_tokens: number } };
+        ai_meta?: {
+          provider: string;
+          model: string;
+          usedFallback: boolean;
+          fallbackMode: string;
+          usage: { input_tokens: number; output_tokens: number };
+        };
       };
       setAiInput(r.ai_input);
       setAiPrompt(r.ai_prompt);
@@ -1075,7 +1188,9 @@ function Panel() {
       let generatedReportHtml = "";
       let generatedMailHtml = "";
       if (r.analysis.length > 0) {
-        setAnalysisJob((s) => s ? { ...s, phase: "rendering", elapsedMs: Date.now() - startedAt } : s);
+        setAnalysisJob((s) =>
+          s ? { ...s, phase: "rendering", elapsedMs: Date.now() - startedAt } : s,
+        );
         try {
           const rep = (await fnRenderReport({
             data: {
@@ -1116,9 +1231,12 @@ function Panel() {
 
       // Auto-persist: zapisz rekord z analizą i artefaktami do DB
       if (activeClient) {
-        setAnalysisJob((s) => s ? { ...s, phase: "saving", elapsedMs: Date.now() - startedAt } : s);
+        setAnalysisJob((s) =>
+          s ? { ...s, phase: "saving", elapsedMs: Date.now() - startedAt } : s,
+        );
         try {
-          const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
+          const title =
+            `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
           const analysisStartedIso = new Date(startedAt).toISOString();
           const row = (await fnSaveRecord({
             data: {
@@ -1151,12 +1269,25 @@ function Panel() {
 
       // Reset retry state on success
       currentRetryRef.current = 0;
-      if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
-      setAnalysisJob((s) => s ? { ...s, phase: "done", elapsedMs: Date.now() - startedAt } : s);
+      if (autoRetryTimerRef.current) {
+        clearTimeout(autoRetryTimerRef.current);
+        autoRetryTimerRef.current = null;
+      }
+      setAnalysisJob((s) => (s ? { ...s, phase: "done", elapsedMs: Date.now() - startedAt } : s));
       toast.success(`Analiza zakończona: ${r.analysis.length} lotów przeanalizowanych`);
     } catch (e) {
       const msg = (e as Error).message;
-      setAnalysisJob((s) => s ? { ...s, phase: "failed", lastPhase: s.phase !== "failed" ? s.phase : s.lastPhase, elapsedMs: Date.now() - startedAt, errorMessage: msg } : s);
+      setAnalysisJob((s) =>
+        s
+          ? {
+              ...s,
+              phase: "failed",
+              lastPhase: s.phase !== "failed" ? s.phase : s.lastPhase,
+              elapsedMs: Date.now() - startedAt,
+              errorMessage: msg,
+            }
+          : s,
+      );
 
       // Persist error + compute retry backoff
       const currentRetry = currentRetryRef.current;
@@ -1165,7 +1296,8 @@ function Panel() {
       const canRetry = newRetryCount < maxRetries;
       // Exponential backoff: 10s, 30s, 90s, 270s...
       const backoffMs = canRetry ? Math.min(10_000 * Math.pow(3, currentRetry), 300_000) : null;
-      const nextRetryAt = canRetry && backoffMs ? new Date(Date.now() + backoffMs).toISOString() : null;
+      const nextRetryAt =
+        canRetry && backoffMs ? new Date(Date.now() + backoffMs).toISOString() : null;
 
       if (activeRecordId || activeClient) {
         try {
@@ -1208,7 +1340,9 @@ function Panel() {
                 source: "auto" as const,
               },
             });
-          } catch { /* best-effort */ }
+          } catch {
+            /* best-effort */
+          }
           runAi();
         }, backoffMs);
       } else {
@@ -1255,8 +1389,17 @@ function Panel() {
     setBusy("lot");
     try {
       const r = (await fnRunLotReports({
-        data: { criteria, listings, clientId: activeClientId ?? undefined, recordId: activeRecordId ?? undefined },
-      })) as { report_html: string; mail_html: string; lots: Array<{ lot_id: string; score: number; group: string; rank_position: number | null }> };
+        data: {
+          criteria,
+          listings,
+          clientId: activeClientId ?? undefined,
+          recordId: activeRecordId ?? undefined,
+        },
+      })) as {
+        report_html: string;
+        mail_html: string;
+        lots: Array<{ lot_id: string; score: number; group: string; rank_position: number | null }>;
+      };
       setReportHtml(r.report_html);
       setMailHtml(r.mail_html);
       const tops = r.lots.filter((l) => l.group === "TOP").length;
@@ -1276,7 +1419,8 @@ function Panel() {
     }
     setBusy("save");
     try {
-      const title = `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
+      const title =
+        `${criteria.make} ${criteria.model || ""} ${criteria.year_from || ""}-${criteria.year_to || ""}`.trim();
       const row = (await fnSaveRecord({
         data: {
           id: activeRecordId ?? undefined,
@@ -1336,7 +1480,10 @@ function Panel() {
 
   async function retryAnalysis(recordId: string) {
     // Cancel any pending auto-retry
-    if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
+    if (autoRetryTimerRef.current) {
+      clearTimeout(autoRetryTimerRef.current);
+      autoRetryTimerRef.current = null;
+    }
 
     // Load record to check retry limit before proceeding
     const row = (await fnLoadRecord({ data: { id: recordId } })) as unknown as {
@@ -1365,7 +1512,9 @@ function Panel() {
           source: "manual" as const,
         },
       });
-    } catch { /* best-effort logging */ }
+    } catch {
+      /* best-effort logging */
+    }
     setTimeout(() => {
       runAi();
     }, 100);
@@ -1401,8 +1550,6 @@ function Panel() {
     <div className="text-foreground">
       {/* Sub-header usunięty — ustawienia masz na /settings, status połączeń na /jobs */}
 
-
-
       <main className="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* ---- Clients column ---- */}
         <ClientsAside
@@ -1424,141 +1571,140 @@ function Panel() {
         {/* ---- Workspace ---- */}
         <section className="min-w-0 space-y-4">
           <>
-
-          <Card className="p-4">
-            <SessionHeader
-              activeClient={activeClient}
-              activeRecordId={activeRecordId}
-              busy={busy}
-              onNewSession={newSession}
-              onSave={persistRecord}
-            />
-
-            <ClientMessageCard
-              clientMessage={clientMessage}
-              setClientMessage={setClientMessage}
-              parsing={parsing}
-              lastParseResult={lastParseResult}
-              parsedCars={parsedCars}
-              onParse={handleParseMessage}
-              onBatchSearch={handleBatchSearch}
-            />
-
-            {/* Batch jobs panel */}
-            <BatchJobsPanel
-              batchJobs={batchJobs}
-              onClear={() => setBatchJobs([])}
-              onPollUpdate={handleBatchJobUpdate}
-            />
-
-
-            <CriteriaForm criteria={criteria} setCriteria={setCriteria} />
-
-            <Separator className="my-4" />
-
-
-            <ScraperToolbar
-              listingsCount={listings.length}
-              disableAuctionFilter={disableAuctionFilter}
-              setDisableAuctionFilter={setDisableAuctionFilter}
-              busy={busy}
-              hasScraperUrl={!!env?.SCRAPER_BASE_URL}
-              hasListingsRaw={!!listingsRaw.trim()}
-              onParseFromText={parseListingsFromText}
-              onScrape={callScraper}
-              onClearCache={clearCacheAll}
-            />
-            <ResumeJobBanner
-              pendingResume={pendingResume}
-              validationErrors={resumeValidationErrors}
-              onResume={resumeScrapeJob}
-              onDismiss={dismissResume}
-              onClearErrors={() => setResumeValidationErrors([])}
-            />
-            {scrapeJob && (
-              <ScraperProgress
-                job={scrapeJob}
-                onCancel={requestCancelScrape}
-                onDownloadLogs={downloadJobLogs}
-                onRerun={callScraper}
-                rerunDisabled={busy === "scraper"}
-              />
-            )}
-            <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Anulować wznowiony job?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Ten job został wznowiony po przeładowaniu strony. Anulowanie przerwie trwający proces scrapowania — tej operacji nie można cofnąć.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Nie, kontynuuj</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmCancelScrape} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Tak, anuluj
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            <Textarea
-              className="font-mono text-xs"
-              rows={6}
-              placeholder='Wklej tutaj JSON z lotami: [{"source":"copart","lot_id":"123","year":2020,...}]'
-              value={listingsRaw}
-              onChange={(e) => setListingsRaw(e.target.value)}
-            />
-            {listings.length > 0 && (
-              <ListingsTable
-                listings={listings}
-              />
-            )}
-
-            {scrapeJob?.status === "done" && scrapeJob.reportUrls && (
-              <ScraperReportsSection
-                reportUrls={scrapeJob.reportUrls}
-                listings={listings}
-                criteria={criteria}
-              />
-            )}
-
-            <Separator className="my-4" />
-
-            <AiActionsBar
-              busy={busy}
-              listingsCount={listings.length}
-              hasAnalysis={!!(analysis && analysis.length > 0)}
-              hasAnthropicKey={!!env?.ANTHROPIC_API_KEY}
-              onRunAi={runAi}
-              onMakeReport={makeReport}
-              onMakeLotReports={makeLotReports}
-            />
-            {analysisJob && <AnalysisProgress job={analysisJob} />}
-          </Card>
-
-          {analysis && analysis.length > 0 && (
-            <AnalysisResults analysis={analysis} aiMeta={aiMeta} onWatch={watchLot} />
-          )}
-
-          {reportHtml && (
             <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Podgląd raportu HTML
-              </h3>
-              <iframe
-                title="Raport"
-                srcDoc={reportHtml}
-                className="h-[600px] w-full rounded border"
+              <SessionHeader
+                activeClient={activeClient}
+                activeRecordId={activeRecordId}
+                busy={busy}
+                onNewSession={newSession}
+                onSave={persistRecord}
               />
-            </Card>
-          )}
 
+              <ClientMessageCard
+                clientMessage={clientMessage}
+                setClientMessage={setClientMessage}
+                parsing={parsing}
+                lastParseResult={lastParseResult}
+                parsedCars={parsedCars}
+                onParse={handleParseMessage}
+                onBatchSearch={handleBatchSearch}
+              />
+
+              {/* Batch jobs panel */}
+              <BatchJobsPanel
+                batchJobs={batchJobs}
+                onClear={() => setBatchJobs([])}
+                onPollUpdate={handleBatchJobUpdate}
+              />
+
+              <CriteriaForm criteria={criteria} setCriteria={setCriteria} />
+
+              <Separator className="my-4" />
+
+              <ScraperToolbar
+                listingsCount={listings.length}
+                disableAuctionFilter={disableAuctionFilter}
+                setDisableAuctionFilter={setDisableAuctionFilter}
+                busy={busy}
+                hasScraperUrl={!!env?.SCRAPER_BASE_URL}
+                hasListingsRaw={!!listingsRaw.trim()}
+                onParseFromText={parseListingsFromText}
+                onScrape={callScraper}
+                onClearCache={clearCacheAll}
+              />
+              <ResumeJobBanner
+                pendingResume={pendingResume}
+                validationErrors={resumeValidationErrors}
+                onResume={resumeScrapeJob}
+                onDismiss={dismissResume}
+                onClearErrors={() => setResumeValidationErrors([])}
+              />
+              {scrapeJob && (
+                <ScraperProgress
+                  job={scrapeJob}
+                  onCancel={requestCancelScrape}
+                  onDownloadLogs={downloadJobLogs}
+                  onRerun={callScraper}
+                  rerunDisabled={busy === "scraper"}
+                />
+              )}
+              <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Anulować wznowiony job?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Ten job został wznowiony po przeładowaniu strony. Anulowanie przerwie trwający
+                      proces scrapowania — tej operacji nie można cofnąć.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Nie, kontynuuj</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={confirmCancelScrape}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Tak, anuluj
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Textarea
+                className="font-mono text-xs"
+                rows={6}
+                placeholder='Wklej tutaj JSON z lotami: [{"source":"copart","lot_id":"123","year":2020,...}]'
+                value={listingsRaw}
+                onChange={(e) => setListingsRaw(e.target.value)}
+              />
+              {listings.length > 0 && <ListingsTable listings={listings} />}
+
+              {scrapeJob?.status === "done" && scrapeJob.reportUrls && (
+                <ScraperReportsSection
+                  reportUrls={scrapeJob.reportUrls}
+                  listings={listings}
+                  criteria={criteria}
+                />
+              )}
+
+              <Separator className="my-4" />
+
+              <AiActionsBar
+                busy={busy}
+                listingsCount={listings.length}
+                hasAnalysis={!!(analysis && analysis.length > 0)}
+                hasAnthropicKey={!!env?.ANTHROPIC_API_KEY}
+                onRunAi={runAi}
+                onMakeReport={makeReport}
+                onMakeLotReports={makeLotReports}
+              />
+              {analysisJob && <AnalysisProgress job={analysisJob} />}
+            </Card>
+
+            {analysis && analysis.length > 0 && (
+              <AnalysisResults analysis={analysis} aiMeta={aiMeta} onWatch={watchLot} />
+            )}
+
+            {reportHtml && (
+              <Card className="p-4">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Podgląd raportu HTML
+                </h3>
+                <iframe
+                  title="Raport"
+                  sandbox=""
+                  srcDoc={reportHtml}
+                  className="h-[600px] w-full rounded border"
+                />
+              </Card>
+            )}
           </>
         </section>
       </main>
 
       <NoResultsQueueDialog
         open={!!noResultsDialog}
-        onOpenChange={(o) => { if (!o) setNoResultsDialog(null); }}
+        onOpenChange={(o) => {
+          if (!o) setNoResultsDialog(null);
+        }}
         defaultLabel={noResultsDialog?.defaultLabel ?? ""}
         busy={queueBusy}
         onConfirm={handleQueueConfirm}
@@ -1572,5 +1718,3 @@ function Panel() {
 // ListingsTable -> @/components/panels/listings-table
 // EnvStatus / SettingsSheet / ToggleRow usunięte — pełne ustawienia są na /settings.
 // ConnectionStatusPanel przeniesiony do src/components/panels/connection-status-panel.tsx (route /jobs).
-
-
