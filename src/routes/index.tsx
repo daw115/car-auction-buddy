@@ -547,6 +547,57 @@ function HomePage() {
       <Card className="p-4">
         <CriteriaForm criteria={criteria} setCriteria={setCriteria} />
         <Separator className="my-4" />
+        <div>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Okno aukcji (opcjonalnie)
+          </h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Min. godzin do aukcji
+              </label>
+              <Input
+                type="number"
+                min={0}
+                className="w-32"
+                placeholder="12"
+                value={auctionMinHours}
+                onChange={(e) =>
+                  setAuctionMinHours(e.target.value === "" ? "" : Math.max(0, +e.target.value))
+                }
+                disabled={disableAuctionFilter}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Max. godzin do aukcji
+              </label>
+              <Input
+                type="number"
+                min={0}
+                className="w-32"
+                placeholder="120"
+                value={auctionMaxHours}
+                onChange={(e) =>
+                  setAuctionMaxHours(e.target.value === "" ? "" : Math.max(0, +e.target.value))
+                }
+                disabled={disableAuctionFilter}
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={disableAuctionFilter}
+                onChange={(e) => setDisableAuctionFilter(e.target.checked)}
+              />
+              Wyłącz filtr okna aukcji (pokaż też przyszłe / spoza okna)
+            </label>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Domyślnie backend zawęża do 12–120 h. Puste pola = domyślne wartości backendu.
+          </p>
+        </div>
+        <Separator className="my-4" />
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[220px] flex-1">
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
