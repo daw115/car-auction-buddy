@@ -117,6 +117,7 @@ export type BackendJobStatus = {
   phases?: any[];
   step?: string;
   message?: string;
+  error?: string | null;
   current?: number;
   total?: number;
   listings?: CarLot[];
