@@ -112,15 +112,11 @@ type BatchEntry = {
   jobId: string;
   label: string;
   criteria: ClientCriteria;
-  status: string;
-  phase?: string | null;
-  progress?: number;
-  listingsCount?: number;
-  analyzed?: AnalyzedLot[];
-  errorMessage?: string;
-  errorPhases?: Array<{ name?: string; status?: string; message?: string; error?: string }>;
   idempotent?: boolean;
+  /** status znany już w chwili POST /api/search/batch (np. reused done) */
+  initialStatus?: string;
 };
+
 
 
 function HomePage() {
