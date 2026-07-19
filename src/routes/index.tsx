@@ -262,6 +262,12 @@ function HomePage() {
       delay = Math.min(delay + 500, 8000);
       try {
         const s = await backendJobStatusFn({ data: { jobId } });
+        const isFail = ["failed", "error", "cancelled"].includes(s.status);
+        const failedPhases = Array.isArray(s.phases)
+          ? s.phases.filter(
+              (p: any) => p && (p.status === "error" || p.status === "failed" || p.error),
+            )
+          : undefined;
         setBatchEntries((entries) =>
           entries.map((e) =>
             e.jobId !== jobId
@@ -273,10 +279,13 @@ function HomePage() {
                   progress: s.progress ?? e.progress,
                   listingsCount: s.listings?.length ?? s.analyzed_lots?.length ?? e.listingsCount,
                   analyzed: s.analyzed_lots ?? e.analyzed,
+                  errorMessage: isFail ? s.message ?? e.errorMessage : e.errorMessage,
+                  errorPhases: isFail && failedPhases?.length ? failedPhases : e.errorPhases,
                 },
           ),
         );
         if (["done", "completed", "failed", "error", "cancelled"].includes(s.status)) return;
+
       } catch {
         // retry
       }
