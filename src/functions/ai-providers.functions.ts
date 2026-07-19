@@ -61,3 +61,43 @@ export const updateAiProviders = createServerFn({ method: "POST" })
       { overrides: data.overrides },
     );
   });
+
+export type AiModelInfo = {
+  model_name: string;
+  description?: string | null;
+  model_id: string;
+  context_window_tokens?: number | null;
+  rate_multiplier?: number | null;
+  rate_unit?: string | null;
+};
+
+export type AiModelsResponse = {
+  provider: string;
+  models: AiModelInfo[];
+  env_value: string | null;
+  override: string | null;
+  effective: string | null;
+};
+
+export const getAiModels = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ provider: z.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    return call<AiModelsResponse>(
+      `/api/settings/ai-models?provider=${encodeURIComponent(data.provider)}`,
+      "GET",
+    );
+  });
+
+export const updateAiModels = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      overrides: z.record(z.string(), z.union([z.string(), z.null()])),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    return call<{ status: string; overrides: Record<string, string | null> }>(
+      "/api/settings/ai-models",
+      "PUT",
+      { overrides: data.overrides },
+    );
+  });
