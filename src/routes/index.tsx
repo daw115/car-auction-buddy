@@ -235,7 +235,7 @@ function HomePage() {
         max_results: chosen[0].max_results ?? 15,
         sources: chosen[0].sources,
       });
-      toast.info("Kryteria załadowane do formularza — kliknij „🔎 Wyszukaj".");
+      toast.info('Kryteria załadowane do formularza — kliknij "🔎 Wyszukaj".');
       return;
     }
     // wiele aut → batch
