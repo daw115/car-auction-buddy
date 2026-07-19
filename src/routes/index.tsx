@@ -297,6 +297,46 @@ function HomePage() {
     setBatchQueue([]);
   }
 
+  async function retryFailedBatch() {
+    const failed = batchEntries.filter((e) =>
+      ["error", "failed", "cancelled"].includes(e.status),
+    );
+    if (failed.length === 0) {
+      toast.info("Brak jobów do ponowienia.");
+      return;
+    }
+    setBatchRunning(true);
+    try {
+      const res = await runBatch({
+        data: { searches: failed.map((e) => ({ criteria: e.criteria })) },
+      });
+      // Podmień stare failed wpisy na nowe joby (zachowaj kolejność w liście).
+      const newByOldJobId = new Map<string, BatchEntry>();
+      res.jobs.forEach((j: BackendBatchJob, i: number) => {
+        const old = failed[i];
+        newByOldJobId.set(old.jobId, {
+          jobId: j.job_id,
+          label: j.label || old.label,
+          criteria: old.criteria,
+          status: (j.reused_status as BatchEntry["status"]) || "queued",
+          idempotent: j.idempotent,
+        });
+      });
+      setBatchEntries((entries) =>
+        entries.map((e) => newByOldJobId.get(e.jobId) ?? e),
+      );
+      toast.success(`Ponowiono ${res.jobs.length} jobów.`);
+      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err.message || "Błąd ponowienia batcha.");
+    } finally {
+      setBatchRunning(false);
+    }
+  }
+
+
+
   function toggleSelected(id: string) {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
   }
@@ -427,6 +467,13 @@ function HomePage() {
                     Załaduj wyniki do widoku
                   </Button>
                 )}
+              {!batchRunning &&
+                batchEntries.some((e) => ["error", "failed", "cancelled"].includes(e.status)) && (
+                  <Button size="sm" variant="secondary" onClick={retryFailedBatch}>
+                    🔁 Ponów nieudane (
+                    {batchEntries.filter((e) => ["error", "failed", "cancelled"].includes(e.status)).length})
+                  </Button>
+              )}
               {!batchRunning && (
                 <Button size="sm" variant="ghost" onClick={clearBatch}>
                   <X className="mr-1 h-3 w-3" /> Wyczyść
