@@ -59,7 +59,6 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   const [personalPw, setPersonalPw] = useState("");
   const [personalPw2, setPersonalPw2] = useState("");
   const [error, setError] = useState("");
-  const [diagLog, setDiagLog] = useState<string[]>([]);
   const inactivityTimer = useRef<number | null>(null);
 
   // Bootstrap: sprawdź czy ktoś już zalogowany i czy sesja nie wygasła.
@@ -135,22 +134,14 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     window.location.replace(url.toString());
   }
 
-
-  function diag(msg: string) {
-    setDiagLog((prev) => [`${new Date().toLocaleTimeString()}  ${msg}`, ...prev].slice(0, 20));
-  }
-
   async function pickUser(u: SiteUser) {
-    diag(`pickUser START — wybrano: ${u}`);
     setUser(u);
     setError("");
     try {
       const exists = await userHasPasswordWithRetry(u);
-      diag(`pickUser OK — userHasPassword zwróciło: ${exists ? "tak" : "nie"}`);
       setStep(exists ? "enterPersonal" : "setPersonal");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      diag(`pickUser BŁĄD — ${msg}`);
       console.error(err);
 
       if (isChunkError(err)) {
@@ -159,7 +150,6 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      diag("pickUser FALLBACK — przechodzę do ekranu hasła mimo błędu");
       setError("Połączenie z serwerem zawiodło — spróbuj ponownie wpisując hasło.");
       setStep("enterPersonal");
     }
@@ -284,45 +274,6 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
               <RefreshCw className="h-3.5 w-3.5" />
               Odśwież UI
             </Button>
-
-            {/* Panel diagnostyczny */}
-            <div className="mt-4 rounded-md border bg-muted/40 p-3 text-xs space-y-2">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-primary" />
-                Diagnostyka logowania
-              </div>
-              <div className="space-y-1 text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>Lista użytkowników:</span>
-                  <span className="font-mono text-foreground">{SITE_USERS.length} użytkowników</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Wybrany użytkownik:</span>
-                  <span className="font-mono text-foreground">{user ?? "—"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Handler pickUser:</span>
-                  <span className={diagLog[0]?.includes("BŁĄD") ? "text-destructive" : "text-emerald-500"}>
-                    {diagLog[1]?.includes("START") && !diagLog[0]?.includes("BŁĄD") ? "działa" : diagLog[0]?.includes("BŁĄD") ? "błąd" : "nie testowano"}
-                  </span>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-full text-xs"
-                onClick={() => pickUser("Dawid")}
-                disabled={user === "Dawid"}
-              >
-                Testuj pickUser (Dawid)
-              </Button>
-              {diagLog.length > 1 && (
-                <pre className="max-h-28 overflow-auto rounded bg-background p-2 text-[10px] font-mono whitespace-pre-wrap">
-                  {diagLog.join("\n")}
-                </pre>
-              )}
-            </div>
           </>
         )}
 
