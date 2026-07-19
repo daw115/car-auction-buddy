@@ -59,6 +59,12 @@ def init_db(db_path: Optional[Path] = None) -> None:
                     ON watch_entries(active, next_run_at);
                 """
             )
+            # Migracja dla istniejących baz (ALTER TABLE nie jest IF NOT EXISTS w SQLite).
+            existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(watch_entries)")}
+            if "recurring" not in existing_cols:
+                conn.execute("ALTER TABLE watch_entries ADD COLUMN recurring INTEGER NOT NULL DEFAULT 0")
+            if "preferred_hour" not in existing_cols:
+                conn.execute("ALTER TABLE watch_entries ADD COLUMN preferred_hour INTEGER")
         _initialized = True
 
 
@@ -70,13 +76,19 @@ def add_watch(
     chat_id: Optional[int],
     created_at: str,
     next_run_at: str,
+    recurring: bool = False,
+    preferred_hour: Optional[int] = None,
 ) -> int:
     with _lock, _connect() as conn:
         cur = conn.execute(
             """INSERT INTO watch_entries
-               (label, request_json, interval_hours, chat_id, created_at, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (label, request_json, int(interval_hours), chat_id, created_at, next_run_at),
+               (label, request_json, interval_hours, chat_id, created_at, next_run_at,
+                recurring, preferred_hour)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                label, request_json, int(interval_hours), chat_id, created_at, next_run_at,
+                1 if recurring else 0, preferred_hour,
+            ),
         )
         return int(cur.lastrowid)
 
@@ -121,7 +133,8 @@ def mark_run(watch_id: int, *, last_run_at: str, next_run_at: str, result_count:
 
 
 def mark_found(watch_id: int, *, last_run_at: str, result_count: int) -> None:
-    """Re-run znalazł loty — dezaktywuj (spełnione)."""
+    """Re-run znalazł loty — dezaktywuj (spełnione). Tylko dla watchy jednorazowych
+    (recurring=0) — 'powiadom mnie jak coś się pojawi, potem przestań'."""
     with _lock, _connect() as conn:
         conn.execute(
             """UPDATE watch_entries
@@ -129,6 +142,19 @@ def mark_found(watch_id: int, *, last_run_at: str, result_count: int) -> None:
                    last_result_count = ?, active = 0, status = 'found'
                WHERE id = ?""",
             (last_run_at, int(result_count), watch_id),
+        )
+
+
+def mark_run_recurring(watch_id: int, *, last_run_at: str, next_run_at: str, result_count: int) -> None:
+    """Re-run wpisu recurring=1 — NIE dezaktywuje, zawsze planuje kolejne
+    uruchomienie (niezależnie czy znaleziono loty czy nie). 'sprawdzaj codziennie'."""
+    with _lock, _connect() as conn:
+        conn.execute(
+            """UPDATE watch_entries
+               SET last_run_at = ?, next_run_at = ?, runs_count = runs_count + 1,
+                   last_result_count = ?, status = 'active'
+               WHERE id = ?""",
+            (last_run_at, next_run_at, int(result_count), watch_id),
         )
 
 

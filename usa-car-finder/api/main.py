@@ -2,6 +2,8 @@ import os
 import asyncio
 import json
 import logging
+import re
+import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -13,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -130,6 +132,14 @@ async def lifespan(app: FastAPI):
             logger.info("[lifespan] TELEGRAM_BOT_TOKEN nie ustawiony — bot disabled")
     except Exception:
         logger.exception("[lifespan] Telegram polling startup nieudany")
+
+    # Startup: settings store (domyślne kryteria wyszukiwania itp.)
+    try:
+        from api import settings_db as _settingsdb
+        _settingsdb.init_db()
+        logger.info("[lifespan] Settings store zainicjalizowany")
+    except Exception:
+        logger.exception("[lifespan] Settings store startup nieudany")
 
     # Startup: watch-queue worker (kolejka ponownego sprawdzania przy 0 wyników)
     watch_task = None
@@ -1261,6 +1271,17 @@ async def _run_job(request: SearchRequest, job: jobs_store.Job) -> None:
         await asyncio.to_thread(_save_job_terminal_record, request, job, "cancelled", "Anulowane przez uzytkownika")
         # nie podnosimy dalej — task ma się skończyć cicho
     except Exception as exc:
+        from scraper.automated_scraper import ServiceInterruptedError
+        if isinstance(exc, ServiceInterruptedError):
+            # Restart usługi w trakcie scrape'a (przeglądarka zamknięta pod
+            # spodem) — NIE prawdziwy błąd scrapera. Ten sam status co
+            # orphan-recovery przy starcie, żeby klient dostał spójne
+            # "spróbuj ponownie", zamiast mylącego "done" z 0 lotami.
+            logger.warning("Search job %s przerwany restartem usługi: %s", job.id, exc)
+            error_msg = str(exc)
+            await jobs_store.mark_interrupted(job, error_msg)
+            await asyncio.to_thread(_save_job_terminal_record, request, job, "interrupted", error_msg)
+            return
         logger.exception("Search job %s failed", job.id)
         error_msg = f"{exc.__class__.__name__}: {exc}"
         await jobs_store.mark_error(job, error_msg)
@@ -1584,24 +1605,62 @@ def _clamp_interval_hours(h) -> int:
 
 
 class QueueWatchRequest(BaseModel):
-    """Dodanie wyszukiwania do kolejki ponownego sprawdzania."""
+    """Dodanie wyszukiwania do kolejki ponownego sprawdzania / cyklicznego."""
     search: SearchRequest
     interval_hours: int = 12
     label: Optional[str] = None
     chat_id: Optional[int] = None
+    # recurring=False (default): "powiadom mnie jak coś się pojawi, potem przestań"
+    #   (dotychczasowe zachowanie — dezaktywuje się po pierwszym trafieniu).
+    # recurring=True: "sprawdzaj cyklicznie, nigdy się nie wyłączaj" — np. codzienny monitoring.
+    recurring: bool = False
+    # preferred_hour: 0-23 (UTC) — gdy podane, kolejne uruchomienia są zakotwiczone
+    # o tej godzinie każdego dnia (a nie "co interval_hours od ostatniego runu",
+    # co z czasem dryfuje). Ignoruje wtedy interval_hours dla harmonogramu.
+    preferred_hour: Optional[int] = None
+
+    @field_validator("preferred_hour")
+    @classmethod
+    def validate_preferred_hour(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return None
+        if not 0 <= value <= 23:
+            raise ValueError("preferred_hour musi być 0-23")
+        return value
+
+
+def _compute_next_run_at(now: datetime, interval_hours: int, preferred_hour: Optional[int]) -> datetime:
+    """Wylicza next_run_at. Gdy preferred_hour ustawione — zakotwicza do najbliższego
+    wystąpienia tej godziny UTC (dziś jeśli jeszcze nie minęła + min. 5 min zapasu,
+    inaczej jutro), więc nie dryfuje z czasem jak czyste '+interval_hours'."""
+    if preferred_hour is None:
+        return now + timedelta(hours=interval_hours)
+
+    candidate = now.replace(hour=preferred_hour, minute=0, second=0, microsecond=0)
+    if candidate <= now + timedelta(minutes=5):
+        candidate += timedelta(days=1)
+    return candidate
 
 
 @app.post("/api/queue", status_code=201)
 async def create_watch(req: QueueWatchRequest, _auth: None = Depends(_require_bearer)):
-    """Zapisuje wyszukiwanie do kolejki — worker re-runuje je co interval_hours
-    i powiadamia (Telegram) gdy w końcu pojawią się loty. Używane gdy search
-    zwrócił 0 wyników i user chce monitorować."""
+    """Zapisuje wyszukiwanie do kolejki.
+
+    recurring=False (default): worker re-runuje co interval_hours i powiadamia
+    (Telegram) TYLKO gdy w końcu pojawią się loty, potem wpis się dezaktywuje.
+    Używane gdy search zwrócił 0 wyników i user chce monitorować.
+
+    recurring=True: worker re-runuje bez końca — co interval_hours, albo,
+    gdy preferred_hour podane, codziennie o tej godzinie (UTC). Powiadamia
+    (Telegram) po każdym uruchomieniu, niezależnie od liczby wyników.
+    Używane do stałego, cyklicznego monitoringu (np. "sprawdzaj codziennie o 8:00").
+    """
     from api import watch_queue_db
     from api._time_utils import utc_now
     interval = _clamp_interval_hours(req.interval_hours)
     label = req.label or search_title(req.search.criteria)
     now = utc_now()
-    next_run = now + timedelta(hours=interval)
+    next_run = _compute_next_run_at(now, interval, req.preferred_hour)
     wid = await asyncio.to_thread(
         watch_queue_db.add_watch,
         request_json=req.search.model_dump_json(),
@@ -1610,12 +1669,19 @@ async def create_watch(req: QueueWatchRequest, _auth: None = Depends(_require_be
         chat_id=req.chat_id,
         created_at=now.isoformat(timespec="seconds"),
         next_run_at=next_run.isoformat(timespec="seconds"),
+        recurring=req.recurring,
+        preferred_hour=req.preferred_hour,
     )
-    logger.info("[watch-queue] dodano wpis %s '%s' co %dh", wid, label, interval)
+    logger.info(
+        "[watch-queue] dodano wpis %s '%s' co %dh (recurring=%s, preferred_hour=%s)",
+        wid, label, interval, req.recurring, req.preferred_hour,
+    )
     return {
         "id": wid,
         "label": label,
         "interval_hours": interval,
+        "recurring": req.recurring,
+        "preferred_hour": req.preferred_hour,
         "next_run_at": next_run.isoformat(timespec="seconds"),
     }
 
@@ -1628,6 +1694,7 @@ async def list_watches(_auth: None = Depends(_require_bearer)):
     meta_keys = (
         "id", "label", "interval_hours", "created_at", "last_run_at",
         "next_run_at", "runs_count", "last_result_count", "status",
+        "recurring", "preferred_hour",
     )
     out = [{k: w.get(k) for k in meta_keys} for w in items]
     return {"watches": out, "count": len(out)}
@@ -1669,6 +1736,41 @@ async def _run_one_watch(w: dict) -> None:
     result = job.result or {}
     count = int(result.get("collected_count") or len(result.get("all_results") or []))
     now = utc_now()
+    is_recurring = bool(w.get("recurring"))
+    preferred_hour = w.get("preferred_hour")
+
+    if is_recurring:
+        # Cykliczny: nigdy się nie wyłącza, powiadamia po KAŻDYM uruchomieniu.
+        next_run = _compute_next_run_at(now, int(w["interval_hours"]), preferred_hour)
+        await asyncio.to_thread(
+            watch_queue_db.mark_run_recurring, wid,
+            last_run_at=now.isoformat(timespec="seconds"),
+            next_run_at=next_run.isoformat(timespec="seconds"), result_count=count,
+        )
+        logger.info(
+            "[watch-queue] wpis %s (recurring) run zakończony — %d lotów, następne %s",
+            wid, count, next_run.isoformat(timespec="seconds"),
+        )
+        try:
+            from notify.telegram import notify_job_completion, is_configured as _tg_configured
+            if _tg_configured():
+                title = (
+                    f"🔁 CYKLICZNE: {w.get('label') or 'wyszukiwanie'} — {count} aut"
+                    if count > 0 else
+                    f"🔁 CYKLICZNE: {w.get('label') or 'wyszukiwanie'} — brak nowych ofert dziś"
+                )
+                await asyncio.to_thread(
+                    notify_job_completion,
+                    status="done",
+                    title=title,
+                    record_id=result.get("record_id"),
+                    job_id=job.id,
+                    collected_count=count,
+                )
+        except Exception:
+            logger.exception("[watch-queue] notify recurring wpisu %s nieudany", wid)
+        return
+
     if count > 0:
         await asyncio.to_thread(
             watch_queue_db.mark_found, wid,
@@ -3361,6 +3463,375 @@ async def telegram_unsubscribe(chat_id: int, _auth: None = Depends(_require_bear
     if not ok:
         raise HTTPException(404, f"Subscriber {chat_id} not found")
     return {"deactivated": chat_id}
+
+
+_DEFAULT_CRITERIA_SETTINGS_KEY = "default_search_criteria"
+
+
+class DefaultCriteriaSettings(BaseModel):
+    """Domyślne kryteria wstępnie wypełniające formularz wyszukiwania w UI.
+
+    Celowo NIE dziedziczy z ClientCriteria — tu wszystko jest opcjonalne
+    (nawet make), bo to tylko szablon do wypełnienia formularza, nie
+    walidowane zapytanie do scrapera.
+    """
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year_from: Optional[int] = None
+    year_to: Optional[int] = None
+    budget_usd: Optional[float] = None
+    max_odometer_mi: Optional[int] = None
+    fuel_type: Optional[str] = None
+    allowed_damage_types: list[str] = Field(default_factory=list)
+    excluded_damage_types: list[str] = Field(default_factory=lambda: ["Flood", "Fire"])
+    max_results: int = 15
+    sources: list[str] = Field(default_factory=lambda: ["copart", "iaai"])
+
+
+_AI_PROVIDER_TASKS: dict[str, dict] = {
+    "ai_analysis_mode": {
+        "label": "Analiza i scoring lotów",
+        "env_var": "AI_ANALYSIS_MODE",
+        "options": ["auto", "openai", "anthropic", "gemini", "kiro", "local"],
+        "default": "auto",
+    },
+    "llm_reports_provider": {
+        "label": "Raporty (klient/broker) + parsowanie wiadomości klienta + legacy LLM raport",
+        "env_var": "LLM_REPORTS_PROVIDER",
+        "options": ["gemini", "anthropic", "kiro"],
+        "default": "gemini",
+    },
+    "model_normalization_ai_provider": {
+        "label": "Normalizacja nazw modeli",
+        "env_var": "MODEL_NORMALIZATION_AI_PROVIDER",
+        "options": ["gemini", "anthropic", "kiro"],
+        "default": "gemini",
+    },
+    "frame_damage_ai_provider": {
+        "label": "Wykrywanie uszkodzeń ramy (analiza zdjęć)",
+        "env_var": "FRAME_DAMAGE_AI_PROVIDER",
+        # Bez "kiro": zadanie wizyjne, kiro-cli nie ma potwierdzonego wejścia obrazkowego.
+        "options": ["gemini", "anthropic"],
+        "default": "gemini",
+    },
+    "offer_agent_ai_provider": {
+        "label": "Agent ofert (automatyzacja mailowa)",
+        "env_var": "OFFER_AGENT_AI_PROVIDER",
+        "options": ["gemini", "anthropic", "kiro"],
+        "default": "gemini",
+    },
+}
+
+
+@app.get("/api/settings/ai-providers")
+async def get_ai_provider_settings(_auth: None = Depends(_require_bearer)):
+    """Lista zadań AI w aplikacji + aktualnie efektywny provider dla każdego
+    (override ustawiony z dashboardu, albo wartość z .env gdy nie ma override).
+
+    Response: { tasks: [{ key, label, options, env_value, override, effective }] }
+    - env_value: co jest ustawione w .env na serwerze (albo default kodu)
+    - override: co wybrano z dashboardu (null gdy nie ustawiono)
+    - effective: to co REALNIE jest używane teraz (override ?? env_value)
+    """
+    from api import settings_db
+    overrides = await asyncio.to_thread(settings_db.get_ai_provider_overrides)
+    tasks = []
+    for key, meta in _AI_PROVIDER_TASKS.items():
+        env_value = os.getenv(meta["env_var"], meta["default"])
+        override = overrides.get(key)
+        tasks.append({
+            "key": key,
+            "label": meta["label"],
+            "options": meta["options"],
+            "env_value": env_value,
+            "override": override,
+            "effective": override or env_value,
+        })
+    return {"tasks": tasks}
+
+
+class AIProviderUpdate(BaseModel):
+    """Body: { overrides: { task_key: "gemini" | "anthropic" | "kiro" | "auto" | "local" | null } }
+    Wartość null (albo pominięcie klucza) = wróć do wartości z .env dla tego zadania."""
+    overrides: dict[str, Optional[str]]
+
+
+@app.put("/api/settings/ai-providers")
+async def put_ai_provider_settings(
+    req: AIProviderUpdate,
+    _auth: None = Depends(_require_bearer),
+):
+    """Zapisuje wybór providera per zadanie z dashboardu. Działa NATYCHMIAST
+    (kolejne wyszukiwania/raporty od razu używają nowego providera) — bez
+    restartu usługi, bo każda funkcja dispatchująca provider czyta ten
+    override przy każdym wywołaniu (SQLite lokalny, <1ms narzutu)."""
+    from api import settings_db
+    from api._time_utils import utc_now
+
+    for key, value in req.overrides.items():
+        if key not in _AI_PROVIDER_TASKS:
+            raise HTTPException(status_code=400, detail=f"Nieznane zadanie: {key}")
+        if value is not None and value not in _AI_PROVIDER_TASKS[key]["options"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Provider '{value}' nieobsługiwany dla '{key}' "
+                       f"(dostępne: {_AI_PROVIDER_TASKS[key]['options']})",
+            )
+
+    current = await asyncio.to_thread(settings_db.get_ai_provider_overrides)
+    for key, value in req.overrides.items():
+        if value is None:
+            current.pop(key, None)
+        else:
+            current[key] = value
+
+    await asyncio.to_thread(
+        settings_db.set_ai_provider_overrides, current, utc_now().isoformat(timespec="seconds"),
+    )
+    logger.info("[settings] AI provider overrides zaktualizowane: %s", current)
+    return {"status": "saved", "overrides": current}
+
+
+def _list_kiro_models() -> list[dict]:
+    """Żywa lista modeli dostępnych na koncie Kiro — pobrana z serwera przez
+    `kiro-cli chat --list-models -f json` (nie zaszyta na sztywno w kodzie,
+    więc zawsze odzwierciedla to, co Kiro faktycznie oferuje TERAZ)."""
+    api_key = os.getenv("KIRO_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak KIRO_API_KEY")
+    cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
+    env = {**os.environ, "KIRO_API_KEY": api_key}
+    result = subprocess.run(
+        [cli_path, "chat", "--list-models", "-f", "json"],
+        capture_output=True, text=True, timeout=20, env=env,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"kiro-cli --list-models exit {result.returncode}: {result.stderr[:300]}")
+    text = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    data = json.loads(text)
+    return data.get("models") or []
+
+
+# Gemini/Anthropic nie mają tu zintegrowanego "list models" API — krótka,
+# statyczna lista zamiast live-fetch (w przeciwieństwie do Kiro powyżej).
+_STATIC_MODEL_LISTS: dict[str, list[dict]] = {
+    "gemini": [
+        {"model_name": "gemini-2.5-flash", "description": "Szybki, tani — domyślny w tej aplikacji"},
+        {"model_name": "gemini-2.5-pro", "description": "Wyższa jakość, wolniejszy i droższy"},
+    ],
+    "anthropic": [
+        {"model_name": "claude-sonnet-4-6", "description": "Aktualnie skonfigurowany model (przez proxy oneprovider.dev)"},
+    ],
+}
+
+_MODEL_ENV_VAR_BY_PROVIDER = {
+    "kiro": ("KIRO_MODEL", "claude-haiku-4.5"),
+    "gemini": ("GEMINI_MODEL", "gemini-2.5-flash"),
+    "anthropic": ("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+}
+
+
+@app.get("/api/settings/ai-models")
+async def get_ai_model_settings(provider: str, _auth: None = Depends(_require_bearer)):
+    """Lista dostępnych modeli dla danego providera + aktualnie efektywny.
+
+    provider=kiro: ŻYWA lista z serwera (kiro-cli --list-models) — dokładnie
+        te modele, które są faktycznie dostępne na koncie Kiro w tej chwili.
+    provider=gemini|anthropic: krótka statyczna lista (bez live-fetch).
+
+    Response: {
+      "provider": "kiro",
+      "models": [{model_name, description, model_id, context_window_tokens,
+                  rate_multiplier, rate_unit}, ...],
+      "env_value": "claude-haiku-4.5",
+      "override": null,
+      "effective": "claude-haiku-4.5"
+    }
+    """
+    from api import settings_db
+
+    if provider == "kiro":
+        try:
+            models = await asyncio.to_thread(_list_kiro_models)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Nie udało się pobrać listy modeli Kiro: {exc}")
+    elif provider in _STATIC_MODEL_LISTS:
+        models = _STATIC_MODEL_LISTS[provider]
+    else:
+        raise HTTPException(status_code=400, detail=f"Nieznany provider: {provider} (dostępne: kiro, gemini, anthropic)")
+
+    env_var, env_default = _MODEL_ENV_VAR_BY_PROVIDER[provider]
+    overrides = await asyncio.to_thread(settings_db.get_ai_model_overrides)
+    env_value = os.getenv(env_var, env_default)
+    override = overrides.get(provider)
+    return {
+        "provider": provider,
+        "models": models,
+        "env_value": env_value,
+        "override": override,
+        "effective": override or env_value,
+    }
+
+
+class AIModelUpdate(BaseModel):
+    """Body: { overrides: { "kiro": "claude-sonnet-5", "gemini": null } }
+    Klucz to nazwa providera (nie zadania — model jest globalny per provider,
+    współdzielony przez wszystkie zadania które go używają). null = wróć do .env."""
+    overrides: dict[str, Optional[str]]
+
+
+@app.put("/api/settings/ai-models")
+async def put_ai_model_settings(req: AIModelUpdate, _auth: None = Depends(_require_bearer)):
+    """Zapisuje wybrany model per provider z dashboardu. Działa NATYCHMIAST,
+    bez restartu usługi (jak PUT /api/settings/ai-providers)."""
+    from api import settings_db
+    from api._time_utils import utc_now
+
+    for provider in req.overrides:
+        if provider not in _MODEL_ENV_VAR_BY_PROVIDER:
+            raise HTTPException(status_code=400, detail=f"Nieznany provider: {provider}")
+
+    current = await asyncio.to_thread(settings_db.get_ai_model_overrides)
+    for provider, value in req.overrides.items():
+        if value is None:
+            current.pop(provider, None)
+        else:
+            current[provider] = value
+
+    await asyncio.to_thread(
+        settings_db.set_ai_model_overrides, current, utc_now().isoformat(timespec="seconds"),
+    )
+    logger.info("[settings] AI model overrides zaktualizowane: %s", current)
+    return {"status": "saved", "overrides": current}
+
+
+_PIPELINE_FILTER_DEFS: dict[str, dict] = {
+    "seller_insurance_only": {
+        "label": "Tylko sprzedawcy typu insurance (ubezpieczyciel)",
+        "description": (
+            "Gdy włączone, pomija loty od dealerów — zostają tylko aukcje "
+            "ubezpieczycieli (zwykle bardziej negocjowalne ceny)."
+        ),
+        "env_var": "FILTER_SELLER_INSURANCE_ONLY",
+        "default": False,
+    },
+    "exclude_convertible": {
+        "label": "Wyklucz kabriolety / roadstery / spidery",
+        "description": (
+            "Gdy włączone, kabriolet/roadster/spider jest odrzucany, chyba że "
+            "klient jawnie o niego prosi w nazwie modelu (np. 'BMW 4 Series "
+            "Convertible'). Wyłącz, żeby kabriolety pojawiały się domyślnie."
+        ),
+        "env_var": "FILTER_EXCLUDE_CONVERTIBLE",
+        "default": True,
+    },
+}
+
+
+@app.get("/api/settings/pipeline-filters")
+async def get_pipeline_filter_settings(_auth: None = Depends(_require_bearer)):
+    """Lista filtrów SYSTEMOWYCH scrapera (globalne, dashboard-level).
+
+    Nie mylić z filtrami PER-WYSZUKIWANIE, które już istnieją gdzie indziej:
+    - ClientCriteria (make/model/year/budget/odometer/fuel_type/
+      allowed_damage_types/excluded_damage_types/sources/max_results) —
+      pola formularza wyszukiwania, patrz POST /search i /api/search.
+    - SearchRequest.auction_min_hours / auction_max_hours /
+      disable_auction_filter — okno aukcji, JUŻ w pełni per-search,
+      nie potrzebuje tego endpointu.
+
+    To ustawienie dotyczy filtrów, których NIE da się dziś zmienić inaczej
+    niż edycją .env na serwerze — teraz dostępne z dashboardu.
+
+    Response: { filters: [{ key, label, description, env_value, override,
+                             effective }], auction_window_note }
+    """
+    from api import settings_db
+    overrides = await asyncio.to_thread(settings_db.get_pipeline_filter_overrides)
+    filters = []
+    for key, meta in _PIPELINE_FILTER_DEFS.items():
+        env_value = os.getenv(meta["env_var"], str(meta["default"])).lower() == "true"
+        override = overrides.get(key)
+        filters.append({
+            "key": key,
+            "label": meta["label"],
+            "description": meta["description"],
+            "env_value": env_value,
+            "override": override,
+            "effective": override if override is not None else env_value,
+        })
+    return {
+        "filters": filters,
+        "auction_window_note": (
+            "Okno aukcji (min/max godzin) i jego wyłączenie są kontrolowane "
+            "PER-WYSZUKIWANIE przez pola SearchRequest.auction_min_hours / "
+            "auction_max_hours / disable_auction_filter — nie przez to ustawienie."
+        ),
+    }
+
+
+class PipelineFilterUpdate(BaseModel):
+    """Body: { overrides: { "seller_insurance_only": false, "exclude_convertible": null } }
+    Wartość bool = ustaw override, null = wróć do .env."""
+    overrides: dict[str, Optional[bool]]
+
+
+@app.put("/api/settings/pipeline-filters")
+async def put_pipeline_filter_settings(
+    req: PipelineFilterUpdate,
+    _auth: None = Depends(_require_bearer),
+):
+    """Zapisuje włącz/wyłącz filtrów systemowych z dashboardu. Działa od
+    KOLEJNEGO wyszukiwania (AutomatedScraper czyta ustawienie przy __init__,
+    każde wyszukiwanie tworzy nową instancję) — bez restartu usługi."""
+    from api import settings_db
+    from api._time_utils import utc_now
+
+    for key in req.overrides:
+        if key not in _PIPELINE_FILTER_DEFS:
+            raise HTTPException(status_code=400, detail=f"Nieznany filtr: {key}")
+
+    current = await asyncio.to_thread(settings_db.get_pipeline_filter_overrides)
+    for key, value in req.overrides.items():
+        if value is None:
+            current.pop(key, None)
+        else:
+            current[key] = bool(value)
+
+    await asyncio.to_thread(
+        settings_db.set_pipeline_filter_overrides, current, utc_now().isoformat(timespec="seconds"),
+    )
+    logger.info("[settings] Pipeline filter overrides zaktualizowane: %s", current)
+    return {"status": "saved", "overrides": current}
+
+
+@app.get("/api/settings/default-criteria")
+async def get_default_criteria_settings(_auth: None = Depends(_require_bearer)):
+    """Zwraca zapisane domyślne kryteria wyszukiwania (pusty obiekt gdy nic nie zapisano).
+
+    UI powinien wstępnie wypełniać tymi wartościami formularz wyszukiwania
+    przy starcie, zamiast pustych pól za każdym razem.
+    """
+    from api import settings_db
+    raw = await asyncio.to_thread(settings_db.get, _DEFAULT_CRITERIA_SETTINGS_KEY)
+    return json.loads(raw) if raw else {}
+
+
+@app.put("/api/settings/default-criteria")
+async def put_default_criteria_settings(
+    settings: DefaultCriteriaSettings,
+    _auth: None = Depends(_require_bearer),
+):
+    """Zapisuje domyślne kryteria wyszukiwania (nadpisuje poprzednie w całości)."""
+    from api import settings_db
+    from api._time_utils import utc_now
+    await asyncio.to_thread(
+        settings_db.set,
+        _DEFAULT_CRITERIA_SETTINGS_KEY,
+        settings.model_dump_json(),
+        utc_now().isoformat(timespec="seconds"),
+    )
+    return {"status": "saved", "settings": settings.model_dump(mode="json")}
 
 
 @app.get("/api/clients")
