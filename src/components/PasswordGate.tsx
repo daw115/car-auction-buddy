@@ -200,7 +200,13 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         data: { username: user, masterPassword: masterPw, newPassword: personalPw },
       });
       if (!res.ok) {
-        setError("Nieprawidłowe hasło ogólne");
+        if (res.error === "not_configured") {
+          setError(
+            "Serwer nie ma skonfigurowanego hasła ogólnego (SITE_MASTER_PASSWORD). Skontaktuj się z administratorem.",
+          );
+        } else {
+          setError("Nieprawidłowe hasło ogólne");
+        }
         setMasterPw("");
         return;
       }
