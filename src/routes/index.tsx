@@ -357,13 +357,12 @@ function HomePage() {
         jobId: j.job_id,
         label: j.label || labelForCriteria(batchQueue[i]),
         criteria: batchQueue[i],
-        status: (j.reused_status as BatchEntry["status"]) || "queued",
+        initialStatus: j.reused_status || "queued",
         idempotent: j.idempotent,
       }));
       setBatchEntries(initial);
       toast.success(`Batch wystartował: ${res.jobs.length} jobów (queued: ${res.queued_count}).`);
-      // Poll każdy job osobno.
-      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
+      // polling od teraz obsługuje useBatchJobsPolling(activeJobIds)
     } catch (e) {
       const err = e as { message?: string };
       toast.error(err.message || "Błąd batcha.");
@@ -372,63 +371,11 @@ function HomePage() {
     }
   }
 
-  async function pollBatchJob(jobId: string) {
-    const deadline = Date.now() + 15 * 60 * 1000; // 15 min — batch leci sekwencyjnie
-    let delay = 3000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, delay));
-      delay = Math.min(delay + 500, 8000);
-      try {
-        const s = await backendJobStatusFn({ data: { jobId } });
-        const isFail = ["failed", "error", "cancelled"].includes(s.status);
-        const failedPhases = Array.isArray(s.phases)
-          ? s.phases.filter(
-              (p: any) => p && (p.status === "error" || p.status === "failed" || p.error),
-            )
-          : undefined;
-        setBatchEntries((entries) =>
-          entries.map((e) =>
-            e.jobId !== jobId
-              ? e
-              : {
-                  ...e,
-                  status: (s.status as BatchEntry["status"]) || e.status,
-                  phase: s.phase ?? e.phase,
-                  progress: s.progress ?? e.progress,
-                  listingsCount: s.listings?.length ?? s.analyzed_lots?.length ?? e.listingsCount,
-                  analyzed: s.analyzed_lots ?? e.analyzed,
-                  errorMessage: isFail ? s.message ?? e.errorMessage : e.errorMessage,
-                  errorPhases: isFail && failedPhases?.length ? failedPhases : e.errorPhases,
-                },
-          ),
-        );
-        if (["done", "completed", "failed", "error", "cancelled"].includes(s.status)) return;
-
-      } catch {
-        // retry
-      }
-    }
-  }
-
-  function loadBatchResultsIntoView() {
-    const all = batchEntries.flatMap((e) => e.analyzed ?? []);
-    if (all.length === 0) {
-      toast.error("Batch nie zwrócił jeszcze wyników.");
-      return;
-    }
-    setResult({ kind: "analyzed", lots: all, jobId: batchEntries.map((e) => e.jobId).join(",") });
-    setSelected({});
-    toast.success(`Załadowano ${all.length} wyników do widoku raportów.`);
-  }
-
-  function clearBatch() {
-    setBatchEntries([]);
-    setBatchQueue([]);
-  }
-
   async function retryFailedBatch() {
     const failed = batchEntries.filter((e) =>
-      ["error", "failed", "cancelled"].includes(e.status),
+      !isTerminalStatus(batchJobs[e.jobId]?.status)
+        ? false
+        : ["error", "failed", "cancelled", "interrupted"].includes(batchJobs[e.jobId]?.status || ""),
     );
     if (failed.length === 0) {
       toast.info("Brak jobów do ponowienia.");
@@ -440,7 +387,6 @@ function HomePage() {
       const res = await runBatch({
         data: { searches: failed.map((e) => ({ criteria: e.criteria, ...auctionExtras })) },
       });
-      // Podmień stare failed wpisy na nowe joby (zachowaj kolejność w liście).
       const newByOldJobId = new Map<string, BatchEntry>();
       res.jobs.forEach((j: BackendBatchJob, i: number) => {
         const old = failed[i];
@@ -448,15 +394,12 @@ function HomePage() {
           jobId: j.job_id,
           label: j.label || old.label,
           criteria: old.criteria,
-          status: (j.reused_status as BatchEntry["status"]) || "queued",
+          initialStatus: j.reused_status || "queued",
           idempotent: j.idempotent,
         });
       });
-      setBatchEntries((entries) =>
-        entries.map((e) => newByOldJobId.get(e.jobId) ?? e),
-      );
+      setBatchEntries((entries) => entries.map((e) => newByOldJobId.get(e.jobId) ?? e));
       toast.success(`Ponowiono ${res.jobs.length} jobów.`);
-      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
     } catch (e) {
       const err = e as { message?: string };
       toast.error(err.message || "Błąd ponowienia batcha.");
@@ -464,6 +407,18 @@ function HomePage() {
       setBatchRunning(false);
     }
   }
+
+  function loadBatchResultsIntoView() {
+    const all = batchEntries.flatMap((e) => batchJobs[e.jobId]?.analyzed_lots ?? []);
+    if (all.length === 0) {
+      toast.error("Batch nie zwrócił jeszcze wyników.");
+      return;
+    }
+    setResult({ kind: "analyzed", lots: all, jobId: batchEntries.map((e) => e.jobId).join(",") });
+    setSelected({});
+    toast.success(`Załadowano ${all.length} wyników do widoku raportów.`);
+  }
+
 
 
 
