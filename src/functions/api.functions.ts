@@ -2428,13 +2428,13 @@ export const parseClientMessage = createServerFn({ method: "POST" })
     }
 
     const body = (await res.json()) as {
-      criteria?: any;
-      criteria_list?: any[];
+      criteria?: ClientCriteria | null;
+      criteria_list?: ClientCriteria[];
       count?: number;
       summary?: string;
       warnings?: string[];
     };
-    const list = body.criteria_list ?? (body.criteria ? [body.criteria] : []);
+    const list: ClientCriteria[] = body.criteria_list ?? (body.criteria ? [body.criteria] : []);
     return {
       ok: true as const,
       criteria: body.criteria ?? list[0] ?? null,
