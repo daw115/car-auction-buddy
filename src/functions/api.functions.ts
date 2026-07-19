@@ -2417,11 +2417,12 @@ export const parseClientMessage = createServerFn({ method: "POST" })
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      let detail: unknown = errText;
+      let detail: string = errText;
       try {
-        detail = JSON.parse(errText);
+        const parsed = JSON.parse(errText);
+        detail = typeof parsed?.detail === "string" ? parsed.detail : JSON.stringify(parsed);
       } catch {
-        // keep as string
+        // keep raw text
       }
       return { ok: false as const, status: res.status, detail };
     }
