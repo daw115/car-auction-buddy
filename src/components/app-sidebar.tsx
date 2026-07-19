@@ -10,6 +10,7 @@ import {
   Car,
   Activity,
   HardDrive,
+  Cpu,
 } from "lucide-react";
 
 
@@ -45,7 +46,8 @@ const workItems: NavItem[] = [
 const toolItems: NavItem[] = [
   { title: "Kalkulator", url: "/calculator", icon: Calculator },
   { title: "Baza danych", url: "/database", icon: HardDrive },
-  { title: "Ustawienia", url: "/settings", icon: Settings },
+  { title: "Ustawienia AI", url: "/settings/ai", icon: Cpu },
+  { title: "Ustawienia", url: "/settings", icon: Settings, exact: true },
   { title: "Logi (dev)", url: "/dev/logs", icon: Terminal },
 ];
 
