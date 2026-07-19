@@ -23,9 +23,9 @@ function getBackendConfig(): { baseUrl: string; token: string } {
   return { baseUrl, token };
 }
 
-type BackendError = { status: number; message: string; body?: unknown };
+type BackendError = { status: number; message: string; body?: any };
 
-function backendError(status: number, message: string, body?: unknown): BackendError {
+function backendError(status: number, message: string, body?: any): BackendError {
   return { status, message, body };
 }
 
@@ -33,7 +33,7 @@ function backendError(status: number, message: string, body?: unknown): BackendE
 async function callBackend<T>(opts: {
   path: string;
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-  body?: unknown;
+  body?: any;
   timeoutMs?: number;
   responseType?: "json" | "text";
 }): Promise<T> {
@@ -57,7 +57,7 @@ async function callBackend<T>(opts: {
     });
 
     const rawText = await res.text();
-    let parsed: unknown = rawText;
+    let parsed: any = rawText;
     if (responseType === "json" && rawText) {
       try {
         parsed = JSON.parse(rawText);
@@ -99,7 +99,7 @@ export type BackendSearchResponse = {
   source: "mock" | "live";
   job_id: string;
   criteria: ClientCriteria;
-  vin_coverage?: unknown;
+  vin_coverage?: any;
   analysis_notice?: string | null;
 };
 
@@ -108,7 +108,7 @@ export type BackendJobStatus = {
   status: string;
   progress?: number;
   phase?: string;
-  phases?: unknown[];
+  phases?: any[];
   step?: string;
   message?: string;
   current?: number;
@@ -128,7 +128,7 @@ export type BackendRecordSummary = {
   make?: string | null;
   model?: string | null;
   listings_count?: number;
-  [k: string]: unknown;
+  [k: string]: any;
 };
 
 // ---------- serwer functions wołane z UI ----------
@@ -192,7 +192,7 @@ export const backendListRecords = createServerFn({ method: "GET" }).handler(asyn
 export const backendGetRecord = createServerFn({ method: "GET" })
   .inputValidator(z.object({ id: z.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
-    return callBackend<Record<string, unknown>>({
+    return callBackend<Record<string, any>>({
       path: `/api/records/${encodeURIComponent(data.id)}`,
       method: "GET",
     });
@@ -202,7 +202,7 @@ export const backendGetRecord = createServerFn({ method: "GET" })
 export const backendGetFeedback = createServerFn({ method: "GET" })
   .inputValidator(z.object({ id: z.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
-    return callBackend<Record<string, unknown>>({
+    return callBackend<Record<string, any>>({
       path: `/api/records/${encodeURIComponent(data.id)}/feedback`,
       method: "GET",
     });
@@ -214,12 +214,12 @@ export const backendSaveFeedback = createServerFn({ method: "POST" })
     z
       .object({
         id: z.string().min(1).max(200),
-        feedback: z.record(z.string(), z.unknown()),
+        feedback: z.record(z.string(), z.any()),
       })
       .parse,
   )
   .handler(async ({ data }) => {
-    return callBackend<Record<string, unknown>>({
+    return callBackend<Record<string, any>>({
       path: `/api/records/${encodeURIComponent(data.id)}/feedback`,
       method: "POST",
       body: data.feedback,
@@ -244,7 +244,7 @@ export const backendGenerateReport = createServerFn({ method: "POST" })
     z
       .object({
         mode: reportModeSchema,
-        approved_lots: z.array(z.unknown()).min(1),
+        approved_lots: z.array(z.any()).min(1),
         criteria: criteriaShape.optional(),
         client_name: z.string().max(200).optional(),
         client_email: z.string().max(200).optional(),
@@ -277,9 +277,9 @@ export const backendGenerateReport = createServerFn({ method: "POST" })
 export const backendHealth = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const [telegram, cache, db] = await Promise.allSettled([
-      callBackend<unknown>({ path: "/api/telegram/status", timeoutMs: 8_000 }),
-      callBackend<unknown>({ path: "/api/llm-cache/stats", timeoutMs: 8_000 }),
-      callBackend<unknown>({ path: "/api/db/overview", timeoutMs: 8_000 }),
+      callBackend<any>({ path: "/api/telegram/status", timeoutMs: 8_000 }),
+      callBackend<any>({ path: "/api/llm-cache/stats", timeoutMs: 8_000 }),
+      callBackend<any>({ path: "/api/db/overview", timeoutMs: 8_000 }),
     ]);
     return {
       configured: true,
@@ -288,6 +288,6 @@ export const backendHealth = createServerFn({ method: "GET" }).handler(async () 
       db: db.status === "fulfilled" ? db.value : { error: true },
     };
   } catch (e) {
-    return { configured: false, error: (e as { message?: string })?.message ?? "unknown" };
+    return { configured: false, error: (e as { message?: string })?.message ?? "any" };
   }
 });
