@@ -19,6 +19,7 @@ import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsAiRouteImport } from './routes/settings.ai'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
@@ -81,6 +82,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsAiRoute = SettingsAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => SettingsRoute,
 } as any)
 const DevLogsRoute = DevLogsRouteImport.update({
   id: '/dev/logs',
@@ -155,7 +161,7 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
@@ -165,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
+  '/settings/ai': typeof SettingsAiRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -179,7 +186,7 @@ export interface FileRoutesByTo {
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
@@ -189,6 +196,7 @@ export interface FileRoutesByTo {
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
+  '/settings/ai': typeof SettingsAiRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -204,7 +212,7 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
@@ -214,6 +222,7 @@ export interface FileRoutesById {
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
+  '/settings/ai': typeof SettingsAiRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
+    | '/settings/ai'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
@@ -264,6 +274,7 @@ export interface FileRouteTypes {
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
+    | '/settings/ai'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
@@ -288,6 +299,7 @@ export interface FileRouteTypes {
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
+    | '/settings/ai'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
@@ -303,7 +315,7 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRoute
   McpRoute: typeof McpRoute
   RecordsRoute: typeof RecordsRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WatchlistRoute: typeof WatchlistRoute
   Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
@@ -392,6 +404,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/ai': {
+      id: '/settings/ai'
+      path: '/ai'
+      fullPath: '/settings/ai'
+      preLoaderRoute: typeof SettingsAiRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/dev/logs': {
       id: '/dev/logs'
       path: '/dev/logs'
@@ -479,6 +498,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsAiRoute: typeof SettingsAiRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAiRoute: SettingsAiRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CalculatorRoute: CalculatorRoute,
@@ -487,7 +518,7 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRoute,
   McpRoute: McpRoute,
   RecordsRoute: RecordsRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WatchlistRoute: WatchlistRoute,
   Char91DotmcpChar93ListToolsRoute: Char91DotmcpChar93ListToolsRoute,
