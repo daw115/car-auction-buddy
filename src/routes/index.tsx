@@ -14,7 +14,9 @@ import {
   type BackendRecordSummary,
   type BackendBatchJob,
 } from "@/functions/backend.functions";
+import { useBatchJobsPolling, isTerminalStatus } from "@/hooks/use-batch-jobs-polling";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
+
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
 
