@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
 import { Activity, CheckCircle2 } from "lucide-react";
-import { listActiveScraperJobs } from "@/functions/api.functions";
+import { backendListJobs } from "@/functions/backend.functions";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
