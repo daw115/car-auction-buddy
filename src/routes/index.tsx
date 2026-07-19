@@ -170,6 +170,21 @@ function HomePage() {
   useEffect(() => {
     if (prefilledRef.current) return;
     if (!defaultsQ.data) return;
+    // Druga blokada: nie nadpisuj, jeśli criteria zostało już ustawione z innego źródła
+    // (parse wiadomości klienta, ręczna edycja użytkownika) zanim query się rozwiązało.
+    const pristine =
+      (criteria.make ?? "") === "" &&
+      (criteria.model ?? "") === "" &&
+      criteria.year_from == null &&
+      criteria.year_to == null &&
+      criteria.budget_usd == null &&
+      criteria.max_odometer_mi == null &&
+      criteria.fuel_type == null &&
+      (criteria.excluded_damage_types ?? []).length === 0;
+    if (!pristine) {
+      prefilledRef.current = true; // nie próbuj już nigdy — user/parse wygrał wyścig
+      return;
+    }
     prefilledRef.current = true;
     const d = defaultsQ.data;
     const fuel = d.fuel_type as ClientCriteria["fuel_type"] | null;
@@ -189,7 +204,7 @@ function HomePage() {
       max_results: d.max_results ?? prev.max_results ?? 15,
       sources: d.sources && d.sources.length > 0 ? d.sources : prev.sources,
     }));
-  }, [defaultsQ.data]);
+  }, [defaultsQ.data, criteria]);
 
   // --- Parse client message ---
   const [clientMessage, setClientMessage] = useState("");
