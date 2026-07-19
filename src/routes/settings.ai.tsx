@@ -1,15 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useServerFn } from "@tanstack/react-start";
+import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  getAiProviders,
   updateAiProviders,
-  getAiModels,
   updateAiModels,
   type AiProviderTask,
   type AiModelsResponse,
 } from "@/functions/ai-providers.functions";
+import {
+  aiProvidersQuery,
+  aiModelsQuery,
+  settingsQueryKeys,
+} from "@/queries/settings.queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,77 +41,39 @@ export const Route = createFileRoute("/settings/ai")({
 });
 
 function AiSettingsPage() {
-  const getFn = useServerFn(getAiProviders);
-  const putFn = useServerFn(updateAiProviders);
-  const getModelsFn = useServerFn(getAiModels);
+  const qc = useQueryClient();
+  const providersQ = useQuery(aiProvidersQuery());
+  const tasks = providersQ.data?.tasks ?? null;
 
-  const [tasks, setTasks] = useState<AiProviderTask[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [kiroModels, setKiroModels] = useState<AiModelsResponse | null>(null);
-  const [kiroModelsLoading, setKiroModelsLoading] = useState(true);
-  const [kiroModelsError, setKiroModelsError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const loadKiroModels = useCallback(async () => {
-    setKiroModelsLoading(true);
-    setKiroModelsError(null);
-    try {
-      const res = await getModelsFn({ data: { provider: "kiro" } });
-      setKiroModels(res);
-    } catch (e) {
-      setKiroModelsError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setKiroModelsLoading(false);
-    }
-  }, [getModelsFn]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await getFn();
-      setTasks(res.tasks ?? []);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      toast.error(`Nie udało się pobrać ustawień: ${msg}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [getFn]);
-
-  useEffect(() => {
-    void load();
-    void loadKiroModels();
-  }, [load, loadKiroModels]);
-
-  const applyOverride = async (key: string, value: string | null) => {
-    setSavingKey(key);
-    try {
-      const res = await putFn({ data: { overrides: { [key]: value } } });
-      // Aktualizuj lokalny stan na podstawie zwróconego stanu overrides
-      setTasks((prev) => {
-        if (!prev) return prev;
-        return prev.map((t) => {
-          if (t.key !== key) return t;
-          const newOverride = res.overrides?.[key] ?? null;
-          const effective = newOverride ?? t.env_value ?? t.effective;
-          return { ...t, override: newOverride, effective };
-        });
+  const providersMut = useMutation({
+    mutationFn: (vars: { key: string; value: string | null }) =>
+      updateAiProviders({ data: { overrides: { [vars.key]: vars.value } } }),
+    onMutate: (vars) => {
+      setFieldErrors((p) => {
+        const { [vars.key]: _, ...rest } = p;
+        return rest;
       });
+    },
+    onSuccess: (_res, vars) => {
+      void qc.invalidateQueries({ queryKey: settingsQueryKeys.aiProviders });
       toast.success(
-        value === null
+        vars.value === null
           ? "Przywrócono wartość domyślną z serwera"
-          : `Ustawiono override: ${value}`,
+          : `Ustawiono override: ${vars.value}`,
       );
-    } catch (e) {
+    },
+    onError: (e: unknown, vars) => {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`Zapis nie powiódł się: ${msg}`);
-    } finally {
-      setSavingKey(null);
-    }
-  };
+      setFieldErrors((p) => ({ ...p, [vars.key]: msg }));
+    },
+  });
+
+  const kiroActive = useMemo(
+    () => !!tasks?.some((t) => (t.override ?? t.env_value) === "kiro"),
+    [tasks],
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -131,46 +96,39 @@ function AiSettingsPage() {
           „Domyślne z serwera" oznacza wartość z pliku <code>.env</code> backendu.
         </p>
 
-        {loading ? (
+        {providersQ.isLoading ? (
           <Card className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Ładowanie ustawień...
           </Card>
-        ) : error ? (
+        ) : providersQ.isError ? (
           <Card className="p-6">
             <div className="flex items-start gap-2 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 mt-0.5" />
               <div>
                 <div className="font-medium">Błąd ładowania</div>
-                <div className="text-xs text-muted-foreground mt-1">{error}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {providersQ.error instanceof Error ? providersQ.error.message : String(providersQ.error)}
+                </div>
               </div>
             </div>
-            <Button onClick={() => void load()} variant="outline" size="sm" className="mt-4">
+            <Button onClick={() => void providersQ.refetch()} variant="outline" size="sm" className="mt-4">
               Spróbuj ponownie
             </Button>
           </Card>
         ) : tasks && tasks.length > 0 ? (
           <div className="space-y-3">
-            {(tasks.some((t) => (t.override ?? t.env_value) === "kiro") || kiroModels?.override != null) && (
-              <ProviderModelSelector
-                provider="kiro"
-                label="Model Kiro"
-                initialData={kiroModels}
-                initialLoading={kiroModelsLoading}
-                initialError={kiroModelsError}
-                onReload={loadKiroModels}
-              />
-            )}
+            <KiroModelSelector visible={kiroActive} />
             {tasks.map((task) => (
               <TaskRow
                 key={task.key}
                 task={task}
-                saving={savingKey === task.key}
-                onChange={(v) => void applyOverride(task.key, v)}
-                onReset={() => void applyOverride(task.key, null)}
+                saving={providersMut.isPending && providersMut.variables?.key === task.key}
+                errorMsg={fieldErrors[task.key]}
+                onChange={(v) => providersMut.mutate({ key: task.key, value: v })}
+                onReset={() => providersMut.mutate({ key: task.key, value: null })}
               />
             ))}
           </div>
-
         ) : (
           <Card className="p-6 text-sm text-muted-foreground">
             Backend nie zwrócił żadnych zadań AI.
@@ -184,11 +142,13 @@ function AiSettingsPage() {
 function TaskRow({
   task,
   saving,
+  errorMsg,
   onChange,
   onReset,
 }: {
   task: AiProviderTask;
   saving: boolean;
+  errorMsg?: string;
   onChange: (v: string) => void;
   onReset: () => void;
 }) {
@@ -218,6 +178,12 @@ function TaskRow({
               <> {" · "} .env: <code className="text-[11px]">{task.env_value}</code></>
             )}
           </div>
+          {errorMsg && (
+            <div className="mt-2 flex items-start gap-1.5 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>Nie zapisano: {errorMsg}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 md:w-auto">
@@ -252,48 +218,26 @@ function TaskRow({
   );
 }
 
-function ProviderModelSelector({
-  provider,
-  label,
-  initialData,
-  initialLoading,
-  initialError,
-  onReload,
-}: {
-  provider: string;
-  label: string;
-  initialData: AiModelsResponse | null;
-  initialLoading: boolean;
-  initialError: string | null;
-  onReload: () => Promise<void>;
-}) {
-  const putFn = useServerFn(updateAiModels);
-  const [data, setData] = useState<AiModelsResponse | null>(initialData);
-  const [saving, setSaving] = useState(false);
+function KiroModelSelector({ visible }: { visible: boolean }) {
+  const qc = useQueryClient();
+  const provider = "kiro";
+  const q = useQuery(aiModelsQuery(provider));
+  const data: AiModelsResponse | undefined = q.data;
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => { setData(initialData); }, [initialData]);
-
-  const loading = initialLoading;
-  const err = initialError;
-  void onReload;
-
-  const apply = async (value: string | null) => {
-    setSaving(true);
-    try {
-      const res = await putFn({ data: { overrides: { [provider]: value } } });
-      const newOverride = res.overrides?.[provider] ?? null;
-      setData((prev) => prev ? {
-        ...prev,
-        override: newOverride,
-        effective: newOverride ?? prev.env_value ?? prev.effective,
-      } : prev);
+  const mut = useMutation({
+    mutationFn: (value: string | null) =>
+      updateAiModels({ data: { overrides: { [provider]: value } } }),
+    onMutate: () => setErrorMsg(null),
+    onSuccess: (_res, value) => {
+      void qc.invalidateQueries({ queryKey: settingsQueryKeys.aiModels(provider) });
       toast.success(value === null ? "Przywrócono domyślny model" : `Model: ${value}`);
-    } catch (e) {
-      toast.error(`Zapis nie powiódł się: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    onError: (e) => setErrorMsg(e instanceof Error ? e.message : String(e)),
+  });
+
+  // Render nothing if kiro isn't the active provider AND user hasn't overridden a model
+  if (!visible && !data?.override) return null;
 
   const models = data?.models ?? [];
   const isOverride = data?.override != null;
@@ -304,7 +248,10 @@ function ProviderModelSelector({
       const rm = model.rate_multiplier;
       if (rm == null) continue;
       const suffix = rm < 1 ? " — tańszy" : rm > 1 ? " — droższy" : "";
-      m.set(model.model_id, `${rm.toFixed(2).replace(/\.?0+$/, "")}×${model.rate_unit ? ` ${model.rate_unit}` : ""}${suffix}`);
+      m.set(
+        model.model_id,
+        `${rm.toFixed(2).replace(/\.?0+$/, "")}×${model.rate_unit ? ` ${model.rate_unit}` : ""}${suffix}`,
+      );
     }
     return m;
   }, [models]);
@@ -314,7 +261,7 @@ function ProviderModelSelector({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="font-medium text-sm">{label}</div>
+            <div className="font-medium text-sm">Model Kiro</div>
             {isOverride ? (
               <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400">
                 nadpisane
@@ -322,24 +269,40 @@ function ProviderModelSelector({
             ) : (
               <Badge variant="secondary">domyślne z serwera</Badge>
             )}
-            {(loading || saving) && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            {(q.isLoading || mut.isPending) && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            )}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             Globalne dla wszystkich zadań używających <code className="text-[11px]">{provider}</code>
-            {data?.effective && <> · aktywne: <span className="font-medium text-foreground">{data.effective}</span></>}
-            {isOverride && data?.env_value && <> · .env: <code className="text-[11px]">{data.env_value}</code></>}
+            {data?.effective && (
+              <> · aktywne: <span className="font-medium text-foreground">{data.effective}</span></>
+            )}
+            {isOverride && data?.env_value && (
+              <> · .env: <code className="text-[11px]">{data.env_value}</code></>
+            )}
           </div>
-          {err && <div className="mt-1 text-xs text-destructive">{err}</div>}
+          {q.isError && (
+            <div className="mt-1 text-xs text-destructive">
+              {q.error instanceof Error ? q.error.message : String(q.error)}
+            </div>
+          )}
+          {errorMsg && (
+            <div className="mt-2 flex items-start gap-1.5 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>Nie zapisano: {errorMsg}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 md:w-auto">
           <Select
             value={current || undefined}
-            onValueChange={(v) => void apply(v)}
-            disabled={loading || saving || models.length === 0}
+            onValueChange={(v) => mut.mutate(v)}
+            disabled={q.isLoading || mut.isPending || models.length === 0}
           >
             <SelectTrigger className="w-full md:w-[320px]">
-              <SelectValue placeholder={loading ? "Ładowanie..." : "Wybierz model"} />
+              <SelectValue placeholder={q.isLoading ? "Ładowanie..." : "Wybierz model"} />
             </SelectTrigger>
             <SelectContent>
               {models.map((m) => (
@@ -364,8 +327,8 @@ function ProviderModelSelector({
           <Button
             variant="outline"
             size="icon"
-            onClick={() => void apply(null)}
-            disabled={loading || saving || !isOverride}
+            onClick={() => mut.mutate(null)}
+            disabled={q.isLoading || mut.isPending || !isOverride}
             title="Przywróć domyślne (z .env)"
           >
             <RotateCcw className="h-4 w-4" />
@@ -375,4 +338,3 @@ function ProviderModelSelector({
     </Card>
   );
 }
-
