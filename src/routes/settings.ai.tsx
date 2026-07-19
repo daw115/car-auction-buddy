@@ -275,7 +275,7 @@ function ProviderModelSelector({
 
   const loading = initialLoading;
   const err = initialError;
-  const load = onReload;
+  void onReload;
 
   const apply = async (value: string | null) => {
     setSaving(true);
