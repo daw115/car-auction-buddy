@@ -261,6 +261,20 @@ async def mark_error(job: Job, error: str) -> None:
     await _publish(job, {"type": "__end__"})
 
 
+async def mark_interrupted(job: Job, error: str) -> None:
+    """Job padł, bo usługa/przeglądarka została zamknięta pod spodem (restart
+    w trakcie scrape'a) — nie prawdziwy błąd. Ten sam status co orphan-recovery
+    przy starcie (job_db.mark_orphaned_running_as_interrupted), więc UI/klient
+    widzi spójne 'interrupted' niezależnie od tego, w którym dokładnie
+    momencie SIGTERM przerwał wykonanie."""
+    job.status = "interrupted"
+    job.error = error
+    job.finished_at = utc_now_iso()
+    _persist(job)
+    await _publish(job, {"type": "status", "status": "interrupted", "error": error})
+    await _publish(job, {"type": "__end__"})
+
+
 async def mark_cancelled(job: Job) -> None:
     job.status = "cancelled"
     job.finished_at = utc_now_iso()

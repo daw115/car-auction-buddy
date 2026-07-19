@@ -14,6 +14,27 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+# Prywatny import — playwright.async_api nie eksportuje TargetClosedError
+# publicznie (sprawdzone: brak w playwright/async_api/__init__.py na tej
+# wersji). Fallback na None + message-check gdy struktura się zmieni.
+try:
+    from playwright._impl._errors import TargetClosedError as _PWTargetClosedError
+except ImportError:
+    _PWTargetClosedError = None
+
+
+def _is_browser_closed_error(exc: Exception) -> bool:
+    """True gdy wyjątek wynika z zamknięcia przeglądarki/procesu POD SPODEM
+    (np. restart usługi w trakcie scrape'a — SIGTERM zabija shared Playwright
+    context w trakcie page.goto/content/locator), NIE z prawdziwego błędu
+    scrapera czy strony. Odróżnienie ważne dla statusu joba (interrupted,
+    nie error/done-z-0-lotów — patrz ServiceInterruptedError)."""
+    if _PWTargetClosedError is not None and isinstance(exc, _PWTargetClosedError):
+        return True
+    msg = str(exc).lower()
+    return "has been closed" in msg or "target closed" in msg
+
+
 # Import istniejących modułów
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -44,13 +65,40 @@ class _SourceBlocked(Exception):
     """Sygnał że źródło zostało zablokowane (Cloudflare/captcha)."""
 
 
+class ServiceInterruptedError(Exception):
+    """Sygnał że scrape padł, bo usługa/przeglądarka została zamknięta pod
+    spodem (restart w trakcie działania), NIE bo scraper faktycznie zawiódł.
+    Łapane osobno w api/main.py _run_job — job dostaje status 'interrupted'
+    (koherentnie z orphan-recovery przy starcie), zamiast 'error' albo,
+    gorzej, 'done' z mylącymi 0 lotami."""
+
+
+def _resolve_pipeline_filter_bool(filter_key: str, env_var: str, default: bool) -> bool:
+    """Filtr systemowy: nadpisanie z dashboardu (settings_db, ustawiane przez
+    PUT /api/settings/pipeline-filters) ma pierwszeństwo przed .env — zmiana
+    działa od następnego wyszukiwania, bez restartu usługi."""
+    try:
+        from api.settings_db import get_pipeline_filter_override
+        override = get_pipeline_filter_override(filter_key)
+        if override is not None:
+            return override
+    except Exception:
+        pass
+    return os.getenv(env_var, str(default)).lower() == "true"
+
+
 class AutomatedScraper:
     """Automatyczny scraper z wzbogacaniem danych."""
 
     def __init__(self):
         self.html_cache_dir = Path(os.getenv("HTML_CACHE_DIR", "./data/html_cache"))
         self.use_extensions = os.getenv("USE_EXTENSIONS", "false").lower() == "true"
-        self.filter_insurance_only = os.getenv("FILTER_SELLER_INSURANCE_ONLY", "false").lower() == "true"
+        self.filter_insurance_only = _resolve_pipeline_filter_bool(
+            "seller_insurance_only", "FILTER_SELLER_INSURANCE_ONLY", False
+        )
+        self.exclude_convertible = _resolve_pipeline_filter_bool(
+            "exclude_convertible", "FILTER_EXCLUDE_CONVERTIBLE", True
+        )
         self.min_auction_window_hours = int(os.getenv("MIN_AUCTION_WINDOW_HOURS", "12"))
         self.max_auction_window_hours = int(os.getenv("MAX_AUCTION_WINDOW_HOURS", "120"))
         self.collect_all_prefiltered_results = (
@@ -300,6 +348,14 @@ class AutomatedScraper:
                         {"reason": str(exc), "_status": "blocked"},
                     )
                     return []
+                if _is_browser_closed_error(exc):
+                    logger.warning(
+                        "%s: przeglądarka zamknięta pod spodem (prawdopodobnie restart "
+                        "usługi w trakcie scrape'a) — zgłaszam jako przerwanie, nie błąd: %s",
+                        source_name.upper(),
+                        exc,
+                    )
+                    raise ServiceInterruptedError(f"{source_name}: {exc}") from exc
                 logger.exception("%s: nieobsłużony błąd scrapera", source_name.upper())
                 break
 
@@ -526,7 +582,7 @@ class AutomatedScraper:
             # Bez tego sliska tendencja: scrape 'BMW 4 Series' lapie zarowno coupe
             # jak i convertible — broker importowy zwykle chce coupe (wymiana plotow
             # latwiejsza, niz dach miekki ktory wymaga full restoration).
-            if not client_wants_cabrio and self._lot_is_convertible(lot):
+            if self.exclude_convertible and not client_wants_cabrio and self._lot_is_convertible(lot):
                 cabrio_rejected += 1
                 continue
 
