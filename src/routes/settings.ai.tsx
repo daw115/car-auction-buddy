@@ -252,28 +252,30 @@ function TaskRow({
   );
 }
 
-function ProviderModelSelector({ provider, label }: { provider: string; label: string }) {
-  const getFn = useServerFn(getAiModels);
+function ProviderModelSelector({
+  provider,
+  label,
+  initialData,
+  initialLoading,
+  initialError,
+  onReload,
+}: {
+  provider: string;
+  label: string;
+  initialData: AiModelsResponse | null;
+  initialLoading: boolean;
+  initialError: string | null;
+  onReload: () => Promise<void>;
+}) {
   const putFn = useServerFn(updateAiModels);
-  const [data, setData] = useState<AiModelsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<AiModelsResponse | null>(initialData);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await getFn({ data: { provider } });
-      setData(res);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [getFn, provider]);
+  useEffect(() => { setData(initialData); }, [initialData]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loading = initialLoading;
+  const err = initialError;
+  const load = onReload;
 
   const apply = async (value: string | null) => {
     setSaving(true);
