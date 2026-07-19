@@ -18,6 +18,10 @@ import {
 } from "@/functions/backend.functions";
 import { useBatchJobsPolling, isTerminalStatus } from "@/hooks/use-batch-jobs-polling";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
+import {
+  DEFAULT_AUCTION_SOURCES,
+  normalizeAuctionSources,
+} from "@/lib/auction-sources";
 
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
@@ -36,7 +40,7 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "USA Car Finder — panel operatora" },
-      { name: "description", content: "Wyszukiwanie i analiza AI ofert z aukcji Copart/IAAI." },
+      { name: "description", content: "Wyszukiwanie i analiza AI ofert z aukcji Copart, IAAI i Manheim." },
     ],
   }),
   component: HomePage,
@@ -141,6 +145,7 @@ function HomePage() {
     fuel_type: null,
     excluded_damage_types: [],
     max_results: 15,
+    sources: [...DEFAULT_AUCTION_SOURCES],
   });
 
   // Auction window (per-search, poza criteria)
@@ -202,7 +207,7 @@ function HomePage() {
           ? d.excluded_damage_types
           : (prev.excluded_damage_types ?? []),
       max_results: d.max_results ?? prev.max_results ?? 15,
-      sources: d.sources && d.sources.length > 0 ? d.sources : prev.sources,
+      sources: normalizeAuctionSources(d.sources ?? prev.sources),
     }));
   }, [defaultsQ.data, criteria]);
 
@@ -229,7 +234,9 @@ function HomePage() {
         setParseError({ status: res.status, detail: res.detail });
         return;
       }
-      const list = (res.criteria_list ?? []).filter((c): c is ClientCriteria => !!c);
+      const list = (res.criteria_list ?? [])
+        .filter((c): c is ClientCriteria => !!c)
+        .map((c) => ({ ...c, sources: normalizeAuctionSources(c.sources) }));
       setParsedList(list);
       setParseSummary(res.summary || "");
       setParseWarnings(res.warnings || []);
@@ -249,7 +256,7 @@ function HomePage() {
           fuel_type: list[0].fuel_type ?? null,
           excluded_damage_types: list[0].excluded_damage_types ?? [],
           max_results: list[0].max_results ?? 15,
-          sources: list[0].sources,
+          sources: normalizeAuctionSources(list[0].sources),
         });
         toast.success(`Rozpoznano: ${list[0].make ?? "?"} ${list[0].model ?? ""}`);
       } else {
@@ -293,7 +300,7 @@ function HomePage() {
         fuel_type: chosen[0].fuel_type ?? null,
         excluded_damage_types: chosen[0].excluded_damage_types ?? [],
         max_results: chosen[0].max_results ?? 15,
-        sources: chosen[0].sources,
+        sources: normalizeAuctionSources(chosen[0].sources),
       });
       toast.info('Kryteria załadowane do formularza — kliknij "🔎 Wyszukaj".');
       return;
@@ -317,6 +324,10 @@ function HomePage() {
   async function onSearch() {
     if (!criteria.make.trim()) {
       toast.error("Podaj markę pojazdu.");
+      return;
+    }
+    if (!criteria.sources || criteria.sources.length === 0) {
+      toast.error("Wybierz co najmniej jedno źródło aukcji.");
       return;
     }
     setLoading(true);
@@ -374,6 +385,10 @@ function HomePage() {
       toast.error("Podaj markę zanim dodasz do batcha.");
       return;
     }
+    if (!criteria.sources || criteria.sources.length === 0) {
+      toast.error("Wybierz co najmniej jedno źródło aukcji.");
+      return;
+    }
     setBatchQueue((q) => [...q, { ...criteria }]);
     toast.success(`Dodano do batcha: ${labelForCriteria(criteria)}`);
   }
@@ -389,6 +404,10 @@ function HomePage() {
     }
     if (batchQueue.length > 20) {
       toast.error("Max 20 wyszukiwań w jednym batchu.");
+      return;
+    }
+    if (batchQueue.some((entry) => !entry.sources || entry.sources.length === 0)) {
+      toast.error("Każde wyszukiwanie musi mieć co najmniej jedno źródło aukcji.");
       return;
     }
     setBatchRunning(true);

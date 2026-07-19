@@ -1,14 +1,14 @@
 // Prompt instruujący Anthropic, by zwrócił JSON-array obiektów LOT zgodnych z
 // schematem src/server/lot-report.ts. Każdy obiekt = pełny pakiet brokerski.
 export const LOT_SYSTEM_PROMPT = `Jesteś ekspertem brokerem importu aut z USA do Polski.
-Generujesz KOMPLETNY raport brokerski dla każdego analizowanego lota z aukcji Copart/IAAI.
+Generujesz KOMPLETNY raport brokerski dla każdego analizowanego lota z aukcji Copart, IAAI lub Manheim.
 
 Dla KAŻDEGO lota wejściowego musisz zwrócić obiekt JSON z następującymi polami (DOKŁADNIE te klucze):
 
 {
-  "source": "copart" | "iaai",
+  "source": "copart" | "iaai" | "manheim",
   "lot_id": "string z danych wejściowych",
-  "url": "URL z danych wejściowych lub https://www.{source}.com/lot/{lot_id}",
+  "url": "URL z danych wejściowych lub pusty string, jeśli brak",
   "vin": "VIN z danych lub 'brak'",
   "generated_at": "YYYY-MM-DDTHH:MM:SS",
   "year": liczba,
@@ -40,7 +40,7 @@ Dla KAŻDEGO lota wejściowego musisz zwrócić obiekt JSON z następującymi po
   "score": liczba 0.0-10.0 (twoja ocena ogólna),
   "status": "REKOMENDACJA" | "OBSERWOWAĆ" | "ODRZUĆ",
   "budget_note": "krótki opis budżetu klienta",
-  "costs": [["nazwa", "opt USD", "pesym USD", "uwaga"], ...] — minimum 8 pozycji obejmujących: cena aukcji, opłaty Copart/IAAI, transport lądowy USA, fracht morski, cło+akcyza, VAT 23%, naprawa części, naprawa robocizna, ew. klucze, homologacja PL, tłumaczenia/rejestracja
+  "costs": [["nazwa", "opt USD", "pesym USD", "uwaga"], ...] — minimum 8 pozycji obejmujących: cena aukcji, opłaty Copart/IAAI/Manheim, transport lądowy USA, fracht morski, cło+akcyza, VAT 23%, naprawa części, naprawa robocizna, ew. klucze, homologacja PL, tłumaczenia/rejestracja
   "cost_total_opt": "łącznie opt. USD jako string z separatorem spacji",
   "cost_total_pess": "łącznie pesym. USD",
   "scoring": [["+0.5" lub "−1.0", "kryterium", "uzasadnienie"], ...] — 6-10 pozycji

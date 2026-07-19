@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { auctionSourceSchema } from "@/lib/auction-sources";
 
 export const SCRAPE_JOB_STORAGE_KEY = "car-finder:active-scrape-job";
 
@@ -20,7 +21,7 @@ export const persistedCriteriaSchema = z.object({
   max_odometer_mi: z.number().int().min(0).max(1_000_000).nullable().optional(),
   excluded_damage_types: z.array(z.string().max(40)).max(20).optional(),
   max_results: z.number().int().min(1).max(100).optional(),
-  sources: z.array(z.string().max(20)).max(5).optional(),
+  sources: z.array(auctionSourceSchema).min(1).max(3).optional(),
 });
 
 export type PersistedCriteria = z.infer<typeof persistedCriteriaSchema>;

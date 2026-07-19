@@ -1,6 +1,11 @@
 // Proxy do backendu FastAPI: /api/settings/default-criteria
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import {
+  auctionSourceSchema,
+  normalizeAuctionSources,
+  type AuctionSource,
+} from "@/lib/auction-sources";
 
 type Cfg = { baseUrl: string; token: string };
 function cfg(): Cfg {
@@ -21,7 +26,7 @@ export type DefaultCriteria = {
   allowed_damage_types: string[];
   excluded_damage_types: string[];
   max_results: number;
-  sources: string[];
+  sources: AuctionSource[];
 };
 
 export type DefaultCriteriaSaveResponse = {
@@ -65,11 +70,25 @@ const defaultCriteriaSchema = z.object({
   allowed_damage_types: z.array(z.string()).optional(),
   excluded_damage_types: z.array(z.string()).optional(),
   max_results: z.number().int().positive().optional(),
-  sources: z.array(z.string()).optional(),
+  sources: z.array(auctionSourceSchema).min(1).max(3).optional(),
 });
 
 export const getDefaultCriteria = createServerFn({ method: "GET" }).handler(async () => {
-  return call<DefaultCriteria>("/api/settings/default-criteria", "GET");
+  const raw = await call<unknown>("/api/settings/default-criteria", "GET");
+  const parsed = defaultCriteriaSchema.parse(raw);
+  return {
+    make: parsed.make ?? null,
+    model: parsed.model ?? null,
+    year_from: parsed.year_from ?? null,
+    year_to: parsed.year_to ?? null,
+    budget_usd: parsed.budget_usd ?? null,
+    max_odometer_mi: parsed.max_odometer_mi ?? null,
+    fuel_type: parsed.fuel_type ?? null,
+    allowed_damage_types: parsed.allowed_damage_types ?? [],
+    excluded_damage_types: parsed.excluded_damage_types ?? [],
+    max_results: parsed.max_results ?? 15,
+    sources: normalizeAuctionSources(parsed.sources),
+  } satisfies DefaultCriteria;
 });
 
 export const updateDefaultCriteria = createServerFn({ method: "POST" })

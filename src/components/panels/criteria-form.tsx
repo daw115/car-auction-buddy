@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -8,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Field } from "@/components/panels/form-helpers";
 import type { ClientCriteria } from "@/lib/types";
+import { AUCTION_SOURCES, DEFAULT_AUCTION_SOURCES } from "@/lib/auction-sources";
 
 type Props = {
   criteria: ClientCriteria;
@@ -15,6 +17,15 @@ type Props = {
 };
 
 export function CriteriaForm({ criteria, setCriteria }: Props) {
+  const selectedSources = criteria.sources ?? DEFAULT_AUCTION_SOURCES;
+
+  function toggleSource(source: (typeof AUCTION_SOURCES)[number]["id"], checked: boolean) {
+    const next = new Set(selectedSources);
+    if (checked) next.add(source);
+    else next.delete(source);
+    setCriteria({ ...criteria, sources: Array.from(next) });
+  }
+
   return (
     <>
       <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -129,6 +140,29 @@ export function CriteriaForm({ criteria, setCriteria }: Props) {
             placeholder="Flood, Fire"
           />
         </Field>
+      </div>
+      <div className="mt-4 space-y-2">
+        <div className="text-xs font-medium text-muted-foreground">Źródła aukcji *</div>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {AUCTION_SOURCES.map((source) => (
+            <label key={source.id} className="flex cursor-pointer items-center gap-2 text-sm">
+              <Checkbox
+                checked={selectedSources.includes(source.id)}
+                onCheckedChange={(value) => toggleSource(source.id, value === true)}
+                aria-label={`Uwzględnij ${source.label}`}
+              />
+              <span title={source.description}>{source.label}</span>
+            </label>
+          ))}
+        </div>
+        {selectedSources.length === 0 && (
+          <p className="text-xs text-destructive" role="alert">
+            Wybierz co najmniej jedno źródło aukcji.
+          </p>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          Manheim korzysta z integracji Marketplace API skonfigurowanej w backendzie.
+        </p>
       </div>
     </>
   );

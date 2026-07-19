@@ -46,7 +46,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       {
         name: "description",
         content:
-          "Panel operacyjny do wyszukiwania aut z aukcji Copart i IAAI, analiza AI i raporty dla klientów.",
+          "Panel operacyjny do wyszukiwania aut z aukcji Copart, IAAI i Manheim, analiza AI i raporty dla klientów.",
       },
       { property: "og:title", content: "USA Car Finder — panel operatora" },
       { property: "og:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },

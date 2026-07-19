@@ -8,9 +8,9 @@ Data: 2026-06-26.
 ## 1. Cel aplikacji
 
 Webowy asystent do **wyszukiwania, analizy i monitorowania** aukcji
-samochodowych (Copart / IAAI). Łączy:
+samochodowych (Copart / IAAI / Manheim). Łączy:
 
-- scraper (zewnętrzne REST API) z cache wyników,
+- zewnętrzne REST API z cache wyników; adapter Manheim powinien korzystać z oficjalnego Marketplace Searches API,
 - analizę AI (Anthropic / Gemini) ofert pod kątem opłacalności,
 - watchlist + raporty PDF,
 - kolejkę ponownych sprawdzeń (gdy brak wyników) z powiadomieniem na Telegram,

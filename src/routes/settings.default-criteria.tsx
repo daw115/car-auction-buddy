@@ -7,6 +7,11 @@ import {
   type DefaultCriteria,
 } from "@/functions/default-criteria.functions";
 import { defaultCriteriaQuery, settingsQueryKeys } from "@/queries/settings.queries";
+import {
+  AUCTION_SOURCES,
+  DEFAULT_AUCTION_SOURCES,
+  type AuctionSource,
+} from "@/lib/auction-sources";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -54,7 +59,7 @@ const BLANK: DefaultCriteria = {
   allowed_damage_types: [],
   excluded_damage_types: ["Flood", "Fire"],
   max_results: 15,
-  sources: ["copart", "iaai"],
+  sources: [...DEFAULT_AUCTION_SOURCES],
 };
 
 const FUEL_OPTIONS = ["Gas", "Hybrid", "Diesel", "Electric"] as const;
@@ -86,7 +91,10 @@ function DefaultCriteriaPage() {
         ...q.data,
         allowed_damage_types: q.data.allowed_damage_types ?? [],
         excluded_damage_types: q.data.excluded_damage_types ?? [],
-        sources: q.data.sources && q.data.sources.length > 0 ? q.data.sources : ["copart", "iaai"],
+        sources:
+          q.data.sources && q.data.sources.length > 0
+            ? q.data.sources
+            : [...DEFAULT_AUCTION_SOURCES],
         max_results: q.data.max_results ?? 15,
       });
     }
@@ -125,7 +133,7 @@ function DefaultCriteriaPage() {
     mut.mutate(BLANK);
   };
 
-  const toggleSource = (src: "copart" | "iaai", checked: boolean) => {
+  const toggleSource = (src: AuctionSource, checked: boolean) => {
     setForm((f) => {
       const cur = new Set(f.sources ?? []);
       if (checked) cur.add(src);
@@ -315,21 +323,17 @@ function DefaultCriteriaPage() {
 
           <div className="space-y-2">
             <Label>Źródła</Label>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={(form.sources ?? []).includes("copart")}
-                  onCheckedChange={(v) => toggleSource("copart", !!v)}
-                />
-                Copart
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={(form.sources ?? []).includes("iaai")}
-                  onCheckedChange={(v) => toggleSource("iaai", !!v)}
-                />
-                IAAI
-              </label>
+            <div className="flex flex-wrap items-center gap-4">
+              {AUCTION_SOURCES.map((source) => (
+                <label key={source.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={(form.sources ?? []).includes(source.id)}
+                    onCheckedChange={(value) => toggleSource(source.id, value === true)}
+                    aria-label={`Uwzględnij ${source.label}`}
+                  />
+                  <span title={source.description}>{source.label}</span>
+                </label>
+              ))}
             </div>
             {sourcesErr && (
               <p className="text-xs text-destructive flex items-center gap-1">

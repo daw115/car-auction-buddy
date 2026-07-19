@@ -14,6 +14,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
+import { auctionSourceSchema } from "@/lib/auction-sources";
 
 // ---------- konfiguracja ----------
 
@@ -198,7 +199,7 @@ const criteriaShape = z.object({
   allowed_damage_types: z.array(z.string().max(40)).max(40).optional(),
   excluded_damage_types: z.array(z.string().max(40)).max(40).optional(),
   max_results: z.number().int().min(1).max(15).optional(),
-  sources: z.array(z.enum(["copart", "iaai"])).min(1).max(2).optional(),
+  sources: z.array(auctionSourceSchema).min(1).max(3).optional(),
 });
 
 const searchExtras = {
@@ -424,7 +425,7 @@ export const backendSubmitFeedback = createServerFn({ method: "POST" })
     z.object({
       recordId: z.coerce.string().min(1),
       lot_id: z.string().min(1),
-      source: z.enum(["copart", "iaai"]),
+      source: auctionSourceSchema,
       vote: z.enum(["up", "down"]),
       reason: z.string().max(500).optional(),
     }).parse,
@@ -444,7 +445,7 @@ export const backendDeleteFeedback = createServerFn({ method: "POST" })
     z.object({
       recordId: z.coerce.string().min(1),
       lot_id: z.string().min(1),
-      source: z.enum(["copart", "iaai"]),
+      source: auctionSourceSchema,
     }).parse,
   )
   .handler(async ({ data }) => {
@@ -505,14 +506,27 @@ export const backendListHtmlCache = createServerFn({ method: "GET" })
     return json.items ?? [];
   });
 
-/** Pobiera surowy HTML z /api/llm-cache/entry/* lub /api/html-cache/*. */
+/** Pobiera surowy HTML wyłącznie z dozwolonych endpointów cache. */
 export const backendFetchHtml = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ path: z.string().min(1).max(500) }).parse)
+  .inputValidator(
+    z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("llm-cache"),
+        key: z.string().min(1).max(300),
+      }),
+      z.object({
+        kind: z.literal("html-cache"),
+        source: auctionSourceSchema,
+        filename: z.string().min(1).max(300),
+      }),
+    ]).parse,
+  )
   .handler(async ({ data }) => {
-    if (!data.path.startsWith("/api/llm-cache/entry/") && !data.path.startsWith("/api/html-cache/")) {
-      throw new Error("Forbidden path");
-    }
-    return callBackend<string>({ path: data.path, responseType: "text" });
+    const path =
+      data.kind === "llm-cache"
+        ? `/api/llm-cache/entry/${encodeURIComponent(data.key)}`
+        : `/api/html-cache/${encodeURIComponent(data.source)}/${encodeURIComponent(data.filename)}`;
+    return callBackend<string>({ path, responseType: "text" });
   });
 
 // ---------- Model normalizations ----------

@@ -1,8 +1,10 @@
+import type { AuctionSource } from "@/lib/auction-sources";
+
 // Shared types used by both client UI and server functions.
 // Mirror the structure of usa-car-finder/parser/models.py (CarLot, ClientCriteria, AIAnalysis).
 
 export type CarLot = {
-  source: string;
+  source: AuctionSource;
   lot_id: string;
   url?: string;
   vin?: string | null;
@@ -41,7 +43,7 @@ export type ClientCriteria = {
   fuel_type?: "Gas" | "Hybrid" | "Diesel" | "Electric" | null;
   excluded_damage_types?: string[];
   max_results?: number;
-  sources?: string[];
+  sources?: AuctionSource[];
 };
 
 export type AIAnalysis = {
