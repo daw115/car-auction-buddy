@@ -74,8 +74,12 @@ type SearchResult =
   | { kind: "analyzed"; lots: AnalyzedLot[]; jobId: string };
 
 function normalizeResponse(res: BackendSearchResponse): SearchResult {
+  if (res.analyzed_lots && res.analyzed_lots.length > 0) {
+    return { kind: "analyzed", lots: res.analyzed_lots, jobId: res.job_id };
+  }
   return { kind: "listings", lots: res.listings ?? [], source: res.source, jobId: res.job_id };
 }
+
 
 // ---------------- page ----------------
 
