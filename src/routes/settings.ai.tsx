@@ -236,9 +236,6 @@ function KiroModelSelector({ visible }: { visible: boolean }) {
     onError: (e) => setErrorMsg(e instanceof Error ? e.message : String(e)),
   });
 
-  // Render nothing if kiro isn't the active provider AND user hasn't overridden a model
-  if (!visible && !data?.override) return null;
-
   const models = data?.models ?? [];
   const isOverride = data?.override != null;
   const current = data?.override ?? data?.env_value ?? "";
@@ -255,6 +252,9 @@ function KiroModelSelector({ visible }: { visible: boolean }) {
     }
     return m;
   }, [models]);
+
+  // Render nothing if kiro isn't the active provider AND user hasn't overridden a model
+  if (!visible && !data?.override) return null;
 
   return (
     <Card className="p-4 border-primary/30 bg-primary/5">
