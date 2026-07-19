@@ -80,7 +80,8 @@ function AiSettingsPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadKiroModels();
+  }, [load, loadKiroModels]);
 
   const applyOverride = async (key: string, value: string | null) => {
     setSavingKey(key);
