@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, ExternalLink, FileText, Mail, RefreshCcw } from "lucide-react";
+import { Loader2, ExternalLink, FileText, Mail, RefreshCcw, Plus, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
