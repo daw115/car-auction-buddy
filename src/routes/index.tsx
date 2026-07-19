@@ -467,6 +467,13 @@ function HomePage() {
                     Załaduj wyniki do widoku
                   </Button>
                 )}
+              {!batchRunning &&
+                batchEntries.some((e) => ["error", "failed", "cancelled"].includes(e.status)) && (
+                  <Button size="sm" variant="secondary" onClick={retryFailedBatch}>
+                    🔁 Ponów nieudane (
+                    {batchEntries.filter((e) => ["error", "failed", "cancelled"].includes(e.status)).length})
+                  </Button>
+              )}
               {!batchRunning && (
                 <Button size="sm" variant="ghost" onClick={clearBatch}>
                   <X className="mr-1 h-3 w-3" /> Wyczyść
