@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { defaultCriteriaQuery } from "@/queries/settings.queries";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 
@@ -160,6 +162,34 @@ function HomePage() {
   const [batchQueue, setBatchQueue] = useState<ClientCriteria[]>([]);
   const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
+
+  // Prefill formularza z /api/settings/default-criteria — tylko przy pierwszym udanym pobraniu,
+  // przed ewentualnym nadpisaniem z rozpoznanej wiadomości klienta.
+  const defaultsQ = useQuery(defaultCriteriaQuery());
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current) return;
+    if (!defaultsQ.data) return;
+    prefilledRef.current = true;
+    const d = defaultsQ.data;
+    const fuel = d.fuel_type as ClientCriteria["fuel_type"] | null;
+    setCriteria((prev) => ({
+      ...prev,
+      make: d.make ?? prev.make ?? "",
+      model: d.model ?? prev.model ?? "",
+      year_from: d.year_from ?? prev.year_from ?? null,
+      year_to: d.year_to ?? prev.year_to ?? null,
+      budget_usd: d.budget_usd ?? prev.budget_usd ?? null,
+      max_odometer_mi: d.max_odometer_mi ?? prev.max_odometer_mi ?? null,
+      fuel_type: fuel ?? prev.fuel_type ?? null,
+      excluded_damage_types:
+        d.excluded_damage_types && d.excluded_damage_types.length > 0
+          ? d.excluded_damage_types
+          : (prev.excluded_damage_types ?? []),
+      max_results: d.max_results ?? prev.max_results ?? 15,
+      sources: d.sources && d.sources.length > 0 ? d.sources : prev.sources,
+    }));
+  }, [defaultsQ.data]);
 
   // --- Parse client message ---
   const [clientMessage, setClientMessage] = useState("");
