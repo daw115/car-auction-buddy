@@ -708,11 +708,14 @@ function HomePage() {
                 const running = status === "running";
                 const phase = live?.phase;
                 const listingsCount = live?.listings?.length ?? live?.analyzed_lots?.length;
-                const errorMessage = interrupted
-                  ? "Zadanie przerwane restartem serwera — spróbuj ponownie."
-                  : failed
-                    ? live?.message
-                    : undefined;
+                const backendError = live?.error || undefined;
+                const errorMessage = backendError
+                  ? backendError
+                  : interrupted
+                    ? "Zadanie przerwane restartem serwera — spróbuj ponownie."
+                    : failed
+                      ? live?.message
+                      : undefined;
                 const errorPhases = failed && Array.isArray(live?.phases)
                   ? (live!.phases as any[]).filter((p) => p && (p.status === "error" || p.status === "failed" || p.error))
                   : undefined;
