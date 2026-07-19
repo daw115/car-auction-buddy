@@ -9,6 +9,10 @@ import {
   getPipelineFilters,
   type PipelineFiltersResponse,
 } from "@/functions/pipeline-filters.functions";
+import {
+  getDefaultCriteria,
+  type DefaultCriteria,
+} from "@/functions/default-criteria.functions";
 
 const STALE = 30_000;
 
@@ -37,8 +41,17 @@ export function pipelineFiltersQuery() {
   });
 }
 
+export function defaultCriteriaQuery() {
+  return queryOptions<DefaultCriteria>({
+    queryKey: ["settings", "default-criteria"],
+    queryFn: () => getDefaultCriteria(),
+    staleTime: STALE,
+  });
+}
+
 export const settingsQueryKeys = {
   aiProviders: ["settings", "ai-providers"] as const,
   aiModels: (provider: string) => ["settings", "ai-models", provider] as const,
   pipelineFilters: ["settings", "pipeline-filters"] as const,
+  defaultCriteria: ["settings", "default-criteria"] as const,
 };
