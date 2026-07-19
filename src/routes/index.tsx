@@ -369,7 +369,7 @@ function HomePage() {
               placeholder="Jan Kowalski"
             />
           </div>
-          <Button size="lg" onClick={onSearch} disabled={loading} className="min-w-[180px]">
+          <Button size="lg" onClick={onSearch} disabled={loading || batchRunning} className="min-w-[180px]">
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Szukam…
@@ -378,8 +378,128 @@ function HomePage() {
               "🔎 Wyszukaj"
             )}
           </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={addCurrentToBatch}
+            disabled={loading || batchRunning}
+            title="Dodaj bieżące kryteria do batcha (max 20)"
+          >
+            <Plus className="mr-2 h-4 w-4" /> Dodaj do batcha
+          </Button>
         </div>
       </Card>
+
+      {/* Batch multi-car */}
+      {(batchQueue.length > 0 || batchEntries.length > 0) && (
+        <Card className="p-4 border-primary/30">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📦</span>
+              <h2 className="text-lg font-semibold">
+                Batch wyszukiwanie
+                {batchEntries.length > 0 && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {batchEntries.filter((e) => e.status === "done" || e.status === "completed").length}/
+                    {batchEntries.length} gotowe
+                  </Badge>
+                )}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              {batchEntries.length === 0 && batchQueue.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={runBatchSearch}
+                  disabled={batchRunning || batchQueue.length === 0 || batchQueue.length > 20}
+                >
+                  {batchRunning ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <>🚀 </>
+                  )}
+                  Wyszukaj wszystkie ({batchQueue.length})
+                </Button>
+              )}
+              {batchEntries.length > 0 &&
+                batchEntries.every((e) => ["done", "completed", "error", "cancelled"].includes(e.status)) && (
+                  <Button size="sm" onClick={loadBatchResultsIntoView}>
+                    Załaduj wyniki do widoku
+                  </Button>
+                )}
+              {!batchRunning && (
+                <Button size="sm" variant="ghost" onClick={clearBatch}>
+                  <X className="mr-1 h-3 w-3" /> Wyczyść
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {batchEntries.length === 0 ? (
+            <ul className="space-y-1">
+              {batchQueue.map((c, i) => (
+                <li key={i} className="flex items-center justify-between rounded border p-2 text-sm">
+                  <span>
+                    {i + 1}. {labelForCriteria(c)}
+                    {c.budget_usd ? ` · budżet $${c.budget_usd.toLocaleString()}` : ""}
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => removeFromQueue(i)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </li>
+              ))}
+              {batchQueue.length > 20 && (
+                <li className="text-xs text-destructive">Max 20 — usuń nadmiar.</li>
+              )}
+            </ul>
+          ) : (
+            <ul className="space-y-1">
+              {batchEntries.map((e) => {
+                const done = e.status === "done" || e.status === "completed";
+                const failed = e.status === "error" || e.status === "failed" || e.status === "cancelled";
+                const running = e.status === "running";
+                return (
+                  <li
+                    key={e.jobId}
+                    className={`flex items-center gap-2 rounded border p-2 text-sm ${
+                      running ? "border-primary/40 bg-primary/5" : ""
+                    }`}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    ) : failed ? (
+                      <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                    ) : running ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    ) : (
+                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="flex-1 truncate">
+                      {e.label}
+                      {e.idempotent && (
+                        <Badge variant="outline" className="ml-2 text-[10px]">
+                          reużyty
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {e.status}
+                      {e.phase ? ` · ${e.phase}` : ""}
+                      {e.listingsCount != null ? ` · ${e.listingsCount} ofert` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Backend puszcza scrapy sekwencyjnie (SEARCH_MAX_CONCURRENT=1) — batch tylko oszczędza N requestów,
+            nie przyspiesza wykonania.
+          </p>
+        </Card>
+      )}
+
+
 
       {/* Loader */}
       {loading && (
