@@ -153,12 +153,19 @@ const criteriaShape = z.object({
  * POST /api/search — synchroniczne wywołanie (do kilku minut).
  * UI musi trzymać loader i NIE zakładać timeoutu.
  */
+const searchExtras = {
+  demo: z.boolean().optional(),
+  disable_auction_filter: z.boolean().optional(),
+  auction_min_hours: z.number().min(0).max(10000).optional().nullable(),
+  auction_max_hours: z.number().min(0).max(10000).optional().nullable(),
+};
+
 export const backendSearch = createServerFn({ method: "POST" })
   .inputValidator(
     z
       .object({
         criteria: criteriaShape,
-        demo: z.boolean().optional(),
+        ...searchExtras,
       })
       .parse,
   )
