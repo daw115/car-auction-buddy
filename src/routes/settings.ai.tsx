@@ -132,6 +132,9 @@ function AiSettingsPage() {
           </Card>
         ) : tasks && tasks.length > 0 ? (
           <div className="space-y-3">
+            {tasks.some((t) => (t.override ?? t.env_value) === "kiro") && (
+              <ProviderModelSelector provider="kiro" label="Model Kiro" />
+            )}
             {tasks.map((task) => (
               <TaskRow
                 key={task.key}
@@ -142,6 +145,7 @@ function AiSettingsPage() {
               />
             ))}
           </div>
+
         ) : (
           <Card className="p-6 text-sm text-muted-foreground">
             Backend nie zwrócił żadnych zadań AI.
