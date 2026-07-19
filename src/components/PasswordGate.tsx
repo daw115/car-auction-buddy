@@ -166,8 +166,16 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         bumpSiteActivity();
         setPersonalPw("");
         setStep("unlocked");
+      } else if (res.error === "rate_limited") {
+        const mins = Math.ceil((res.retryAfterSeconds ?? 60) / 60);
+        setError(`Zbyt wiele nieudanych prób. Spróbuj ponownie za ~${mins} min.`);
+        setPersonalPw("");
       } else {
-        setError("Nieprawidłowe hasło osobiste");
+        const remaining =
+          typeof res.attemptsRemaining === "number"
+            ? ` (pozostało prób: ${res.attemptsRemaining})`
+            : "";
+        setError(`Nieprawidłowe hasło osobiste${remaining}`);
         setPersonalPw("");
       }
     } catch (err) {
@@ -192,7 +200,13 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         data: { username: user, masterPassword: masterPw, newPassword: personalPw },
       });
       if (!res.ok) {
-        setError("Nieprawidłowe hasło ogólne");
+        if (res.error === "not_configured") {
+          setError(
+            "Serwer nie ma skonfigurowanego hasła ogólnego (SITE_MASTER_PASSWORD). Skontaktuj się z administratorem.",
+          );
+        } else {
+          setError("Nieprawidłowe hasło ogólne");
+        }
         setMasterPw("");
         return;
       }

@@ -1,15 +1,23 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  checkLoginRateLimit,
+  getClientKey,
+  registerFailedAttempt,
+  resetAttempts,
+} from "@/server/dev-auth.server";
 
 const SITE_USERS = ["Dawid", "Janek", "Iga", "Monte"] as const;
 const usernameSchema = z.enum(SITE_USERS);
 
-// Internal site gate "master" password used only to bootstrap a personal
-// password the first time a user logs in. Kept server-side; can be overridden
-// via the SITE_MASTER_PASSWORD secret.
-const FALLBACK_MASTER_PASSWORD = "carbuddy2026";
+// Namespaced key for the shared rate-limit store — keeps site-login counters
+// separate from /dev/logs token counters (both live in the same in-memory Map).
+function siteRateKey(request: Request): string {
+  return `site:${getClientKey(request)}`;
+}
 
 function hashPassword(password: string, saltHex: string): string {
   const salt = Buffer.from(saltHex, "hex");
@@ -51,6 +59,19 @@ export const siteUserLogin = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
+    const request = getRequest();
+    const rateKey = siteRateKey(request);
+
+    // Enforce lockout BEFORE touching DB or comparing password.
+    const pre = checkLoginRateLimit(rateKey);
+    if (!pre.allowed) {
+      return {
+        ok: false as const,
+        error: "rate_limited" as const,
+        retryAfterSeconds: pre.retryAfterSeconds,
+      };
+    }
+
     const { data: row, error } = await supabaseAdmin
       .from("site_user_passwords")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +79,24 @@ export const siteUserLogin = createServerFn({ method: "POST" })
       .eq("username", data.username)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!row) return { ok: false as const };
+
+    const registerFailure = () => {
+      const after = registerFailedAttempt(rateKey);
+      if (!after.allowed) {
+        return {
+          ok: false as const,
+          error: "rate_limited" as const,
+          retryAfterSeconds: after.retryAfterSeconds,
+        };
+      }
+      return {
+        ok: false as const,
+        error: "invalid" as const,
+        attemptsRemaining: after.remaining,
+      };
+    };
+
+    if (!row) return registerFailure();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = row as any;
@@ -67,7 +105,11 @@ export const siteUserLogin = createServerFn({ method: "POST" })
 
     if (storedSalt) {
       const candidate = hashPassword(data.password, storedSalt);
-      return { ok: safeEqualHex(candidate, storedHash) };
+      if (safeEqualHex(candidate, storedHash)) {
+        resetAttempts(rateKey);
+        return { ok: true as const };
+      }
+      return registerFailure();
     }
 
     // Legacy: pre-migration rows stored unsalted SHA-256 hex of the password.
@@ -86,9 +128,10 @@ export const siteUserLogin = createServerFn({ method: "POST" })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .update({ password_hash: newHash, password_salt: newSalt, updated_at: new Date().toISOString() } as any)
         .eq("username", data.username);
+      resetAttempts(rateKey);
       return { ok: true as const };
     }
-    return { ok: false as const };
+    return registerFailure();
   });
 
 export const siteUserSetPassword = createServerFn({ method: "POST" })
@@ -102,8 +145,12 @@ export const siteUserSetPassword = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const expectedMaster =
-      process.env.SITE_MASTER_PASSWORD || FALLBACK_MASTER_PASSWORD;
+    const expectedMaster = process.env.SITE_MASTER_PASSWORD;
+    if (!expectedMaster || expectedMaster.length === 0) {
+      // Explicit configuration failure — no silent fallback to a hardcoded
+      // password. Ops must set SITE_MASTER_PASSWORD before bootstrap/reset.
+      return { ok: false as const, error: "not_configured" as const };
+    }
     if (data.masterPassword !== expectedMaster) {
       return { ok: false as const, error: "master" as const };
     }
