@@ -7,10 +7,12 @@ import {
   backendSearch,
   backendGenerateReport,
   backendListRecords,
+  backendJobStatus,
   type BackendSearchResponse,
   type BackendRecordSummary,
 } from "@/functions/backend.functions";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
+
 
 import { CriteriaForm } from "@/components/panels/criteria-form";
 import { Button } from "@/components/ui/button";
