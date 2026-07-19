@@ -447,6 +447,9 @@ function HomePage() {
     [batchEntries, batchJobs],
   );
 
+  function toggleSelected(id: string) {
+    setSelected((s) => ({ ...s, [id]: !s[id] }));
+  }
 
 
   function selectAll(v: boolean) {
