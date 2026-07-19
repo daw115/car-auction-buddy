@@ -102,8 +102,10 @@ type BatchEntry = {
   listingsCount?: number;
   analyzed?: AnalyzedLot[];
   errorMessage?: string;
+  errorPhases?: Array<{ name?: string; status?: string; message?: string; error?: string }>;
   idempotent?: boolean;
 };
+
 
 function HomePage() {
   const runSearch = useServerFn(backendSearch);
