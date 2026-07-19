@@ -33,6 +33,20 @@ def _t(value) -> str:
     return str(value)
 
 
+def _resolve_pipeline_filter_bool(filter_key: str, env_var: str, default: bool) -> bool:
+    """Filtr systemowy: nadpisanie z dashboardu (settings_db) ma pierwszeństwo
+    przed .env — ten sam mechanizm co w scraper/automated_scraper.py, żeby
+    raport pokazywał DOKŁADNIE to, co faktycznie zostało zastosowane."""
+    try:
+        from api.settings_db import get_pipeline_filter_override
+        override = get_pipeline_filter_override(filter_key)
+        if override is not None:
+            return override
+    except Exception:
+        pass
+    return os.getenv(env_var, str(default)).lower() == "true"
+
+
 def _mileage(value) -> str:
     if value is None:
         return "brak danych"
@@ -376,6 +390,55 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     }
 
 
+def _build_pipeline_rules(criteria: ClientCriteria) -> list[str]:
+    """Lista WSZYSTKICH filtrów faktycznie stosowanych przez scraper/pipeline
+    dla tego wyszukiwania — łączy env-driven config (seller/auction window)
+    z kryteriami klienta (year/odometer/damage/fuel/sources), żeby broker
+    widział dokładnie co zawęziło wyniki, nie tylko przybliżony opis.
+    """
+    rules: list[str] = []
+
+    seller_filter = _resolve_pipeline_filter_bool("seller_insurance_only", "FILTER_SELLER_INSURANCE_ONLY", False)
+    rules.append(
+        "Sprzedawca: tylko insurance (ubezpieczyciel)" if seller_filter
+        else "Sprzedawca: insurance + dealer (bez filtra)"
+    )
+
+    min_h = os.getenv("MIN_AUCTION_WINDOW_HOURS", "12")
+    max_h = os.getenv("MAX_AUCTION_WINDOW_HOURS", "120")
+    rules.append(f"Okno aukcji: {min_h}–{max_h}h od teraz")
+
+    if criteria.year_from or criteria.year_to:
+        rules.append(f"Rocznik: {criteria.year_from or '?'}–{criteria.year_to or '?'}")
+
+    if criteria.max_odometer_mi:
+        rules.append(f"Maks. przebieg: {criteria.max_odometer_mi:,} mi".replace(",", " "))
+
+    if criteria.fuel_type:
+        rules.append(f"Typ paliwa: {criteria.fuel_type} (filtr server-side tylko na Copart — IAAI go nie wspiera)")
+
+    excluded = ", ".join(criteria.excluded_damage_types) if criteria.excluded_damage_types else "brak"
+    rules.append(f"Wykluczone uszkodzenia: {excluded}")
+
+    if criteria.allowed_damage_types:
+        rules.append(f"Dozwolone uszkodzenia (jawnie wskazane): {', '.join(criteria.allowed_damage_types)}")
+
+    exclude_convertible = _resolve_pipeline_filter_bool("exclude_convertible", "FILTER_EXCLUDE_CONVERTIBLE", True)
+    rules.append(
+        "Kabriolet/roadster/spider: wykluczony, chyba że model klienta jawnie o to prosi"
+        if exclude_convertible else
+        "Kabriolet/roadster/spider: NIE wykluczany (filtr wyłączony w ustawieniach)"
+    )
+
+    sources = ", ".join(criteria.sources).upper() if criteria.sources else "COPART, IAAI"
+    rules.append(f"Źródła: {sources}")
+
+    rules.append(f"Limit wyników: {criteria.max_results} (twardy cap)")
+    rules.append("Priorytet otwierania szczegółów: loty z najmniejszymi widocznymi uszkodzeniami najpierw")
+
+    return rules
+
+
 def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] = None, lots_scanned: int = 0) -> dict:
     lot = item.lot
     ai = item.analysis
@@ -432,12 +495,7 @@ def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         {"key": "enriched_by_extension", "value": str(lot.enriched_by_extension)},
     ]
 
-    pipeline_rules = [
-        "seller_type: insurance",
-        f"auction window: {criteria.year_from or '?'}–{criteria.year_to or '?'} rok",
-        "damage priority: najmniejsze widoczne uszkodzenia",
-        "details: otwierane tylko dla kandydatów po filtrach listy",
-    ] if criteria else ["Brak kryteriów wyszukiwania"]
+    pipeline_rules = _build_pipeline_rules(criteria) if criteria else ["Brak kryteriów wyszukiwania"]
 
     excluded_damage = ", ".join(criteria.excluded_damage_types) if criteria and criteria.excluded_damage_types else "Flood, Fire"
     sources_str = ", ".join(criteria.sources).upper() if criteria and criteria.sources else "COPART, IAAI"

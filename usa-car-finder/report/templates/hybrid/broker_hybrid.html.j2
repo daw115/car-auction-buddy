@@ -58,6 +58,14 @@
   .check-item .dot.bad{background:#f85149}
   .footer{text-align:center;color:#6b7388;font-size:11px;padding:16px;word-break:break-word}
   .footer code{background:#1a1f2e;padding:2px 6px;border-radius:3px;color:#a5b4fc}
+  .decision-box{border-radius:8px;padding:18px 20px;margin-bottom:20px;border:1px solid}
+  .decision-box.polecam{background:rgba(46,160,67,0.08);border-color:#2ea043}
+  .decision-box.ryzyko{background:rgba(210,153,34,0.08);border-color:#d29922}
+  .decision-box.odrzuc{background:rgba(248,81,73,0.08);border-color:#f85149}
+  .decision-box .title{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;color:#a5b4fc}
+  .decision-box .body{font-size:14px;line-height:1.65;color:#e3e9f5}
+  .decision-box .flags{margin:10px 0 0;padding-left:18px}
+  .decision-box .flags li{font-size:12px;color:#c9d1d9;line-height:1.7}
   @media (max-width:600px){
     .container{padding:12px}
     body{font-size:12px}
@@ -100,6 +108,51 @@
       {{ ai.recommendation }} · SCORE {{ "%.1f"|format(ai.score) }}/10
     </span>
   </div>
+
+  <!-- DECISION REASON (prominent, tuż pod verdictem) -->
+  <div class="decision-box {% if ai.recommendation == 'POLECAM' %}polecam{% elif ai.recommendation == 'RYZYKO' %}ryzyko{% else %}odrzuc{% endif %}">
+    <div class="title">🎯 Powód decyzji: {{ ai.recommendation }}</div>
+    <div class="body">{{ bidding_strategy | default('Brak dodatkowego uzasadnienia AI dla tego lota.') }}</div>
+    {% if red_flags %}
+    <ul class="flags">
+      {% for flag in red_flags %}
+      <li><strong>{{ flag.severity|default('MID') }}:</strong> {{ flag.text if flag is mapping else flag }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  {% if criteria %}
+  <!-- KRYTERIA I FILTRY -->
+  <div class="section">
+    <h2>🔎 Kryteria i filtry zastosowane w tym wyszukiwaniu</h2>
+    <div class="table-wrap">
+    <table>
+      <tr><td style="width:30%;color:#6b7388">Marka / Model</td><td>{{ criteria.make }}{% if criteria.model %} · {{ criteria.model }}{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Rocznik</td><td>{{ criteria.year_from or '—' }} – {{ criteria.year_to or '—' }}</td></tr>
+      <tr><td style="color:#6b7388">Budżet</td><td>{% if criteria.budget_usd %}${{ "{:,}".format(criteria.budget_usd|int) }}{% else %}—{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Maks. przebieg</td><td>{% if criteria.max_odometer_mi %}{{ "{:,}".format(criteria.max_odometer_mi) }} mi{% else %}—{% endif %}</td></tr>
+      <tr><td style="color:#6b7388">Typ paliwa</td><td>{{ criteria.fuel_type or 'dowolny' }}</td></tr>
+      <tr><td style="color:#6b7388">Wykluczone uszkodzenia</td><td>{{ criteria.excluded_damage_types|join(', ') if criteria.excluded_damage_types else 'brak' }}</td></tr>
+      {% if criteria.allowed_damage_types %}
+      <tr><td style="color:#6b7388">Dozwolone uszkodzenia (jawnie)</td><td>{{ criteria.allowed_damage_types|join(', ') }}</td></tr>
+      {% endif %}
+      <tr><td style="color:#6b7388">Źródła</td><td>{{ criteria.sources|join(', ')|upper if criteria.sources else 'COPART, IAAI' }}</td></tr>
+      <tr><td style="color:#6b7388">Limit wyników</td><td>{{ criteria.max_results }}</td></tr>
+    </table>
+    </div>
+    {% if pipeline_rules %}
+    <div style="margin-top:14px">
+      <div style="font-size:11px;color:#a5b4fc;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Wszystkie filtry pipeline (env + kryteria)</div>
+      <ul style="padding-left:18px">
+        {% for rule in pipeline_rules %}
+        <li style="font-size:12px;color:#c9d1d9;line-height:1.8">{{ rule }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <!-- STAT CARDS -->
   <div class="grid-3">
@@ -321,10 +374,6 @@
         <div class="label">Walk-away</div>
         <div class="value">${{ "{:,}".format(bid_thresholds.walkaway_usd) }}</div>
       </div>
-    </div>
-    <div class="strategy-box">
-      <div class="title">📌 Reasoning</div>
-      <div class="body">{{ bidding_strategy }}</div>
     </div>
   </div>
 

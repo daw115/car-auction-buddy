@@ -141,6 +141,15 @@
   .notes-tbl .nk { font-weight: 700; color: var(--navy); width: 25%; background: #f8fafc; white-space: nowrap; }
   .notes-tbl .nv { color: #1f2937; line-height: 1.6; }
 
+  /* DECISION REASON (prominent, tuż pod score/rekomendacją) */
+  .decision-section .section-head { font-size: 15px; }
+  .decision-polecam .section-head { background: var(--ok); }
+  .decision-obserwuj .section-head { background: var(--amber); }
+  .decision-odrzuc .section-head { background: var(--red); }
+  .decision-text { font-size: 14px; line-height: 1.6; color: var(--text); margin-bottom: 12px; }
+  .decision-flags { margin: 0; padding-left: 18px; }
+  .decision-flags li { font-size: 12px; line-height: 1.7; color: #374151; }
+
   /* FOOTER */
   .footer { text-align: center; color: var(--muted); font-size: 11px; padding: 16px; margin-top: 8px; }
 
@@ -217,6 +226,21 @@
     </div>
   </div>
 
+  <!-- SECTION 0: DECISION REASON -->
+  <div class="section decision-section decision-{{ recommendation_css }}">
+    <div class="section-head">&#127919; Powód decyzji: {{ recommendation }}</div>
+    <div class="section-body">
+      <p class="decision-text">{{ bid_recommendation | default('Brak dodatkowego uzasadnienia AI dla tego lota.') }}</p>
+      {% if red_flags %}
+      <ul class="decision-flags">
+        {% for flag in red_flags %}
+        <li>{{ flag.description }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- SECTION 1: PIPELINE CONFIG -->
   <div class="section">
     <div class="section-head">&#9881; Konfiguracja pipeline</div>
@@ -226,9 +250,13 @@
         <tr><td>Marka</td><td>{{ criteria.make }}</td></tr>
         <tr><td>Model</td><td>{{ criteria.model | default('—') }}</td></tr>
         <tr><td>Rocznik</td><td>{{ criteria.year_from | default('—') }} – {{ criteria.year_to | default('—') }}</td></tr>
-        <tr><td>Budżet</td><td>{{ criteria.budget_usd | default('—') }} USD</td></tr>
-        <tr><td>Maks. przebieg</td><td>{{ criteria.max_odometer_mi | default('—') }} mi</td></tr>
+        <tr><td>Budżet</td><td>{% if criteria.budget_usd %}${{ "{:,.0f}".format(criteria.budget_usd) }}{% else %}—{% endif %}</td></tr>
+        <tr><td>Maks. przebieg</td><td>{% if criteria.max_odometer_mi %}{{ "{:,}".format(criteria.max_odometer_mi) }} mi{% else %}—{% endif %}</td></tr>
+        <tr><td>Typ paliwa</td><td>{{ criteria.fuel_type if criteria.fuel_type else 'dowolny' }}</td></tr>
         <tr><td>Wykluczone szkody</td><td>{{ criteria.excluded_damage_types | join(', ') | default('—') }}</td></tr>
+        {% if criteria.allowed_damage_types %}
+        <tr><td>Dozwolone szkody (jawnie)</td><td>{{ criteria.allowed_damage_types | join(', ') }}</td></tr>
+        {% endif %}
         <tr><td>Źródła</td><td>{{ criteria.sources | join(', ') | upper }}</td></tr>
         <tr><td>Maks. wyników</td><td>{{ criteria.max_results | default('—') }}</td></tr>
       </table>
@@ -377,7 +405,6 @@
           {% if bid_last_ask_note %}
           <tr><td class="bk">Last ask</td><td class="bv wrn">{{ bid_last_ask_note }}</td></tr>
           {% endif %}
-          <tr><td class="bk">Rekomendacja</td><td class="bv"><strong>{{ bid_recommendation }}</strong></td></tr>
         </tbody>
       </table>
     </div>
