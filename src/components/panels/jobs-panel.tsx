@@ -6,10 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LiveJobLogs } from "@/components/LiveJobLogs";
-import {
-  listActiveScraperJobs,
-  cancelScraperJob,
-} from "@/functions/api.functions";
+import { backendListJobs, backendCancelJob } from "@/functions/backend.functions";
 
 // ---- Active Jobs types ----
 export type ActiveJob = {
