@@ -9,11 +9,11 @@ import {
   backendGenerateReport,
   backendListRecords,
   backendJobStatus,
+  backendParseClientMessage,
   type BackendSearchResponse,
   type BackendRecordSummary,
   type BackendBatchJob,
 } from "@/functions/backend.functions";
-import { parseClientMessage } from "@/functions/api.functions";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
