@@ -150,8 +150,15 @@ function AiSettingsPage() {
           </Card>
         ) : tasks && tasks.length > 0 ? (
           <div className="space-y-3">
-            {tasks.some((t) => (t.override ?? t.env_value) === "kiro") && (
-              <ProviderModelSelector provider="kiro" label="Model Kiro" />
+            {(tasks.some((t) => (t.override ?? t.env_value) === "kiro") || kiroModels?.override != null) && (
+              <ProviderModelSelector
+                provider="kiro"
+                label="Model Kiro"
+                initialData={kiroModels}
+                initialLoading={kiroModelsLoading}
+                initialError={kiroModelsError}
+                onReload={loadKiroModels}
+              />
             )}
             {tasks.map((task) => (
               <TaskRow
