@@ -2416,38 +2416,32 @@ export const parseClientMessage = createServerFn({ method: "POST" })
     });
 
     if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      throw new Error(`Parser failed (HTTP ${res.status}): ${err.slice(0, 200)}`);
+      const errText = await res.text().catch(() => "");
+      let detail: unknown = errText;
+      try {
+        detail = JSON.parse(errText);
+      } catch {
+        // keep as string
+      }
+      return { ok: false as const, status: res.status, detail };
     }
 
-    return res.json() as Promise<{
-      criteria: {
-        make: string;
-        model?: string | null;
-        year_from?: number | null;
-        year_to?: number | null;
-        budget_usd?: number | null;
-        max_odometer_mi?: number | null;
-        excluded_damage_types?: string[];
-        allowed_damage_types?: string[];
-        sources?: string[];
-        max_results?: number;
-      };
-      criteria_list?: Array<{
-        make: string;
-        model?: string | null;
-        year_from?: number | null;
-        year_to?: number | null;
-        budget_usd?: number | null;
-        max_odometer_mi?: number | null;
-        excluded_damage_types?: string[];
-        allowed_damage_types?: string[];
-        sources?: string[];
-        max_results?: number;
-      }>;
-      summary: string;
-      warnings: string[];
-    }>;
+    const body = (await res.json()) as {
+      criteria?: any;
+      criteria_list?: any[];
+      count?: number;
+      summary?: string;
+      warnings?: string[];
+    };
+    const list = body.criteria_list ?? (body.criteria ? [body.criteria] : []);
+    return {
+      ok: true as const,
+      criteria: body.criteria ?? list[0] ?? null,
+      criteria_list: list,
+      count: body.count ?? list.length,
+      summary: body.summary ?? "",
+      warnings: body.warnings ?? [],
+    };
   });
 
 // ---------- Batch Search ----------
