@@ -47,7 +47,7 @@ const toolItems: NavItem[] = [
   { title: "Kalkulator", url: "/calculator", icon: Calculator },
   { title: "Baza danych", url: "/database", icon: HardDrive },
   { title: "Ustawienia AI", url: "/settings/ai", icon: Cpu },
-  { title: "Ustawienia", url: "/settings", icon: Settings },
+  { title: "Ustawienia", url: "/settings", icon: Settings, exact: true },
   { title: "Logi (dev)", url: "/dev/logs", icon: Terminal },
 ];
 
