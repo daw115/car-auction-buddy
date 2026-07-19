@@ -88,6 +88,18 @@ function normalizeResponse(res: BackendSearchResponse): SearchResult {
 
 // ---------------- page ----------------
 
+function buildAuctionExtras(
+  disable: boolean,
+  minH: number | "",
+  maxH: number | "",
+): { disable_auction_filter?: boolean; auction_min_hours?: number; auction_max_hours?: number } {
+  const out: { disable_auction_filter?: boolean; auction_min_hours?: number; auction_max_hours?: number } = {};
+  if (disable) out.disable_auction_filter = true;
+  if (typeof minH === "number" && Number.isFinite(minH)) out.auction_min_hours = minH;
+  if (typeof maxH === "number" && Number.isFinite(maxH)) out.auction_max_hours = maxH;
+  return out;
+}
+
 function labelForCriteria(c: ClientCriteria): string {
   const parts = [c.make, c.model].filter(Boolean).join(" ");
   const years = c.year_from || c.year_to ? ` ${c.year_from ?? ""}${c.year_to ? `-${c.year_to}` : ""}` : "";
@@ -130,6 +142,11 @@ function HomePage() {
     excluded_damage_types: [],
     max_results: 15,
   });
+
+  // Auction window (per-search, poza criteria)
+  const [disableAuctionFilter, setDisableAuctionFilter] = useState(false);
+  const [auctionMinHours, setAuctionMinHours] = useState<number | "">("");
+  const [auctionMaxHours, setAuctionMaxHours] = useState<number | "">("");
 
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
@@ -264,7 +281,8 @@ function HomePage() {
     setResult(null);
     setSelected({});
     try {
-      const res = await runSearch({ data: { criteria } });
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
+      const res = await runSearch({ data: { criteria, ...auctionExtras } });
       const initial = normalizeResponse(res);
       setResult(initial);
       const total = res.analyzed_lots?.length ?? res.listings?.length ?? 0;
@@ -333,8 +351,9 @@ function HomePage() {
     setBatchRunning(true);
     setBatchEntries([]);
     try {
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
       const res = await runBatch({
-        data: { searches: batchQueue.map((c) => ({ criteria: c })) },
+        data: { searches: batchQueue.map((c) => ({ criteria: c, ...auctionExtras })) },
       });
       const initial: BatchEntry[] = res.jobs.map((j: BackendBatchJob, i: number) => ({
         jobId: j.job_id,
@@ -419,8 +438,9 @@ function HomePage() {
     }
     setBatchRunning(true);
     try {
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
       const res = await runBatch({
-        data: { searches: failed.map((e) => ({ criteria: e.criteria })) },
+        data: { searches: failed.map((e) => ({ criteria: e.criteria, ...auctionExtras })) },
       });
       // Podmień stare failed wpisy na nowe joby (zachowaj kolejność w liście).
       const newByOldJobId = new Map<string, BatchEntry>();
@@ -526,6 +546,57 @@ function HomePage() {
       {/* Formularz kryteriów */}
       <Card className="p-4">
         <CriteriaForm criteria={criteria} setCriteria={setCriteria} />
+        <Separator className="my-4" />
+        <div>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Okno aukcji (opcjonalnie)
+          </h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Min. godzin do aukcji
+              </label>
+              <Input
+                type="number"
+                min={0}
+                className="w-32"
+                placeholder="12"
+                value={auctionMinHours}
+                onChange={(e) =>
+                  setAuctionMinHours(e.target.value === "" ? "" : Math.max(0, +e.target.value))
+                }
+                disabled={disableAuctionFilter}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Max. godzin do aukcji
+              </label>
+              <Input
+                type="number"
+                min={0}
+                className="w-32"
+                placeholder="120"
+                value={auctionMaxHours}
+                onChange={(e) =>
+                  setAuctionMaxHours(e.target.value === "" ? "" : Math.max(0, +e.target.value))
+                }
+                disabled={disableAuctionFilter}
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={disableAuctionFilter}
+                onChange={(e) => setDisableAuctionFilter(e.target.checked)}
+              />
+              Wyłącz filtr okna aukcji (pokaż też przyszłe / spoza okna)
+            </label>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Domyślnie backend zawęża do 12–120 h. Puste pola = domyślne wartości backendu.
+          </p>
+        </div>
         <Separator className="my-4" />
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[220px] flex-1">
