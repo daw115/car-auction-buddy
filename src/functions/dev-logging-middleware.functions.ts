@@ -1,6 +1,6 @@
-// Server-function middleware that logs every RPC call: method, status, duration.
-// Attach via `.middleware([devRequestLogger])` on createServerFn definitions,
-// or import `withDevLogging` to wrap quickly.
+// Telemetry-only middleware (NOT auth). Logs every server-fn RPC:
+// method, path, status, duration → operation_logs via devLog/logHttp.
+// Attach via `.middleware([devRequestLogger])` on createServerFn definitions.
 
 import { createMiddleware } from "@tanstack/react-start";
 import { logHttp, devLog } from "@/server/dev-logger.server";
