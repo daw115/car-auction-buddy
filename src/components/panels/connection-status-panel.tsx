@@ -23,11 +23,11 @@ type HealthService = {
 type HealthResult = {
   checkedAt: string;
   durationMs: number;
-  services: { database: HealthService; scraper: HealthService; ai: HealthService };
+  services: { database: HealthService; backend: HealthService };
 };
 
 export function ConnectionStatusPanel() {
-  const fnCheckHealth = useServerFn(checkHealth);
+  const fnCheckHealth = useServerFn(backendHealth);
   const [health, setHealth] = useState<HealthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
