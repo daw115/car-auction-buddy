@@ -10,6 +10,7 @@ import {
   Car,
   Activity,
   HardDrive,
+  Cpu,
 } from "lucide-react";
 
 
