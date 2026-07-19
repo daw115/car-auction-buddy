@@ -19,6 +19,7 @@ import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsFiltersRouteImport } from './routes/settings.filters'
 import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
@@ -84,6 +85,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsFiltersRoute = SettingsFiltersRouteImport.update({
   id: '/filters',
@@ -186,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/filters': typeof SettingsFiltersRoute
+  '/settings/': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -200,7 +207,6 @@ export interface FileRoutesByTo {
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
-  '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
@@ -213,6 +219,7 @@ export interface FileRoutesByTo {
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/filters': typeof SettingsFiltersRoute
+  '/settings': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -241,6 +248,7 @@ export interface FileRoutesById {
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/filters': typeof SettingsFiltersRoute
+  '/settings/': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -270,6 +278,7 @@ export interface FileRouteTypes {
     | '/settings/ai'
     | '/settings/default-criteria'
     | '/settings/filters'
+    | '/settings/'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
@@ -284,7 +293,6 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/mcp'
     | '/records'
-    | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
     | '/.mcp/list-tools'
@@ -297,6 +305,7 @@ export interface FileRouteTypes {
     | '/settings/ai'
     | '/settings/default-criteria'
     | '/settings/filters'
+    | '/settings'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
@@ -324,6 +333,7 @@ export interface FileRouteTypes {
     | '/settings/ai'
     | '/settings/default-criteria'
     | '/settings/filters'
+    | '/settings/'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
@@ -427,6 +437,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
     }
     '/settings/filters': {
       id: '/settings/filters'
@@ -540,12 +557,14 @@ interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
   SettingsDefaultCriteriaRoute: typeof SettingsDefaultCriteriaRoute
   SettingsFiltersRoute: typeof SettingsFiltersRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
   SettingsDefaultCriteriaRoute: SettingsDefaultCriteriaRoute,
   SettingsFiltersRoute: SettingsFiltersRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
