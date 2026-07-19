@@ -5,13 +5,16 @@ import { toast } from "sonner";
 
 import {
   backendSearch,
+  backendSearchBatch,
   backendGenerateReport,
   backendListRecords,
   backendJobStatus,
   type BackendSearchResponse,
   type BackendRecordSummary,
+  type BackendBatchJob,
 } from "@/functions/backend.functions";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
+
 
 
 import { CriteriaForm } from "@/components/panels/criteria-form";
