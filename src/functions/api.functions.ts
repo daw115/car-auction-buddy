@@ -2416,38 +2416,33 @@ export const parseClientMessage = createServerFn({ method: "POST" })
     });
 
     if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      throw new Error(`Parser failed (HTTP ${res.status}): ${err.slice(0, 200)}`);
+      const errText = await res.text().catch(() => "");
+      let detail: string = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        detail = typeof parsed?.detail === "string" ? parsed.detail : JSON.stringify(parsed);
+      } catch {
+        // keep raw text
+      }
+      return { ok: false as const, status: res.status, detail };
     }
 
-    return res.json() as Promise<{
-      criteria: {
-        make: string;
-        model?: string | null;
-        year_from?: number | null;
-        year_to?: number | null;
-        budget_usd?: number | null;
-        max_odometer_mi?: number | null;
-        excluded_damage_types?: string[];
-        allowed_damage_types?: string[];
-        sources?: string[];
-        max_results?: number;
-      };
-      criteria_list?: Array<{
-        make: string;
-        model?: string | null;
-        year_from?: number | null;
-        year_to?: number | null;
-        budget_usd?: number | null;
-        max_odometer_mi?: number | null;
-        excluded_damage_types?: string[];
-        allowed_damage_types?: string[];
-        sources?: string[];
-        max_results?: number;
-      }>;
-      summary: string;
-      warnings: string[];
-    }>;
+    const body = (await res.json()) as {
+      criteria?: ClientCriteria | null;
+      criteria_list?: ClientCriteria[];
+      count?: number;
+      summary?: string;
+      warnings?: string[];
+    };
+    const list: ClientCriteria[] = body.criteria_list ?? (body.criteria ? [body.criteria] : []);
+    return {
+      ok: true as const,
+      criteria: body.criteria ?? list[0] ?? null,
+      criteria_list: list,
+      count: body.count ?? list.length,
+      summary: body.summary ?? "",
+      warnings: body.warnings ?? [],
+    };
   });
 
 // ---------- Batch Search ----------
