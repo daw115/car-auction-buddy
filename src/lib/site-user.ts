@@ -1,7 +1,7 @@
 // Helpers do odczytu aktualnie zalogowanego użytkownika strony (ustawianego w PasswordGate).
 // Wykorzystywane m.in. przy zapisie rekordów wyszukiwań aby wiedzieć kto wykonał search.
 
-export const SITE_USERS = ["Dawid", "Janek", "Iga", "Monte"] as const;
+export const SITE_USERS = ["Dawid", "Janek", "Iga", "Monte", "Pawel"] as const;
 export type SiteUser = (typeof SITE_USERS)[number];
 
 export const SITE_CURRENT_USER_KEY = "site_current_user_v1";
