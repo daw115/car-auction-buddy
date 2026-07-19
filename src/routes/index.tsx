@@ -131,14 +131,19 @@ function HomePage() {
     setSelected({});
     try {
       const res = await runSearch({ data: { criteria } });
-      if (!res.listings || res.listings.length === 0) {
+      const initial = normalizeResponse(res);
+      setResult(initial);
+      const total = res.analyzed_lots?.length ?? res.listings?.length ?? 0;
+      if (total === 0) {
         toast.info("Nie znaleziono aukcji spełniających kryteria.");
       } else {
-        toast.success(`Znaleziono ${res.listings.length} ofert.`);
+        toast.success(`Znaleziono ${total} ofert.`);
       }
-      setResult(normalizeResponse(res));
-      if (res.analysis_notice) {
-        toast.message(res.analysis_notice);
+      if (res.analysis_notice) toast.message(res.analysis_notice);
+
+      // Jeśli backend zwrócił tylko listings — dopytaj job o analyzed_lots.
+      if (initial.kind === "listings" && res.job_id) {
+        void pollAnalysis(res.job_id);
       }
     } catch (e) {
       const err = e as { message?: string; status?: number };
@@ -148,6 +153,26 @@ function HomePage() {
       setLoadingMsg("");
     }
   }
+
+  async function pollAnalysis(jobId: string) {
+    const deadline = Date.now() + 4 * 60 * 1000;
+    let delay = 4000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay + 1000, 10000);
+      try {
+        const s = await backendJobStatusFn({ data: { jobId } });
+        if (s.analyzed_lots && s.analyzed_lots.length > 0) {
+          setResult({ kind: "analyzed", lots: s.analyzed_lots, jobId });
+          return;
+        }
+        if (["done", "completed", "failed", "error", "cancelled"].includes(s.status)) return;
+      } catch {
+        // ignoruj — spróbujemy jeszcze raz
+      }
+    }
+  }
+
 
   function toggleSelected(id: string) {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
