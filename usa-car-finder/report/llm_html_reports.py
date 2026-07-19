@@ -12,6 +12,8 @@ prompt caching (cache_control), Gemini ma context caching (jeszcze nie wszędzie
 """
 import json
 import os
+import re
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -229,13 +231,78 @@ def _call_gemini_for_html(
 
 
 def _provider() -> str:
+    try:
+        from api.settings_db import get_ai_provider_override
+        override = get_ai_provider_override("llm_reports_provider")
+        if override:
+            return override.lower()
+    except Exception:
+        pass
     return (os.getenv("LLM_REPORTS_PROVIDER", "gemini") or "gemini").lower()
+
+
+def _resolve_kiro_model() -> str:
+    """Model Kiro: nadpisanie z dashboardu ma pierwszeństwo przed .env KIRO_MODEL."""
+    try:
+        from api.settings_db import get_ai_model_override
+        override = get_ai_model_override("kiro")
+        if override:
+            return override
+    except Exception:
+        pass
+    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
+
+
+def _call_kiro_for_html(
+    system: str,
+    skeleton: str,
+    lot_data: str,
+    skeleton_label: str,
+    max_tokens: int = 8192,
+) -> str:
+    """Generuje HTML przez kiro-cli headless (KIRO_API_KEY, ksk_...)."""
+    api_key = os.getenv("KIRO_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak KIRO_API_KEY")
+    cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
+    effort = os.getenv("KIRO_EFFORT", "low")
+    timeout = int(os.getenv("KIRO_TIMEOUT_SECONDS", "180"))
+    model = _resolve_kiro_model()
+
+    full_system = (
+        f"{system}\n\nWZORZEC HTML ({skeleton_label}, dla BMW M550i 2020):\n\n{skeleton}"
+    )
+    user_prompt = (
+        f"Wygeneruj kompletny raport HTML dla podanego auta zachowując strukturę wzorca.\n\n"
+        f"DANE LOTU (do zastąpienia BMW M550i ze wzorca):\n```json\n{lot_data}\n```\n\n"
+        f"Zwróć WYŁĄCZNIE HTML, gotowy do wyświetlenia w przeglądarce."
+    )
+    prompt = f"{full_system}\n\n{user_prompt}"
+    env = {**os.environ, "KIRO_API_KEY": api_key}
+    try:
+        result = subprocess.run(
+            [cli_path, "chat", "--no-interactive", "--trust-tools=", "-w", "never",
+             "--effort", effort, "--model", model, prompt],
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"kiro-cli nie znaleziony ({cli_path}): {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Kiro CLI timeout po {timeout}s dla {skeleton_label}") from exc
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Kiro CLI exit {result.returncode} dla {skeleton_label}: {result.stderr[:300]}")
+
+    text = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    if not text:
+        raise RuntimeError(f"Kiro CLI pusta odpowiedź dla {skeleton_label} (stderr: {result.stderr[:300]})")
+    return _strip_html_wrapper(text)
 
 
 def _call_llm(
     system: str, skeleton: str, lot_data: str, skeleton_label: str, max_tokens: int = 8192
 ) -> str:
-    """Dispatch między Gemini (free, default) a Anthropic (paid, fallback) z retry on timeout."""
+    """Dispatch między Gemini (free, default), Kiro i Anthropic (paid, fallback) z retry on timeout."""
     provider = _provider()
     fallback_enabled = os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true"
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
@@ -250,6 +317,14 @@ def _call_llm(
                 except Exception as gemini_exc:
                     if fallback_enabled and has_anthropic:
                         print(f"[LLM-Reports] Gemini failed ({type(gemini_exc).__name__}), fallback Anthropic")
+                        return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+                    raise
+            if provider == "kiro":
+                try:
+                    return _call_kiro_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
+                except Exception as kiro_exc:
+                    if fallback_enabled and has_anthropic:
+                        print(f"[LLM-Reports] Kiro failed ({type(kiro_exc).__name__}), fallback Anthropic")
                         return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)
                     raise
             return _call_claude_for_html(system, skeleton, lot_data, skeleton_label, max_tokens)

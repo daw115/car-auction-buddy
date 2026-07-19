@@ -21,8 +21,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import subprocess
 import sqlite3
 import threading
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -275,12 +279,62 @@ ZASADY:
 """
 
 
-def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
-    """Wywołuje Anthropic Claude żeby zweryfikować/znormalizować model.
+def _parse_normalize_response(raw: str, raw_model: Optional[str], provider: str, model_name: str) -> Optional[dict]:
+    """Wspólny parser odpowiedzi LLM (dowolny provider) — strip markdown, loose JSON, heurystyka prozy."""
+    raw = (raw or "").strip()
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    elif raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    raw = raw.strip()
 
-    Zwraca dict {normalized_model, reason, is_normalized} albo None gdy LLM padnie.
-    Wynik NIE jest automatycznie zapisywany — wywołujący odpowiedzialny za store().
-    """
+    data = None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        # Fallback 1: regex-wyciągnij pierwszy {...} z prozy.
+        # Niektóre proxy (oneprovider) zwraca "Tak, model X3 jest poprawny..."
+        # zamiast czystego JSON. Wyciągamy JSON jeśli jest gdziekolwiek.
+        match = re.search(r'\{[^{}]*"normalized_model"[^{}]*\}', raw, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+    if data is None:
+        # Fallback 2: heurystyka treści — gdy LLM mówi prozą że oryginalny model
+        # jest poprawny ("Tak, X3 jest poprawny dla BMW..."), traktuj jako
+        # is_normalized=false z tym samym modelem. Tylko gdy raw_model jest podany.
+        raw_lower = raw.lower()
+        confirm_keywords = ("poprawny", "jest ok", "valid", "is correct", "zgodny", "akceptowalny", "uznawany")
+        if raw_model and any(k in raw_lower for k in confirm_keywords):
+            logger.info(
+                "[model_normalization] LLM zwrócił prozę z afirmacją — heurystyka: %r poprawny",
+                raw_model,
+            )
+            return {
+                "normalized_model": raw_model.strip(),
+                "reason": "Heurystyka: LLM odpowiedział prozą potwierdzającą oryginalny model",
+                "is_normalized": False,
+                "provider": provider,
+                "llm_model": model_name,
+            }
+        logger.warning("[model_normalization] JSON parse failed (no fallback match); raw=%r", raw[:200])
+        return None
+
+    return {
+        "normalized_model": str(data.get("normalized_model", "")).strip() or None,
+        "reason": str(data.get("reason", "")).strip() or None,
+        "is_normalized": bool(data.get("is_normalized", False)),
+        "provider": provider,
+        "llm_model": model_name,
+    }
+
+
+def _verify_with_anthropic_impl(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         logger.warning("[model_normalization] Brak ANTHROPIC_API_KEY — nie mogę zweryfikować")
@@ -314,59 +368,151 @@ def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str
         return None
 
     chunks = [b.text for b in resp.content if b.type == "text"]
-    raw = "".join(chunks).strip()
-    # Strip markdown fences (na wszelki wypadek)
-    if raw.startswith("```json"):
-        raw = raw[7:]
-    elif raw.startswith("```"):
-        raw = raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
+    return _parse_normalize_response("".join(chunks), raw_model, "anthropic", model_name)
 
-    data = None
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        # Fallback 1: regex-wyciągnij pierwszy {...} z prozy.
-        # Niektóre proxy (oneprovider) zwraca "Tak, model X3 jest poprawny..."
-        # zamiast czystego JSON. Wyciągamy JSON jeśli jest gdziekolwiek.
-        import re
-        match = re.search(r'\{[^{}]*"normalized_model"[^{}]*\}', raw, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
 
-    if data is None:
-        # Fallback 2: heurystyka treści — gdy LLM mówi prozą że oryginalny model
-        # jest poprawny ("Tak, X3 jest poprawny dla BMW..."), traktuj jako
-        # is_normalized=false z tym samym modelem. Tylko gdy raw_model jest podany.
-        raw_lower = raw.lower()
-        confirm_keywords = ("poprawny", "jest ok", "valid", "is correct", "zgodny", "akceptowalny", "uznawany")
-        if raw_model and any(k in raw_lower for k in confirm_keywords):
-            logger.info(
-                "[model_normalization] LLM zwrócił prozę z afirmacją — heurystyka: %r poprawny",
-                raw_model,
-            )
-            return {
-                "normalized_model": raw_model.strip(),
-                "reason": "Heurystyka: LLM odpowiedział prozą potwierdzającą oryginalny model",
-                "is_normalized": False,
-                "provider": "anthropic",
-                "llm_model": model_name,
-            }
-        logger.warning("[model_normalization] JSON parse failed (no fallback match); raw=%r", raw[:200])
+def _verify_with_gemini_impl(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        logger.warning("[model_normalization] Brak GEMINI_API_KEY — nie mogę zweryfikować")
         return None
 
-    return {
-        "normalized_model": str(data.get("normalized_model", "")).strip() or None,
-        "reason": str(data.get("reason", "")).strip() or None,
-        "is_normalized": bool(data.get("is_normalized", False)),
-        "provider": "anthropic",
-        "llm_model": model_name,
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    timeout = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "60"))
+    raw_model_line = f"Sparsowany model: {raw_model}\n" if raw_model else ""
+    user_msg = VERIFY_USER_TEMPLATE.format(
+        make=make,
+        original_text=original_text,
+        raw_model_line=raw_model_line,
+    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": VERIFY_SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
+        "generationConfig": {
+            "maxOutputTokens": 300,
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "thinkingConfig": {"thinkingBudget": int(os.getenv("GEMINI_THINKING_BUDGET", "0"))},
+        },
     }
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        logger.warning("[model_normalization] Gemini verify failed: %s", exc)
+        return None
+
+    candidates = data.get("candidates") or []
+    if not candidates:
+        logger.warning("[model_normalization] Gemini brak candidates")
+        return None
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    raw = "".join(p.get("text", "") for p in parts if p.get("text"))
+    if not raw:
+        logger.warning("[model_normalization] Gemini pusta odpowiedź")
+        return None
+    return _parse_normalize_response(raw, raw_model, "gemini", model_name)
+
+
+def _verify_with_kiro_impl(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
+    """Kiro CLI headless (KIRO_API_KEY, kiro.dev/docs/cli/headless) — subprocess, tekst-only."""
+    api_key = os.getenv("KIRO_API_KEY")
+    if not api_key:
+        logger.warning("[model_normalization] Brak KIRO_API_KEY — nie mogę zweryfikować")
+        return None
+
+    cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
+    effort = os.getenv("KIRO_EFFORT", "low")
+    timeout = int(os.getenv("KIRO_TIMEOUT_SECONDS", "60"))
+    model_name = _resolve_kiro_model()
+    raw_model_line = f"Sparsowany model: {raw_model}\n" if raw_model else ""
+    user_msg = VERIFY_USER_TEMPLATE.format(
+        make=make,
+        original_text=original_text,
+        raw_model_line=raw_model_line,
+    )
+    prompt = f"{VERIFY_SYSTEM_PROMPT}\n\n{user_msg}"
+    env = {**os.environ, "KIRO_API_KEY": api_key}
+    try:
+        result = subprocess.run(
+            [cli_path, "chat", "--no-interactive", "--trust-tools=", "-w", "never",
+             "--effort", effort, "--model", model_name, prompt],
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+    except Exception as exc:
+        logger.warning("[model_normalization] Kiro verify failed: %s", exc)
+        return None
+
+    if result.returncode != 0:
+        logger.warning("[model_normalization] Kiro CLI exit %d: %s", result.returncode, result.stderr[:200])
+        return None
+
+    raw = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    if not raw:
+        logger.warning("[model_normalization] Kiro CLI pusta odpowiedź")
+        return None
+    return _parse_normalize_response(raw, raw_model, "kiro", model_name)
+
+
+_NORMALIZE_PROVIDERS = {
+    "gemini": _verify_with_gemini_impl,
+    "kiro": _verify_with_kiro_impl,
+    "anthropic": _verify_with_anthropic_impl,
+}
+
+
+def _resolve_kiro_model() -> str:
+    """Model Kiro: nadpisanie z dashboardu ma pierwszeństwo przed .env KIRO_MODEL."""
+    try:
+        from api.settings_db import get_ai_model_override
+        override = get_ai_model_override("kiro")
+        if override:
+            return override
+    except Exception:
+        pass
+    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
+
+
+def _resolve_normalize_provider() -> str:
+    """Nadpisanie z dashboardu (settings_db) ma pierwszeństwo przed .env."""
+    try:
+        from api.settings_db import get_ai_provider_override
+        override = get_ai_provider_override("model_normalization_ai_provider")
+        if override:
+            return override.lower()
+    except Exception:
+        pass
+    return (os.getenv("MODEL_NORMALIZATION_AI_PROVIDER", "gemini") or "gemini").lower()
+
+
+def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
+    """Provider dispatch (nazwa historyczna z czasów Anthropic-only — zostawiona
+    dla kompatybilności z wywołującym w api/main.py).
+
+    Wybór providera: MODEL_NORMALIZATION_AI_PROVIDER (default 'gemini').
+    Fallback do Anthropic, gdy skonfigurowany provider nie zwróci wyniku i jest klucz.
+
+    Zwraca dict {normalized_model, reason, is_normalized, provider, llm_model}
+    albo None gdy wszystkie próby padną. Wynik NIE jest automatycznie
+    zapisywany — wywołujący odpowiedzialny za store().
+    """
+    provider = _resolve_normalize_provider()
+    impl = _NORMALIZE_PROVIDERS.get(provider, _verify_with_gemini_impl)
+
+    result = impl(make, original_text, raw_model)
+    if result is not None:
+        return result
+    if provider != "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
+        logger.info("[model_normalization] %s nie zwrócił wyniku — fallback Anthropic", provider)
+        return _verify_with_anthropic_impl(make, original_text, raw_model)
+    return None
 
 
 def normalize_with_cache(make: str, original_text: str, raw_model: Optional[str] = None) -> dict:

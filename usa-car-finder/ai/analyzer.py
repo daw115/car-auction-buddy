@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import re
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -17,6 +19,34 @@ WESTERN_STATES = {"CA", "OR", "WA", "NV", "AZ", "UT", "CO", "NM"}
 
 # Cache historycznych cen sprzedaży z bidfax.info (TTL 60 dni, file-based JSON).
 BIDFAX_CACHE_PATH = Path(os.getenv("BIDFAX_CACHE_PATH", "data/bidfax_cache.json"))
+
+
+def _resolve_ai_provider(task_key: str, env_var: str, default: str) -> str:
+    """Provider dla danego zadania AI: nadpisanie z dashboardu (settings_db,
+    ustawiane przez PUT /api/settings/ai-providers) ma pierwszeństwo przed
+    .env — zmiana w dashboardzie działa natychmiast, bez restartu usługi.
+    """
+    try:
+        from api.settings_db import get_ai_provider_override
+        override = get_ai_provider_override(task_key)
+        if override:
+            return override.lower()
+    except Exception:
+        pass
+    return (os.getenv(env_var, default) or default).lower()
+
+
+def _resolve_kiro_model() -> str:
+    """Model Kiro: nadpisanie z dashboardu (settings_db) ma pierwszeństwo
+    przed .env KIRO_MODEL. Globalne (wspólne dla wszystkich zadań używających Kiro)."""
+    try:
+        from api.settings_db import get_ai_model_override
+        override = get_ai_model_override("kiro")
+        if override:
+            return override
+    except Exception:
+        pass
+    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
 
 SYSTEM_PROMPT = """Jesteś ekspertem od importu aut z USA do Polski.
 Analizujesz dane z aukcji Copart i IAAI dla klienta-brokera importowego.
@@ -314,7 +344,7 @@ def analyze_lots(
     except Exception as exc:
         print(f"[AI/Frame] Vision check failed ({exc}) - kontynuuję bez")
 
-    ai_mode = os.getenv("AI_ANALYSIS_MODE", "auto").lower()
+    ai_mode = _resolve_ai_provider("ai_analysis_mode", "AI_ANALYSIS_MODE", "auto")
     openai_key = os.getenv("OPENAI_API_KEY")
     has_openai_key = _has_usable_openai_key(openai_key)
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
@@ -369,6 +399,22 @@ def analyze_lots(
             print(f"[AI] Gemini API niedostępne ({exc}). Używam lokalnego scoringu.")
             return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
+    kiro_key = os.getenv("KIRO_API_KEY")
+    if ai_mode == "kiro":
+        if not kiro_key:
+            message = "AI_ANALYSIS_MODE=kiro, ale brakuje KIRO_API_KEY"
+            if strict_ai:
+                raise RuntimeError(message)
+            print(f"[AI] {message}. Używam lokalnego scoringu.")
+            return _analyze_lots_locally(lots, criteria, top_n=top_n)
+        try:
+            return _analyze_lots_with_kiro(lots, criteria, top_n=top_n)
+        except Exception as exc:
+            if strict_ai:
+                raise
+            print(f"[AI] Kiro CLI niedostępne ({exc}). Używam lokalnego scoringu.")
+            return _analyze_lots_locally(lots, criteria, top_n=top_n)
+
     if has_openai_key:
         try:
             return _analyze_lots_with_openai(lots, criteria, top_n=top_n)
@@ -385,10 +431,16 @@ def analyze_lots(
         try:
             return _analyze_lots_with_gemini(lots, criteria, top_n=top_n)
         except Exception as exc:
-            print(f"[AI] Gemini API niedostępne ({exc}). Używam lokalnego scoringu.")
+            print(f"[AI] Gemini API niedostępne ({exc}). Próbuję Kiro/local.")
 
-    if not has_openai_key and not anthropic_key and not gemini_key:
-        print("[AI] Brak OPENAI_API_KEY, ANTHROPIC_API_KEY i GEMINI_API_KEY — używam lokalnego scoringu.")
+    if kiro_key:
+        try:
+            return _analyze_lots_with_kiro(lots, criteria, top_n=top_n)
+        except Exception as exc:
+            print(f"[AI] Kiro CLI niedostępne ({exc}). Używam lokalnego scoringu.")
+
+    if not has_openai_key and not anthropic_key and not gemini_key and not kiro_key:
+        print("[AI] Brak OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY i KIRO_API_KEY — używam lokalnego scoringu.")
 
     return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
@@ -1012,6 +1064,144 @@ def _analyze_lots_with_gemini(
         raise RuntimeError("Gemini: żaden chunk nie zwrócił poprawnych analiz")
 
     print(f"[AI] Łącznie zebrano {len(all_analyses)} analiz Gemini z {n_chunks} chunków")
+    return _results_from_analysis_data(all_analyses, lots, top_n)
+
+
+_KIRO_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+
+
+def _call_kiro(model: str, system: str, user_prompt: str, max_tokens: int = 8192) -> str:
+    """Wywołuje kiro-cli w trybie headless (oficjalny KIRO_API_KEY, ksk_...,
+    patrz kiro.dev/docs/cli/headless) — jeden proces subprocess na wywołanie.
+    """
+    api_key = os.getenv("KIRO_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak KIRO_API_KEY")
+
+    cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
+    effort = os.getenv("KIRO_EFFORT", "low")
+    timeout = int(os.getenv("KIRO_TIMEOUT_SECONDS", "180"))
+    max_retries = int(os.getenv("KIRO_MAX_RETRIES", "3"))
+
+    prompt = f"{system}\n\n{user_prompt}"
+    env = {**os.environ, "KIRO_API_KEY": api_key}
+
+    last_exc: Exception = RuntimeError("Kiro: brak odpowiedzi")
+    for attempt in range(max_retries):
+        try:
+            result = subprocess.run(
+                [
+                    cli_path, "chat", "--no-interactive", "--trust-tools=",
+                    "-w", "never", "--effort", effort, "--model", model, prompt,
+                ],
+                capture_output=True, text=True, timeout=timeout, env=env,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"kiro-cli nie znaleziony ({cli_path}): {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            last_exc = RuntimeError(f"Kiro CLI timeout po {timeout}s")
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 30)
+                print(f"[AI] Kiro CLI timeout, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                continue
+            raise last_exc from exc
+
+        if result.returncode != 0:
+            sanitized = _sanitize_error_text(result.stderr[:500])
+            last_exc = RuntimeError(f"Kiro CLI exit {result.returncode}: {sanitized}")
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 30)
+                print(f"[AI] Kiro CLI błąd (exit {result.returncode}), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                continue
+            raise last_exc
+
+        text = _KIRO_ANSI_RE.sub("", result.stdout).strip()
+        if not text:
+            last_exc = RuntimeError(f"Kiro CLI pusta odpowiedź (stderr: {result.stderr[:300]})")
+            if attempt < max_retries - 1:
+                time.sleep(3)
+                continue
+            raise last_exc
+        # kiro-cli drukuje preambułę przed blokiem JSON (np. "> json") zamiast
+        # literalnych ``` — tniemy do pierwszego { lub [ dla _parse_analysis_json.
+        json_start = min(
+            (i for i in (text.find("{"), text.find("[")) if i >= 0),
+            default=-1,
+        )
+        if json_start > 0:
+            text = text[json_start:]
+        return text
+
+    raise last_exc
+
+
+def _analyze_lots_with_kiro(
+    lots: List[CarLot],
+    criteria: ClientCriteria,
+    top_n: int = 5,
+) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
+    """Analiza przez kiro-cli (headless, KIRO_API_KEY) z chunkingiem — każdy
+    chunk to osobny proces subprocess, więc rozmiar chunku > Gemini (mniej
+    narzutu na start procesu), ale i tak ograniczamy dla stabilności JSON.
+    """
+    model = _resolve_kiro_model()
+    chunk_size = int(os.getenv("KIRO_CHUNK_SIZE", "5"))
+    chunk_delay_ms = int(os.getenv("KIRO_CHUNK_DELAY_MS", "1000"))
+    max_tokens = int(os.getenv("KIRO_MAX_OUTPUT_TOKENS", "8192"))
+    max_lots_for_ai = int(os.getenv("KIRO_MAX_LOTS", "15"))
+
+    if len(lots) > max_lots_for_ai:
+        print(f"[AI] Pre-filtr heurystyczny: {len(lots)} → top {max_lots_for_ai} (oszczędność Kiro credits)")
+        _, all_local = _analyze_lots_locally(lots, criteria, top_n=max_lots_for_ai)
+        lots = [r.lot for r in all_local[:max_lots_for_ai]]
+
+    n_chunks = (len(lots) + chunk_size - 1) // chunk_size
+    print(f"[AI] Analizuję {len(lots)} lotów przez Kiro CLI ({model}, chunki po {chunk_size}, total {n_chunks} call, delay {chunk_delay_ms}ms)...")
+
+    all_analyses: list[dict] = []
+    for chunk_idx in range(n_chunks):
+        if chunk_idx > 0 and chunk_delay_ms > 0:
+            time.sleep(chunk_delay_ms / 1000.0)
+        start = chunk_idx * chunk_size
+        chunk_lots = lots[start:start + chunk_size]
+        chunk_data = _lot_payloads(chunk_lots)
+        chunk_prompt = _analysis_user_prompt(chunk_data, criteria)
+
+        try:
+            raw = _call_kiro(
+                model=model,
+                system=SYSTEM_PROMPT,
+                user_prompt=chunk_prompt,
+                max_tokens=max_tokens,
+            ).strip()
+            chunk_analyses = _parse_analysis_json(raw)
+            all_analyses.extend(chunk_analyses)
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: zwrócono {len(chunk_analyses)} analiz")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
+            shrunk = chunk_lots[:max(1, len(chunk_lots) // 2)]
+            chunk_data = _lot_payloads(shrunk)
+            chunk_prompt = _analysis_user_prompt(chunk_data, criteria)
+            try:
+                raw = _call_kiro(
+                    model=model,
+                    system=SYSTEM_PROMPT,
+                    user_prompt=chunk_prompt,
+                    max_tokens=max_tokens,
+                ).strip()
+                all_analyses.extend(_parse_analysis_json(raw))
+                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
+            except Exception as inner_exc:
+                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
+        except Exception as exc:
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
+
+    if not all_analyses:
+        raise RuntimeError("Kiro: żaden chunk nie zwrócił poprawnych analiz")
+
+    print(f"[AI] Łącznie zebrano {len(all_analyses)} analiz Kiro z {n_chunks} chunków")
     return _results_from_analysis_data(all_analyses, lots, top_n)
 
 

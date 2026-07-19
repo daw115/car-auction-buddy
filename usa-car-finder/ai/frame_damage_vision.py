@@ -26,11 +26,14 @@ Opt-in via env: FRAME_DAMAGE_VISION_ENABLED=true (default true gdy ANTHROPIC_API
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
 import re
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -123,6 +126,154 @@ def should_check_frame(lot: CarLot) -> bool:
     return any(kw in dmg for kw in TRIGGER_KEYWORDS)
 
 
+def _resolve_frame_damage_provider() -> str:
+    """Nadpisanie z dashboardu (settings_db) ma pierwszeństwo przed .env."""
+    try:
+        from api.settings_db import get_ai_provider_override
+        override = get_ai_provider_override("frame_damage_ai_provider")
+        if override:
+            return override.lower()
+    except Exception:
+        pass
+    return (os.getenv("FRAME_DAMAGE_AI_PROVIDER", "gemini") or "gemini").lower()
+
+
+def _parse_frame_damage_json(raw: str, cache_key: str) -> Optional[dict]:
+    raw = (raw or "").strip()
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    elif raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    raw = raw.strip()
+
+    data = None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        # Fallback: wyciąga JSON z prozy
+        match = re.search(r'\{[^{}]*"frame_damaged"[^{}]*\}', raw, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+    if not data or "frame_damaged" not in data:
+        logger.warning("[frame_damage] JSON parse failed for %s; raw=%r", cache_key, raw[:200])
+        return None
+    return data
+
+
+def _call_vision_anthropic(images: list[str], user_text: str, cache_key: str) -> Optional[dict]:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.warning("[frame_damage] Brak ANTHROPIC_API_KEY — pomijam vision check")
+        return None
+
+    base_url = os.getenv("ANTHROPIC_BASE_URL") or None
+    timeout = int(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "120"))
+    model_name = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+
+    kwargs = {"api_key": api_key, "timeout": timeout, "max_retries": 1}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = anthropic.Anthropic(**kwargs)
+
+    # Anthropic vision API wspiera URL images (source.type='url') — fetch'uje sam.
+    # Niektóre Copart/IAAI obrazy mogą być za auth wall — wtedy LLM dostanie 403.
+    content_blocks = [{"type": "image", "source": {"type": "url", "url": url}} for url in images]
+    content_blocks.append({"type": "text", "text": user_text})
+
+    try:
+        resp = client.messages.create(
+            model=model_name,
+            max_tokens=400,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": content_blocks}],
+        )
+    except Exception as exc:
+        logger.warning("[frame_damage] Anthropic vision call failed for %s: %s", cache_key, exc)
+        return None
+
+    raw = "".join(b.text for b in resp.content if b.type == "text")
+    return _parse_frame_damage_json(raw, cache_key)
+
+
+def _download_image_b64(url: str, timeout: int) -> Optional[tuple[str, str]]:
+    """Pobiera obraz spod URL i zwraca (mime_type, base64_data), albo None."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+            data = resp.read()
+        return content_type, base64.b64encode(data).decode("ascii")
+    except Exception as exc:
+        logger.info("[frame_damage] Pobranie zdjęcia nieudane (%s): %s", url[:80], exc)
+        return None
+
+
+def _call_vision_gemini(images: list[str], user_text: str, cache_key: str) -> Optional[dict]:
+    """Gemini generateContent wymaga inline base64 (nie fetch'uje zewnętrznych
+    URLi tak jak Anthropic) — pobieramy zdjęcia sami i wysyłamy jako inline_data.
+    """
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        logger.warning("[frame_damage] Brak GEMINI_API_KEY — pomijam vision check")
+        return None
+
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    timeout = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "60"))
+
+    parts: list[dict] = []
+    for url in images:
+        downloaded = _download_image_b64(url, timeout)
+        if downloaded is None:
+            continue
+        mime_type, b64_data = downloaded
+        parts.append({"inline_data": {"mime_type": mime_type, "data": b64_data}})
+
+    if not parts:
+        logger.info("[frame_damage] %s: żadne zdjęcie nie pobrało się dla Gemini — pomijam", cache_key)
+        return None
+
+    parts.append({"text": user_text})
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {
+            "maxOutputTokens": 400,
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            # thinkingBudget=0: bez tego "thinking" tokens zjadają cały maxOutputTokens
+            # budget -> finishReason=MAX_TOKENS -> ucięty/pusty JSON (patrz hybrid_reports.py).
+            "thinkingConfig": {"thinkingBudget": int(os.getenv("GEMINI_THINKING_BUDGET", "0"))},
+        },
+    }
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        logger.warning("[frame_damage] Gemini vision call failed for %s: %s", cache_key, exc)
+        return None
+
+    candidates = data.get("candidates") or []
+    if not candidates:
+        logger.warning("[frame_damage] Gemini brak candidates dla %s", cache_key)
+        return None
+    resp_parts = (candidates[0].get("content") or {}).get("parts") or []
+    raw = "".join(p.get("text", "") for p in resp_parts if p.get("text"))
+    return _parse_frame_damage_json(raw, cache_key)
+
+
 def check_frame_damage(lot: CarLot, *, force: bool = False) -> Optional[dict]:
     """Sprawdza zdjęcia lota pod kątem uszkodzenia belki.
 
@@ -148,20 +299,6 @@ def check_frame_damage(lot: CarLot, *, force: bool = False) -> Optional[dict]:
         logger.info("[frame_damage] CACHE HIT %s: frame_damaged=%s", cache_key, cached.get("frame_damaged"))
         return {**cached, "checked_via": "cache"}
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        logger.warning("[frame_damage] Brak ANTHROPIC_API_KEY — pomijam vision check")
-        return None
-
-    base_url = os.getenv("ANTHROPIC_BASE_URL") or None
-    timeout = int(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "120"))
-    model_name = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-
-    kwargs = {"api_key": api_key, "timeout": timeout, "max_retries": 1}
-    if base_url:
-        kwargs["base_url"] = base_url
-    client = anthropic.Anthropic(**kwargs)
-
     # Wybierz max N zdjęć (uniknięcie token explosion)
     images = (lot.images or [])[:MAX_IMAGES]
     if not images:
@@ -174,52 +311,27 @@ def check_frame_damage(lot: CarLot, *, force: bool = False) -> Optional[dict]:
         damage_primary=lot.damage_primary or "?",
     )
 
-    # Składanie content: image blocks + text. Anthropic vision API wspiera
-    # URL images (przez source.type='url'). Niektóre Copart/IAAI obrazy mogą
-    # być za auth wall — wtedy LLM dostanie 403 i trzeba fallback do None.
-    content_blocks = []
-    for url in images:
-        content_blocks.append({
-            "type": "image",
-            "source": {"type": "url", "url": url},
-        })
-    content_blocks.append({"type": "text", "text": user_text})
-
-    try:
-        resp = client.messages.create(
-            model=model_name,
-            max_tokens=400,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": content_blocks}],
+    provider = _resolve_frame_damage_provider()
+    if provider == "kiro":
+        # Kiro CLI to subprocess tekstowy (kiro-cli chat --no-interactive "prompt") —
+        # nie ma potwierdzonego mechanizmu za łączenia obrazów do promptu (brak
+        # udokumentowanej flagi --image/--file w headless mode). Zamiast zgadywać
+        # i ryzykować cichy błąd, jawnie logujemy i spadamy do Gemini (vision-native).
+        logger.info(
+            "[frame_damage] FRAME_DAMAGE_AI_PROVIDER=kiro nieobsługiwane dla zadania "
+            "wizyjnego (kiro-cli nie ma potwierdzonego wejścia obrazkowego) — używam Gemini"
         )
-    except Exception as exc:
-        logger.warning("[frame_damage] Vision call failed for %s: %s", cache_key, exc)
-        return None
+        provider = "gemini"
 
-    raw = "".join(b.text for b in resp.content if b.type == "text").strip()
-    # Strip markdown fences (na wszelki wypadek)
-    if raw.startswith("```json"):
-        raw = raw[7:]
-    elif raw.startswith("```"):
-        raw = raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
-
-    data = None
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        # Fallback: wyciąga JSON z prozy
-        match = re.search(r'\{[^{}]*"frame_damaged"[^{}]*\}', raw, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
+    if provider == "anthropic":
+        data = _call_vision_anthropic(images, user_text, cache_key)
+    else:
+        data = _call_vision_gemini(images, user_text, cache_key)
+        if data is None and os.getenv("ANTHROPIC_API_KEY"):
+            logger.info("[frame_damage] %s nie zwrócił wyniku — fallback Anthropic", provider)
+            data = _call_vision_anthropic(images, user_text, cache_key)
 
     if not data or "frame_damaged" not in data:
-        logger.warning("[frame_damage] JSON parse failed for %s; raw=%r", cache_key, raw[:200])
         return None
 
     raw_reason = str(data.get("reason", "") or "")[:300]

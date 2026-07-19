@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -181,6 +183,18 @@ def _parse_json_loose(raw: str) -> dict:
         raise RuntimeError(f"JSON parse failed (loose): {e}; sanitized[:200]={sanitized[:200]!r}")
 
 
+def _resolve_kiro_model() -> str:
+    """Model Kiro: nadpisanie z dashboardu ma pierwszeństwo przed .env KIRO_MODEL."""
+    try:
+        from api.settings_db import get_ai_model_override
+        override = get_ai_model_override("kiro")
+        if override:
+            return override
+    except Exception:
+        pass
+    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
+
+
 def _call_gemini(message: str) -> dict:
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -248,6 +262,43 @@ def _call_anthropic(message: str) -> dict:
     return _parse_json_loose("".join(chunks))
 
 
+def _call_kiro(message: str) -> dict:
+    api_key = os.getenv("KIRO_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak KIRO_API_KEY")
+    cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
+    effort = os.getenv("KIRO_EFFORT", "low")
+    timeout = int(os.getenv("KIRO_TIMEOUT_SECONDS", "90"))
+    model = _resolve_kiro_model()
+
+    prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"WIADOMOŚĆ OD KLIENTA:\n{message}\n\n"
+        f"Wyciągnij kryteria wyszukiwania według schematu powyżej. "
+        f"Zwróć WYŁĄCZNIE surowy obiekt JSON. Pierwszy znak `{{`, ostatni `}}`. "
+        f"Bez markdown, bez ```json```, bez tekstu wprowadzającego."
+    )
+    env = {**os.environ, "KIRO_API_KEY": api_key}
+    try:
+        result = subprocess.run(
+            [cli_path, "chat", "--no-interactive", "--trust-tools=", "-w", "never",
+             "--effort", effort, "--model", model, prompt],
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"kiro-cli nie znaleziony ({cli_path}): {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Kiro CLI timeout po {timeout}s") from exc
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Kiro CLI exit {result.returncode}: {result.stderr[:300]}")
+
+    text = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    if not text:
+        raise RuntimeError(f"Kiro CLI pusta odpowiedź (stderr: {result.stderr[:300]})")
+    return _parse_json_loose(text)
+
+
 def parse_client_message(message: str) -> dict:
     """Główna funkcja — provider dispatch z fallback.
 
@@ -257,7 +308,11 @@ def parse_client_message(message: str) -> dict:
     if not message or not message.strip():
         raise ValueError("Pusta wiadomość")
 
-    provider = (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
+    try:
+        from api.settings_db import get_ai_provider_override
+        provider = (get_ai_provider_override("llm_reports_provider") or os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
+    except Exception:
+        provider = (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
     fallback = os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true"
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
 
@@ -269,6 +324,18 @@ def parse_client_message(message: str) -> dict:
         except Exception as exc:
             last_exc = exc
             logger.warning(f"[MessageParser] Gemini failed: {type(exc).__name__}: {str(exc)[:120]}")
+            if fallback and has_anthropic:
+                try:
+                    return _call_anthropic(message)
+                except Exception as exc2:
+                    last_exc = exc2
+                    logger.warning(f"[MessageParser] Anthropic fallback failed: {type(exc2).__name__}")
+    elif provider == "kiro":
+        try:
+            return _call_kiro(message)
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(f"[MessageParser] Kiro failed: {type(exc).__name__}: {str(exc)[:120]}")
             if fallback and has_anthropic:
                 try:
                     return _call_anthropic(message)

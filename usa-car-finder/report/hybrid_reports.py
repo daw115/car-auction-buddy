@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +29,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from parser.models import AnalyzedLot, ClientCriteria
 from report import llm_cache
 from report.cost_calculator import calculate_full_cost
+from report.html_reports import _build_pipeline_rules
 from scraper.otomoto import lookup_market_price
 
 logger = logging.getLogger("report.hybrid_reports")
@@ -59,7 +62,37 @@ def _env() -> Environment:
 # ============================================================================
 
 def _provider() -> str:
+    """Provider dla raportów: nadpisanie z dashboardu (settings_db) ma
+    pierwszeństwo przed .env — zmiana działa natychmiast, bez restartu."""
+    try:
+        from api.settings_db import get_ai_provider_override
+        override = get_ai_provider_override("llm_reports_provider")
+        if override:
+            return override.lower()
+    except Exception:
+        pass
     return (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
+
+
+def _resolve_kiro_model() -> str:
+    """Model Kiro: nadpisanie z dashboardu ma pierwszeństwo przed .env KIRO_MODEL."""
+    try:
+        from api.settings_db import get_ai_model_override
+        override = get_ai_model_override("kiro")
+        if override:
+            return override
+    except Exception:
+        pass
+    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
+
+
+def _reports_model_label() -> str:
+    provider = _provider()
+    if provider == "gemini":
+        return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    if provider == "kiro":
+        return _resolve_kiro_model()
+    return os.getenv("ANTHROPIC_MODEL")
 
 
 def _engine_liters_from_trim(trim: Optional[str], make: Optional[str], model: Optional[str]) -> Optional[float]:
@@ -262,6 +295,52 @@ def _call_claude_json(system: str, user: str, max_tokens: int = 1500) -> dict:
         raise RuntimeError(f"Claude JSON parse failed: {e}")
 
 
+_KIRO_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+
+
+def _call_kiro_json(system: str, user: str, max_tokens: int = 1500) -> dict:
+    """Wywołuje kiro-cli w trybie headless (KIRO_API_KEY, ksk_...).
+
+    Oficjalny tryb non-interactive Kiro CLI (kiro.dev/docs/cli/headless) —
+    nie proxy/reverse-engineering. Stdout zawiera ANSI + markdown ```json
+    fence, więc czyścimy przed _parse_json_loose.
+    """
+    api_key = os.getenv("KIRO_API_KEY")
+    if not api_key:
+        raise RuntimeError("Brak KIRO_API_KEY")
+
+    cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
+    model = _resolve_kiro_model()
+    effort = os.getenv("KIRO_EFFORT", "low")
+    timeout = int(os.getenv("KIRO_TIMEOUT_SECONDS", "90"))
+
+    prompt = f"{system}\n\n{user}"
+    env = {**os.environ, "KIRO_API_KEY": api_key}
+    try:
+        result = subprocess.run(
+            [
+                cli_path, "chat", "--no-interactive", "--trust-tools=",
+                "-w", "never", "--effort", effort, "--model", model, prompt,
+            ],
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"kiro-cli nie znaleziony ({cli_path}): {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Kiro CLI timeout po {timeout}s") from exc
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Kiro CLI exit {result.returncode}: {result.stderr[:500]}")
+
+    text = _KIRO_ANSI_RE.sub("", result.stdout).strip()
+    if not text:
+        raise RuntimeError(f"Kiro CLI pusta odpowiedź (stderr: {result.stderr[:300]})")
+    try:
+        return _parse_json_loose(text)
+    except RuntimeError as e:
+        raise RuntimeError(f"Kiro JSON parse failed: {e}")
+
+
 def _call_llm_json(system: str, user: str, max_tokens: int = 1500) -> dict:
     """Provider dispatch z fallback."""
     provider = _provider()
@@ -278,6 +357,14 @@ def _call_llm_json(system: str, user: str, max_tokens: int = 1500) -> dict:
                 except Exception as ge:
                     if fallback and has_anthropic:
                         logger.warning(f"[Hybrid] Gemini failed ({type(ge).__name__}), fallback Anthropic")
+                        return _call_claude_json(system, user, max_tokens)
+                    raise
+            if provider == "kiro":
+                try:
+                    return _call_kiro_json(system, user, max_tokens)
+                except Exception as ke:
+                    if fallback and has_anthropic:
+                        logger.warning(f"[Hybrid] Kiro failed ({type(ke).__name__}), fallback Anthropic")
                         return _call_claude_json(system, user, max_tokens)
                     raise
             return _call_claude_json(system, user, max_tokens)
@@ -551,7 +638,7 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         verdict_pl=fragments.get("verdict_pl", ai.client_description_pl or ""),
         today=datetime.utcnow().strftime("%Y-%m-%d"),
         provider=_provider(),
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
+        model=_reports_model_label(),
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
     )
 
@@ -639,6 +726,8 @@ def render_broker_hybrid(
         cost=cost,
         market_pl=market_pl,
         lots_scanned=lots_scanned,
+        criteria=criteria,
+        pipeline_rules=_build_pipeline_rules(criteria) if criteria else ["Brak kryteriów wyszukiwania"],
         budget_delta_pct=_budget_delta_pct(lot.current_bid_usd, criteria.budget_usd if criteria else None),
         scoring_breakdown=fragments.get("scoring_breakdown", []),
         red_flags=fragments.get("red_flags", []),
@@ -647,7 +736,7 @@ def render_broker_hybrid(
         checklist=fragments.get("checklist", []),
         notes_pl=fragments.get("notes_pl", ai.ai_notes or ai.client_description_pl or ""),
         provider=_provider(),
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
+        model=_reports_model_label(),
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
         cache_status="HIT" if skeleton_was_cached else "MISS",
     )
@@ -754,7 +843,7 @@ def render_pair_hybrid(
         verdict_pl=client_frag.get("verdict_pl", ai.client_description_pl or ""),
         today=datetime.utcnow().strftime("%Y-%m-%d"),
         provider=_provider(),
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
+        model=_reports_model_label(),
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
     )
 
@@ -763,6 +852,8 @@ def render_pair_hybrid(
     broker_html = broker_template.render(
         lot=lot, ai=ai, cost=cost, market_pl=market_pl,
         lots_scanned=lots_scanned,
+        criteria=criteria,
+        pipeline_rules=_build_pipeline_rules(criteria) if criteria else ["Brak kryteriów wyszukiwania"],
         budget_delta_pct=_budget_delta_pct(lot.current_bid_usd, criteria.budget_usd if criteria else None),
         scoring_breakdown=broker_frag.get("scoring_breakdown", []),
         red_flags=broker_frag.get("red_flags", []),
@@ -771,7 +862,7 @@ def render_pair_hybrid(
         checklist=broker_frag.get("checklist", []),
         notes_pl=broker_frag.get("notes_pl", ai.ai_notes or ai.client_description_pl or ""),
         provider=_provider(),
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if _provider() == "gemini" else os.getenv("ANTHROPIC_MODEL"),
+        model=_reports_model_label(),
         generated_at=datetime.utcnow().isoformat(timespec="seconds"),
         cache_status="HIT" if skeleton_was_cached else "MISS",
     )
