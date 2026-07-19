@@ -435,6 +435,30 @@ function HomePage() {
             </div>
           </div>
 
+          {batchEntries.length > 0 && (() => {
+            const total = batchEntries.length;
+            const doneN = batchEntries.filter((e) => e.status === "done" || e.status === "completed").length;
+            const runningN = batchEntries.filter((e) => e.status === "running").length;
+            const queuedN = batchEntries.filter((e) => e.status === "queued").length;
+            const errN = batchEntries.filter((e) => e.status === "error" || e.status === "failed" || e.status === "cancelled").length;
+            const pct = Math.round((doneN / total) * 100);
+            return (
+              <div className="mb-3">
+                <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                  <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>{pct}% ({doneN}/{total})</span>
+                  {runningN > 0 && <span className="text-primary">▶ {runningN} w toku</span>}
+                  {queuedN > 0 && <span>⏳ {queuedN} w kolejce</span>}
+                  {errN > 0 && <span className="text-destructive">✕ {errN} błędów</span>}
+                </div>
+              </div>
+            );
+          })()}
+
+
+
           {batchEntries.length === 0 ? (
             <ul className="space-y-1">
               {batchQueue.map((c, i) => (
