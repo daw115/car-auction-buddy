@@ -70,6 +70,11 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   const [personalPw, setPersonalPw] = useState("");
   const [personalPw2, setPersonalPw2] = useState("");
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<SiteUser | null>(null);
+  const [deleteMasterPw, setDeleteMasterPw] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const inactivityTimer = useRef<number | null>(null);
 
   // Bootstrap: sprawdź czy ktoś już zalogowany i czy sesja nie wygasła.
