@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export function ActiveJobPill() {
-  const fnList = useServerFn(listActiveScraperJobs);
+  const fnList = useServerFn(backendListJobs);
   const { data } = useQuery({
     queryKey: ["active-scraper-jobs-pill"],
-    queryFn: () => fnList({}),
+    queryFn: () => fnList({ data: { activeOnly: true } }),
     refetchInterval: 5000,
     staleTime: 2000,
   });
