@@ -41,24 +41,24 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import {
-  getDbOverview,
-  getBackendRecordsList,
-  getBackendRecordDetails,
-  deleteBackendRecord,
-  listAllJobs,
-  getJobDetails,
-  listLlmCacheEntries,
-  deleteLlmCacheEntry,
-  clearLlmCache,
-  listHtmlCache,
-  fetchAuthHtml,
-  getModelNormalizations,
-  deleteModelNormalization,
-  getRecordFeedback,
-  submitLotFeedback,
-  deleteLotFeedback,
-  analyzeFeedback,
-} from "@/functions/api.functions";
+  backendDbOverview,
+  backendListRecords,
+  backendGetRecord,
+  backendDeleteRecord,
+  backendListJobs,
+  backendJobStatus,
+  backendListLlmCacheEntries,
+  backendDeleteLlmCacheEntry,
+  backendClearLlmCache,
+  backendListHtmlCache,
+  backendFetchHtml,
+  backendListModelNormalizations,
+  backendDeleteModelNormalization,
+  backendGetFeedback,
+  backendSubmitFeedback,
+  backendDeleteFeedback,
+  backendAnalyzeFeedback,
+} from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
 import { Textarea } from "@/components/ui/textarea";
 import {
