@@ -11,7 +11,7 @@ import {
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { checkHealth } from "@/functions/api.functions";
+import { backendHealth } from "@/functions/backend.functions";
 
 type HealthService = {
   status: "ok" | "down" | "unconfigured";
