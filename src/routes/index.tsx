@@ -5,13 +5,16 @@ import { toast } from "sonner";
 
 import {
   backendSearch,
+  backendSearchBatch,
   backendGenerateReport,
   backendListRecords,
   backendJobStatus,
   type BackendSearchResponse,
   type BackendRecordSummary,
+  type BackendBatchJob,
 } from "@/functions/backend.functions";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
+
 
 
 import { CriteriaForm } from "@/components/panels/criteria-form";
@@ -21,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, ExternalLink, FileText, Mail, RefreshCcw } from "lucide-react";
+import { Loader2, ExternalLink, FileText, Mail, RefreshCcw, Plus, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -83,11 +86,32 @@ function normalizeResponse(res: BackendSearchResponse): SearchResult {
 
 // ---------------- page ----------------
 
+function labelForCriteria(c: ClientCriteria): string {
+  const parts = [c.make, c.model].filter(Boolean).join(" ");
+  const years = c.year_from || c.year_to ? ` ${c.year_from ?? ""}${c.year_to ? `-${c.year_to}` : ""}` : "";
+  return `${parts}${years}`.trim() || "—";
+}
+
+type BatchEntry = {
+  jobId: string;
+  label: string;
+  criteria: ClientCriteria;
+  status: string;
+  phase?: string | null;
+  progress?: number;
+  listingsCount?: number;
+  analyzed?: AnalyzedLot[];
+  errorMessage?: string;
+  idempotent?: boolean;
+};
+
 function HomePage() {
   const runSearch = useServerFn(backendSearch);
+  const runBatch = useServerFn(backendSearchBatch);
   const genReport = useServerFn(backendGenerateReport);
   const loadRecords = useServerFn(backendListRecords);
   const backendJobStatusFn = useServerFn(backendJobStatus);
+
 
 
   const [criteria, setCriteria] = useState<ClientCriteria>({
@@ -111,6 +135,11 @@ function HomePage() {
 
   const [records, setRecords] = useState<BackendRecordSummary[] | null>(null);
   const [recordsLoading, setRecordsLoading] = useState(false);
+
+  // --- BATCH multi-car ---
+  const [batchQueue, setBatchQueue] = useState<ClientCriteria[]>([]);
+  const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
 
   const listings: CarLot[] = useMemo(() => {
     if (!result) return [];
@@ -176,9 +205,102 @@ function HomePage() {
   }
 
 
+  function addCurrentToBatch() {
+    if (!criteria.make.trim()) {
+      toast.error("Podaj markę zanim dodasz do batcha.");
+      return;
+    }
+    setBatchQueue((q) => [...q, { ...criteria }]);
+    toast.success(`Dodano do batcha: ${labelForCriteria(criteria)}`);
+  }
+
+  function removeFromQueue(idx: number) {
+    setBatchQueue((q) => q.filter((_, i) => i !== idx));
+  }
+
+  async function runBatchSearch() {
+    if (batchQueue.length === 0) {
+      toast.error("Batch jest pusty — najpierw dodaj kryteria.");
+      return;
+    }
+    if (batchQueue.length > 20) {
+      toast.error("Max 20 wyszukiwań w jednym batchu.");
+      return;
+    }
+    setBatchRunning(true);
+    setBatchEntries([]);
+    try {
+      const res = await runBatch({
+        data: { searches: batchQueue.map((c) => ({ criteria: c })) },
+      });
+      const initial: BatchEntry[] = res.jobs.map((j: BackendBatchJob, i: number) => ({
+        jobId: j.job_id,
+        label: j.label || labelForCriteria(batchQueue[i]),
+        criteria: batchQueue[i],
+        status: (j.reused_status as BatchEntry["status"]) || "queued",
+        idempotent: j.idempotent,
+      }));
+      setBatchEntries(initial);
+      toast.success(`Batch wystartował: ${res.jobs.length} jobów (queued: ${res.queued_count}).`);
+      // Poll każdy job osobno.
+      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err.message || "Błąd batcha.");
+    } finally {
+      setBatchRunning(false);
+    }
+  }
+
+  async function pollBatchJob(jobId: string) {
+    const deadline = Date.now() + 15 * 60 * 1000; // 15 min — batch leci sekwencyjnie
+    let delay = 3000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay + 500, 8000);
+      try {
+        const s = await backendJobStatusFn({ data: { jobId } });
+        setBatchEntries((entries) =>
+          entries.map((e) =>
+            e.jobId !== jobId
+              ? e
+              : {
+                  ...e,
+                  status: (s.status as BatchEntry["status"]) || e.status,
+                  phase: s.phase ?? e.phase,
+                  progress: s.progress ?? e.progress,
+                  listingsCount: s.listings?.length ?? s.analyzed_lots?.length ?? e.listingsCount,
+                  analyzed: s.analyzed_lots ?? e.analyzed,
+                },
+          ),
+        );
+        if (["done", "completed", "failed", "error", "cancelled"].includes(s.status)) return;
+      } catch {
+        // retry
+      }
+    }
+  }
+
+  function loadBatchResultsIntoView() {
+    const all = batchEntries.flatMap((e) => e.analyzed ?? []);
+    if (all.length === 0) {
+      toast.error("Batch nie zwrócił jeszcze wyników.");
+      return;
+    }
+    setResult({ kind: "analyzed", lots: all, jobId: batchEntries.map((e) => e.jobId).join(",") });
+    setSelected({});
+    toast.success(`Załadowano ${all.length} wyników do widoku raportów.`);
+  }
+
+  function clearBatch() {
+    setBatchEntries([]);
+    setBatchQueue([]);
+  }
+
   function toggleSelected(id: string) {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
   }
+
 
   function selectAll(v: boolean) {
     setSelected(v ? Object.fromEntries(listings.map((l) => [l.lot_id, true])) : {});
@@ -247,7 +369,7 @@ function HomePage() {
               placeholder="Jan Kowalski"
             />
           </div>
-          <Button size="lg" onClick={onSearch} disabled={loading} className="min-w-[180px]">
+          <Button size="lg" onClick={onSearch} disabled={loading || batchRunning} className="min-w-[180px]">
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Szukam…
@@ -256,8 +378,128 @@ function HomePage() {
               "🔎 Wyszukaj"
             )}
           </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={addCurrentToBatch}
+            disabled={loading || batchRunning}
+            title="Dodaj bieżące kryteria do batcha (max 20)"
+          >
+            <Plus className="mr-2 h-4 w-4" /> Dodaj do batcha
+          </Button>
         </div>
       </Card>
+
+      {/* Batch multi-car */}
+      {(batchQueue.length > 0 || batchEntries.length > 0) && (
+        <Card className="p-4 border-primary/30">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📦</span>
+              <h2 className="text-lg font-semibold">
+                Batch wyszukiwanie
+                {batchEntries.length > 0 && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {batchEntries.filter((e) => e.status === "done" || e.status === "completed").length}/
+                    {batchEntries.length} gotowe
+                  </Badge>
+                )}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              {batchEntries.length === 0 && batchQueue.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={runBatchSearch}
+                  disabled={batchRunning || batchQueue.length === 0 || batchQueue.length > 20}
+                >
+                  {batchRunning ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <>🚀 </>
+                  )}
+                  Wyszukaj wszystkie ({batchQueue.length})
+                </Button>
+              )}
+              {batchEntries.length > 0 &&
+                batchEntries.every((e) => ["done", "completed", "error", "cancelled"].includes(e.status)) && (
+                  <Button size="sm" onClick={loadBatchResultsIntoView}>
+                    Załaduj wyniki do widoku
+                  </Button>
+                )}
+              {!batchRunning && (
+                <Button size="sm" variant="ghost" onClick={clearBatch}>
+                  <X className="mr-1 h-3 w-3" /> Wyczyść
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {batchEntries.length === 0 ? (
+            <ul className="space-y-1">
+              {batchQueue.map((c, i) => (
+                <li key={i} className="flex items-center justify-between rounded border p-2 text-sm">
+                  <span>
+                    {i + 1}. {labelForCriteria(c)}
+                    {c.budget_usd ? ` · budżet $${c.budget_usd.toLocaleString()}` : ""}
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => removeFromQueue(i)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </li>
+              ))}
+              {batchQueue.length > 20 && (
+                <li className="text-xs text-destructive">Max 20 — usuń nadmiar.</li>
+              )}
+            </ul>
+          ) : (
+            <ul className="space-y-1">
+              {batchEntries.map((e) => {
+                const done = e.status === "done" || e.status === "completed";
+                const failed = e.status === "error" || e.status === "failed" || e.status === "cancelled";
+                const running = e.status === "running";
+                return (
+                  <li
+                    key={e.jobId}
+                    className={`flex items-center gap-2 rounded border p-2 text-sm ${
+                      running ? "border-primary/40 bg-primary/5" : ""
+                    }`}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    ) : failed ? (
+                      <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                    ) : running ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    ) : (
+                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="flex-1 truncate">
+                      {e.label}
+                      {e.idempotent && (
+                        <Badge variant="outline" className="ml-2 text-[10px]">
+                          reużyty
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {e.status}
+                      {e.phase ? ` · ${e.phase}` : ""}
+                      {e.listingsCount != null ? ` · ${e.listingsCount} ofert` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Backend puszcza scrapy sekwencyjnie (SEARCH_MAX_CONCURRENT=1) — batch tylko oszczędza N requestów,
+            nie przyspiesza wykonania.
+          </p>
+        </Card>
+      )}
+
+
 
       {/* Loader */}
       {loading && (
