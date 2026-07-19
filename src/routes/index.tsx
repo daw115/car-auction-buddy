@@ -241,7 +241,7 @@ function HomePage() {
     // wiele aut → batch
     setBatchQueue(chosen);
     setBatchEntries([]);
-    toast.success(`Dodano ${chosen.length} aut do batcha — kliknij „Wyszukaj wszystkie".`);
+    toast.success(`Dodano ${chosen.length} aut do batcha — kliknij "Wyszukaj wszystkie".`);
   }
 
   const listings: CarLot[] = useMemo(() => {
