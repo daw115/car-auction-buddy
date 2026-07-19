@@ -14,7 +14,9 @@ import {
   type BackendRecordSummary,
   type BackendBatchJob,
 } from "@/functions/backend.functions";
+import { useBatchJobsPolling, isTerminalStatus } from "@/hooks/use-batch-jobs-polling";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
+
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
 
@@ -110,15 +112,11 @@ type BatchEntry = {
   jobId: string;
   label: string;
   criteria: ClientCriteria;
-  status: string;
-  phase?: string | null;
-  progress?: number;
-  listingsCount?: number;
-  analyzed?: AnalyzedLot[];
-  errorMessage?: string;
-  errorPhases?: Array<{ name?: string; status?: string; message?: string; error?: string }>;
   idempotent?: boolean;
+  /** status znany już w chwili POST /api/search/batch (np. reused done) */
+  initialStatus?: string;
 };
+
 
 
 function HomePage() {
@@ -359,13 +357,12 @@ function HomePage() {
         jobId: j.job_id,
         label: j.label || labelForCriteria(batchQueue[i]),
         criteria: batchQueue[i],
-        status: (j.reused_status as BatchEntry["status"]) || "queued",
+        initialStatus: j.reused_status || "queued",
         idempotent: j.idempotent,
       }));
       setBatchEntries(initial);
       toast.success(`Batch wystartował: ${res.jobs.length} jobów (queued: ${res.queued_count}).`);
-      // Poll każdy job osobno.
-      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
+      // polling od teraz obsługuje useBatchJobsPolling(activeJobIds)
     } catch (e) {
       const err = e as { message?: string };
       toast.error(err.message || "Błąd batcha.");
@@ -374,46 +371,45 @@ function HomePage() {
     }
   }
 
-  async function pollBatchJob(jobId: string) {
-    const deadline = Date.now() + 15 * 60 * 1000; // 15 min — batch leci sekwencyjnie
-    let delay = 3000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, delay));
-      delay = Math.min(delay + 500, 8000);
-      try {
-        const s = await backendJobStatusFn({ data: { jobId } });
-        const isFail = ["failed", "error", "cancelled"].includes(s.status);
-        const failedPhases = Array.isArray(s.phases)
-          ? s.phases.filter(
-              (p: any) => p && (p.status === "error" || p.status === "failed" || p.error),
-            )
-          : undefined;
-        setBatchEntries((entries) =>
-          entries.map((e) =>
-            e.jobId !== jobId
-              ? e
-              : {
-                  ...e,
-                  status: (s.status as BatchEntry["status"]) || e.status,
-                  phase: s.phase ?? e.phase,
-                  progress: s.progress ?? e.progress,
-                  listingsCount: s.listings?.length ?? s.analyzed_lots?.length ?? e.listingsCount,
-                  analyzed: s.analyzed_lots ?? e.analyzed,
-                  errorMessage: isFail ? s.message ?? e.errorMessage : e.errorMessage,
-                  errorPhases: isFail && failedPhases?.length ? failedPhases : e.errorPhases,
-                },
-          ),
-        );
-        if (["done", "completed", "failed", "error", "cancelled"].includes(s.status)) return;
-
-      } catch {
-        // retry
-      }
+  async function retryFailedBatch() {
+    const failed = batchEntries.filter((e) =>
+      !isTerminalStatus(batchJobs[e.jobId]?.status)
+        ? false
+        : ["error", "failed", "cancelled", "interrupted"].includes(batchJobs[e.jobId]?.status || ""),
+    );
+    if (failed.length === 0) {
+      toast.info("Brak jobów do ponowienia.");
+      return;
+    }
+    setBatchRunning(true);
+    try {
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
+      const res = await runBatch({
+        data: { searches: failed.map((e) => ({ criteria: e.criteria, ...auctionExtras })) },
+      });
+      const newByOldJobId = new Map<string, BatchEntry>();
+      res.jobs.forEach((j: BackendBatchJob, i: number) => {
+        const old = failed[i];
+        newByOldJobId.set(old.jobId, {
+          jobId: j.job_id,
+          label: j.label || old.label,
+          criteria: old.criteria,
+          initialStatus: j.reused_status || "queued",
+          idempotent: j.idempotent,
+        });
+      });
+      setBatchEntries((entries) => entries.map((e) => newByOldJobId.get(e.jobId) ?? e));
+      toast.success(`Ponowiono ${res.jobs.length} jobów.`);
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err.message || "Błąd ponowienia batcha.");
+    } finally {
+      setBatchRunning(false);
     }
   }
 
   function loadBatchResultsIntoView() {
-    const all = batchEntries.flatMap((e) => e.analyzed ?? []);
+    const all = batchEntries.flatMap((e) => batchJobs[e.jobId]?.analyzed_lots ?? []);
     if (all.length === 0) {
       toast.error("Batch nie zwrócił jeszcze wyników.");
       return;
@@ -428,46 +424,28 @@ function HomePage() {
     setBatchQueue([]);
   }
 
-  async function retryFailedBatch() {
-    const failed = batchEntries.filter((e) =>
-      ["error", "failed", "cancelled"].includes(e.status),
-    );
-    if (failed.length === 0) {
-      toast.info("Brak jobów do ponowienia.");
-      return;
-    }
-    setBatchRunning(true);
-    try {
-      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
-      const res = await runBatch({
-        data: { searches: failed.map((e) => ({ criteria: e.criteria, ...auctionExtras })) },
-      });
-      // Podmień stare failed wpisy na nowe joby (zachowaj kolejność w liście).
-      const newByOldJobId = new Map<string, BatchEntry>();
-      res.jobs.forEach((j: BackendBatchJob, i: number) => {
-        const old = failed[i];
-        newByOldJobId.set(old.jobId, {
-          jobId: j.job_id,
-          label: j.label || old.label,
-          criteria: old.criteria,
-          status: (j.reused_status as BatchEntry["status"]) || "queued",
-          idempotent: j.idempotent,
-        });
-      });
-      setBatchEntries((entries) =>
-        entries.map((e) => newByOldJobId.get(e.jobId) ?? e),
-      );
-      toast.success(`Ponowiono ${res.jobs.length} jobów.`);
-      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
-    } catch (e) {
-      const err = e as { message?: string };
-      toast.error(err.message || "Błąd ponowienia batcha.");
-    } finally {
-      setBatchRunning(false);
-    }
-  }
+  // JEDEN interval na cały batch. Zwraca też agregaty (done/running/queued/errored/interrupted).
+  const activeJobIds = useMemo(() => batchEntries.map((e) => e.jobId), [batchEntries]);
+  const {
+    jobs: batchJobs,
+    done: batchDone,
+    running: batchRunningCount,
+    queued: batchQueuedCount,
+    errored: batchErroredCount,
+    interrupted: batchInterruptedCount,
+    allFinished: batchAllFinished,
+  } = useBatchJobsPolling(activeJobIds);
 
-
+  const failedJobIds = useMemo(
+    () =>
+      batchEntries
+        .filter((e) => {
+          const s = batchJobs[e.jobId]?.status;
+          return s === "error" || s === "failed" || s === "cancelled" || s === "interrupted";
+        })
+        .map((e) => e.jobId),
+    [batchEntries, batchJobs],
+  );
 
   function toggleSelected(id: string) {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
@@ -640,8 +618,7 @@ function HomePage() {
                 Batch wyszukiwanie
                 {batchEntries.length > 0 && (
                   <Badge variant="outline" className="ml-2 text-xs">
-                    {batchEntries.filter((e) => e.status === "done" || e.status === "completed").length}/
-                    {batchEntries.length} gotowe
+                    {batchDone}/{batchEntries.length} gotowe
                   </Badge>
                 )}
               </h2>
@@ -661,18 +638,15 @@ function HomePage() {
                   Wyszukaj wszystkie ({batchQueue.length})
                 </Button>
               )}
-              {batchEntries.length > 0 &&
-                batchEntries.every((e) => ["done", "completed", "error", "cancelled"].includes(e.status)) && (
-                  <Button size="sm" onClick={loadBatchResultsIntoView}>
-                    Załaduj wyniki do widoku
-                  </Button>
-                )}
-              {!batchRunning &&
-                batchEntries.some((e) => ["error", "failed", "cancelled"].includes(e.status)) && (
-                  <Button size="sm" variant="secondary" onClick={retryFailedBatch}>
-                    🔁 Ponów nieudane (
-                    {batchEntries.filter((e) => ["error", "failed", "cancelled"].includes(e.status)).length})
-                  </Button>
+              {batchEntries.length > 0 && batchAllFinished && (
+                <Button size="sm" onClick={loadBatchResultsIntoView}>
+                  Załaduj wyniki do widoku
+                </Button>
+              )}
+              {!batchRunning && failedJobIds.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={retryFailedBatch}>
+                  🔁 Ponów nieudane ({failedJobIds.length})
+                </Button>
               )}
               {!batchRunning && (
                 <Button size="sm" variant="ghost" onClick={clearBatch}>
@@ -684,27 +658,27 @@ function HomePage() {
 
           {batchEntries.length > 0 && (() => {
             const total = batchEntries.length;
-            const doneN = batchEntries.filter((e) => e.status === "done" || e.status === "completed").length;
-            const runningN = batchEntries.filter((e) => e.status === "running").length;
-            const queuedN = batchEntries.filter((e) => e.status === "queued").length;
-            const errN = batchEntries.filter((e) => e.status === "error" || e.status === "failed" || e.status === "cancelled").length;
-            const pct = Math.round((doneN / total) * 100);
+            const failedTotal = batchErroredCount + batchInterruptedCount;
+            const pct = Math.round((batchDone / total) * 100);
             return (
               <div className="mb-3">
                 <div className="h-2 w-full overflow-hidden rounded bg-muted">
                   <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  <span>{pct}% ({doneN}/{total})</span>
-                  {runningN > 0 && <span className="text-primary">▶ {runningN} w toku</span>}
-                  {queuedN > 0 && <span>⏳ {queuedN} w kolejce</span>}
-                  {errN > 0 && <span className="text-destructive">✕ {errN} błędów</span>}
+                  <span>{pct}% ({batchDone}/{total})</span>
+                  {batchRunningCount > 0 && <span className="text-primary">▶ {batchRunningCount} w toku</span>}
+                  {batchQueuedCount > 0 && <span>⏳ {batchQueuedCount} w kolejce</span>}
+                  {failedTotal > 0 && (
+                    <span className="text-destructive">
+                      ✕ {failedTotal} nieudane
+                      {batchInterruptedCount > 0 ? ` (w tym ${batchInterruptedCount} przerwane restartem)` : ""}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })()}
-
-
 
           {batchEntries.length === 0 ? (
             <ul className="space-y-1">
@@ -726,9 +700,22 @@ function HomePage() {
           ) : (
             <ul className="space-y-1">
               {batchEntries.map((e) => {
-                const done = e.status === "done" || e.status === "completed";
-                const failed = e.status === "error" || e.status === "failed" || e.status === "cancelled";
-                const running = e.status === "running";
+                const live = batchJobs[e.jobId];
+                const status = live?.status ?? e.initialStatus ?? "queued";
+                const done = status === "done" || status === "completed";
+                const interrupted = status === "interrupted";
+                const failed = interrupted || status === "error" || status === "failed" || status === "cancelled";
+                const running = status === "running";
+                const phase = live?.phase;
+                const listingsCount = live?.listings?.length ?? live?.analyzed_lots?.length;
+                const errorMessage = interrupted
+                  ? "Zadanie przerwane restartem serwera — spróbuj ponownie."
+                  : failed
+                    ? live?.message
+                    : undefined;
+                const errorPhases = failed && Array.isArray(live?.phases)
+                  ? (live!.phases as any[]).filter((p) => p && (p.status === "error" || p.status === "failed" || p.error))
+                  : undefined;
                 return (
                   <li
                     key={e.jobId}
@@ -746,7 +733,7 @@ function HomePage() {
                       ) : (
                         <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
-                      <span className="flex-1 truncate" title={failed ? e.errorMessage ?? "" : undefined}>
+                      <span className="flex-1 truncate" title={errorMessage ?? ""}>
                         {e.label}
                         {e.idempotent && (
                           <Badge variant="outline" className="ml-2 text-[10px]">
@@ -755,24 +742,24 @@ function HomePage() {
                         )}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {e.status}
-                        {e.phase ? ` · ${e.phase}` : ""}
-                        {e.listingsCount != null ? ` · ${e.listingsCount} ofert` : ""}
+                        {status}
+                        {phase ? ` · ${phase}` : ""}
+                        {listingsCount != null ? ` · ${listingsCount} ofert` : ""}
                       </span>
                     </div>
-                    {failed && (e.errorMessage || e.errorPhases?.length) && (
+                    {failed && (errorMessage || errorPhases?.length) && (
                       <details className="mt-2 ml-6">
                         <summary className="cursor-pointer text-xs text-destructive hover:underline">
                           Szczegóły błędu
                         </summary>
                         <div className="mt-1 space-y-1 rounded bg-destructive/5 p-2 text-xs">
-                          {e.errorMessage && (
+                          {errorMessage && (
                             <div>
                               <span className="font-medium">Komunikat:</span>{" "}
-                              <span className="text-muted-foreground">{e.errorMessage}</span>
+                              <span className="text-muted-foreground">{errorMessage}</span>
                             </div>
                           )}
-                          {e.errorPhases?.map((p, i) => (
+                          {errorPhases?.map((p: any, i: number) => (
                             <div key={i} className="border-l-2 border-destructive/40 pl-2">
                               <span className="font-medium">{p.name || "phase"}</span>
                               {p.status ? ` · ${p.status}` : ""}
@@ -787,9 +774,9 @@ function HomePage() {
                   </li>
                 );
               })}
-
             </ul>
           )}
+
           <p className="mt-2 text-xs text-muted-foreground">
             Backend puszcza scrapy sekwencyjnie (SEARCH_MAX_CONCURRENT=1) — batch tylko oszczędza N requestów,
             nie przyspiesza wykonania.
