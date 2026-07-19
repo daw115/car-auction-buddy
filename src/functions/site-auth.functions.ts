@@ -168,3 +168,28 @@ export const siteUserSetPassword = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true as const };
   });
+
+export const siteUserDeletePassword = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        username: usernameSchema,
+        masterPassword: z.string().min(1).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const expectedMaster = process.env.SITE_MASTER_PASSWORD;
+    if (!expectedMaster || expectedMaster.length === 0) {
+      return { ok: false as const, error: "not_configured" as const };
+    }
+    if (data.masterPassword !== expectedMaster) {
+      return { ok: false as const, error: "master" as const };
+    }
+    const { error } = await supabaseAdmin
+      .from("site_user_passwords")
+      .delete()
+      .eq("username", data.username);
+    if (error) throw new Error(error.message);
+    return { ok: true as const };
+  });
