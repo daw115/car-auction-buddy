@@ -205,7 +205,99 @@ function HomePage() {
   }
 
 
-  function toggleSelected(id: string) {
+  function addCurrentToBatch() {
+    if (!criteria.make.trim()) {
+      toast.error("Podaj markę zanim dodasz do batcha.");
+      return;
+    }
+    setBatchQueue((q) => [...q, { ...criteria }]);
+    toast.success(`Dodano do batcha: ${labelForCriteria(criteria)}`);
+  }
+
+  function removeFromQueue(idx: number) {
+    setBatchQueue((q) => q.filter((_, i) => i !== idx));
+  }
+
+  async function runBatchSearch() {
+    if (batchQueue.length === 0) {
+      toast.error("Batch jest pusty — najpierw dodaj kryteria.");
+      return;
+    }
+    if (batchQueue.length > 20) {
+      toast.error("Max 20 wyszukiwań w jednym batchu.");
+      return;
+    }
+    setBatchRunning(true);
+    setBatchEntries([]);
+    try {
+      const res = await runBatch({
+        data: { searches: batchQueue.map((c) => ({ criteria: c })) },
+      });
+      const initial: BatchEntry[] = res.jobs.map((j: BackendBatchJob, i: number) => ({
+        jobId: j.job_id,
+        label: j.label || labelForCriteria(batchQueue[i]),
+        criteria: batchQueue[i],
+        status: (j.reused_status as BatchEntry["status"]) || "queued",
+        idempotent: j.idempotent,
+      }));
+      setBatchEntries(initial);
+      toast.success(`Batch wystartował: ${res.jobs.length} jobów (queued: ${res.queued_count}).`);
+      // Poll każdy job osobno.
+      await Promise.all(res.jobs.map((j) => pollBatchJob(j.job_id)));
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err.message || "Błąd batcha.");
+    } finally {
+      setBatchRunning(false);
+    }
+  }
+
+  async function pollBatchJob(jobId: string) {
+    const deadline = Date.now() + 15 * 60 * 1000; // 15 min — batch leci sekwencyjnie
+    let delay = 3000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay + 500, 8000);
+      try {
+        const s = await backendJobStatusFn({ data: { jobId } });
+        setBatchEntries((entries) =>
+          entries.map((e) =>
+            e.jobId !== jobId
+              ? e
+              : {
+                  ...e,
+                  status: (s.status as BatchEntry["status"]) || e.status,
+                  phase: s.phase ?? e.phase,
+                  progress: s.progress ?? e.progress,
+                  listingsCount: s.listings?.length ?? s.analyzed_lots?.length ?? e.listingsCount,
+                  analyzed: s.analyzed_lots ?? e.analyzed,
+                },
+          ),
+        );
+        if (["done", "completed", "failed", "error", "cancelled"].includes(s.status)) return;
+      } catch {
+        // retry
+      }
+    }
+  }
+
+  function loadBatchResultsIntoView() {
+    const all = batchEntries.flatMap((e) => e.analyzed ?? []);
+    if (all.length === 0) {
+      toast.error("Batch nie zwrócił jeszcze wyników.");
+      return;
+    }
+    setResult({ kind: "analyzed", lots: all, jobId: batchEntries.map((e) => e.jobId).join(",") });
+    setSelected({});
+    toast.success(`Załadowano ${all.length} wyników do widoku raportów.`);
+  }
+
+  function clearBatch() {
+    setBatchEntries([]);
+    setBatchQueue([]);
+  }
+
+
     setSelected((s) => ({ ...s, [id]: !s[id] }));
   }
 
