@@ -543,35 +543,62 @@ function HomePage() {
                 return (
                   <li
                     key={e.jobId}
-                    className={`flex items-center gap-2 rounded border p-2 text-sm ${
+                    className={`rounded border p-2 text-sm ${
                       running ? "border-primary/40 bg-primary/5" : ""
-                    }`}
+                    } ${failed ? "border-destructive/40" : ""}`}
                   >
-                    {done ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                    ) : failed ? (
-                      <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                    ) : running ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-                    ) : (
-                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                    )}
-                    <span className="flex-1 truncate">
-                      {e.label}
-                      {e.idempotent && (
-                        <Badge variant="outline" className="ml-2 text-[10px]">
-                          reużyty
-                        </Badge>
+                    <div className="flex items-center gap-2">
+                      {done ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                      ) : failed ? (
+                        <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                      ) : running ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                      ) : (
+                        <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {e.status}
-                      {e.phase ? ` · ${e.phase}` : ""}
-                      {e.listingsCount != null ? ` · ${e.listingsCount} ofert` : ""}
-                    </span>
+                      <span className="flex-1 truncate" title={failed ? e.errorMessage ?? "" : undefined}>
+                        {e.label}
+                        {e.idempotent && (
+                          <Badge variant="outline" className="ml-2 text-[10px]">
+                            reużyty
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {e.status}
+                        {e.phase ? ` · ${e.phase}` : ""}
+                        {e.listingsCount != null ? ` · ${e.listingsCount} ofert` : ""}
+                      </span>
+                    </div>
+                    {failed && (e.errorMessage || e.errorPhases?.length) && (
+                      <details className="mt-2 ml-6">
+                        <summary className="cursor-pointer text-xs text-destructive hover:underline">
+                          Szczegóły błędu
+                        </summary>
+                        <div className="mt-1 space-y-1 rounded bg-destructive/5 p-2 text-xs">
+                          {e.errorMessage && (
+                            <div>
+                              <span className="font-medium">Komunikat:</span>{" "}
+                              <span className="text-muted-foreground">{e.errorMessage}</span>
+                            </div>
+                          )}
+                          {e.errorPhases?.map((p, i) => (
+                            <div key={i} className="border-l-2 border-destructive/40 pl-2">
+                              <span className="font-medium">{p.name || "phase"}</span>
+                              {p.status ? ` · ${p.status}` : ""}
+                              {(p.message || p.error) && (
+                                <div className="text-muted-foreground">{p.message || p.error}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                   </li>
                 );
               })}
+
             </ul>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
