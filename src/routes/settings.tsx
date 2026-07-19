@@ -45,6 +45,18 @@ function SettingsHub() {
             </p>
           </Card>
         </Link>
+        <Link to="/settings/default-criteria">
+          <Card className="p-4 hover:bg-accent transition-colors h-full">
+            <div className="flex items-center gap-2 mb-2">
+              <ListChecks className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold">Domyślne kryteria</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Wartości startowe formularza wyszukiwania (marka, budżet, wykluczone
+              uszkodzenia, sources). User może je nadpisać przed „Szukaj”.
+            </p>
+          </Card>
+        </Link>
       </div>
     </div>
   );
