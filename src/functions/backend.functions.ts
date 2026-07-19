@@ -207,7 +207,7 @@ export const backendSearchBatch = createServerFn({ method: "POST" })
           .array(
             z.object({
               criteria: criteriaShape,
-              demo: z.boolean().optional(),
+              ...searchExtras,
             }),
           )
           .min(1)
