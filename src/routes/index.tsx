@@ -136,6 +136,11 @@ function HomePage() {
   const [records, setRecords] = useState<BackendRecordSummary[] | null>(null);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
+  // --- BATCH multi-car ---
+  const [batchQueue, setBatchQueue] = useState<ClientCriteria[]>([]);
+  const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+
   const listings: CarLot[] = useMemo(() => {
     if (!result) return [];
     return result.kind === "analyzed" ? result.lots.map((a) => a.lot) : result.lots;
