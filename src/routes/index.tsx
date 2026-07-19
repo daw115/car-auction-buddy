@@ -146,6 +146,104 @@ function HomePage() {
   const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
 
+  // --- Parse client message ---
+  const [clientMessage, setClientMessage] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parsedList, setParsedList] = useState<ClientCriteria[]>([]);
+  const [parseSummary, setParseSummary] = useState("");
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [parseError, setParseError] = useState<ParseError | null>(null);
+  const [parseSelected, setParseSelected] = useState<Record<number, boolean>>({});
+
+  async function onParseMessage() {
+    if (!clientMessage.trim()) return;
+    setParsing(true);
+    setParseError(null);
+    try {
+      const res = await parseMessageFn({ data: { message: clientMessage } });
+      if (!res.ok) {
+        setParsedList([]);
+        setParseSummary("");
+        setParseWarnings([]);
+        setParseSelected({});
+        setParseError({ status: res.status, detail: res.detail });
+        return;
+      }
+      const list = (res.criteria_list ?? []).filter((c): c is ClientCriteria => !!c);
+      setParsedList(list);
+      setParseSummary(res.summary || "");
+      setParseWarnings(res.warnings || []);
+      setParseSelected(Object.fromEntries(list.map((_, i) => [i, true])));
+      if (list.length === 0) {
+        setParseError({ status: 400, detail: "Nie rozpoznano żadnego auta." });
+        return;
+      }
+      if (list.length === 1) {
+        setCriteria({
+          make: list[0].make ?? "",
+          model: list[0].model ?? "",
+          year_from: list[0].year_from ?? null,
+          year_to: list[0].year_to ?? null,
+          budget_usd: list[0].budget_usd ?? null,
+          max_odometer_mi: list[0].max_odometer_mi ?? null,
+          fuel_type: list[0].fuel_type ?? null,
+          excluded_damage_types: list[0].excluded_damage_types ?? [],
+          max_results: list[0].max_results ?? 15,
+          sources: list[0].sources,
+        });
+        toast.success(`Rozpoznano: ${list[0].make ?? "?"} ${list[0].model ?? ""}`);
+      } else {
+        toast.success(`Rozpoznano ${list.length} aut. Zaznacz i kliknij „Szukaj zaznaczone".`);
+      }
+    } catch (e) {
+      const err = e as { message?: string };
+      setParseError({ status: 500, detail: err.message ?? "Nieznany błąd" });
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  function toggleParseSelected(idx: number) {
+    setParseSelected((s) => ({ ...s, [idx]: !s[idx] }));
+  }
+
+  function clearParsed() {
+    setParsedList([]);
+    setParseSummary("");
+    setParseWarnings([]);
+    setParseError(null);
+    setParseSelected({});
+    setClientMessage("");
+  }
+
+  async function onSearchParsedSelected() {
+    const chosen = parsedList.filter((_, i) => parseSelected[i]);
+    if (chosen.length === 0) {
+      toast.error("Zaznacz przynajmniej jedno auto.");
+      return;
+    }
+    if (chosen.length === 1) {
+      setCriteria({
+        make: chosen[0].make ?? "",
+        model: chosen[0].model ?? "",
+        year_from: chosen[0].year_from ?? null,
+        year_to: chosen[0].year_to ?? null,
+        budget_usd: chosen[0].budget_usd ?? null,
+        max_odometer_mi: chosen[0].max_odometer_mi ?? null,
+        fuel_type: chosen[0].fuel_type ?? null,
+        excluded_damage_types: chosen[0].excluded_damage_types ?? [],
+        max_results: chosen[0].max_results ?? 15,
+        sources: chosen[0].sources,
+      });
+      toast.info("Kryteria załadowane do formularza — kliknij „🔎 Wyszukaj".");
+      return;
+    }
+    // wiele aut → batch
+    setBatchQueue(chosen);
+    setBatchEntries([]);
+    toast.success(`Dodano ${chosen.length} aut do batcha — kliknij „Wyszukaj wszystkie".`);
+  }
+
   const listings: CarLot[] = useMemo(() => {
     if (!result) return [];
     return result.kind === "analyzed" ? result.lots.map((a) => a.lot) : result.lots;
