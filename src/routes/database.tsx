@@ -529,7 +529,7 @@ function JobsSection() {
     setLoading(true);
     try {
       const r = await fn({ data: { limit: 50 } });
-      setJobs(r ?? []);
+      setJobs(r?.jobs ?? []);
     } catch {
       toast.error("Nie udało się pobrać jobów");
     } finally {
