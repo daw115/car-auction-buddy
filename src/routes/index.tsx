@@ -96,7 +96,7 @@ type BatchEntry = {
   jobId: string;
   label: string;
   criteria: ClientCriteria;
-  status: "queued" | "running" | "done" | "error" | "cancelled";
+  status: string;
   phase?: string | null;
   progress?: number;
   listingsCount?: number;
