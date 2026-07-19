@@ -60,6 +60,11 @@ import {
   backendAnalyzeFeedback,
 } from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
+import {
+  AUCTION_SOURCES,
+  isAuctionSource,
+  type AuctionSource,
+} from "@/lib/auction-sources";
 import { Textarea } from "@/components/ui/textarea";
 import {
   RefreshCw,
@@ -699,7 +704,7 @@ function LlmCacheSection() {
 
   const openHtml = async (key: string) => {
     try {
-      const html = await fnHtml({ data: { path: `/api/llm-cache/entry/${encodeURIComponent(key)}` } });
+      const html = await fnHtml({ data: { kind: "llm-cache", key } });
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
@@ -826,9 +831,16 @@ function HtmlCacheSection() {
   useEffect(() => { load(); }, [source]);
 
   const openHtml = async (item: any) => {
+    const itemSource = String(item.source ?? "").toLowerCase();
+    const filename = String(item.filename ?? "");
+    if (!isAuctionSource(itemSource) || !filename) {
+      toast.error("Nieprawidłowy wpis cache");
+      return;
+    }
     try {
-      const path = item.url || `/api/html-cache/${item.source}/${item.filename}`;
-      const html = await fnHtml({ data: { path } });
+      const html = await fnHtml({
+        data: { kind: "html-cache", source: itemSource, filename },
+      });
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
@@ -838,10 +850,17 @@ function HtmlCacheSection() {
     }
   };
 
-  const copartCount = items.filter((i: any) => i.source === "copart").length;
-  const iaaiCount = items.filter((i: any) => i.source === "iaai").length;
-  const copartSize = items.filter((i: any) => i.source === "copart").reduce((s: number, i: any) => s + (i.size_kb ?? 0), 0);
-  const iaaiSize = items.filter((i: any) => i.source === "iaai").reduce((s: number, i: any) => s + (i.size_kb ?? 0), 0);
+  const sourceStats = AUCTION_SOURCES.map((auctionSource) => {
+    const sourceItems = items.filter((item: any) => item.source === auctionSource.id);
+    return {
+      ...auctionSource,
+      count: sourceItems.length,
+      size: sourceItems.reduce(
+        (sum: number, item: any) => sum + (item.size_kb ?? 0),
+        0,
+      ),
+    };
+  });
 
   return (
     <Card>
@@ -849,14 +868,19 @@ function HtmlCacheSection() {
         <CardTitle className="text-base">🌐 HTML Cache</CardTitle>
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-[10px]">
-            {copartCount} copart ({fmtSize(copartSize)}) · {iaaiCount} iaai ({fmtSize(iaaiSize)})
+            {sourceStats
+              .map((entry) => `${entry.count} ${entry.id} (${fmtSize(entry.size)})`)
+              .join(" · ")}
           </Badge>
           <Select value={source} onValueChange={setSource}>
             <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Wszystkie</SelectItem>
-              <SelectItem value="copart">Copart</SelectItem>
-              <SelectItem value="iaai">IAAI</SelectItem>
+              {AUCTION_SOURCES.map((auctionSource) => (
+                <SelectItem key={auctionSource.id} value={auctionSource.id}>
+                  {auctionSource.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -1039,7 +1063,12 @@ function DatabasePage() {
 // ============================================================
 
 type FeedbackVote = "up" | "down";
-type FeedbackEntry = { lot_id: string; source: string; vote: FeedbackVote; reason?: string | null };
+type FeedbackEntry = {
+  lot_id: string;
+  source: AuctionSource;
+  vote: FeedbackVote;
+  reason?: string | null;
+};
 
 function getRecordLots(record: any): any[] {
   // Direct shapes (legacy / local DB)
@@ -1075,6 +1104,11 @@ function lotKey(lot: any): string {
   return `${src}::${id}`;
 }
 
+function sourceForLot(lot: any): AuctionSource | null {
+  const source = String(lot?.source ?? "copart").toLowerCase();
+  return isAuctionSource(source) ? source : null;
+}
+
 function RecordDetailView({ record, recordId }: { record: any; recordId: string }) {
   const fnGet = useServerFn(backendGetFeedback);
   const fnSubmit = useServerFn(backendSubmitFeedback);
@@ -1097,7 +1131,9 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
         if (cancelled) return;
         const map: Record<string, FeedbackEntry> = {};
         for (const f of r?.feedback ?? []) {
-          map[`${String(f.source).toLowerCase()}::${f.lot_id}`] = f;
+          const source = String(f.source).toLowerCase();
+          if (!isAuctionSource(source)) continue;
+          map[`${source}::${f.lot_id}`] = { ...f, source };
         }
         setFeedback(map);
       } catch {
@@ -1112,9 +1148,13 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
   const sendVote = async (lot: any, vote: FeedbackVote, reasonText?: string) => {
     const key = lotKey(lot);
     const lot_id = String(lot?.lot_id ?? lot?.id ?? "");
-    const source = (String(lot?.source ?? "copart").toLowerCase() === "iaai" ? "iaai" : "copart") as "copart" | "iaai";
+    const source = sourceForLot(lot);
     if (!lot_id) {
       toast.error("Lot bez identyfikatora");
+      return;
+    }
+    if (!source) {
+      toast.error("Nieobsługiwane źródło aukcji");
       return;
     }
     const prev = feedback[key];
@@ -1140,7 +1180,11 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
   const removeVote = async (lot: any) => {
     const key = lotKey(lot);
     const lot_id = String(lot?.lot_id ?? lot?.id ?? "");
-    const source = (String(lot?.source ?? "copart").toLowerCase() === "iaai" ? "iaai" : "copart") as "copart" | "iaai";
+    const source = sourceForLot(lot);
+    if (!source) {
+      toast.error("Nieobsługiwane źródło aukcji");
+      return;
+    }
     const prev = feedback[key];
     setBusyKey(key);
     setFeedback((f) => {

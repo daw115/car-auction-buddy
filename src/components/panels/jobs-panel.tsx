@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LiveJobLogs } from "@/components/LiveJobLogs";
 import { backendListJobs, backendCancelJob } from "@/functions/backend.functions";
+import { isAuctionSource } from "@/lib/auction-sources";
 
 // ---- Active Jobs types ----
 export type ActiveJob = {
@@ -32,6 +33,7 @@ export type ActiveJob = {
 const PHASE_LABELS: Record<string, string> = {
   copart: "Copart",
   iaai: "IAAI",
+  manheim: "Manheim",
   filter: "Filtrowanie",
   enrich: "Wzbogacanie",
   ai_analyze: "Analiza AI",
@@ -42,7 +44,7 @@ const PHASE_LABELS: Record<string, string> = {
 function phaseLine(p: { name: string; status: string; info?: Record<string, any> }): string {
   const i = p.info || {};
   const label = PHASE_LABELS[p.name] || p.name;
-  if (p.name === "copart" || p.name === "iaai") {
+  if (isAuctionSource(p.name)) {
     if (i.count !== undefined) return `${label}: ${i.count} lotów`;
     if (i.make) return `${label}: szukam ${i.make} ${i.model || ""}`;
   }

@@ -531,7 +531,7 @@ export function RecordDetailView({
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">🔍 Zescrapowane</div>
           <div className="text-2xl font-bold">{collectedCount}</div>
-          <div className="text-xs text-muted-foreground">Copart + IAAI po filtrach</div>
+          <div className="text-xs text-muted-foreground">Copart + IAAI + Manheim po filtrach</div>
         </Card>
         <Card className="p-3 border-blue-500/40">
           <div className="text-xs text-muted-foreground">🤖 Analiza AI</div>

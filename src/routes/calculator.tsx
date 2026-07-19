@@ -25,7 +25,7 @@ export const Route = createFileRoute("/calculator")({
       {
         property: "og:description",
         content:
-          "VIN decoder, recalle NHTSA i kalkulator landed cost dla aut z aukcji Copart i IAAI.",
+          "VIN decoder, recalle NHTSA i kalkulator landed cost dla aut z aukcji Copart, IAAI i Manheim.",
       },
       { property: "og:url", content: "https://car-auction-buddy.lovable.app/calculator" },
     ],

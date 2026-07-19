@@ -1,6 +1,6 @@
 # Car Auction Buddy
 
-Aplikacja webowa do scrapowania, analizy i raportowania ofert pojazdów z aukcji (Copart / IAAI).
+Aplikacja webowa do wyszukiwania, analizy i raportowania ofert pojazdów z aukcji Copart, IAAI i Manheim. Integracja Manheim korzysta z oficjalnego Marketplace API obsługiwanego przez zewnętrzny backend.
 
 Szczegółowy przewodnik dla kontrybutorów → [`CLAUDE.md`](CLAUDE.md).
 

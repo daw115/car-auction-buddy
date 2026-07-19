@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { auctionSourceSchema } from "@/lib/auction-sources";
 
 /**
  * Schema kryteriów wyszukiwania wysyłanych do scrapera / analizy AI.
@@ -16,7 +17,7 @@ export const criteriaSchema = z.object({
   fuel_type: z.enum(["Gas", "Hybrid", "Diesel", "Electric"]).nullable().optional(),
   excluded_damage_types: z.array(z.string().max(40)).max(20).optional(),
   max_results: z.number().int().min(1).max(100).optional(),
-  sources: z.array(z.string().max(20)).max(5).optional(),
+  sources: z.array(auctionSourceSchema).min(1).max(3).optional(),
   // Kto uruchomił wyszukiwanie (Dawid/Janek/Iga/Monte z PasswordGate).
   searched_by: z.string().max(40).nullable().optional(),
 });

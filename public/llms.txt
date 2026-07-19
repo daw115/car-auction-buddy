@@ -1,7 +1,7 @@
 # USA Car Finder
 
 > Operator panel for searching, analyzing, and reporting on US auction
-> vehicles (Copart, IAAI). Includes scraper jobs, AI analysis, cost
+> vehicles (Copart, IAAI, Manheim). Includes scraper jobs, AI analysis, cost
 > calculator, watchlist, and PDF report generation.
 
 ## Pages

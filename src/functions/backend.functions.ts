@@ -3,8 +3,9 @@
 // żeby API_BEARER_TOKEN nie trafił nigdy do bundla klienta.
 //
 // Sekrety (Lovable Cloud):
-//   API_BASE_URL       — np. https://moneybitches.organof.org
-//   API_BEARER_TOKEN   — Bearer token dodawany do każdego requestu
+//   API_BASE_URL             — np. https://moneybitches.organof.org
+//   API_BEARER_TOKEN         — Bearer token dodawany do każdego requestu
+//   MANHEIM_BACKEND_ENABLED  — fallback "true" tylko po wdrożeniu oficjalnego adaptera API
 //
 // Uwaga: legacy sekrety SCRAPER_BASE_URL / SCRAPER_API_TOKEN wskazywały
 // historycznie na ten sam backend (potwierdzone diagnostycznie). Zostały
@@ -14,6 +15,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
+import {
+  auctionSourceCapabilitiesPayloadSchema,
+  auctionSourceSchema,
+  getUnavailableAuctionSources,
+  type AuctionSource,
+  type AuctionSourceCapabilities,
+} from "@/lib/auction-sources";
 
 // ---------- konfiguracja ----------
 
@@ -21,9 +29,7 @@ function getBackendConfig(): { baseUrl: string; token: string } {
   const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
   const token = process.env.API_BEARER_TOKEN ?? "";
   if (!baseUrl || !token) {
-    throw new Error(
-      "Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.",
-    );
+    throw new Error("Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.");
   }
   return { baseUrl, token };
 }
@@ -64,12 +70,17 @@ async function callBackend<T>(opts: {
     const rawText = await res.text();
     let parsed: any = rawText;
     if (responseType === "json" && rawText) {
-      try { parsed = JSON.parse(rawText); } catch { /* keep raw text */ }
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        /* keep raw text */
+      }
     }
 
     if (!res.ok) {
       let msg: string;
-      if (res.status === 401 || res.status === 403) msg = "Błąd konfiguracji — skontaktuj się z administratorem.";
+      if (res.status === 401 || res.status === 403)
+        msg = "Błąd konfiguracji — skontaktuj się z administratorem.";
       else if (res.status === 404) msg = "Nie znaleziono zasobu.";
       else if (res.status >= 500) msg = "Błąd backendu, spróbuj ponownie za chwilę.";
       else msg = `Backend ${res.status}`;
@@ -94,8 +105,143 @@ async function callBackendSafe<T>(
   opts: Parameters<typeof callBackend>[0],
   fallback: T,
 ): Promise<T> {
-  try { return await callBackend<T>(opts); } catch { return fallback; }
+  try {
+    return await callBackend<T>(opts);
+  } catch {
+    return fallback;
+  }
 }
+
+let sourceCapabilitiesCache: { expiresAt: number; value: AuctionSourceCapabilities } | undefined;
+
+function fallbackSourceCapabilities(): AuctionSourceCapabilities {
+  const backendConfigured = !!process.env.API_BASE_URL && !!process.env.API_BEARER_TOKEN;
+  const manheimEnabled = process.env.MANHEIM_BACKEND_ENABLED === "true";
+  return {
+    checkedAt: new Date().toISOString(),
+    sources: {
+      copart: {
+        available: backendConfigured,
+        mode: backendConfigured ? "live" : "unavailable",
+        reason: backendConfigured ? undefined : "backend_unconfigured",
+      },
+      iaai: {
+        available: backendConfigured,
+        mode: backendConfigured ? "live" : "unavailable",
+        reason: backendConfigured ? undefined : "backend_unconfigured",
+      },
+      manheim: {
+        available: backendConfigured && manheimEnabled,
+        mode: backendConfigured && manheimEnabled ? "official_api" : "unavailable",
+        reason:
+          backendConfigured && manheimEnabled
+            ? "enabled_by_server_configuration"
+            : backendConfigured
+              ? "credentials_or_adapter_missing"
+              : "backend_unconfigured",
+      },
+    },
+  };
+}
+
+function withManheimUnavailable(
+  capabilities: AuctionSourceCapabilities,
+  reason: string,
+): AuctionSourceCapabilities {
+  return {
+    ...capabilities,
+    checkedAt: new Date().toISOString(),
+    sources: {
+      ...capabilities.sources,
+      manheim: { available: false, mode: "unavailable", reason },
+    },
+  };
+}
+
+function allSourcesUnavailable(reason: string): AuctionSourceCapabilities {
+  const unavailable = { available: false as const, mode: "unavailable" as const, reason };
+  return {
+    checkedAt: new Date().toISOString(),
+    sources: {
+      copart: { ...unavailable },
+      iaai: { ...unavailable },
+      manheim: { ...unavailable },
+    },
+  };
+}
+
+async function getSourceCapabilities(options?: {
+  forceRefresh?: boolean;
+}): Promise<AuctionSourceCapabilities> {
+  if (
+    !options?.forceRefresh &&
+    sourceCapabilitiesCache &&
+    sourceCapabilitiesCache.expiresAt > Date.now()
+  ) {
+    return sourceCapabilitiesCache.value;
+  }
+
+  const fallback = fallbackSourceCapabilities();
+  if (!fallback.sources.copart.available) return fallback;
+
+  let value: AuctionSourceCapabilities;
+  try {
+    const raw = await callBackend<unknown>({ path: "/api/capabilities" });
+    const parsed = auctionSourceCapabilitiesPayloadSchema.safeParse(raw);
+    value = parsed.success
+      ? {
+          checkedAt: parsed.data.checkedAt ?? new Date().toISOString(),
+          sources: parsed.data.sources,
+        }
+      : withManheimUnavailable(fallback, "invalid_capabilities_response");
+  } catch (error) {
+    const status =
+      error && typeof error === "object" && "status" in error && typeof error.status === "number"
+        ? error.status
+        : 0;
+    if (status === 404) {
+      // Kompatybilność ze starszym backendem: operator musi jawnie potwierdzić adapter env-em.
+      value = fallback;
+    } else if (status === 401 || status === 403) {
+      value = allSourcesUnavailable("backend_authorization_failed");
+    } else {
+      value = withManheimUnavailable(fallback, "capabilities_unreachable");
+    }
+  }
+
+  sourceCapabilitiesCache = { expiresAt: Date.now() + 30_000, value };
+  return value;
+}
+
+export async function assertAuctionSourcesAvailable(
+  sources: readonly AuctionSource[] | undefined,
+): Promise<void> {
+  if (!sources?.length) return;
+  const capabilities = await getSourceCapabilities({
+    forceRefresh: sources.includes("manheim"),
+  });
+  const unavailable = getUnavailableAuctionSources(sources, capabilities);
+  if (unavailable.length === 0) return;
+
+  const includesManheim = unavailable.includes("manheim");
+  throw backendError(
+    503,
+    includesManheim
+      ? "Manheim Marketplace nie jest skonfigurowany w backendzie. Wymagany jest oficjalny adapter i poświadczenia API."
+      : `Niedostępne źródła aukcyjne: ${unavailable.join(", ")}.`,
+    {
+      sources: unavailable.map((source) => ({
+        source,
+        reason: capabilities.sources[source].reason,
+      })),
+    },
+  );
+}
+
+/** Dostępność źródeł potwierdzona przez backend; nie zwraca żadnych sekretów. */
+export const backendSourceCapabilities = createServerFn({ method: "GET" }).handler(async () =>
+  getSourceCapabilities(),
+);
 
 // ---------- typy odpowiedzi backendu ----------
 
@@ -198,7 +344,7 @@ const criteriaShape = z.object({
   allowed_damage_types: z.array(z.string().max(40)).max(40).optional(),
   excluded_damage_types: z.array(z.string().max(40)).max(40).optional(),
   max_results: z.number().int().min(1).max(15).optional(),
-  sources: z.array(z.enum(["copart", "iaai"])).min(1).max(2).optional(),
+  sources: z.array(auctionSourceSchema).min(1).max(3).optional(),
 });
 
 const searchExtras = {
@@ -214,6 +360,7 @@ const searchExtras = {
 export const backendSearch = createServerFn({ method: "POST" })
   .inputValidator(z.object({ criteria: criteriaShape, ...searchExtras }).parse)
   .handler(async ({ data }) => {
+    await assertAuctionSourcesAvailable(data.criteria.sources);
     return callBackend<BackendSearchResponse>({
       path: "/api/search",
       method: "POST",
@@ -241,10 +388,16 @@ export type BackendBatchResponse = {
 export const backendSearchBatch = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      searches: z.array(z.object({ criteria: criteriaShape, ...searchExtras })).min(1).max(20),
+      searches: z
+        .array(z.object({ criteria: criteriaShape, ...searchExtras }))
+        .min(1)
+        .max(20),
     }).parse,
   )
   .handler(async ({ data }) => {
+    await assertAuctionSourcesAvailable(
+      Array.from(new Set(data.searches.flatMap((search) => search.criteria.sources ?? []))),
+    );
     return callBackend<BackendBatchResponse>({
       path: "/api/search/batch",
       method: "POST",
@@ -269,9 +422,7 @@ export const backendJobStatus = createServerFn({ method: "GET" })
  * Scalone z legacy listActiveScraperJobs + listAllJobs. Zwraca zawsze { jobs, total }.
  */
 export const backendListJobs = createServerFn({ method: "GET" })
-  .inputValidator(
-    (d: { activeOnly?: boolean; limit?: number } | undefined) => d ?? {},
-  )
+  .inputValidator((d: { activeOnly?: boolean; limit?: number } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const params = new URLSearchParams();
     params.set("active_only", data.activeOnly ? "true" : "false");
@@ -308,9 +459,7 @@ export const backendCancelJob = createServerFn({ method: "POST" })
  * Zwraca zawsze { records, total }. Filtry opcjonalne.
  */
 export const backendListRecords = createServerFn({ method: "GET" })
-  .inputValidator(
-    (d: { query?: string; status?: string; limit?: number } | undefined) => d ?? {},
-  )
+  .inputValidator((d: { query?: string; status?: string; limit?: number } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const params = new URLSearchParams();
     if (data.query) params.set("query", data.query);
@@ -372,7 +521,12 @@ export const backendRegenerateBundles = createServerFn({ method: "POST" })
 // ---------- REPORTS ----------
 
 const reportModeSchema = z.enum([
-  "client-html", "broker-html", "client-llm", "broker-llm", "offer-email-html", "pdf",
+  "client-html",
+  "broker-html",
+  "client-llm",
+  "broker-llm",
+  "offer-email-html",
+  "pdf",
 ]);
 
 export const backendGenerateReport = createServerFn({ method: "POST" })
@@ -424,7 +578,7 @@ export const backendSubmitFeedback = createServerFn({ method: "POST" })
     z.object({
       recordId: z.coerce.string().min(1),
       lot_id: z.string().min(1),
-      source: z.enum(["copart", "iaai"]),
+      source: auctionSourceSchema,
       vote: z.enum(["up", "down"]),
       reason: z.string().max(500).optional(),
     }).parse,
@@ -444,7 +598,7 @@ export const backendDeleteFeedback = createServerFn({ method: "POST" })
     z.object({
       recordId: z.coerce.string().min(1),
       lot_id: z.string().min(1),
-      source: z.enum(["copart", "iaai"]),
+      source: auctionSourceSchema,
     }).parse,
   )
   .handler(async ({ data }) => {
@@ -456,8 +610,9 @@ export const backendDeleteFeedback = createServerFn({ method: "POST" })
   });
 
 /** POST /api/feedback/analyze — meta-analiza. */
-export const backendAnalyzeFeedback = createServerFn({ method: "POST" })
-  .handler(async () => callBackend<any>({ path: "/api/feedback/analyze", method: "POST" }));
+export const backendAnalyzeFeedback = createServerFn({ method: "POST" }).handler(async () =>
+  callBackend<any>({ path: "/api/feedback/analyze", method: "POST" }),
+);
 
 // ---------- LLM cache ----------
 
@@ -505,31 +660,46 @@ export const backendListHtmlCache = createServerFn({ method: "GET" })
     return json.items ?? [];
   });
 
-/** Pobiera surowy HTML z /api/llm-cache/entry/* lub /api/html-cache/*. */
+/** Pobiera surowy HTML wyłącznie z dozwolonych endpointów cache. */
 export const backendFetchHtml = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ path: z.string().min(1).max(500) }).parse)
+  .inputValidator(
+    z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("llm-cache"),
+        key: z.string().min(1).max(300),
+      }),
+      z.object({
+        kind: z.literal("html-cache"),
+        source: auctionSourceSchema,
+        filename: z.string().min(1).max(300),
+      }),
+    ]).parse,
+  )
   .handler(async ({ data }) => {
-    if (!data.path.startsWith("/api/llm-cache/entry/") && !data.path.startsWith("/api/html-cache/")) {
-      throw new Error("Forbidden path");
-    }
-    return callBackend<string>({ path: data.path, responseType: "text" });
+    const path =
+      data.kind === "llm-cache"
+        ? `/api/llm-cache/entry/${encodeURIComponent(data.key)}`
+        : `/api/html-cache/${encodeURIComponent(data.source)}/${encodeURIComponent(data.filename)}`;
+    return callBackend<string>({ path, responseType: "text" });
   });
 
 // ---------- Model normalizations ----------
 
-export const backendListModelNormalizations = createServerFn({ method: "GET" }).handler(async () => {
-  return callBackendSafe<{
-    items: Array<{
-      id: string | number;
-      make: string;
-      original_text: string;
-      normalized_model: string;
-      reason?: string;
-      verified_count?: number;
-    }>;
-    stats?: { total: number; by_make: Record<string, number> };
-  }>({ path: "/api/model-normalizations" }, { items: [] });
-});
+export const backendListModelNormalizations = createServerFn({ method: "GET" }).handler(
+  async () => {
+    return callBackendSafe<{
+      items: Array<{
+        id: string | number;
+        make: string;
+        original_text: string;
+        normalized_model: string;
+        reason?: string;
+        verified_count?: number;
+      }>;
+      stats?: { total: number; by_make: Record<string, number> };
+    }>({ path: "/api/model-normalizations" }, { items: [] });
+  },
+);
 
 export const backendDeleteModelNormalization = createServerFn({ method: "POST" })
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
@@ -585,60 +755,70 @@ export const backendDbOverview = createServerFn({ method: "GET" }).handler(async
 type ServiceStatus = "ok" | "down" | "unconfigured";
 
 /** Zbiorczy health-check: baza (Supabase) + backend (usacar-api /health). */
-export const backendHealth = createServerFn({ method: "GET" }).handler(async (): Promise<{
-  checkedAt: string;
-  durationMs: number;
-  services: {
-    database: { status: ServiceStatus; error?: string };
-    backend: { status: ServiceStatus; url?: string; error?: string };
-  };
-}> => {
-  const startedAt = Date.now();
-
-  let dbStatus: ServiceStatus = "ok";
-  let dbError: string | undefined;
-  try {
-    const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
-    if (error) { dbStatus = "down"; dbError = error.message; }
-  } catch (e) {
-    dbStatus = "down";
-    dbError = (e as Error).message;
-  }
-
-  const backendUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
-  let backendStatus: ServiceStatus = "unconfigured";
-  let backendErrorMsg: string | undefined;
-  if (backendUrl) {
-    try {
-      const token = process.env.API_BEARER_TOKEN;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 5000);
-      const res = await fetch(`${backendUrl}/health`, {
-        signal: ctrl.signal,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      clearTimeout(timer);
-      if (res.ok) backendStatus = "ok";
-      else { backendStatus = "down"; backendErrorMsg = `HTTP ${res.status}`; }
-    } catch (e) {
-      backendStatus = "down";
-      backendErrorMsg = (e as Error).message?.includes("abort") ? "Timeout (5s)" : (e as Error).message;
-    }
-  }
-
-  return {
-    checkedAt: new Date().toISOString(),
-    durationMs: Date.now() - startedAt,
+export const backendHealth = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{
+    checkedAt: string;
+    durationMs: number;
     services: {
-      database: { status: dbStatus, error: dbError },
-      backend: {
-        status: backendStatus,
-        url: backendUrl ? new URL(backendUrl).host : undefined,
-        error: backendErrorMsg,
+      database: { status: ServiceStatus; error?: string };
+      backend: { status: ServiceStatus; url?: string; error?: string };
+    };
+  }> => {
+    const startedAt = Date.now();
+
+    let dbStatus: ServiceStatus = "ok";
+    let dbError: string | undefined;
+    try {
+      const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
+      if (error) {
+        dbStatus = "down";
+        dbError = error.message;
+      }
+    } catch (e) {
+      dbStatus = "down";
+      dbError = (e as Error).message;
+    }
+
+    const backendUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
+    let backendStatus: ServiceStatus = "unconfigured";
+    let backendErrorMsg: string | undefined;
+    if (backendUrl) {
+      try {
+        const token = process.env.API_BEARER_TOKEN;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch(`${backendUrl}/health`, {
+          signal: ctrl.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        clearTimeout(timer);
+        if (res.ok) backendStatus = "ok";
+        else {
+          backendStatus = "down";
+          backendErrorMsg = `HTTP ${res.status}`;
+        }
+      } catch (e) {
+        backendStatus = "down";
+        backendErrorMsg = (e as Error).message?.includes("abort")
+          ? "Timeout (5s)"
+          : (e as Error).message;
+      }
+    }
+
+    return {
+      checkedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      services: {
+        database: { status: dbStatus, error: dbError },
+        backend: {
+          status: backendStatus,
+          url: backendUrl ? new URL(backendUrl).host : undefined,
+          error: backendErrorMsg,
+        },
       },
-    },
-  };
-});
+    };
+  },
+);
 
 // ---------- Search audit (Supabase operation_logs) ----------
 
