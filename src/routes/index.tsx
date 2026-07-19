@@ -88,6 +88,18 @@ function normalizeResponse(res: BackendSearchResponse): SearchResult {
 
 // ---------------- page ----------------
 
+function buildAuctionExtras(
+  disable: boolean,
+  minH: number | "",
+  maxH: number | "",
+): { disable_auction_filter?: boolean; auction_min_hours?: number; auction_max_hours?: number } {
+  const out: { disable_auction_filter?: boolean; auction_min_hours?: number; auction_max_hours?: number } = {};
+  if (disable) out.disable_auction_filter = true;
+  if (typeof minH === "number" && Number.isFinite(minH)) out.auction_min_hours = minH;
+  if (typeof maxH === "number" && Number.isFinite(maxH)) out.auction_max_hours = maxH;
+  return out;
+}
+
 function labelForCriteria(c: ClientCriteria): string {
   const parts = [c.make, c.model].filter(Boolean).join(" ");
   const years = c.year_from || c.year_to ? ` ${c.year_from ?? ""}${c.year_to ? `-${c.year_to}` : ""}` : "";
