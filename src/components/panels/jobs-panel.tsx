@@ -59,12 +59,12 @@ function phaseLine(p: { name: string; status: string; info?: Record<string, any>
 }
 
 export function ActiveJobsPanel({ emptyState }: { emptyState?: React.ReactNode } = {}) {
-  const fnListActive = useServerFn(listActiveScraperJobs);
-  const fnCancel = useServerFn(cancelScraperJob);
+  const fnListActive = useServerFn(backendListJobs);
+  const fnCancel = useServerFn(backendCancelJob);
 
   const { data: activeJobs } = useQuery({
     queryKey: ["active-jobs"],
-    queryFn: () => fnListActive(),
+    queryFn: () => fnListActive({ data: { activeOnly: true } }),
     refetchInterval: 2000,
   });
 
