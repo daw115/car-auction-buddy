@@ -12,6 +12,7 @@ import {
   backendListRecords,
   backendJobStatus,
   backendParseClientMessage,
+  backendSourceCapabilities,
   type BackendSearchResponse,
   type BackendRecordSummary,
   type BackendBatchJob,
@@ -19,13 +20,13 @@ import {
 import { useBatchJobsPolling, isTerminalStatus } from "@/hooks/use-batch-jobs-polling";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
 import {
+  auctionSourceLabel,
   DEFAULT_AUCTION_SOURCES,
+  getUnavailableAuctionSources,
   normalizeAuctionSources,
 } from "@/lib/auction-sources";
 
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
-
-
 
 import { CriteriaForm } from "@/components/panels/criteria-form";
 import { Button } from "@/components/ui/button";
@@ -34,13 +35,27 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, ExternalLink, FileText, Mail, RefreshCcw, Plus, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import {
+  Loader2,
+  ExternalLink,
+  FileText,
+  Mail,
+  RefreshCcw,
+  Plus,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+} from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "USA Car Finder — panel operatora" },
-      { name: "description", content: "Wyszukiwanie i analiza AI ofert z aukcji Copart, IAAI i Manheim." },
+      {
+        name: "description",
+        content: "Wyszukiwanie i analiza AI ofert z aukcji Copart, IAAI i Manheim.",
+      },
     ],
   }),
   component: HomePage,
@@ -93,7 +108,6 @@ function normalizeResponse(res: BackendSearchResponse): SearchResult {
   return { kind: "listings", lots: res.listings ?? [], source: res.source, jobId: res.job_id };
 }
 
-
 // ---------------- page ----------------
 
 function buildAuctionExtras(
@@ -101,7 +115,11 @@ function buildAuctionExtras(
   minH: number | "",
   maxH: number | "",
 ): { disable_auction_filter?: boolean; auction_min_hours?: number; auction_max_hours?: number } {
-  const out: { disable_auction_filter?: boolean; auction_min_hours?: number; auction_max_hours?: number } = {};
+  const out: {
+    disable_auction_filter?: boolean;
+    auction_min_hours?: number;
+    auction_max_hours?: number;
+  } = {};
   if (disable) out.disable_auction_filter = true;
   if (typeof minH === "number" && Number.isFinite(minH)) out.auction_min_hours = minH;
   if (typeof maxH === "number" && Number.isFinite(maxH)) out.auction_max_hours = maxH;
@@ -110,7 +128,8 @@ function buildAuctionExtras(
 
 function labelForCriteria(c: ClientCriteria): string {
   const parts = [c.make, c.model].filter(Boolean).join(" ");
-  const years = c.year_from || c.year_to ? ` ${c.year_from ?? ""}${c.year_to ? `-${c.year_to}` : ""}` : "";
+  const years =
+    c.year_from || c.year_to ? ` ${c.year_from ?? ""}${c.year_to ? `-${c.year_to}` : ""}` : "";
   return `${parts}${years}`.trim() || "—";
 }
 
@@ -123,8 +142,6 @@ type BatchEntry = {
   initialStatus?: string;
 };
 
-
-
 function HomePage() {
   const runSearch = useServerFn(backendSearch);
   const runBatch = useServerFn(backendSearchBatch);
@@ -132,8 +149,13 @@ function HomePage() {
   const loadRecords = useServerFn(backendListRecords);
   const backendJobStatusFn = useServerFn(backendJobStatus);
   const parseMessageFn = useServerFn(backendParseClientMessage);
-
-
+  const loadSourceCapabilities = useServerFn(backendSourceCapabilities);
+  const capabilitiesQ = useQuery({
+    queryKey: ["backend", "source-capabilities"],
+    queryFn: () => loadSourceCapabilities(),
+    staleTime: 30_000,
+    retry: 1,
+  });
 
   const [criteria, setCriteria] = useState<ClientCriteria>({
     make: "",
@@ -305,10 +327,15 @@ function HomePage() {
       toast.info('Kryteria załadowane do formularza — kliknij "🔎 Wyszukaj".');
       return;
     }
-    // wiele aut → batch
+    // wiele aut → batch; kolejka pokaże niedostępne źródła i pozwoli je naprawić.
+    const unavailableMessage = unavailableSourcesMessage(...chosen);
     setBatchQueue(chosen);
     setBatchEntries([]);
-    toast.success(`Dodano ${chosen.length} aut do batcha — kliknij "Wyszukaj wszystkie".`);
+    if (unavailableMessage) {
+      toast.warning(`${unavailableMessage} Popraw źródła w kolejce przed uruchomieniem batcha.`);
+    } else {
+      toast.success(`Dodano ${chosen.length} aut do batcha — kliknij "Wyszukaj wszystkie".`);
+    }
   }
 
   const listings: CarLot[] = useMemo(() => {
@@ -321,6 +348,16 @@ function HomePage() {
     return Object.fromEntries(result.lots.map((a) => [a.lot.lot_id, a]));
   }, [result]);
 
+  function unavailableSourcesMessage(...values: ClientCriteria[]): string | null {
+    const unavailable = Array.from(
+      new Set(
+        values.flatMap((value) => getUnavailableAuctionSources(value.sources, capabilitiesQ.data)),
+      ),
+    );
+    if (unavailable.length === 0) return null;
+    return `Niedostępne źródła: ${unavailable.map(auctionSourceLabel).join(", ")}. Sprawdź konfigurację backendu.`;
+  }
+
   async function onSearch() {
     if (!criteria.make.trim()) {
       toast.error("Podaj markę pojazdu.");
@@ -330,12 +367,21 @@ function HomePage() {
       toast.error("Wybierz co najmniej jedno źródło aukcji.");
       return;
     }
+    const unavailableMessage = unavailableSourcesMessage(criteria);
+    if (unavailableMessage) {
+      toast.error(unavailableMessage);
+      return;
+    }
     setLoading(true);
     setLoadingMsg("Trwa wyszukiwanie i analiza AI… to może potrwać kilka minut.");
     setResult(null);
     setSelected({});
     try {
-      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
+      const auctionExtras = buildAuctionExtras(
+        disableAuctionFilter,
+        auctionMinHours,
+        auctionMaxHours,
+      );
       const res = await runSearch({ data: { criteria, ...auctionExtras } });
       const initial = normalizeResponse(res);
       setResult(initial);
@@ -379,7 +425,6 @@ function HomePage() {
     }
   }
 
-
   function addCurrentToBatch() {
     if (!criteria.make.trim()) {
       toast.error("Podaj markę zanim dodasz do batcha.");
@@ -389,12 +434,36 @@ function HomePage() {
       toast.error("Wybierz co najmniej jedno źródło aukcji.");
       return;
     }
+    const unavailableMessage = unavailableSourcesMessage(criteria);
+    if (unavailableMessage) {
+      toast.error(unavailableMessage);
+      return;
+    }
     setBatchQueue((q) => [...q, { ...criteria }]);
     toast.success(`Dodano do batcha: ${labelForCriteria(criteria)}`);
   }
 
   function removeFromQueue(idx: number) {
     setBatchQueue((q) => q.filter((_, i) => i !== idx));
+  }
+
+  function removeUnavailableSourcesFromQueue(idx: number) {
+    const entry = batchQueue[idx];
+    if (!entry) return;
+    const unavailable = new Set(getUnavailableAuctionSources(entry.sources, capabilitiesQ.data));
+    const sources = (entry.sources ?? DEFAULT_AUCTION_SOURCES).filter(
+      (source) => !unavailable.has(source),
+    );
+    if (sources.length === 0) {
+      setCriteria({ ...entry, sources: normalizeAuctionSources(entry.sources) });
+      removeFromQueue(idx);
+      toast.info("Przeniesiono kryteria do formularza — odznacz niedostępne źródło.");
+      return;
+    }
+    setBatchQueue((queue) =>
+      queue.map((item, itemIndex) => (itemIndex === idx ? { ...item, sources } : item)),
+    );
+    toast.success("Usunięto niedostępne źródła z wpisu batcha.");
   }
 
   async function runBatchSearch() {
@@ -410,10 +479,19 @@ function HomePage() {
       toast.error("Każde wyszukiwanie musi mieć co najmniej jedno źródło aukcji.");
       return;
     }
+    const unavailableMessage = unavailableSourcesMessage(...batchQueue);
+    if (unavailableMessage) {
+      toast.error(unavailableMessage);
+      return;
+    }
     setBatchRunning(true);
     setBatchEntries([]);
     try {
-      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
+      const auctionExtras = buildAuctionExtras(
+        disableAuctionFilter,
+        auctionMinHours,
+        auctionMaxHours,
+      );
       const res = await runBatch({
         data: { searches: batchQueue.map((c) => ({ criteria: c, ...auctionExtras })) },
       });
@@ -439,15 +517,26 @@ function HomePage() {
     const failed = batchEntries.filter((e) =>
       !isTerminalStatus(batchJobs[e.jobId]?.status)
         ? false
-        : ["error", "failed", "cancelled", "interrupted"].includes(batchJobs[e.jobId]?.status || ""),
+        : ["error", "failed", "cancelled", "interrupted"].includes(
+            batchJobs[e.jobId]?.status || "",
+          ),
     );
     if (failed.length === 0) {
       toast.info("Brak jobów do ponowienia.");
       return;
     }
+    const unavailableMessage = unavailableSourcesMessage(...failed.map((entry) => entry.criteria));
+    if (unavailableMessage) {
+      toast.error(unavailableMessage);
+      return;
+    }
     setBatchRunning(true);
     try {
-      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
+      const auctionExtras = buildAuctionExtras(
+        disableAuctionFilter,
+        auctionMinHours,
+        auctionMaxHours,
+      );
       const res = await runBatch({
         data: { searches: failed.map((e) => ({ criteria: e.criteria, ...auctionExtras })) },
       });
@@ -515,7 +604,6 @@ function HomePage() {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
   }
 
-
   function selectAll(v: boolean) {
     setSelected(v ? Object.fromEntries(listings.map((l) => [l.lot_id, true])) : {});
   }
@@ -554,7 +642,7 @@ function HomePage() {
     setRecordsLoading(true);
     try {
       const res = await loadRecords();
-      const list = ((res as unknown) as { records?: BackendRecordSummary[] }).records ?? [];
+      const list = (res as unknown as { records?: BackendRecordSummary[] }).records ?? [];
       setRecords(list);
     } catch (e) {
       const err = e as { message?: string };
@@ -587,7 +675,12 @@ function HomePage() {
 
       {/* Formularz kryteriów */}
       <Card className="p-4">
-        <CriteriaForm criteria={criteria} setCriteria={setCriteria} />
+        <CriteriaForm
+          criteria={criteria}
+          setCriteria={setCriteria}
+          capabilities={capabilitiesQ.data}
+          capabilitiesLoading={capabilitiesQ.isLoading}
+        />
         <Separator className="my-4" />
         <div>
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -651,7 +744,12 @@ function HomePage() {
               placeholder="Jan Kowalski"
             />
           </div>
-          <Button size="lg" onClick={onSearch} disabled={loading || batchRunning} className="min-w-[180px]">
+          <Button
+            size="lg"
+            onClick={onSearch}
+            disabled={loading || batchRunning}
+            className="min-w-[180px]"
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Szukam…
@@ -694,11 +792,7 @@ function HomePage() {
                   onClick={runBatchSearch}
                   disabled={batchRunning || batchQueue.length === 0 || batchQueue.length > 20}
                 >
-                  {batchRunning ? (
-                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  ) : (
-                    <>🚀 </>
-                  )}
+                  {batchRunning ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <>🚀 </>}
                   Wyszukaj wszystkie ({batchQueue.length})
                 </Button>
               )}
@@ -720,43 +814,79 @@ function HomePage() {
             </div>
           </div>
 
-          {batchEntries.length > 0 && (() => {
-            const total = batchEntries.length;
-            const failedTotal = batchErroredCount + batchInterruptedCount;
-            const pct = Math.round((batchDone / total) * 100);
-            return (
-              <div className="mb-3">
-                <div className="h-2 w-full overflow-hidden rounded bg-muted">
-                  <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-                </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  <span>{pct}% ({batchDone}/{total})</span>
-                  {batchRunningCount > 0 && <span className="text-primary">▶ {batchRunningCount} w toku</span>}
-                  {batchQueuedCount > 0 && <span>⏳ {batchQueuedCount} w kolejce</span>}
-                  {failedTotal > 0 && (
-                    <span className="text-destructive">
-                      ✕ {failedTotal} nieudane
-                      {batchInterruptedCount > 0 ? ` (w tym ${batchInterruptedCount} przerwane restartem)` : ""}
+          {batchEntries.length > 0 &&
+            (() => {
+              const total = batchEntries.length;
+              const failedTotal = batchErroredCount + batchInterruptedCount;
+              const pct = Math.round((batchDone / total) * 100);
+              return (
+                <div className="mb-3">
+                  <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>
+                      {pct}% ({batchDone}/{total})
                     </span>
-                  )}
+                    {batchRunningCount > 0 && (
+                      <span className="text-primary">▶ {batchRunningCount} w toku</span>
+                    )}
+                    {batchQueuedCount > 0 && <span>⏳ {batchQueuedCount} w kolejce</span>}
+                    {failedTotal > 0 && (
+                      <span className="text-destructive">
+                        ✕ {failedTotal} nieudane
+                        {batchInterruptedCount > 0
+                          ? ` (w tym ${batchInterruptedCount} przerwane restartem)`
+                          : ""}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
 
           {batchEntries.length === 0 ? (
             <ul className="space-y-1">
-              {batchQueue.map((c, i) => (
-                <li key={i} className="flex items-center justify-between rounded border p-2 text-sm">
-                  <span>
-                    {i + 1}. {labelForCriteria(c)}
-                    {c.budget_usd ? ` · budżet $${c.budget_usd.toLocaleString()}` : ""}
-                  </span>
-                  <Button size="sm" variant="ghost" onClick={() => removeFromQueue(i)}>
-                    <X className="h-3 w-3" />
-                  </Button>
-                </li>
-              ))}
+              {batchQueue.map((c, i) => {
+                const sources = c.sources ?? DEFAULT_AUCTION_SOURCES;
+                const unavailable = getUnavailableAuctionSources(sources, capabilitiesQ.data);
+                const hasAvailableSource = sources.some((source) => !unavailable.includes(source));
+                return (
+                  <li
+                    key={i}
+                    className={`flex items-center justify-between gap-3 rounded border p-2 text-sm ${
+                      unavailable.length > 0 ? "border-destructive/40" : ""
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span>
+                        {i + 1}. {labelForCriteria(c)}
+                        {c.budget_usd ? ` · budżet $${c.budget_usd.toLocaleString()}` : ""}
+                        {` · źródła: ${sources.map(auctionSourceLabel).join(", ")}`}
+                      </span>
+                      {unavailable.length > 0 && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-destructive">
+                          <span>Niedostępne: {unavailable.map(auctionSourceLabel).join(", ")}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => removeUnavailableSourcesFromQueue(i)}
+                          >
+                            {hasAvailableSource ? "Usuń niedostępne" : "Edytuj w formularzu"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => removeFromQueue(i)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </li>
+                );
+              })}
               {batchQueue.length > 20 && (
                 <li className="text-xs text-destructive">Max 20 — usuń nadmiar.</li>
               )}
@@ -768,7 +898,11 @@ function HomePage() {
                 const status = live?.status ?? e.initialStatus ?? "queued";
                 const done = status === "done" || status === "completed";
                 const interrupted = status === "interrupted";
-                const failed = interrupted || status === "error" || status === "failed" || status === "cancelled";
+                const failed =
+                  interrupted ||
+                  status === "error" ||
+                  status === "failed" ||
+                  status === "cancelled";
                 const running = status === "running";
                 const phase = live?.phase;
                 const listingsCount = live?.listings?.length ?? live?.analyzed_lots?.length;
@@ -780,9 +914,12 @@ function HomePage() {
                     : failed
                       ? live?.message
                       : undefined;
-                const errorPhases = failed && Array.isArray(live?.phases)
-                  ? (live!.phases as any[]).filter((p) => p && (p.status === "error" || p.status === "failed" || p.error))
-                  : undefined;
+                const errorPhases =
+                  failed && Array.isArray(live?.phases)
+                    ? (live!.phases as any[]).filter(
+                        (p) => p && (p.status === "error" || p.status === "failed" || p.error),
+                      )
+                    : undefined;
                 return (
                   <li
                     key={e.jobId}
@@ -845,13 +982,11 @@ function HomePage() {
           )}
 
           <p className="mt-2 text-xs text-muted-foreground">
-            Backend puszcza scrapy sekwencyjnie (SEARCH_MAX_CONCURRENT=1) — batch tylko oszczędza N requestów,
-            nie przyspiesza wykonania.
+            Backend puszcza scrapy sekwencyjnie (SEARCH_MAX_CONCURRENT=1) — batch tylko oszczędza N
+            requestów, nie przyspiesza wykonania.
           </p>
         </Card>
       )}
-
-
 
       {/* Loader */}
       {loading && (
@@ -941,8 +1076,8 @@ function HomePage() {
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           VIN: {lot.vin || lot.full_vin || "—"} · Lot: {lot.lot_id} · Przebieg:{" "}
-                          {lot.odometer_mi != null ? `${lot.odometer_mi.toLocaleString()} mi` : "—"} ·{" "}
-                          Uszk.: {lot.damage_primary ?? "—"}
+                          {lot.odometer_mi != null ? `${lot.odometer_mi.toLocaleString()} mi` : "—"}{" "}
+                          · Uszk.: {lot.damage_primary ?? "—"}
                         </div>
                         <div className="mt-1 text-xs">
                           Bid: <b>{fmtUsd(lot.current_bid_usd)}</b> · Buy now:{" "}
@@ -950,8 +1085,7 @@ function HomePage() {
                           {a?.analysis.estimated_total_cost_usd != null && (
                             <>
                               {" "}
-                              · Est. total:{" "}
-                              <b>{fmtUsd(a.analysis.estimated_total_cost_usd)}</b>
+                              · Est. total: <b>{fmtUsd(a.analysis.estimated_total_cost_usd)}</b>
                             </>
                           )}
                         </div>

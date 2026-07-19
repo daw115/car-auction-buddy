@@ -1,6 +1,7 @@
 // Proxy do backendu FastAPI: /api/settings/default-criteria
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { assertAuctionSourcesAvailable } from "@/functions/backend.functions";
 import {
   auctionSourceSchema,
   normalizeAuctionSources,
@@ -11,7 +12,8 @@ type Cfg = { baseUrl: string; token: string };
 function cfg(): Cfg {
   const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
   const token = process.env.API_BEARER_TOKEN ?? "";
-  if (!baseUrl || !token) throw new Error("Backend nieskonfigurowany (API_BASE_URL / API_BEARER_TOKEN).");
+  if (!baseUrl || !token)
+    throw new Error("Backend nieskonfigurowany (API_BASE_URL / API_BEARER_TOKEN).");
   return { baseUrl, token };
 }
 
@@ -47,12 +49,18 @@ async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Pro
   });
   const txt = await res.text();
   let parsed: unknown = txt;
-  try { parsed = JSON.parse(txt); } catch { /* keep text */ }
+  try {
+    parsed = JSON.parse(txt);
+  } catch {
+    /* keep text */
+  }
   if (!res.ok) {
     const p = parsed as { detail?: unknown } | string;
     const msg =
       typeof p === "object" && p && "detail" in p && p.detail
-        ? (typeof p.detail === "string" ? p.detail : JSON.stringify(p.detail))
+        ? typeof p.detail === "string"
+          ? p.detail
+          : JSON.stringify(p.detail)
         : `Backend ${res.status}`;
     throw new Error(msg);
   }
@@ -94,10 +102,7 @@ export const getDefaultCriteria = createServerFn({ method: "GET" }).handler(asyn
 export const updateDefaultCriteria = createServerFn({ method: "POST" })
   .inputValidator(defaultCriteriaSchema.parse)
   .handler(async ({ data }) => {
+    await assertAuctionSourcesAvailable(data.sources);
     // PUT nadpisuje w całości — caller odpowiada za wysłanie pełnego obiektu.
-    return call<DefaultCriteriaSaveResponse>(
-      "/api/settings/default-criteria",
-      "PUT",
-      data,
-    );
+    return call<DefaultCriteriaSaveResponse>("/api/settings/default-criteria", "PUT", data);
   });

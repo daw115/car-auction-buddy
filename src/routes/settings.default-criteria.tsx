@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -6,10 +7,14 @@ import {
   updateDefaultCriteria,
   type DefaultCriteria,
 } from "@/functions/default-criteria.functions";
+import { backendSourceCapabilities } from "@/functions/backend.functions";
 import { defaultCriteriaQuery, settingsQueryKeys } from "@/queries/settings.queries";
 import {
+  auctionSourceLabel,
   AUCTION_SOURCES,
   DEFAULT_AUCTION_SOURCES,
+  getUnavailableAuctionSources,
+  isAuctionSourceCapabilityAvailable,
   type AuctionSource,
 } from "@/lib/auction-sources";
 import { Button } from "@/components/ui/button";
@@ -24,14 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ArrowLeft,
-  Loader2,
-  AlertCircle,
-  Save,
-  Eraser,
-  SlidersHorizontal,
-} from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, Save, Eraser, SlidersHorizontal } from "lucide-react";
 
 export const Route = createFileRoute("/settings/default-criteria")({
   head: () => ({
@@ -40,8 +38,7 @@ export const Route = createFileRoute("/settings/default-criteria")({
       { name: "robots", content: "noindex, nofollow" },
       {
         name: "description",
-        content:
-          "Domyślne wartości formularza wyszukiwania (marka, budżet, sources, wykluczenia).",
+        content: "Domyślne wartości formularza wyszukiwania (marka, budżet, sources, wykluczenia).",
       },
     ],
   }),
@@ -64,6 +61,13 @@ const BLANK: DefaultCriteria = {
 
 const FUEL_OPTIONS = ["Gas", "Hybrid", "Diesel", "Electric"] as const;
 const FUEL_ANY = "__any__";
+const SOURCE_UNAVAILABLE_MESSAGES: Record<string, string> = {
+  backend_unconfigured: "backend nieskonfigurowany",
+  backend_authorization_failed: "backend odrzucił autoryzację",
+  capabilities_unreachable: "nie można potwierdzić capabilities backendu",
+  invalid_capabilities_response: "backend zwrócił nieprawidłowe capabilities",
+  credentials_or_adapter_missing: "brak adaptera lub poświadczeń API",
+};
 
 function parseCsv(s: string): string[] {
   return s
@@ -81,6 +85,13 @@ function nOrNull(v: string): number | null {
 function DefaultCriteriaPage() {
   const qc = useQueryClient();
   const q = useQuery(defaultCriteriaQuery());
+  const loadSourceCapabilities = useServerFn(backendSourceCapabilities);
+  const capabilitiesQ = useQuery({
+    queryKey: ["backend", "source-capabilities"],
+    queryFn: () => loadSourceCapabilities(),
+    staleTime: 30_000,
+    retry: 1,
+  });
   const [form, setForm] = useState<DefaultCriteria>(BLANK);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,9 +130,14 @@ function DefaultCriteriaPage() {
       ? "Rok od musi być ≤ rok do."
       : null;
   const sourcesErr = (form.sources ?? []).length === 0 ? "Wybierz co najmniej jedno źródło." : null;
+  const unavailableSources = getUnavailableAuctionSources(form.sources, capabilitiesQ.data);
+  const capabilityErr =
+    unavailableSources.length > 0
+      ? `Niedostępne źródła: ${unavailableSources.map(auctionSourceLabel).join(", ")}. Usuń je lub skonfiguruj backend.`
+      : null;
   const maxErr =
     form.max_results < 1 || form.max_results > 15 ? "max_results musi być 1–15." : null;
-  const canSave = !yearErr && !sourcesErr && !maxErr && !mut.isPending;
+  const canSave = !yearErr && !sourcesErr && !capabilityErr && !maxErr && !mut.isPending;
 
   const handleSave = () => {
     if (!canSave) return;
@@ -130,6 +146,13 @@ function DefaultCriteriaPage() {
 
   const handleClear = () => {
     setForm(BLANK);
+    const unavailable = getUnavailableAuctionSources(BLANK.sources, capabilitiesQ.data);
+    if (unavailable.length > 0) {
+      toast.error(
+        `Nie można zapisać niedostępnych źródeł: ${unavailable.map(auctionSourceLabel).join(", ")}.`,
+      );
+      return;
+    }
     mut.mutate(BLANK);
   };
 
@@ -175,7 +198,9 @@ function DefaultCriteriaPage() {
               {q.error instanceof Error ? q.error.message : String(q.error)}
             </div>
           </div>
-          <Button size="sm" variant="outline" onClick={() => void q.refetch()}>Ponów</Button>
+          <Button size="sm" variant="outline" onClick={() => void q.refetch()}>
+            Ponów
+          </Button>
         </Card>
       )}
 
@@ -207,9 +232,7 @@ function DefaultCriteriaPage() {
                 id="yf"
                 type="number"
                 value={form.year_from ?? ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, year_from: nOrNull(e.target.value) }))
-                }
+                onChange={(e) => setForm((f) => ({ ...f, year_from: nOrNull(e.target.value) }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -233,9 +256,7 @@ function DefaultCriteriaPage() {
                 id="bud"
                 type="number"
                 value={form.budget_usd ?? ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, budget_usd: nOrNull(e.target.value) }))
-                }
+                onChange={(e) => setForm((f) => ({ ...f, budget_usd: nOrNull(e.target.value) }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -324,22 +345,63 @@ function DefaultCriteriaPage() {
           <div className="space-y-2">
             <Label>Źródła</Label>
             <div className="flex flex-wrap items-center gap-4">
-              {AUCTION_SOURCES.map((source) => (
-                <label key={source.id} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={(form.sources ?? []).includes(source.id)}
-                    onCheckedChange={(value) => toggleSource(source.id, value === true)}
-                    aria-label={`Uwzględnij ${source.label}`}
-                  />
-                  <span title={source.description}>{source.label}</span>
-                </label>
-              ))}
+              {AUCTION_SOURCES.map((source) => {
+                const selected = (form.sources ?? []).includes(source.id);
+                const capability = capabilitiesQ.data?.sources[source.id];
+                const available = capability
+                  ? isAuctionSourceCapabilityAvailable(source.id, capability)
+                  : source.id !== "manheim";
+                const reason = capabilitiesQ.isLoading
+                  ? "sprawdzam…"
+                  : capability?.reason
+                    ? (SOURCE_UNAVAILABLE_MESSAGES[capability.reason] ?? capability.reason)
+                    : "brak potwierdzenia backendu";
+                const showStatus = source.id === "manheim" || !available;
+                return (
+                  <label
+                    key={source.id}
+                    className={`flex items-center gap-2 text-sm ${available || selected ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+                  >
+                    <Checkbox
+                      checked={selected}
+                      disabled={!available && !selected}
+                      onCheckedChange={(value) => toggleSource(source.id, value === true)}
+                      aria-label={`Uwzględnij ${source.label}`}
+                      aria-describedby={
+                        showStatus ? `source-${source.id}-settings-status` : undefined
+                      }
+                    />
+                    <span title={source.description}>{source.label}</span>
+                    {showStatus && (
+                      <span
+                        id={`source-${source.id}-settings-status`}
+                        className={`rounded px-1.5 py-0.5 text-[10px] ${
+                          available
+                            ? "bg-emerald-500/10 text-emerald-600"
+                            : "bg-amber-500/10 text-amber-600"
+                        }`}
+                      >
+                        {available ? "API aktywne" : `niedostępne: ${reason}`}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
             </div>
             {sourcesErr && (
               <p className="text-xs text-destructive flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" /> {sourcesErr}
               </p>
             )}
+            {capabilityErr && (
+              <p className="text-xs text-destructive flex items-center gap-1" role="alert">
+                <AlertCircle className="h-3 w-3" /> {capabilityErr}
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Manheim wymaga potwierdzonego oficjalnego adaptera Marketplace API. Niedostępne,
+              wcześniej zapisane źródło można odznaczyć, ale nie można go ponownie zaznaczyć.
+            </p>
           </div>
 
           {error && (

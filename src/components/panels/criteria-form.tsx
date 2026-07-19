@@ -9,14 +9,34 @@ import {
 } from "@/components/ui/select";
 import { Field } from "@/components/panels/form-helpers";
 import type { ClientCriteria } from "@/lib/types";
-import { AUCTION_SOURCES, DEFAULT_AUCTION_SOURCES } from "@/lib/auction-sources";
+import {
+  AUCTION_SOURCES,
+  DEFAULT_AUCTION_SOURCES,
+  isAuctionSourceCapabilityAvailable,
+  type AuctionSourceCapabilities,
+} from "@/lib/auction-sources";
 
 type Props = {
   criteria: ClientCriteria;
   setCriteria: (c: ClientCriteria) => void;
+  capabilities?: AuctionSourceCapabilities | null;
+  capabilitiesLoading?: boolean;
 };
 
-export function CriteriaForm({ criteria, setCriteria }: Props) {
+const SOURCE_UNAVAILABLE_MESSAGES: Record<string, string> = {
+  backend_unconfigured: "backend nieskonfigurowany",
+  backend_authorization_failed: "backend odrzucił autoryzację",
+  capabilities_unreachable: "nie można potwierdzić capabilities backendu",
+  invalid_capabilities_response: "backend zwrócił nieprawidłowe capabilities",
+  credentials_or_adapter_missing: "brak adaptera lub poświadczeń API",
+};
+
+export function CriteriaForm({
+  criteria,
+  setCriteria,
+  capabilities,
+  capabilitiesLoading = false,
+}: Props) {
   const selectedSources = criteria.sources ?? DEFAULT_AUCTION_SOURCES;
 
   function toggleSource(source: (typeof AUCTION_SOURCES)[number]["id"], checked: boolean) {
@@ -93,8 +113,7 @@ export function CriteriaForm({ criteria, setCriteria }: Props) {
             onValueChange={(v) =>
               setCriteria({
                 ...criteria,
-                fuel_type:
-                  v === "any" ? null : (v as "Gas" | "Hybrid" | "Diesel" | "Electric"),
+                fuel_type: v === "any" ? null : (v as "Gas" | "Hybrid" | "Diesel" | "Electric"),
               })
             }
           >
@@ -144,16 +163,50 @@ export function CriteriaForm({ criteria, setCriteria }: Props) {
       <div className="mt-4 space-y-2">
         <div className="text-xs font-medium text-muted-foreground">Źródła aukcji *</div>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {AUCTION_SOURCES.map((source) => (
-            <label key={source.id} className="flex cursor-pointer items-center gap-2 text-sm">
-              <Checkbox
-                checked={selectedSources.includes(source.id)}
-                onCheckedChange={(value) => toggleSource(source.id, value === true)}
-                aria-label={`Uwzględnij ${source.label}`}
-              />
-              <span title={source.description}>{source.label}</span>
-            </label>
-          ))}
+          {AUCTION_SOURCES.map((source) => {
+            const selected = selectedSources.includes(source.id);
+            const capability = capabilities?.sources[source.id];
+            const available = capability
+              ? isAuctionSourceCapabilityAvailable(source.id, capability)
+              : source.id !== "manheim";
+            const reason = capabilitiesLoading
+              ? "sprawdzanie dostępności"
+              : capability?.reason
+                ? (SOURCE_UNAVAILABLE_MESSAGES[capability.reason] ?? capability.reason)
+                : "brak potwierdzenia backendu";
+            const showStatus = source.id === "manheim" || !available;
+            return (
+              <label
+                key={source.id}
+                className={`flex items-center gap-2 text-sm ${available || selected ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+              >
+                <Checkbox
+                  checked={selected}
+                  disabled={!available && !selected}
+                  onCheckedChange={(value) => toggleSource(source.id, value === true)}
+                  aria-label={`Uwzględnij ${source.label}`}
+                  aria-describedby={showStatus ? `source-${source.id}-status` : undefined}
+                />
+                <span title={source.description}>{source.label}</span>
+                {showStatus && (
+                  <span
+                    id={`source-${source.id}-status`}
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      available
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "bg-amber-500/10 text-amber-600"
+                    }`}
+                  >
+                    {capabilitiesLoading
+                      ? "sprawdzam…"
+                      : available
+                        ? "API aktywne"
+                        : `niedostępne: ${reason}`}
+                  </span>
+                )}
+              </label>
+            );
+          })}
         </div>
         {selectedSources.length === 0 && (
           <p className="text-xs text-destructive" role="alert">
@@ -161,7 +214,8 @@ export function CriteriaForm({ criteria, setCriteria }: Props) {
           </p>
         )}
         <p className="text-[11px] text-muted-foreground">
-          Manheim korzysta z integracji Marketplace API skonfigurowanej w backendzie.
+          Manheim jest dostępny tylko po potwierdzeniu oficjalnego adaptera Marketplace API przez
+          backend. Aplikacja nie używa mocków ani nie omija logowania Manheim.
         </p>
       </div>
     </>
