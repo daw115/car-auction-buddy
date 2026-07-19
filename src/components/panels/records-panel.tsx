@@ -6,13 +6,13 @@ import { toast } from "sonner";
 import { Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 import {
-  getBackendRecordsList,
-  deleteBackendRecord,
-  getBackendRecordDetails,
-  regenerateBundles,
-  listSearchAudit,
-} from "@/functions/api.functions";
-import type { BackendRecord, SearchAuditEntry } from "@/functions/api.functions";
+  backendListRecords,
+  backendDeleteRecord,
+  backendGetRecord,
+  backendRegenerateBundles,
+  backendListSearchAudit,
+} from "@/functions/backend.functions";
+import type { BackendRecord, SearchAuditEntry } from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
 
 import { Card } from "@/components/ui/card";
