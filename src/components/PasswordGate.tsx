@@ -280,17 +280,32 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
 
         {step === "pickUser" && (
           <>
-            <div className="grid grid-cols-2 gap-2">
+            <div key={refreshTick} className="grid grid-cols-2 gap-2">
               {SITE_USERS.map((u) => (
-                <Button
-                  key={u}
-                  variant="outline"
-                  className="h-12 justify-start gap-2"
-                  onClick={() => pickUser(u)}
-                >
-                  <User className="h-4 w-4" />
-                  {u}
-                </Button>
+                <div key={u} className="relative group">
+                  <Button
+                    variant="outline"
+                    className="h-12 w-full justify-start gap-2 pr-9"
+                    onClick={() => pickUser(u)}
+                  >
+                    <User className="h-4 w-4" />
+                    {u}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget(u);
+                      setDeleteMasterPw("");
+                      setDeleteError("");
+                    }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-60 hover:opacity-100"
+                    title={`Usuń profil ${u}`}
+                    aria-label={`Usuń profil ${u}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
             <Button
@@ -306,6 +321,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
             </Button>
           </>
         )}
+
 
         {step === "enterPersonal" && (
           <form onSubmit={submitPersonal} className="space-y-3">
