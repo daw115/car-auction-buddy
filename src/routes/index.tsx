@@ -131,6 +131,11 @@ function HomePage() {
     max_results: 15,
   });
 
+  // Auction window (per-search, poza criteria)
+  const [disableAuctionFilter, setDisableAuctionFilter] = useState(false);
+  const [auctionMinHours, setAuctionMinHours] = useState<number | "">("");
+  const [auctionMaxHours, setAuctionMaxHours] = useState<number | "">("");
+
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
