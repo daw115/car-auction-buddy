@@ -40,11 +40,28 @@ export const Route = createFileRoute("/settings/ai")({
 function AiSettingsPage() {
   const getFn = useServerFn(getAiProviders);
   const putFn = useServerFn(updateAiProviders);
+  const getModelsFn = useServerFn(getAiModels);
 
   const [tasks, setTasks] = useState<AiProviderTask[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [kiroModels, setKiroModels] = useState<AiModelsResponse | null>(null);
+  const [kiroModelsLoading, setKiroModelsLoading] = useState(true);
+  const [kiroModelsError, setKiroModelsError] = useState<string | null>(null);
+
+  const loadKiroModels = useCallback(async () => {
+    setKiroModelsLoading(true);
+    setKiroModelsError(null);
+    try {
+      const res = await getModelsFn({ data: { provider: "kiro" } });
+      setKiroModels(res);
+    } catch (e) {
+      setKiroModelsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKiroModelsLoading(false);
+    }
+  }, [getModelsFn]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,7 +80,8 @@ function AiSettingsPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadKiroModels();
+  }, [load, loadKiroModels]);
 
   const applyOverride = async (key: string, value: string | null) => {
     setSavingKey(key);
@@ -132,8 +150,15 @@ function AiSettingsPage() {
           </Card>
         ) : tasks && tasks.length > 0 ? (
           <div className="space-y-3">
-            {tasks.some((t) => (t.override ?? t.env_value) === "kiro") && (
-              <ProviderModelSelector provider="kiro" label="Model Kiro" />
+            {(tasks.some((t) => (t.override ?? t.env_value) === "kiro") || kiroModels?.override != null) && (
+              <ProviderModelSelector
+                provider="kiro"
+                label="Model Kiro"
+                initialData={kiroModels}
+                initialLoading={kiroModelsLoading}
+                initialError={kiroModelsError}
+                onReload={loadKiroModels}
+              />
             )}
             {tasks.map((task) => (
               <TaskRow
@@ -227,28 +252,30 @@ function TaskRow({
   );
 }
 
-function ProviderModelSelector({ provider, label }: { provider: string; label: string }) {
-  const getFn = useServerFn(getAiModels);
+function ProviderModelSelector({
+  provider,
+  label,
+  initialData,
+  initialLoading,
+  initialError,
+  onReload,
+}: {
+  provider: string;
+  label: string;
+  initialData: AiModelsResponse | null;
+  initialLoading: boolean;
+  initialError: string | null;
+  onReload: () => Promise<void>;
+}) {
   const putFn = useServerFn(updateAiModels);
-  const [data, setData] = useState<AiModelsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<AiModelsResponse | null>(initialData);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await getFn({ data: { provider } });
-      setData(res);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [getFn, provider]);
+  useEffect(() => { setData(initialData); }, [initialData]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loading = initialLoading;
+  const err = initialError;
+  void onReload;
 
   const apply = async (value: string | null) => {
     setSaving(true);
