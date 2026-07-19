@@ -512,7 +512,7 @@ function HomePage() {
     setRecordsLoading(true);
     try {
       const res = await loadRecords();
-      const list = Array.isArray(res) ? res : (res as { records?: BackendRecordSummary[] }).records ?? [];
+      const list = (res as { records?: BackendRecordSummary[] }).records ?? [];
       setRecords(list);
     } catch (e) {
       const err = e as { message?: string };
