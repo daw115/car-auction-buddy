@@ -171,6 +171,54 @@ export const backendSearch = createServerFn({ method: "POST" })
     });
   });
 
+export type BackendBatchJob = {
+  job_id: string;
+  status_url: string;
+  stream_url?: string;
+  cancel_url?: string;
+  label?: string;
+  idempotent?: boolean;
+  reused_status?: string;
+};
+
+export type BackendBatchResponse = {
+  jobs: BackendBatchJob[];
+  queued_count: number;
+};
+
+/**
+ * POST /api/search/batch — wystrzeliwuje do 20 wyszukiwań jednym requestem.
+ * UWAGA: backend ma SEARCH_MAX_CONCURRENT=1, więc joby lecą SEKWENCYJNIE
+ * (batch = tylko oszczędność 1 request vs N). Zwraca listę job_id — każdy
+ * pollujemy osobno przez backendJobStatus i agregujemy postęp po stronie UI.
+ */
+export const backendSearchBatch = createServerFn({ method: "POST" })
+  .inputValidator(
+    z
+      .object({
+        searches: z
+          .array(
+            z.object({
+              criteria: criteriaShape,
+              demo: z.boolean().optional(),
+            }),
+          )
+          .min(1)
+          .max(20),
+      })
+      .parse,
+  )
+  .handler(async ({ data }) => {
+    return callBackend<BackendBatchResponse>({
+      path: "/api/search/batch",
+      method: "POST",
+      body: data,
+      timeoutMs: 60_000, // sam enqueue jest szybki — długi timeout tylko na wypadek zimnego backendu
+    });
+  });
+
+
+
 /** GET /api/jobs/{job_id} — polling statusu długiego joba. */
 export const backendJobStatus = createServerFn({ method: "GET" })
   .inputValidator(z.object({ jobId: z.string().min(1).max(200) }).parse)
