@@ -419,12 +419,34 @@ function HomePage() {
     toast.success(`Załadowano ${all.length} wyników do widoku raportów.`);
   }
 
-
-
-
-  function toggleSelected(id: string) {
-    setSelected((s) => ({ ...s, [id]: !s[id] }));
+  function clearBatch() {
+    setBatchEntries([]);
+    setBatchQueue([]);
   }
+
+  // JEDEN interval na cały batch. Zwraca też agregaty (done/running/queued/errored/interrupted).
+  const activeJobIds = useMemo(() => batchEntries.map((e) => e.jobId), [batchEntries]);
+  const {
+    jobs: batchJobs,
+    done: batchDone,
+    running: batchRunningCount,
+    queued: batchQueuedCount,
+    errored: batchErroredCount,
+    interrupted: batchInterruptedCount,
+    allFinished: batchAllFinished,
+  } = useBatchJobsPolling(activeJobIds);
+
+  const failedJobIds = useMemo(
+    () =>
+      batchEntries
+        .filter((e) => {
+          const s = batchJobs[e.jobId]?.status;
+          return s === "error" || s === "failed" || s === "cancelled" || s === "interrupted";
+        })
+        .map((e) => e.jobId),
+    [batchEntries, batchJobs],
+  );
+
 
 
   function selectAll(v: boolean) {
