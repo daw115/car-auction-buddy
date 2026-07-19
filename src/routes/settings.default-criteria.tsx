@@ -40,7 +40,7 @@ export const Route = createFileRoute("/settings/default-criteria")({
       },
     ],
   }),
-  component: DefaultCriteriaPage;
+  component: DefaultCriteriaPage,
 });
 
 const BLANK: DefaultCriteria = {
