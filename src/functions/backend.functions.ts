@@ -5,9 +5,14 @@
 // Sekrety (Lovable Cloud):
 //   API_BASE_URL       — np. https://moneybitches.organof.org
 //   API_BEARER_TOKEN   — Bearer token dodawany do każdego requestu
+//
+// Uwaga: legacy sekrety SCRAPER_BASE_URL / SCRAPER_API_TOKEN wskazywały
+// historycznie na ten sam backend (potwierdzone diagnostycznie). Zostały
+// scalone do API_BASE_URL / API_BEARER_TOKEN i skasowane.
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 
 // ---------- konfiguracja ----------
@@ -29,7 +34,7 @@ function backendError(status: number, message: string, body?: any): BackendError
   return { status, message, body };
 }
 
-// Wspólne wywołanie backendu. Timeout można podnieść dla długich operacji (search).
+// Wspólne wywołanie backendu.
 async function callBackend<T>(opts: {
   path: string;
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -59,25 +64,17 @@ async function callBackend<T>(opts: {
     const rawText = await res.text();
     let parsed: any = rawText;
     if (responseType === "json" && rawText) {
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        // zostaw jako tekst — backend czasem zwróci HTML błąd
-      }
+      try { parsed = JSON.parse(rawText); } catch { /* keep raw text */ }
     }
 
     if (!res.ok) {
       let msg: string;
-      if (res.status === 401 || res.status === 403) {
-        msg = "Błąd konfiguracji — skontaktuj się z administratorem.";
-      } else if (res.status === 404) {
-        msg = "Brak wyników — sprawdź kryteria.";
-      } else if (res.status >= 500) {
-        msg = "Błąd scrapera / backendu, spróbuj ponownie za chwilę.";
-      } else {
-        msg = `Backend ${res.status}`;
-      }
-      throw backendError(res.status, msg, parsed);
+      if (res.status === 401 || res.status === 403) msg = "Błąd konfiguracji — skontaktuj się z administratorem.";
+      else if (res.status === 404) msg = "Nie znaleziono zasobu.";
+      else if (res.status >= 500) msg = "Błąd backendu, spróbuj ponownie za chwilę.";
+      else msg = `Backend ${res.status}`;
+      const detail = (parsed && typeof parsed === "object" && (parsed as any).detail) || undefined;
+      throw backendError(res.status, detail ? `${msg}: ${detail}` : msg, parsed);
     }
 
     return parsed as T;
@@ -92,6 +89,14 @@ async function callBackend<T>(opts: {
   }
 }
 
+// Wariant safe (nie rzuca, zwraca fallback) — dla list/health.
+async function callBackendSafe<T>(
+  opts: Parameters<typeof callBackend>[0],
+  fallback: T,
+): Promise<T> {
+  try { return await callBackend<T>(opts); } catch { return fallback; }
+}
+
 // ---------- typy odpowiedzi backendu ----------
 
 export type BackendSearchResponse = {
@@ -103,7 +108,6 @@ export type BackendSearchResponse = {
   vin_coverage?: any;
   analysis_notice?: string | null;
 };
-
 
 export type BackendJobStatus = {
   job_id: string;
@@ -133,7 +137,54 @@ export type BackendRecordSummary = {
   [k: string]: any;
 };
 
-// ---------- serwer functions wołane z UI ----------
+export type BackendRecord = {
+  id: number;
+  title: string;
+  status: "new" | "done" | "cancelled" | "error" | "interrupted";
+  notes?: string | null;
+  client?: { name?: string; email?: string; phone?: string } | null;
+  collected_count: number;
+  analysis_notice?: string | null;
+  artifact_urls?: Record<string, string>;
+  job_id?: string | null;
+  searched_by?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ActiveJob = {
+  id: string;
+  label: string;
+  status: "queued" | "running" | "done" | "error" | "cancelled" | "interrupted";
+  phase?: string | null;
+  phase_info?: Record<string, any>;
+  phases?: Array<{
+    name: string;
+    status: string;
+    info?: Record<string, any>;
+    started_at: string;
+    finished_at?: string | null;
+  }>;
+  criteria?: Record<string, any>;
+  created_at: string;
+  finished_at?: string | null;
+  listings_count?: number;
+  analysis_notice?: string | null;
+};
+
+export type SearchAuditEntry = {
+  id: string;
+  created_at: string;
+  searched_by: string | null;
+  message: string;
+  make: string | null;
+  model: string | null;
+  budget_usd: number | null;
+  client_id: string | null;
+  record_id: string | null;
+};
+
+// ---------- kryteria wyszukiwania ----------
 
 const criteriaShape = z.object({
   make: z.string().min(1).max(80),
@@ -149,10 +200,6 @@ const criteriaShape = z.object({
   sources: z.array(z.enum(["copart", "iaai"])).min(1).max(2).optional(),
 });
 
-/**
- * POST /api/search — synchroniczne wywołanie (do kilku minut).
- * UI musi trzymać loader i NIE zakładać timeoutu.
- */
 const searchExtras = {
   demo: z.boolean().optional(),
   disable_auction_filter: z.boolean().optional(),
@@ -160,21 +207,17 @@ const searchExtras = {
   auction_max_hours: z.number().min(0).max(10000).optional().nullable(),
 };
 
+// ---------- SEARCH ----------
+
+/** POST /api/search — synchroniczne wywołanie (do kilku minut). */
 export const backendSearch = createServerFn({ method: "POST" })
-  .inputValidator(
-    z
-      .object({
-        criteria: criteriaShape,
-        ...searchExtras,
-      })
-      .parse,
-  )
+  .inputValidator(z.object({ criteria: criteriaShape, ...searchExtras }).parse)
   .handler(async ({ data }) => {
     return callBackend<BackendSearchResponse>({
       path: "/api/search",
       method: "POST",
       body: data,
-      timeoutMs: 5 * 60 * 1000, // 5 minut — realny scraping + analiza AI
+      timeoutMs: 5 * 60 * 1000,
     });
   });
 
@@ -193,121 +236,154 @@ export type BackendBatchResponse = {
   queued_count: number;
 };
 
-/**
- * POST /api/search/batch — wystrzeliwuje do 20 wyszukiwań jednym requestem.
- * UWAGA: backend ma SEARCH_MAX_CONCURRENT=1, więc joby lecą SEKWENCYJNIE
- * (batch = tylko oszczędność 1 request vs N). Zwraca listę job_id — każdy
- * pollujemy osobno przez backendJobStatus i agregujemy postęp po stronie UI.
- */
+/** POST /api/search/batch — do 20 wyszukiwań w jednym requestcie. */
 export const backendSearchBatch = createServerFn({ method: "POST" })
   .inputValidator(
-    z
-      .object({
-        searches: z
-          .array(
-            z.object({
-              criteria: criteriaShape,
-              ...searchExtras,
-            }),
-          )
-          .min(1)
-          .max(20),
-      })
-      .parse,
+    z.object({
+      searches: z.array(z.object({ criteria: criteriaShape, ...searchExtras })).min(1).max(20),
+    }).parse,
   )
   .handler(async ({ data }) => {
     return callBackend<BackendBatchResponse>({
       path: "/api/search/batch",
       method: "POST",
       body: data,
-      timeoutMs: 60_000, // sam enqueue jest szybki — długi timeout tylko na wypadek zimnego backendu
+      timeoutMs: 60_000,
     });
   });
 
+// ---------- JOBS ----------
 
-
-/** GET /api/jobs/{job_id} — polling statusu długiego joba. */
+/** GET /api/jobs/{job_id} — polling statusu (używane przez batch + active pill). */
 export const backendJobStatus = createServerFn({ method: "GET" })
   .inputValidator(z.object({ jobId: z.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
     return callBackend<BackendJobStatus>({
       path: `/api/jobs/${encodeURIComponent(data.jobId)}`,
-      method: "GET",
-      timeoutMs: 30_000,
     });
   });
 
-/** GET /api/records — lista historii wyszukiwań. */
-export const backendListRecords = createServerFn({ method: "GET" }).handler(async () => {
-  return callBackend<BackendRecordSummary[] | { records: BackendRecordSummary[] }>({
-    path: "/api/records",
-    method: "GET",
+/**
+ * GET /api/jobs — lista zadań.
+ * Scalone z legacy listActiveScraperJobs + listAllJobs. Zwraca zawsze { jobs, total }.
+ */
+export const backendListJobs = createServerFn({ method: "GET" })
+  .inputValidator(
+    (d: { activeOnly?: boolean; limit?: number } | undefined) => d ?? {},
+  )
+  .handler(async ({ data }) => {
+    const params = new URLSearchParams();
+    params.set("active_only", data.activeOnly ? "true" : "false");
+    if (data.limit) params.set("limit", String(data.limit));
+    return callBackendSafe<{ jobs: ActiveJob[]; total: number }>(
+      { path: `/api/jobs?${params}` },
+      { jobs: [], total: 0 },
+    );
   });
-});
+
+/** DELETE /api/jobs/{id} (fallback POST /cancel). */
+export const backendCancelJob = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
+  .handler(async ({ data }): Promise<{ ok: boolean; status?: string }> => {
+    try {
+      const r = await callBackend<{ status?: string }>({
+        path: `/api/jobs/${encodeURIComponent(data.jobId)}`,
+        method: "DELETE",
+      });
+      return { ok: true, status: r?.status ?? "cancelled" };
+    } catch {
+      const r = await callBackend<{ status?: string }>({
+        path: `/api/jobs/${encodeURIComponent(data.jobId)}/cancel`,
+        method: "POST",
+      });
+      return { ok: true, status: r?.status ?? "cancelled" };
+    }
+  });
+
+// ---------- RECORDS ----------
+
+/**
+ * GET /api/records — lista rekordów (historia).
+ * Zwraca zawsze { records, total }. Filtry opcjonalne.
+ */
+export const backendListRecords = createServerFn({ method: "GET" })
+  .inputValidator(
+    (d: { query?: string; status?: string; limit?: number } | undefined) => d ?? {},
+  )
+  .handler(async ({ data }) => {
+    const params = new URLSearchParams();
+    if (data.query) params.set("query", data.query);
+    if (data.status) params.set("status", data.status);
+    if (data.limit) params.set("limit", String(data.limit));
+    return callBackendSafe<{ records: BackendRecord[]; total: number }>(
+      { path: `/api/records?${params}` },
+      { records: [], total: 0 },
+    );
+  });
 
 /** GET /api/records/{id} — szczegóły rekordu. */
 export const backendGetRecord = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ id: z.string().min(1).max(200) }).parse)
+  .inputValidator(z.object({ id: z.coerce.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
-    return callBackend<Record<string, any>>({
-      path: `/api/records/${encodeURIComponent(data.id)}`,
-      method: "GET",
-    });
+    return callBackendSafe<Record<string, any> | null>(
+      { path: `/api/records/${encodeURIComponent(data.id)}` },
+      null,
+    );
   });
 
-/** GET /api/records/{id}/feedback — odczyt feedbacku brokera. */
-export const backendGetFeedback = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ id: z.string().min(1).max(200) }).parse)
+/** DELETE /api/records/{id}. */
+export const backendDeleteRecord = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
-    return callBackend<Record<string, any>>({
-      path: `/api/records/${encodeURIComponent(data.id)}/feedback`,
-      method: "GET",
-    });
+    try {
+      const json = await callBackend<any>({
+        path: `/api/records/${encodeURIComponent(data.id)}`,
+        method: "DELETE",
+      });
+      return {
+        ok: true as const,
+        status: 200,
+        record_id: json?.record_id ?? data.id,
+        files_removed: json?.files_removed ?? 0,
+        bytes_freed: json?.bytes_freed ?? 0,
+        skipped: json?.skipped ?? [],
+      };
+    } catch (e: any) {
+      return { ok: false as const, status: e?.status ?? 0, detail: e?.message ?? "Błąd sieci" };
+    }
   });
 
-/** POST /api/records/{id}/feedback — zapis feedbacku brokera. */
-export const backendSaveFeedback = createServerFn({ method: "POST" })
+/** POST /api/records/{id}/regenerate-bundles?engine=... */
+export const backendRegenerateBundles = createServerFn({ method: "POST" })
   .inputValidator(
-    z
-      .object({
-        id: z.string().min(1).max(200),
-        feedback: z.record(z.string(), z.any()),
-      })
-      .parse,
+    z.object({
+      recordId: z.number().int(),
+      engine: z.enum(["template", "hybrid"]).optional().default("template"),
+    }).parse,
   )
   .handler(async ({ data }) => {
-    return callBackend<Record<string, any>>({
-      path: `/api/records/${encodeURIComponent(data.id)}/feedback`,
+    return callBackend<any>({
+      path: `/api/records/${data.recordId}/regenerate-bundles?engine=${data.engine}`,
       method: "POST",
-      body: data.feedback,
     });
   });
 
+// ---------- REPORTS ----------
+
 const reportModeSchema = z.enum([
-  "client-html",
-  "broker-html",
-  "client-llm",
-  "broker-llm",
-  "offer-email-html",
-  "pdf",
+  "client-html", "broker-html", "client-llm", "broker-llm", "offer-email-html", "pdf",
 ]);
 
-/**
- * POST na jeden z endpointów raportu.
- * Zwraca surowy HTML (albo tekst) — UI otwiera w nowej karcie / pobiera.
- */
 export const backendGenerateReport = createServerFn({ method: "POST" })
   .inputValidator(
-    z
-      .object({
-        mode: reportModeSchema,
-        approved_lots: z.array(z.any()).min(1),
-        criteria: criteriaShape.optional(),
-        client_name: z.string().max(200).optional(),
-        client_email: z.string().max(200).optional(),
-        tracking_url: z.string().max(500).optional(),
-      })
-      .parse,
+    z.object({
+      mode: reportModeSchema,
+      approved_lots: z.array(z.any()).min(1),
+      criteria: criteriaShape.optional(),
+      client_name: z.string().max(200).optional(),
+      client_email: z.string().max(200).optional(),
+      tracking_url: z.string().max(500).optional(),
+    }).parse,
   )
   .handler(async ({ data }) => {
     const pathMap: Record<z.infer<typeof reportModeSchema>, string> = {
@@ -329,22 +405,266 @@ export const backendGenerateReport = createServerFn({ method: "POST" })
     return { mode, html };
   });
 
-// ---------- diagnostyka / health ----------
+// ---------- FEEDBACK ----------
 
-export const backendHealth = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const [telegram, cache, db] = await Promise.allSettled([
-      callBackend<any>({ path: "/api/telegram/status", timeoutMs: 8_000 }),
-      callBackend<any>({ path: "/api/llm-cache/stats", timeoutMs: 8_000 }),
-      callBackend<any>({ path: "/api/db/overview", timeoutMs: 8_000 }),
-    ]);
-    return {
-      configured: true,
-      telegram: telegram.status === "fulfilled" ? telegram.value : { error: true },
-      llm_cache: cache.status === "fulfilled" ? cache.value : { error: true },
-      db: db.status === "fulfilled" ? db.value : { error: true },
-    };
-  } catch (e) {
-    return { configured: false, error: (e as { message?: string })?.message ?? "any" };
-  }
+/** GET /api/records/{id}/feedback. */
+export const backendGetFeedback = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ recordId: z.coerce.string().min(1).max(200) }).parse)
+  .handler(async ({ data }) => {
+    return callBackendSafe<any>(
+      { path: `/api/records/${encodeURIComponent(data.recordId)}/feedback` },
+      { feedback: [], up: 0, down: 0, total: 0 },
+    );
+  });
+
+/** POST /api/records/{id}/feedback — typowany kciuk-w-górę/dół dla lotu. */
+export const backendSubmitFeedback = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      recordId: z.coerce.string().min(1),
+      lot_id: z.string().min(1),
+      source: z.enum(["copart", "iaai"]),
+      vote: z.enum(["up", "down"]),
+      reason: z.string().max(500).optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    const { recordId, ...body } = data;
+    return callBackend<any>({
+      path: `/api/records/${encodeURIComponent(recordId)}/feedback`,
+      method: "POST",
+      body,
+    });
+  });
+
+/** DELETE /api/records/{id}/feedback/{lot_id}?source=... */
+export const backendDeleteFeedback = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      recordId: z.coerce.string().min(1),
+      lot_id: z.string().min(1),
+      source: z.enum(["copart", "iaai"]),
+    }).parse,
+  )
+  .handler(async ({ data }) => {
+    const params = new URLSearchParams({ source: data.source });
+    return callBackend<any>({
+      path: `/api/records/${encodeURIComponent(data.recordId)}/feedback/${encodeURIComponent(data.lot_id)}?${params}`,
+      method: "DELETE",
+    });
+  });
+
+/** POST /api/feedback/analyze — meta-analiza. */
+export const backendAnalyzeFeedback = createServerFn({ method: "POST" })
+  .handler(async () => callBackend<any>({ path: "/api/feedback/analyze", method: "POST" }));
+
+// ---------- LLM cache ----------
+
+export const backendClearLlmCache = createServerFn({ method: "POST" }).handler(async () => {
+  return callBackendSafe<{ removed: number }>(
+    { path: "/api/llm-cache", method: "DELETE" },
+    { removed: 0 },
+  );
 });
+
+export const backendListLlmCacheEntries = createServerFn({ method: "GET" })
+  .inputValidator((d: { limit?: number } | undefined) => d ?? {})
+  .handler(async ({ data }) => {
+    const params = new URLSearchParams();
+    if (data.limit) params.set("limit", String(data.limit));
+    const json = await callBackendSafe<{ items?: any[] }>(
+      { path: `/api/llm-cache/list?${params}` },
+      { items: [] },
+    );
+    return json.items ?? [];
+  });
+
+export const backendDeleteLlmCacheEntry = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ key: z.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    await callBackend<any>({
+      path: `/api/llm-cache/entry/${encodeURIComponent(data.key)}`,
+      method: "DELETE",
+    });
+    return { ok: true };
+  });
+
+// ---------- HTML cache ----------
+
+export const backendListHtmlCache = createServerFn({ method: "GET" })
+  .inputValidator((d: { source?: string; limit?: number } | undefined) => d ?? {})
+  .handler(async ({ data }) => {
+    const params = new URLSearchParams();
+    if (data.source) params.set("source", data.source);
+    if (data.limit) params.set("limit", String(data.limit));
+    const json = await callBackendSafe<{ items?: any[] }>(
+      { path: `/api/html-cache?${params}` },
+      { items: [] },
+    );
+    return json.items ?? [];
+  });
+
+/** Pobiera surowy HTML z /api/llm-cache/entry/* lub /api/html-cache/*. */
+export const backendFetchHtml = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ path: z.string().min(1).max(500) }).parse)
+  .handler(async ({ data }) => {
+    if (!data.path.startsWith("/api/llm-cache/entry/") && !data.path.startsWith("/api/html-cache/")) {
+      throw new Error("Forbidden path");
+    }
+    return callBackend<string>({ path: data.path, responseType: "text" });
+  });
+
+// ---------- Model normalizations ----------
+
+export const backendListModelNormalizations = createServerFn({ method: "GET" }).handler(async () => {
+  return callBackendSafe<{
+    items: Array<{
+      id: string | number;
+      make: string;
+      original_text: string;
+      normalized_model: string;
+      reason?: string;
+      verified_count?: number;
+    }>;
+    stats?: { total: number; by_make: Record<string, number> };
+  }>({ path: "/api/model-normalizations" }, { items: [] });
+});
+
+export const backendDeleteModelNormalization = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
+  .handler(async ({ data }) => {
+    await callBackend<any>({
+      path: `/api/model-normalizations/${encodeURIComponent(data.id)}`,
+      method: "DELETE",
+    });
+    return { ok: true };
+  });
+
+// ---------- Client message parsing ----------
+
+/** POST /api/parse-client-message — LLM zamienia wiadomość klienta na criteria. */
+export const backendParseClientMessage = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ message: z.string().min(1).max(5000) }).parse)
+  .handler(async ({ data }) => {
+    try {
+      const body = await callBackend<{
+        criteria?: any;
+        criteria_list?: any[];
+        count?: number;
+        summary?: string;
+        warnings?: string[];
+      }>({
+        path: "/api/parse-client-message",
+        method: "POST",
+        body: { message: data.message },
+        timeoutMs: 60_000,
+      });
+      const list: any[] = body.criteria_list ?? (body.criteria ? [body.criteria] : []);
+      return {
+        ok: true as const,
+        criteria: body.criteria ?? list[0] ?? null,
+        criteria_list: list,
+        count: body.count ?? list.length,
+        summary: body.summary ?? "",
+        warnings: body.warnings ?? [],
+      };
+    } catch (e: any) {
+      return { ok: false as const, status: e?.status ?? 0, detail: e?.message ?? "Błąd" };
+    }
+  });
+
+// ---------- Database browser ----------
+
+export const backendDbOverview = createServerFn({ method: "GET" }).handler(async () => {
+  return callBackendSafe<any>({ path: "/api/db/overview" }, null);
+});
+
+// ---------- Health ----------
+
+type ServiceStatus = "ok" | "down" | "unconfigured";
+
+/** Zbiorczy health-check: baza (Supabase) + backend (usacar-api /health). */
+export const backendHealth = createServerFn({ method: "GET" }).handler(async (): Promise<{
+  checkedAt: string;
+  durationMs: number;
+  services: {
+    database: { status: ServiceStatus; error?: string };
+    backend: { status: ServiceStatus; url?: string; error?: string };
+  };
+}> => {
+  const startedAt = Date.now();
+
+  let dbStatus: ServiceStatus = "ok";
+  let dbError: string | undefined;
+  try {
+    const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
+    if (error) { dbStatus = "down"; dbError = error.message; }
+  } catch (e) {
+    dbStatus = "down";
+    dbError = (e as Error).message;
+  }
+
+  const backendUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
+  let backendStatus: ServiceStatus = "unconfigured";
+  let backendErrorMsg: string | undefined;
+  if (backendUrl) {
+    try {
+      const token = process.env.API_BEARER_TOKEN;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const res = await fetch(`${backendUrl}/health`, {
+        signal: ctrl.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      clearTimeout(timer);
+      if (res.ok) backendStatus = "ok";
+      else { backendStatus = "down"; backendErrorMsg = `HTTP ${res.status}`; }
+    } catch (e) {
+      backendStatus = "down";
+      backendErrorMsg = (e as Error).message?.includes("abort") ? "Timeout (5s)" : (e as Error).message;
+    }
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    services: {
+      database: { status: dbStatus, error: dbError },
+      backend: {
+        status: backendStatus,
+        url: backendUrl ? new URL(backendUrl).host : undefined,
+        error: backendErrorMsg,
+      },
+    },
+  };
+});
+
+// ---------- Search audit (Supabase operation_logs) ----------
+
+export const backendListSearchAudit = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ limit: z.number().min(1).max(200).optional() }).parse)
+  .handler(async ({ data }): Promise<{ entries: SearchAuditEntry[] }> => {
+    const { data: rows, error } = await supabaseAdmin
+      .from("operation_logs")
+      .select("id, created_at, message, details, client_id, record_id")
+      .eq("operation", "audit")
+      .eq("step", "search.start")
+      .order("created_at", { ascending: false })
+      .limit(data.limit ?? 50);
+    if (error) throw new Error(error.message);
+    const entries: SearchAuditEntry[] = (rows ?? []).map((r: Record<string, unknown>) => {
+      const d = (r.details ?? {}) as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        created_at: String(r.created_at),
+        searched_by: (d.searched_by as string | null) ?? null,
+        message: (r.message as string | null) ?? "",
+        make: (d.make as string | null) ?? null,
+        model: (d.model as string | null) ?? null,
+        budget_usd: (d.budget_usd as number | null) ?? null,
+        client_id: (r.client_id as string | null) ?? null,
+        record_id: (r.record_id as string | null) ?? null,
+      };
+    });
+    return { entries };
+  });
