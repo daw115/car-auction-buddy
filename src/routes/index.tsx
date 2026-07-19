@@ -618,8 +618,7 @@ function HomePage() {
                 Batch wyszukiwanie
                 {batchEntries.length > 0 && (
                   <Badge variant="outline" className="ml-2 text-xs">
-                    {batchEntries.filter((e) => e.status === "done" || e.status === "completed").length}/
-                    {batchEntries.length} gotowe
+                    {batchDone}/{batchEntries.length} gotowe
                   </Badge>
                 )}
               </h2>
@@ -639,18 +638,15 @@ function HomePage() {
                   Wyszukaj wszystkie ({batchQueue.length})
                 </Button>
               )}
-              {batchEntries.length > 0 &&
-                batchEntries.every((e) => ["done", "completed", "error", "cancelled"].includes(e.status)) && (
-                  <Button size="sm" onClick={loadBatchResultsIntoView}>
-                    Załaduj wyniki do widoku
-                  </Button>
-                )}
-              {!batchRunning &&
-                batchEntries.some((e) => ["error", "failed", "cancelled"].includes(e.status)) && (
-                  <Button size="sm" variant="secondary" onClick={retryFailedBatch}>
-                    🔁 Ponów nieudane (
-                    {batchEntries.filter((e) => ["error", "failed", "cancelled"].includes(e.status)).length})
-                  </Button>
+              {batchEntries.length > 0 && batchAllFinished && (
+                <Button size="sm" onClick={loadBatchResultsIntoView}>
+                  Załaduj wyniki do widoku
+                </Button>
+              )}
+              {!batchRunning && failedJobIds.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={retryFailedBatch}>
+                  🔁 Ponów nieudane ({failedJobIds.length})
+                </Button>
               )}
               {!batchRunning && (
                 <Button size="sm" variant="ghost" onClick={clearBatch}>
@@ -662,27 +658,27 @@ function HomePage() {
 
           {batchEntries.length > 0 && (() => {
             const total = batchEntries.length;
-            const doneN = batchEntries.filter((e) => e.status === "done" || e.status === "completed").length;
-            const runningN = batchEntries.filter((e) => e.status === "running").length;
-            const queuedN = batchEntries.filter((e) => e.status === "queued").length;
-            const errN = batchEntries.filter((e) => e.status === "error" || e.status === "failed" || e.status === "cancelled").length;
-            const pct = Math.round((doneN / total) * 100);
+            const failedTotal = batchErroredCount + batchInterruptedCount;
+            const pct = Math.round((batchDone / total) * 100);
             return (
               <div className="mb-3">
                 <div className="h-2 w-full overflow-hidden rounded bg-muted">
                   <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  <span>{pct}% ({doneN}/{total})</span>
-                  {runningN > 0 && <span className="text-primary">▶ {runningN} w toku</span>}
-                  {queuedN > 0 && <span>⏳ {queuedN} w kolejce</span>}
-                  {errN > 0 && <span className="text-destructive">✕ {errN} błędów</span>}
+                  <span>{pct}% ({batchDone}/{total})</span>
+                  {batchRunningCount > 0 && <span className="text-primary">▶ {batchRunningCount} w toku</span>}
+                  {batchQueuedCount > 0 && <span>⏳ {batchQueuedCount} w kolejce</span>}
+                  {failedTotal > 0 && (
+                    <span className="text-destructive">
+                      ✕ {failedTotal} nieudane
+                      {batchInterruptedCount > 0 ? ` (w tym ${batchInterruptedCount} przerwane restartem)` : ""}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })()}
-
-
 
           {batchEntries.length === 0 ? (
             <ul className="space-y-1">
@@ -704,9 +700,22 @@ function HomePage() {
           ) : (
             <ul className="space-y-1">
               {batchEntries.map((e) => {
-                const done = e.status === "done" || e.status === "completed";
-                const failed = e.status === "error" || e.status === "failed" || e.status === "cancelled";
-                const running = e.status === "running";
+                const live = batchJobs[e.jobId];
+                const status = live?.status ?? e.initialStatus ?? "queued";
+                const done = status === "done" || status === "completed";
+                const interrupted = status === "interrupted";
+                const failed = interrupted || status === "error" || status === "failed" || status === "cancelled";
+                const running = status === "running";
+                const phase = live?.phase;
+                const listingsCount = live?.listings?.length ?? live?.analyzed_lots?.length;
+                const errorMessage = interrupted
+                  ? "Zadanie przerwane restartem serwera — spróbuj ponownie."
+                  : failed
+                    ? live?.message
+                    : undefined;
+                const errorPhases = failed && Array.isArray(live?.phases)
+                  ? (live!.phases as any[]).filter((p) => p && (p.status === "error" || p.status === "failed" || p.error))
+                  : undefined;
                 return (
                   <li
                     key={e.jobId}
@@ -724,7 +733,7 @@ function HomePage() {
                       ) : (
                         <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
-                      <span className="flex-1 truncate" title={failed ? e.errorMessage ?? "" : undefined}>
+                      <span className="flex-1 truncate" title={errorMessage ?? ""}>
                         {e.label}
                         {e.idempotent && (
                           <Badge variant="outline" className="ml-2 text-[10px]">
@@ -733,24 +742,24 @@ function HomePage() {
                         )}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {e.status}
-                        {e.phase ? ` · ${e.phase}` : ""}
-                        {e.listingsCount != null ? ` · ${e.listingsCount} ofert` : ""}
+                        {status}
+                        {phase ? ` · ${phase}` : ""}
+                        {listingsCount != null ? ` · ${listingsCount} ofert` : ""}
                       </span>
                     </div>
-                    {failed && (e.errorMessage || e.errorPhases?.length) && (
+                    {failed && (errorMessage || errorPhases?.length) && (
                       <details className="mt-2 ml-6">
                         <summary className="cursor-pointer text-xs text-destructive hover:underline">
                           Szczegóły błędu
                         </summary>
                         <div className="mt-1 space-y-1 rounded bg-destructive/5 p-2 text-xs">
-                          {e.errorMessage && (
+                          {errorMessage && (
                             <div>
                               <span className="font-medium">Komunikat:</span>{" "}
-                              <span className="text-muted-foreground">{e.errorMessage}</span>
+                              <span className="text-muted-foreground">{errorMessage}</span>
                             </div>
                           )}
-                          {e.errorPhases?.map((p, i) => (
+                          {errorPhases?.map((p: any, i: number) => (
                             <div key={i} className="border-l-2 border-destructive/40 pl-2">
                               <span className="font-medium">{p.name || "phase"}</span>
                               {p.status ? ` · ${p.status}` : ""}
@@ -765,9 +774,9 @@ function HomePage() {
                   </li>
                 );
               })}
-
             </ul>
           )}
+
           <p className="mt-2 text-xs text-muted-foreground">
             Backend puszcza scrapy sekwencyjnie (SEARCH_MAX_CONCURRENT=1) — batch tylko oszczędza N requestów,
             nie przyspiesza wykonania.
