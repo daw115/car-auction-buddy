@@ -96,12 +96,14 @@ async function callBackend<T>(opts: {
 
 export type BackendSearchResponse = {
   listings: CarLot[];
+  analyzed_lots?: AnalyzedLot[];
   source: "mock" | "live";
   job_id: string;
   criteria: ClientCriteria;
   vin_coverage?: any;
   analysis_notice?: string | null;
 };
+
 
 export type BackendJobStatus = {
   job_id: string;
