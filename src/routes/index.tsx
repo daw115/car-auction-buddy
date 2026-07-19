@@ -87,6 +87,8 @@ function HomePage() {
   const runSearch = useServerFn(backendSearch);
   const genReport = useServerFn(backendGenerateReport);
   const loadRecords = useServerFn(backendListRecords);
+  const backendJobStatusFn = useServerFn(backendJobStatus);
+
 
   const [criteria, setCriteria] = useState<ClientCriteria>({
     make: "",
