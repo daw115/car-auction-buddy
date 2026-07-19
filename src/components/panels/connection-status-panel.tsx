@@ -95,8 +95,7 @@ export function ConnectionStatusPanel() {
       {health && (
         <div className="space-y-2">
           <ServiceRow label="Baza danych" service={health.services.database} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} />
-          <ServiceRow label="Scraper" service={health.services.scraper} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} showUrl />
-          <ServiceRow label="AI" service={health.services.ai} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} showProvider />
+          <ServiceRow label="Backend (usacar-api)" service={health.services.backend} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} showUrl />
 
           <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
