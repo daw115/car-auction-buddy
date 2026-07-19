@@ -4,9 +4,9 @@ import { z } from "zod";
 const criteriaSchema = z.object({}).passthrough();
 
 function scraperBase() {
-  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-  if (!baseUrl) throw new Error("SCRAPER_BASE_URL nie jest ustawiony.");
-  const token = process.env.SCRAPER_API_TOKEN;
+  const baseUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
+  if (!baseUrl) throw new Error("API_BASE_URL nie jest ustawiony.");
+  const token = process.env.API_BEARER_TOKEN;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   return { baseUrl, headers };

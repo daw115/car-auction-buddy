@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 type Status = "ok" | "down" | "unconfigured";
 
 async function pingScraper(): Promise<Status> {
-  const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
+  const baseUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
   if (!baseUrl) return "unconfigured";
   try {
     const ctrl = new AbortController();
