@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
-import { Sparkles, SlidersHorizontal } from "lucide-react";
+import { Sparkles, SlidersHorizontal, ListChecks } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -42,6 +42,18 @@ function SettingsHub() {
             <p className="text-xs text-muted-foreground">
               Globalne przełączniki pipeline'u: tylko sprzedawcy typu insurance,
               wykluczenie kabrioletów itp.
+            </p>
+          </Card>
+        </Link>
+        <Link to="/settings/default-criteria">
+          <Card className="p-4 hover:bg-accent transition-colors h-full">
+            <div className="flex items-center gap-2 mb-2">
+              <ListChecks className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold">Domyślne kryteria</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Wartości startowe formularza wyszukiwania (marka, budżet, wykluczone
+              uszkodzenia, sources). User może je nadpisać przed „Szukaj”.
             </p>
           </Card>
         </Link>

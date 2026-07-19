@@ -20,6 +20,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsFiltersRouteImport } from './routes/settings.filters'
+import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
@@ -87,6 +88,11 @@ const IndexRoute = IndexRouteImport.update({
 const SettingsFiltersRoute = SettingsFiltersRouteImport.update({
   id: '/filters',
   path: '/filters',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsDefaultCriteriaRoute = SettingsDefaultCriteriaRouteImport.update({
+  id: '/default-criteria',
+  path: '/default-criteria',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsAiRoute = SettingsAiRouteImport.update({
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
+  '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
@@ -204,6 +211,7 @@ export interface FileRoutesByTo {
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
+  '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
@@ -231,6 +239,7 @@ export interface FileRoutesById {
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
+  '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
@@ -259,6 +268,7 @@ export interface FileRouteTypes {
     | '/api/version'
     | '/dev/logs'
     | '/settings/ai'
+    | '/settings/default-criteria'
     | '/settings/filters'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/api/version'
     | '/dev/logs'
     | '/settings/ai'
+    | '/settings/default-criteria'
     | '/settings/filters'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
@@ -311,6 +322,7 @@ export interface FileRouteTypes {
     | '/api/version'
     | '/dev/logs'
     | '/settings/ai'
+    | '/settings/default-criteria'
     | '/settings/filters'
     | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
@@ -423,6 +435,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsFiltersRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/default-criteria': {
+      id: '/settings/default-criteria'
+      path: '/default-criteria'
+      fullPath: '/settings/default-criteria'
+      preLoaderRoute: typeof SettingsDefaultCriteriaRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/ai': {
       id: '/settings/ai'
       path: '/ai'
@@ -519,11 +538,13 @@ declare module '@tanstack/react-router' {
 
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
+  SettingsDefaultCriteriaRoute: typeof SettingsDefaultCriteriaRoute
   SettingsFiltersRoute: typeof SettingsFiltersRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
+  SettingsDefaultCriteriaRoute: SettingsDefaultCriteriaRoute,
   SettingsFiltersRoute: SettingsFiltersRoute,
 }
 
