@@ -425,6 +425,80 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
           </form>
         )}
       </Card>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setDeleteMasterPw("");
+            setDeleteError("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Usunąć profil „{deleteTarget}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ta operacja usuwa hasło osobiste użytkownika. Przy następnym logowaniu
+              trzeba będzie ustawić je od nowa (wymagane hasło ogólne). Aby potwierdzić,
+              podaj hasło ogólne.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="delete-master-pw">Hasło ogólne</Label>
+            <Input
+              id="delete-master-pw"
+              type="password"
+              autoFocus
+              value={deleteMasterPw}
+              onChange={(e) => {
+                setDeleteMasterPw(e.target.value);
+                setDeleteError("");
+              }}
+            />
+            {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Anuluj</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!deleteMasterPw || deleteBusy}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!deleteTarget) return;
+                setDeleteBusy(true);
+                try {
+                  const res = await siteUserDeletePassword({
+                    data: {
+                      username: deleteTarget,
+                      masterPassword: deleteMasterPw,
+                    },
+                  });
+                  if (res.ok) {
+                    setDeleteTarget(null);
+                    setDeleteMasterPw("");
+                    setDeleteError("");
+                    setRefreshTick((t) => t + 1);
+                  } else if (res.error === "not_configured") {
+                    setDeleteError(
+                      "Serwer nie ma skonfigurowanego hasła ogólnego (SITE_MASTER_PASSWORD).",
+                    );
+                  } else {
+                    setDeleteError("Nieprawidłowe hasło ogólne");
+                  }
+                } catch (err) {
+                  console.error(err);
+                  setDeleteError("Nie udało się usunąć profilu");
+                } finally {
+                  setDeleteBusy(false);
+                }
+              }}
+            >
+              Usuń
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
