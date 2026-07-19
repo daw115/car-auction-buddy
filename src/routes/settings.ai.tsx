@@ -40,11 +40,28 @@ export const Route = createFileRoute("/settings/ai")({
 function AiSettingsPage() {
   const getFn = useServerFn(getAiProviders);
   const putFn = useServerFn(updateAiProviders);
+  const getModelsFn = useServerFn(getAiModels);
 
   const [tasks, setTasks] = useState<AiProviderTask[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [kiroModels, setKiroModels] = useState<AiModelsResponse | null>(null);
+  const [kiroModelsLoading, setKiroModelsLoading] = useState(true);
+  const [kiroModelsError, setKiroModelsError] = useState<string | null>(null);
+
+  const loadKiroModels = useCallback(async () => {
+    setKiroModelsLoading(true);
+    setKiroModelsError(null);
+    try {
+      const res = await getModelsFn({ data: { provider: "kiro" } });
+      setKiroModels(res);
+    } catch (e) {
+      setKiroModelsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKiroModelsLoading(false);
+    }
+  }, [getModelsFn]);
 
   const load = useCallback(async () => {
     setLoading(true);
