@@ -57,8 +57,8 @@ export function BackendRecordsPanel({
   activeRecordId: number | null;
   onSelectRecord: (id: number) => void;
 }) {
-  const fnListBackend = useServerFn(getBackendRecordsList);
-  const fnDeleteBackend = useServerFn(deleteBackendRecord);
+  const fnListBackend = useServerFn(backendListRecords);
+  const fnDeleteBackend = useServerFn(backendDeleteRecord);
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [userFilter, setUserFilter] = useState<string>("all");
@@ -202,7 +202,7 @@ export function BackendRecordsPanel({
 }
 
 export function SearchAuditPanel() {
-  const fnList = useServerFn(listSearchAudit);
+  const fnList = useServerFn(backendListSearchAudit);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["search-audit"],
     queryFn: () => fnList({ data: { limit: 50 } }),
@@ -364,8 +364,8 @@ export function RecordDetailView({
   recordId: number;
   onClose: () => void;
 }) {
-  const fnDetailBackend = useServerFn(getBackendRecordDetails);
-  const fnRegenerateBundles = useServerFn(regenerateBundles);
+  const fnDetailBackend = useServerFn(backendGetRecord);
+  const fnRegenerateBundles = useServerFn(backendRegenerateBundles);
   const queryClient = useQueryClient();
 
   const { data: record, isLoading } = useQuery({
