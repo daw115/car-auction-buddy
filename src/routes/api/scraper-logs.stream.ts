@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 // SSE proxy: streams logs from upstream scraper. Tries several known paths
-// and falls back through them. Keeps SCRAPER_API_TOKEN server-side.
+// and falls back through them. Keeps API_BEARER_TOKEN server-side.
 const CANDIDATE_PATHS = [
   "/api/logs/stream",
   "/logs/stream",
@@ -12,8 +12,8 @@ export const Route = createFileRoute("/api/scraper-logs/stream")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const baseUrl = process.env.SCRAPER_BASE_URL?.replace(/\/+$/, "");
-        const token = process.env.SCRAPER_API_TOKEN;
+        const baseUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
+        const token = process.env.API_BEARER_TOKEN;
 
         if (!baseUrl || !token) {
           return new Response("Scraper not configured", { status: 503 });

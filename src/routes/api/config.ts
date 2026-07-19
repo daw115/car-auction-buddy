@@ -26,8 +26,8 @@ export const Route = createFileRoute("/api/config")({
             GEMINI_ENTERPRISE_LOCATION: process.env.GEMINI_ENTERPRISE_LOCATION || "us-central1",
             GEMINI_ENTERPRISE_MODEL: process.env.GEMINI_ENTERPRISE_MODEL || "gemini-2.5-pro",
             AI_PROVIDER: process.env.AI_PROVIDER || (process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.GEMINI_API_KEY ? "gemini" : process.env.GEMINI_ENTERPRISE_SA_JSON ? "gemini_enterprise" : "anthropic"),
-            SCRAPER_BASE_URL: !!process.env.SCRAPER_BASE_URL,
-            SCRAPER_API_TOKEN: !!process.env.SCRAPER_API_TOKEN,
+            API_BASE_URL: !!process.env.API_BASE_URL,
+            API_BEARER_TOKEN: !!process.env.API_BEARER_TOKEN,
           },
         });
       },

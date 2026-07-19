@@ -9,11 +9,11 @@ import {
   backendGenerateReport,
   backendListRecords,
   backendJobStatus,
+  backendParseClientMessage,
   type BackendSearchResponse,
   type BackendRecordSummary,
   type BackendBatchJob,
 } from "@/functions/backend.functions";
-import { parseClientMessage } from "@/functions/api.functions";
 import type { AnalyzedLot, CarLot, ClientCriteria } from "@/lib/types";
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
@@ -127,7 +127,7 @@ function HomePage() {
   const genReport = useServerFn(backendGenerateReport);
   const loadRecords = useServerFn(backendListRecords);
   const backendJobStatusFn = useServerFn(backendJobStatus);
-  const parseMessageFn = useServerFn(parseClientMessage);
+  const parseMessageFn = useServerFn(backendParseClientMessage);
 
 
 
@@ -512,7 +512,7 @@ function HomePage() {
     setRecordsLoading(true);
     try {
       const res = await loadRecords();
-      const list = Array.isArray(res) ? res : (res as { records?: BackendRecordSummary[] }).records ?? [];
+      const list = ((res as unknown) as { records?: BackendRecordSummary[] }).records ?? [];
       setRecords(list);
     } catch (e) {
       const err = e as { message?: string };

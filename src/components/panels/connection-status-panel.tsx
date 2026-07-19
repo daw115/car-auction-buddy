@@ -11,7 +11,7 @@ import {
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { checkHealth } from "@/functions/api.functions";
+import { backendHealth } from "@/functions/backend.functions";
 
 type HealthService = {
   status: "ok" | "down" | "unconfigured";
@@ -23,11 +23,11 @@ type HealthService = {
 type HealthResult = {
   checkedAt: string;
   durationMs: number;
-  services: { database: HealthService; scraper: HealthService; ai: HealthService };
+  services: { database: HealthService; backend: HealthService };
 };
 
 export function ConnectionStatusPanel() {
-  const fnCheckHealth = useServerFn(checkHealth);
+  const fnCheckHealth = useServerFn(backendHealth);
   const [health, setHealth] = useState<HealthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,8 +95,7 @@ export function ConnectionStatusPanel() {
       {health && (
         <div className="space-y-2">
           <ServiceRow label="Baza danych" service={health.services.database} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} />
-          <ServiceRow label="Scraper" service={health.services.scraper} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} showUrl />
-          <ServiceRow label="AI" service={health.services.ai} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} showProvider />
+          <ServiceRow label="Backend (usacar-api)" service={health.services.backend} statusIcon={statusIcon} statusLabel={statusLabel} statusColor={statusColor} showUrl />
 
           <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">

@@ -26,7 +26,7 @@ export const Route = createFileRoute("/api/version")({
           },
           env: {
             anthropicModel: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-            scraperConfigured: !!process.env.SCRAPER_BASE_URL,
+            scraperConfigured: !!process.env.API_BASE_URL,
           },
         });
       },

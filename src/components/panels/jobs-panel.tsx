@@ -6,10 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LiveJobLogs } from "@/components/LiveJobLogs";
-import {
-  listActiveScraperJobs,
-  cancelScraperJob,
-} from "@/functions/api.functions";
+import { backendListJobs, backendCancelJob } from "@/functions/backend.functions";
 
 // ---- Active Jobs types ----
 export type ActiveJob = {
@@ -62,12 +59,12 @@ function phaseLine(p: { name: string; status: string; info?: Record<string, any>
 }
 
 export function ActiveJobsPanel({ emptyState }: { emptyState?: React.ReactNode } = {}) {
-  const fnListActive = useServerFn(listActiveScraperJobs);
-  const fnCancel = useServerFn(cancelScraperJob);
+  const fnListActive = useServerFn(backendListJobs);
+  const fnCancel = useServerFn(backendCancelJob);
 
   const { data: activeJobs } = useQuery({
     queryKey: ["active-jobs"],
-    queryFn: () => fnListActive(),
+    queryFn: () => fnListActive({ data: { activeOnly: true } }),
     refetchInterval: 2000,
   });
 

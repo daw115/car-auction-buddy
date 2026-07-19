@@ -41,24 +41,24 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import {
-  getDbOverview,
-  getBackendRecordsList,
-  getBackendRecordDetails,
-  deleteBackendRecord,
-  listAllJobs,
-  getJobDetails,
-  listLlmCacheEntries,
-  deleteLlmCacheEntry,
-  clearLlmCache,
-  listHtmlCache,
-  fetchAuthHtml,
-  getModelNormalizations,
-  deleteModelNormalization,
-  getRecordFeedback,
-  submitLotFeedback,
-  deleteLotFeedback,
-  analyzeFeedback,
-} from "@/functions/api.functions";
+  backendDbOverview,
+  backendListRecords,
+  backendGetRecord,
+  backendDeleteRecord,
+  backendListJobs,
+  backendJobStatus,
+  backendListLlmCacheEntries,
+  backendDeleteLlmCacheEntry,
+  backendClearLlmCache,
+  backendListHtmlCache,
+  backendFetchHtml,
+  backendListModelNormalizations,
+  backendDeleteModelNormalization,
+  backendGetFeedback,
+  backendSubmitFeedback,
+  backendDeleteFeedback,
+  backendAnalyzeFeedback,
+} from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -156,7 +156,7 @@ function Spin() {
 function OverviewSection() {
   const [data, setData] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
-  const fn = useServerFn(getDbOverview);
+  const fn = useServerFn(backendDbOverview);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -261,9 +261,9 @@ function RecordsSection() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const fn = useServerFn(getBackendRecordsList);
-  const fnDetail = useServerFn(getBackendRecordDetails);
-  const fnDelete = useServerFn(deleteBackendRecord);
+  const fn = useServerFn(backendListRecords);
+  const fnDetail = useServerFn(backendGetRecord);
+  const fnDelete = useServerFn(backendDeleteRecord);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -522,14 +522,14 @@ function JobsSection() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const fn = useServerFn(listAllJobs);
-  const fnDetail = useServerFn(getJobDetails);
+  const fn = useServerFn(backendListJobs);
+  const fnDetail = useServerFn(backendJobStatus);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await fn({ data: { limit: 50 } });
-      setJobs(r ?? []);
+      setJobs(r?.jobs ?? []);
     } catch {
       toast.error("Nie udało się pobrać jobów");
     } finally {
@@ -658,10 +658,10 @@ function JobsSection() {
 function LlmCacheSection() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const fn = useServerFn(listLlmCacheEntries);
-  const fnDelete = useServerFn(deleteLlmCacheEntry);
-  const fnClear = useServerFn(clearLlmCache);
-  const fnHtml = useServerFn(fetchAuthHtml);
+  const fn = useServerFn(backendListLlmCacheEntries);
+  const fnDelete = useServerFn(backendDeleteLlmCacheEntry);
+  const fnClear = useServerFn(backendClearLlmCache);
+  const fnHtml = useServerFn(backendFetchHtml);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -808,8 +808,8 @@ function HtmlCacheSection() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState("all");
-  const fn = useServerFn(listHtmlCache);
-  const fnHtml = useServerFn(fetchAuthHtml);
+  const fn = useServerFn(backendListHtmlCache);
+  const fnHtml = useServerFn(backendFetchHtml);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -911,8 +911,8 @@ function HtmlCacheSection() {
 function NormalizationsSection() {
   const [data, setData] = useState<{ items: any[]; stats?: any } | null>(null);
   const [loading, setLoading] = useState(true);
-  const fn = useServerFn(getModelNormalizations);
-  const fnDelete = useServerFn(deleteModelNormalization);
+  const fn = useServerFn(backendListModelNormalizations);
+  const fnDelete = useServerFn(backendDeleteModelNormalization);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1076,9 +1076,9 @@ function lotKey(lot: any): string {
 }
 
 function RecordDetailView({ record, recordId }: { record: any; recordId: string }) {
-  const fnGet = useServerFn(getRecordFeedback);
-  const fnSubmit = useServerFn(submitLotFeedback);
-  const fnDelete = useServerFn(deleteLotFeedback);
+  const fnGet = useServerFn(backendGetFeedback);
+  const fnSubmit = useServerFn(backendSubmitFeedback);
+  const fnDelete = useServerFn(backendDeleteFeedback);
 
   const [feedback, setFeedback] = useState<Record<string, FeedbackEntry>>({});
   const [loading, setLoading] = useState(true);
@@ -1308,7 +1308,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
 }
 
 function AnalyzeFeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const fn = useServerFn(analyzeFeedback);
+  const fn = useServerFn(backendAnalyzeFeedback);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
 
