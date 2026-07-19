@@ -269,7 +269,8 @@ function HomePage() {
     setResult(null);
     setSelected({});
     try {
-      const res = await runSearch({ data: { criteria } });
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
+      const res = await runSearch({ data: { criteria, ...auctionExtras } });
       const initial = normalizeResponse(res);
       setResult(initial);
       const total = res.analyzed_lots?.length ?? res.listings?.length ?? 0;
@@ -338,8 +339,9 @@ function HomePage() {
     setBatchRunning(true);
     setBatchEntries([]);
     try {
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
       const res = await runBatch({
-        data: { searches: batchQueue.map((c) => ({ criteria: c })) },
+        data: { searches: batchQueue.map((c) => ({ criteria: c, ...auctionExtras })) },
       });
       const initial: BatchEntry[] = res.jobs.map((j: BackendBatchJob, i: number) => ({
         jobId: j.job_id,
@@ -424,8 +426,9 @@ function HomePage() {
     }
     setBatchRunning(true);
     try {
+      const auctionExtras = buildAuctionExtras(disableAuctionFilter, auctionMinHours, auctionMaxHours);
       const res = await runBatch({
-        data: { searches: failed.map((e) => ({ criteria: e.criteria })) },
+        data: { searches: failed.map((e) => ({ criteria: e.criteria, ...auctionExtras })) },
       });
       // Podmień stare failed wpisy na nowe joby (zachowaj kolejność w liście).
       const newByOldJobId = new Map<string, BatchEntry>();
