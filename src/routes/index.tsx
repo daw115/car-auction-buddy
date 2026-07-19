@@ -86,11 +86,32 @@ function normalizeResponse(res: BackendSearchResponse): SearchResult {
 
 // ---------------- page ----------------
 
+function labelForCriteria(c: ClientCriteria): string {
+  const parts = [c.make, c.model].filter(Boolean).join(" ");
+  const years = c.year_from || c.year_to ? ` ${c.year_from ?? ""}${c.year_to ? `-${c.year_to}` : ""}` : "";
+  return `${parts}${years}`.trim() || "—";
+}
+
+type BatchEntry = {
+  jobId: string;
+  label: string;
+  criteria: ClientCriteria;
+  status: "queued" | "running" | "done" | "error" | "cancelled";
+  phase?: string | null;
+  progress?: number;
+  listingsCount?: number;
+  analyzed?: AnalyzedLot[];
+  errorMessage?: string;
+  idempotent?: boolean;
+};
+
 function HomePage() {
   const runSearch = useServerFn(backendSearch);
+  const runBatch = useServerFn(backendSearchBatch);
   const genReport = useServerFn(backendGenerateReport);
   const loadRecords = useServerFn(backendListRecords);
   const backendJobStatusFn = useServerFn(backendJobStatus);
+
 
 
   const [criteria, setCriteria] = useState<ClientCriteria>({
