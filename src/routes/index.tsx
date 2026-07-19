@@ -115,6 +115,7 @@ function HomePage() {
   const genReport = useServerFn(backendGenerateReport);
   const loadRecords = useServerFn(backendListRecords);
   const backendJobStatusFn = useServerFn(backendJobStatus);
+  const parseMessageFn = useServerFn(parseClientMessage);
 
 
 
