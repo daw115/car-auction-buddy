@@ -3,7 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { assertAuctionSourcesAvailable } from "@/functions/backend.functions";
-import { backendRequest } from "@/server/backend-transport.server";
+import { backendRequest } from "@/lib/backend-transport.server";
 import {
   auctionSourceSchema,
   normalizeAuctionSources,

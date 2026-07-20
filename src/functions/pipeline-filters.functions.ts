@@ -2,7 +2,7 @@
 // Transport przez src/server/backend-transport.server.ts.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { backendRequest } from "@/server/backend-transport.server";
+import { backendRequest } from "@/lib/backend-transport.server";
 
 export type PipelineFilter = {
   key: string;

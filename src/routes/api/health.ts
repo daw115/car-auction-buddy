@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { probeUbuntuApi } from "@/server/ubuntu-api.server";
+import { probeUbuntuApi } from "@/lib/ubuntu-api.server";
 
 type Status = "ok" | "down" | "unconfigured";
 
