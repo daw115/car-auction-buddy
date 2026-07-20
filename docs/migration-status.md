@@ -2,7 +2,12 @@
 
 Ten dokument jest **żywą tabelą stanu**. Aktualizuj go przy każdej zmianie źródła danych ekranu.
 
-**Stan bieżący (ta tura):** żaden ekran nie został przełączony. Runtime GUI nadal w 100% korzysta z legacy — Supabase (dane) + `API_BASE_URL` (scraper). Ubuntu API klient (`src/server/ubuntu-api.server.ts`) i kontrakt (`docs/ubuntu-api-contract.md`) zostały dodane jako addytywny fundament.
+**Stan bieżący (etap 2 — transport):** żaden ekran nie został przełączony na Ubuntu jako _źródło danych_. Runtime GUI nadal korzysta z Supabase dla danych, ale **warstwa transportu** dla wywołań FastAPI (core/jobs/records/cache/settings) została ujednolicona w `src/server/backend-transport.server.ts`. Wybór między Ubuntu API a legacy `API_BASE_URL` odbywa się na podstawie envów — bez runtime fallbacku po wybraniu Ubuntu. Stan endpointów: **`transport-ready, schema-unverified`**.
+
+- **Rollback transportu**: usuń wszystkie cztery envy Ubuntu (`UBUNTU_API_BASE_URL`, `UBUNTU_API_BEARER_TOKEN`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`) — transport wraca do legacy `API_BASE_URL`/`API_BEARER_TOKEN`.
+- **Częściowa konfiguracja Ubuntu ≠ rollback**: dowolny podzbiór czterech envów Ubuntu ⇒ fail closed z sanitized error „Incomplete Ubuntu API configuration". Legacy nie jest wtedy używany.
+- **Supabase** pozostaje legacy runtime dla wszystkich ekranów danych (records, watchlist, watch queue, dashboard, PasswordGate, operation_logs, ustawienia backed przez tabele).
+- **GUI/komponenty**: bez zmian. Migracja transportu jest niewidoczna dla klienta.
 
 ## Legenda
 

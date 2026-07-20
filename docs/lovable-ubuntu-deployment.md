@@ -97,11 +97,21 @@ Reguły:
 - Status `unconfigured` (brak envów) **nie** wymusza HTTP 503 na całym `/api/health`, dopóki żaden ekran produkcyjny nie zależy od Ubuntu API.
 - Status `down` przy skonfigurowanym Ubuntu API również nie wymusza 503 w tej fazie migracji — pojawi się jako degradacja w diagnostyce.
 
+## Kolejność rollout (etap 2 — transport)
+
+1. **Cloudflare Access + Ubuntu bearer** — utwórz aplikację Access dla hostname tunelu, wygeneruj service token i bearer token.
+2. **Ustaw komplet czterech envów Ubuntu** naraz w Lovable Cloud secrets: `UBUNTU_API_BASE_URL`, `UBUNTU_API_BEARER_TOKEN`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`. Częściowa konfiguracja = fail closed, GUI wywoła sanitized error zamiast requestu.
+3. **Sprawdź `GET /api/health`** — sekcja `services.ubuntuApi.status = "ok"`.
+4. **Read-only smoke** — wywołaj `GET /api/settings/ai-providers`, `GET /api/settings/pipeline-filters`, `GET /api/settings/default-criteria`, `GET /api/records`, `GET /api/jobs`. Wszystkie powinny odpowiadać spod tego samego backendu (Ubuntu).
+5. **Dopiero po smoke wykonuj mutacje** (`PUT` ustawień, `POST /api/search`, `DELETE /api/records/{id}` itd.). Po wybraniu Ubuntu **nie ma runtime fallbacku** do legacy — pomyłka konfiguracyjna nie zostanie zamaskowana kolejnym requestem do starego backendu.
+
 ## Rollback
 
-1. **Rollback konfiguracyjny**: usunięcie `UBUNTU_API_BASE_URL` (i innych `UBUNTU_*` / `CF_ACCESS_*`) przełącza klient w stan `unconfigured`. Ekrany produkcyjne dalej korzystają z legacy (Supabase + `API_BASE_URL`), bez wpływu na użytkownika.
-2. **Rollback ekranu**: jeśli ekran został przełączony na Ubuntu API i pojawił się regres, przywracamy commit ekranu — legacy code path pozostaje w repo do zakończenia migracji.
-3. **Awaryjny rollback tokenów**: patrz sekcja „Rotacja tokenów".
+1. **Rollback konfiguracyjny (pełny)**: usuń **wszystkie cztery** envy Ubuntu (`UBUNTU_API_BASE_URL`, `UBUNTU_API_BEARER_TOKEN`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`). Transport wraca do legacy `API_BASE_URL` + `API_BEARER_TOKEN` bez zmian kodu.
+2. **Częściowe usunięcie envów Ubuntu nie jest rollbackiem** — to fail closed. Dopóki którykolwiek z czterech envów Ubuntu jest ustawiony, GUI odrzuca każdy request z sanitized błędem „Incomplete Ubuntu API configuration".
+3. **Brak runtime fallbacku po wybraniu Ubuntu**: timeout / 401 / 403 / 429 / 5xx / network error nie powodują automatycznego przełączenia na legacy. Krytyczne dla `POST`/`PUT`/`DELETE` — fallback mógłby zdublować mutację.
+4. **Rollback ekranu**: jeśli ekran został przełączony na Ubuntu API jako _źródło danych_ (nie w etapie 2) i pojawił się regres, przywracamy commit ekranu — legacy code path pozostaje w repo do zakończenia migracji.
+5. **Awaryjny rollback tokenów**: patrz sekcja „Rotacja tokenów".
 
 ## Rotacja tokenów
 

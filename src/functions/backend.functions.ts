@@ -16,6 +16,11 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 import {
+  backendRequest,
+  backendRequestSafe,
+  type BackendRequest,
+} from "@/server/backend-transport.server";
+import {
   auctionSourceCapabilitiesPayloadSchema,
   auctionSourceSchema,
   getUnavailableAuctionSources,
@@ -24,79 +29,40 @@ import {
 } from "@/lib/auction-sources";
 
 // ---------- konfiguracja ----------
+// Wybór transportu (Ubuntu API za Cloudflare Access vs legacy API_BASE_URL)
+// znajduje się w src/server/backend-transport.server.ts. Nie odczytuj tu envów
+// bezpośrednio poza wąskim probem /health i sprawdzeniem capabilities.
 
-function getBackendConfig(): { baseUrl: string; token: string } {
-  const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
-  const token = process.env.API_BEARER_TOKEN ?? "";
-  if (!baseUrl || !token) {
-    throw new Error("Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.");
-  }
-  return { baseUrl, token };
-}
+type BackendError = { status: number; message: string; body?: unknown };
 
-type BackendError = { status: number; message: string; body?: any };
-
-function backendError(status: number, message: string, body?: any): BackendError {
+function backendError(status: number, message: string, body?: unknown): BackendError {
   return { status, message, body };
 }
 
-// Wspólne wywołanie backendu.
+// Wspólne wywołanie backendu — delegowane do zunifikowanego transportu.
 async function callBackend<T>(opts: {
   path: string;
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-  body?: any;
+  body?: unknown;
   timeoutMs?: number;
   responseType?: "json" | "text";
 }): Promise<T> {
-  const { baseUrl, token } = getBackendConfig();
-  const method = opts.method ?? "GET";
-  const timeoutMs = opts.timeoutMs ?? 30_000;
-  const responseType = opts.responseType ?? "json";
-
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const req: BackendRequest = {
+    path: opts.path,
+    method: opts.method,
+    body: opts.body,
+    timeoutMs: opts.timeoutMs,
+    responseType: opts.responseType,
+  };
   try {
-    const res = await fetch(`${baseUrl}${opts.path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: responseType === "json" ? "application/json" : "text/html, */*",
-        ...(opts.body != null ? { "Content-Type": "application/json" } : {}),
-      },
-      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
-      signal: ctrl.signal,
-    });
-
-    const rawText = await res.text();
-    let parsed: any = rawText;
-    if (responseType === "json" && rawText) {
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        /* keep raw text */
-      }
-    }
-
-    if (!res.ok) {
-      let msg: string;
-      if (res.status === 401 || res.status === 403)
-        msg = "Błąd konfiguracji — skontaktuj się z administratorem.";
-      else if (res.status === 404) msg = "Nie znaleziono zasobu.";
-      else if (res.status >= 500) msg = "Błąd backendu, spróbuj ponownie za chwilę.";
-      else msg = `Backend ${res.status}`;
-      const detail = (parsed && typeof parsed === "object" && (parsed as any).detail) || undefined;
-      throw backendError(res.status, detail ? `${msg}: ${detail}` : msg, parsed);
-    }
-
-    return parsed as T;
+    return await backendRequest<T>(req);
   } catch (err) {
-    if (err && typeof err === "object" && "status" in err) throw err;
-    if ((err as Error).name === "AbortError") {
-      throw backendError(408, "Przekroczono limit czasu — spróbuj ponownie.");
-    }
-    throw backendError(0, (err as Error).message || "Błąd połączenia z backendem.");
-  } finally {
-    clearTimeout(timer);
+    const e = err as Partial<BackendError>;
+    throw backendError(
+      typeof e?.status === "number" ? e.status : 0,
+      typeof e?.message === "string" ? e.message : "Błąd połączenia z backendem.",
+      e?.body,
+    );
   }
 }
 
@@ -105,17 +71,28 @@ async function callBackendSafe<T>(
   opts: Parameters<typeof callBackend>[0],
   fallback: T,
 ): Promise<T> {
-  try {
-    return await callBackend<T>(opts);
-  } catch {
-    return fallback;
-  }
+  return backendRequestSafe<T>(
+    {
+      path: opts.path,
+      method: opts.method,
+      body: opts.body,
+      timeoutMs: opts.timeoutMs,
+      responseType: opts.responseType,
+    },
+    fallback,
+  );
 }
 
 let sourceCapabilitiesCache: { expiresAt: number; value: AuctionSourceCapabilities } | undefined;
 
 function fallbackSourceCapabilities(): AuctionSourceCapabilities {
-  const backendConfigured = !!process.env.API_BASE_URL && !!process.env.API_BEARER_TOKEN;
+  const legacyConfigured = !!process.env.API_BASE_URL && !!process.env.API_BEARER_TOKEN;
+  const ubuntuConfigured =
+    !!process.env.UBUNTU_API_BASE_URL &&
+    !!process.env.UBUNTU_API_BEARER_TOKEN &&
+    !!process.env.CF_ACCESS_CLIENT_ID &&
+    !!process.env.CF_ACCESS_CLIENT_SECRET;
+  const backendConfigured = ubuntuConfigured || legacyConfigured;
   const manheimEnabled = process.env.MANHEIM_BACKEND_ENABLED === "true";
   return {
     checkedAt: new Date().toISOString(),
