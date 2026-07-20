@@ -268,7 +268,7 @@ function DiagnosticsPage() {
             </Alert>
           )}
 
-          {(Object.keys(grouped) as Check["category"][]).map((cat) => (
+          {(Object.keys(grouped) as Check["category"][]).filter((c) => c !== "ubuntu").map((cat) => (
             <Card key={cat} className="p-4 space-y-3">
               <h2 className="font-semibold">{CATEGORY_LABEL[cat]}</h2>
               <div className="space-y-2">
