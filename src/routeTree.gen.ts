@@ -21,12 +21,14 @@ import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsFiltersRouteImport } from './routes/settings.filters'
+import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } from './routes/[.well-known]/oauth-protected-resource'
 import { Route as Char91DotmcpChar93ListToolsRouteImport } from './routes/[.mcp]/list-tools'
@@ -96,6 +98,11 @@ const SettingsFiltersRoute = SettingsFiltersRouteImport.update({
   path: '/filters',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsDefaultCriteriaRoute = SettingsDefaultCriteriaRouteImport.update({
   id: '/default-criteria',
   path: '/default-criteria',
@@ -124,6 +131,11 @@ const ApiRecordsRoute = ApiRecordsRouteImport.update({
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
   path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDiagnosticsRoute = ApiDiagnosticsRouteImport.update({
+  id: '/api/diagnostics',
+  path: '/api/diagnostics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiConfigRoute = ApiConfigRouteImport.update({
@@ -185,12 +197,14 @@ export interface FileRoutesByFullPath {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
@@ -212,12 +226,14 @@ export interface FileRoutesByTo {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
@@ -241,12 +257,14 @@ export interface FileRoutesById {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
@@ -271,12 +289,14 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/api/config'
+    | '/api/diagnostics'
     | '/api/health'
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
+    | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings/'
     | '/.mcp/invoke-tool/$tool'
@@ -298,12 +318,14 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/api/config'
+    | '/api/diagnostics'
     | '/api/health'
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
+    | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings'
     | '/.mcp/invoke-tool/$tool'
@@ -326,12 +348,14 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/api/config'
+    | '/api/diagnostics'
     | '/api/health'
     | '/api/records'
     | '/api/version'
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
+    | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings/'
     | '/.mcp/invoke-tool/$tool'
@@ -355,6 +379,7 @@ export interface RootRouteChildren {
   Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
   Char91DotwellKnownChar93OauthProtectedResourceRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   ApiConfigRoute: typeof ApiConfigRoute
+  ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiRecordsRoute: typeof ApiRecordsRoute
   ApiVersionRoute: typeof ApiVersionRoute
@@ -452,6 +477,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsFiltersRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/diagnostics': {
+      id: '/settings/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/settings/diagnostics'
+      preLoaderRoute: typeof SettingsDiagnosticsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/default-criteria': {
       id: '/settings/default-criteria'
       path: '/default-criteria'
@@ -492,6 +524,13 @@ declare module '@tanstack/react-router' {
       path: '/api/health'
       fullPath: '/api/health'
       preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/diagnostics': {
+      id: '/api/diagnostics'
+      path: '/api/diagnostics'
+      fullPath: '/api/diagnostics'
+      preLoaderRoute: typeof ApiDiagnosticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/config': {
@@ -556,6 +595,7 @@ declare module '@tanstack/react-router' {
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
   SettingsDefaultCriteriaRoute: typeof SettingsDefaultCriteriaRoute
+  SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsFiltersRoute: typeof SettingsFiltersRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -563,6 +603,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
   SettingsDefaultCriteriaRoute: SettingsDefaultCriteriaRoute,
+  SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsFiltersRoute: SettingsFiltersRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
@@ -586,6 +627,7 @@ const rootRouteChildren: RootRouteChildren = {
   Char91DotwellKnownChar93OauthProtectedResourceRoute:
     Char91DotwellKnownChar93OauthProtectedResourceRoute,
   ApiConfigRoute: ApiConfigRoute,
+  ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiRecordsRoute: ApiRecordsRoute,
   ApiVersionRoute: ApiVersionRoute,
