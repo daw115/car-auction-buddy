@@ -71,7 +71,6 @@ const UBUNTU_ENV_NAMES = [
   "CF_ACCESS_CLIENT_SECRET",
 ] as const;
 
-
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({
     meta: [
@@ -193,7 +192,6 @@ function DiagnosticsPage() {
         envError={query.error as Error | null}
       />
 
-
       <Card className="p-4 space-y-3">
         <h2 className="font-semibold">Konfiguracja /config</h2>
         {configQuery.isLoading && (
@@ -251,8 +249,8 @@ function DiagnosticsPage() {
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertTitle>Wszystkie wymagane zmienne są ustawione</AlertTitle>
               <AlertDescription>
-                {query.data.summary.ok}/{query.data.summary.total} zmiennych OK. Ostatnie sprawdzenie:{" "}
-                {new Date(query.data.checkedAt).toLocaleString("pl-PL")}
+                {query.data.summary.ok}/{query.data.summary.total} zmiennych OK. Ostatnie
+                sprawdzenie: {new Date(query.data.checkedAt).toLocaleString("pl-PL")}
               </AlertDescription>
             </Alert>
           ) : (
@@ -262,22 +260,24 @@ function DiagnosticsPage() {
                 Brakuje {query.data.summary.missingRequired} wymaganych zmiennych środowiskowych
               </AlertTitle>
               <AlertDescription>
-                Aplikacja może działać niestabilnie (np. „Błąd połączenia z serwerem" przy logowaniu).
-                Uzupełnij sekrety w Lovable Cloud → Secrets.
+                Aplikacja może działać niestabilnie (np. „Błąd połączenia z serwerem" przy
+                logowaniu). Uzupełnij sekrety w Lovable Cloud → Secrets.
               </AlertDescription>
             </Alert>
           )}
 
-          {(Object.keys(grouped) as Check["category"][]).filter((c) => c !== "ubuntu").map((cat) => (
-            <Card key={cat} className="p-4 space-y-3">
-              <h2 className="font-semibold">{CATEGORY_LABEL[cat]}</h2>
-              <div className="space-y-2">
-                {grouped[cat].map((c) => (
-                  <CheckRow key={c.name} check={c} />
-                ))}
-              </div>
-            </Card>
-          ))}
+          {(Object.keys(grouped) as Check["category"][])
+            .filter((c) => c !== "ubuntu")
+            .map((cat) => (
+              <Card key={cat} className="p-4 space-y-3">
+                <h2 className="font-semibold">{CATEGORY_LABEL[cat]}</h2>
+                <div className="space-y-2">
+                  {grouped[cat].map((c) => (
+                    <CheckRow key={c.name} check={c} />
+                  ))}
+                </div>
+              </Card>
+            ))}
         </>
       )}
     </div>
@@ -310,9 +310,7 @@ function ReadinessBanner({
       <Alert>
         <CheckCircle2 className="h-4 w-4 text-green-600" />
         <AlertTitle>Aplikacja gotowa do pracy</AlertTitle>
-        <AlertDescription>
-          Backend, konfiguracja i sekrety są w porządku.
-        </AlertDescription>
+        <AlertDescription>Backend, konfiguracja i sekrety są w porządku.</AlertDescription>
       </Alert>
     );
   }
@@ -340,14 +338,15 @@ function ServiceRow({ label, status }: { label: string; status: HealthStatus }) 
     ) : (
       <AlertTriangle className="h-4 w-4 text-muted-foreground" />
     );
-  const label2 =
-    status === "ok" ? "OK" : status === "down" ? "Niedostępny" : "Nieskonfigurowany";
+  const label2 = status === "ok" ? "OK" : status === "down" ? "Niedostępny" : "Nieskonfigurowany";
   return (
     <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
       <span className="flex items-center gap-2">
         {icon} {label}
       </span>
-      <Badge variant={status === "ok" ? "outline" : status === "down" ? "destructive" : "secondary"}>
+      <Badge
+        variant={status === "ok" ? "outline" : status === "down" ? "destructive" : "secondary"}
+      >
         {label2}
       </Badge>
     </div>
@@ -386,9 +385,7 @@ function CheckRow({ check }: { check: Check }) {
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-1">{check.description}</p>
-        {problem && check.hint && (
-          <p className="text-xs mt-1 text-destructive">💡 {check.hint}</p>
-        )}
+        {problem && check.hint && <p className="text-xs mt-1 text-destructive">💡 {check.hint}</p>}
       </div>
     </div>
   );
@@ -413,7 +410,9 @@ function classifyUbuntuConfig(envs: Check[]): {
   presentCount: number;
   total: number;
 } {
-  const required = envs.filter((e) => UBUNTU_ENV_NAMES.includes(e.name as (typeof UBUNTU_ENV_NAMES)[number]));
+  const required = envs.filter((e) =>
+    UBUNTU_ENV_NAMES.includes(e.name as (typeof UBUNTU_ENV_NAMES)[number]),
+  );
   const total = UBUNTU_ENV_NAMES.length;
   const presentCount = required.filter((e) => e.present).length;
   if (presentCount === 0) return { state: "absent", presentCount, total };
@@ -475,9 +474,9 @@ function UbuntuApiCard({
           <XCircle className="h-4 w-4" />
           <AlertTitle>Konfiguracja niepełna — fail-closed</AlertTitle>
           <AlertDescription>
-            Ustawionych {cfg.presentCount}/{cfg.total} zmiennych Ubuntu. Transport nie
-            przełączy się na Ubuntu API dopóki wszystkie cztery zmienne nie są obecne.
-            Uzupełnij brakujące lub usuń istniejące, aby przywrócić spójny stan.
+            Ustawionych {cfg.presentCount}/{cfg.total} zmiennych Ubuntu. Transport nie przełączy się
+            na Ubuntu API dopóki wszystkie cztery zmienne nie są obecne. Uzupełnij brakujące lub
+            usuń istniejące, aby przywrócić spójny stan.
           </AlertDescription>
         </Alert>
       )}
@@ -495,8 +494,8 @@ function UbuntuApiCard({
           <XCircle className="h-4 w-4" />
           <AlertTitle>Ubuntu API skonfigurowane, ale niedostępne</AlertTitle>
           <AlertDescription>
-            Cloudflare Access odrzuca żądanie lub host nie odpowiada. Sprawdź service token
-            i dostępność FastAPI.
+            Cloudflare Access odrzuca żądanie lub host nie odpowiada. Sprawdź service token i
+            dostępność FastAPI.
           </AlertDescription>
         </Alert>
       )}
@@ -561,4 +560,3 @@ function UbuntuEnvRow({ check }: { check: Check }) {
     </div>
   );
 }
-
