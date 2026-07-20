@@ -57,6 +57,18 @@ function SettingsHub() {
             </p>
           </Card>
         </Link>
+        <Link to="/settings/diagnostics">
+          <Card className="p-4 hover:bg-accent transition-colors h-full">
+            <div className="flex items-center gap-2 mb-2">
+              <Stethoscope className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold">Diagnostyka</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sprawdź obecność wymaganych zmiennych środowiskowych i sekretów
+              (np. SITE_SESSION_SECRET) — jasny komunikat, gdy czegoś brakuje.
+            </p>
+          </Card>
+        </Link>
       </div>
     </div>
   );
