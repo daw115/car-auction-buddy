@@ -178,7 +178,9 @@ function publicMessage(kind: UbuntuApiErrorKind, status: number | null): string 
       return "Ubuntu API returned an unexpected response.";
     case "upstream_error":
     default:
-      return status ? `Ubuntu API returned an error (status ${status}).` : "Ubuntu API returned an error.";
+      return status
+        ? `Ubuntu API returned an error (status ${status}).`
+        : "Ubuntu API returned an error.";
   }
 }
 
