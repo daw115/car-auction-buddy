@@ -25,7 +25,8 @@ export type ClientCase = {
   client_id: string;
   title: string;
   description: string | null;
-  default_criteria: Record<string, unknown> | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  default_criteria: Record<string, any> | null;
   status: "open" | "paused" | "closed";
   auto_refresh_enabled: boolean;
   auto_refresh_interval_hours: number;
