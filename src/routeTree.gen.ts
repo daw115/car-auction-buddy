@@ -30,6 +30,7 @@ import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } from './routes/[.well-known]/oauth-protected-resource'
 import { Route as Char91DotmcpChar93ListToolsRouteImport } from './routes/[.mcp]/list-tools'
@@ -144,6 +145,11 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDiagnosticsRoute = ApiDiagnosticsRouteImport.update({
+  id: '/api/diagnostics',
+  path: '/api/diagnostics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiConfigRoute = ApiConfigRouteImport.update({
   id: '/api/config',
   path: '/api/config',
@@ -205,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
@@ -235,6 +242,7 @@ export interface FileRoutesByTo {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
@@ -267,6 +275,7 @@ export interface FileRoutesById {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
+  '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
@@ -300,6 +309,7 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/api/config'
+    | '/api/diagnostics'
     | '/api/health'
     | '/api/records'
     | '/api/version'
@@ -330,6 +340,7 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/api/config'
+    | '/api/diagnostics'
     | '/api/health'
     | '/api/records'
     | '/api/version'
@@ -361,6 +372,7 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/api/config'
+    | '/api/diagnostics'
     | '/api/health'
     | '/api/records'
     | '/api/version'
@@ -393,6 +405,7 @@ export interface RootRouteChildren {
   Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
   Char91DotwellKnownChar93OauthProtectedResourceRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   ApiConfigRoute: typeof ApiConfigRoute
+  ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiRecordsRoute: typeof ApiRecordsRoute
   ApiVersionRoute: typeof ApiVersionRoute
@@ -553,6 +566,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/diagnostics': {
+      id: '/api/diagnostics'
+      path: '/api/diagnostics'
+      fullPath: '/api/diagnostics'
+      preLoaderRoute: typeof ApiDiagnosticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/config': {
       id: '/api/config'
       path: '/api/config'
@@ -649,6 +669,7 @@ const rootRouteChildren: RootRouteChildren = {
   Char91DotwellKnownChar93OauthProtectedResourceRoute:
     Char91DotwellKnownChar93OauthProtectedResourceRoute,
   ApiConfigRoute: ApiConfigRoute,
+  ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiRecordsRoute: ApiRecordsRoute,
   ApiVersionRoute: ApiVersionRoute,

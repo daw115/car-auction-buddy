@@ -12,9 +12,15 @@
 // historycznie na ten sam backend (potwierdzone diagnostycznie). Zostały
 // scalone do API_BASE_URL / API_BEARER_TOKEN i skasowane.
 
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
+import {
+  backendRequest,
+  backendRequestSafe,
+  isBackendTransportConfigured,
+} from "@/server/backend-transport.server";
+import type { BackendRequest } from "@/server/backend-transport.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 import {
@@ -27,124 +33,90 @@ import {
 
 // ---------- konfiguracja ----------
 
-function getBackendConfig(): { baseUrl: string; token: string } {
-  const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
-  const token = process.env.API_BEARER_TOKEN ?? "";
-  if (!baseUrl || !token) {
-    throw new Error("Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.");
-  }
-  return { baseUrl, token };
-}
-
 type BackendError = { status: number; message: string; body?: any };
 
 function backendError(status: number, message: string, body?: any): BackendError {
   return { status, message, body };
 }
 
-// Wspólne wywołanie backendu.
-async function callBackend<T>(opts: {
+// Wspólne wywołanie backendu przez fail-closed selektor Ubuntu/legacy.
+const callBackend = createServerOnlyFn(async function callBackend<T>(opts: {
   path: string;
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-  body?: any;
+  body?: unknown;
   timeoutMs?: number;
   responseType?: "json" | "text";
 }): Promise<T> {
-  const { baseUrl, token } = getBackendConfig();
-  const method = opts.method ?? "GET";
-  const timeoutMs = opts.timeoutMs ?? 30_000;
-  const responseType = opts.responseType ?? "json";
-
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const request: BackendRequest = {
+    path: opts.path,
+    method: opts.method,
+    body: opts.body,
+    timeoutMs: opts.timeoutMs,
+    responseType: opts.responseType,
+  };
   try {
-    const res = await fetch(`${baseUrl}${opts.path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: responseType === "json" ? "application/json" : "text/html, */*",
-        ...(opts.body != null ? { "Content-Type": "application/json" } : {}),
-      },
-      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
-      signal: ctrl.signal,
-    });
-
-    const rawText = await res.text();
-    let parsed: any = rawText;
-    if (responseType === "json" && rawText) {
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        /* keep raw text */
-      }
-    }
-
-    if (!res.ok) {
-      let msg: string;
-      if (res.status === 401 || res.status === 403)
-        msg = "Błąd konfiguracji — skontaktuj się z administratorem.";
-      else if (res.status === 404) msg = "Nie znaleziono zasobu.";
-      else if (res.status >= 500) msg = "Błąd backendu, spróbuj ponownie za chwilę.";
-      else msg = `Backend ${res.status}`;
-      const detail = (parsed && typeof parsed === "object" && (parsed as any).detail) || undefined;
-      throw backendError(res.status, detail ? `${msg}: ${detail}` : msg, parsed);
-    }
-
-    return parsed as T;
-  } catch (err) {
-    if (err && typeof err === "object" && "status" in err) throw err;
-    if ((err as Error).name === "AbortError") {
-      throw backendError(408, "Przekroczono limit czasu — spróbuj ponownie.");
-    }
-    throw backendError(0, (err as Error).message || "Błąd połączenia z backendem.");
-  } finally {
-    clearTimeout(timer);
+    return await backendRequest<T>(request);
+  } catch (error) {
+    const typed = error as Partial<BackendError>;
+    throw backendError(
+      typeof typed.status === "number" ? typed.status : 0,
+      typeof typed.message === "string" ? typed.message : "Błąd połączenia z backendem.",
+      typed.body,
+    );
   }
-}
+});
 
-// Wariant safe (nie rzuca, zwraca fallback) — dla list/health.
-async function callBackendSafe<T>(
+// Wariant safe zwraca fallback przy błędach operacyjnych, ale nie ukrywa
+// częściowej konfiguracji Ubuntu — tę backendRequestSafe odrzuca fail-closed.
+const callBackendSafe = createServerOnlyFn(async function callBackendSafe<T>(
   opts: Parameters<typeof callBackend>[0],
   fallback: T,
 ): Promise<T> {
-  try {
-    return await callBackend<T>(opts);
-  } catch {
-    return fallback;
-  }
-}
+  return backendRequestSafe<T>(
+    {
+      path: opts.path,
+      method: opts.method,
+      body: opts.body,
+      timeoutMs: opts.timeoutMs,
+      responseType: opts.responseType,
+    },
+    fallback,
+  );
+});
 
 let sourceCapabilitiesCache: { expiresAt: number; value: AuctionSourceCapabilities } | undefined;
 
-function fallbackSourceCapabilities(): AuctionSourceCapabilities {
-  const backendConfigured = !!process.env.API_BASE_URL && !!process.env.API_BEARER_TOKEN;
-  const manheimEnabled = process.env.MANHEIM_BACKEND_ENABLED === "true";
-  return {
-    checkedAt: new Date().toISOString(),
-    sources: {
-      copart: {
-        available: backendConfigured,
-        mode: backendConfigured ? "live" : "unavailable",
-        reason: backendConfigured ? undefined : "backend_unconfigured",
+const fallbackSourceCapabilities = createServerOnlyFn(
+  function fallbackSourceCapabilities(): AuctionSourceCapabilities {
+    const backendConfigured = isBackendTransportConfigured();
+    const manheimEnabled = process.env.MANHEIM_BACKEND_ENABLED === "true";
+    return {
+      checkedAt: new Date().toISOString(),
+      sources: {
+        copart: {
+          available: backendConfigured,
+          mode: backendConfigured ? "live" : "unavailable",
+          reason: backendConfigured ? undefined : "backend_unconfigured",
+        },
+        iaai: {
+          available: backendConfigured,
+          mode: backendConfigured ? "live" : "unavailable",
+          reason: backendConfigured ? undefined : "backend_unconfigured",
+        },
+        manheim: {
+          available: backendConfigured && manheimEnabled,
+          mode: backendConfigured && manheimEnabled ? "official_api" : "unavailable",
+          reason:
+            backendConfigured && manheimEnabled
+              ? "enabled_by_server_configuration"
+              : backendConfigured
+                ? "credentials_or_adapter_missing"
+                : "backend_unconfigured",
+        },
       },
-      iaai: {
-        available: backendConfigured,
-        mode: backendConfigured ? "live" : "unavailable",
-        reason: backendConfigured ? undefined : "backend_unconfigured",
-      },
-      manheim: {
-        available: backendConfigured && manheimEnabled,
-        mode: backendConfigured && manheimEnabled ? "official_api" : "unavailable",
-        reason:
-          backendConfigured && manheimEnabled
-            ? "enabled_by_server_configuration"
-            : backendConfigured
-              ? "credentials_or_adapter_missing"
-              : "backend_unconfigured",
-      },
-    },
-  };
-}
+    };
+  },
+);
 
 function withManheimUnavailable(
   capabilities: AuctionSourceCapabilities,

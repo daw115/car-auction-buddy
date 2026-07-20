@@ -1,22 +1,15 @@
 // Proxy do backendu FastAPI: /api/settings/default-criteria
-import { createServerFn } from "@tanstack/react-start";
+// Transport wybierany przez wspólny server-only backend transport.
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { assertAuctionSourcesAvailable } from "@/functions/backend.functions";
+import { backendRequest } from "@/server/backend-transport.server";
 import {
   auctionSourceSchema,
   normalizeAuctionSources,
   type AuctionSource,
 } from "@/lib/auction-sources";
-
-type Cfg = { baseUrl: string; token: string };
-function cfg(): Cfg {
-  const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
-  const token = process.env.API_BEARER_TOKEN ?? "";
-  if (!baseUrl || !token)
-    throw new Error("Backend nieskonfigurowany (API_BASE_URL / API_BEARER_TOKEN).");
-  return { baseUrl, token };
-}
 
 export type DefaultCriteria = {
   make: string | null;
@@ -37,36 +30,18 @@ export type DefaultCriteriaSaveResponse = {
   settings: DefaultCriteria;
 };
 
-async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Promise<T> {
-  const { baseUrl, token } = cfg();
-  const res = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      ...(body != null ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
-  const txt = await res.text();
-  let parsed: unknown = txt;
+const call = createServerOnlyFn(async function call<T>(
+  path: string,
+  method: "GET" | "PUT",
+  body?: unknown,
+): Promise<T> {
   try {
-    parsed = JSON.parse(txt);
-  } catch {
-    /* keep text */
+    return await backendRequest<T>({ path, method, body });
+  } catch (error) {
+    const message = (error as { message?: unknown } | undefined)?.message;
+    throw new Error(typeof message === "string" ? message : "Błąd backendu");
   }
-  if (!res.ok) {
-    const p = parsed as { detail?: unknown } | string;
-    const msg =
-      typeof p === "object" && p && "detail" in p && p.detail
-        ? typeof p.detail === "string"
-          ? p.detail
-          : JSON.stringify(p.detail)
-        : `Backend ${res.status}`;
-    throw new Error(msg);
-  }
-  return parsed as T;
-}
+});
 
 const defaultCriteriaSchema = z.object({
   make: z.string().nullable().optional(),
