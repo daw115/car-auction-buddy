@@ -45,12 +45,12 @@ describe("site session tokens", () => {
     ["tampered signature", (token: string) => `${token.slice(0, -1)}x`],
     ["malformed token", () => "not-a-token"],
   ])("rejects %s", (_label, mutate) => {
-    const token = createSiteSessionToken("Janek", SECRET, NOW, 3600);
+    const token = createSiteSessionToken("Pawel", SECRET, NOW, 3600);
     expect(verifySiteSessionToken(mutate(token), SECRET, NOW)).toBeNull();
   });
 
   it("rejects a token signed with another secret", () => {
-    const token = createSiteSessionToken("Iga", SECRET, NOW, 3600);
+    const token = createSiteSessionToken("Pawel", SECRET, NOW, 3600);
     expect(
       verifySiteSessionToken(
         token,
@@ -61,8 +61,8 @@ describe("site session tokens", () => {
   });
 
   it("rejects expired and far-future tokens", () => {
-    const expired = createSiteSessionToken("Monte", SECRET, NOW, 60);
-    const future = createSiteSessionToken("Monte", SECRET, NOW + 120_000, 3600);
+    const expired = createSiteSessionToken("Pawel", SECRET, NOW, 60);
+    const future = createSiteSessionToken("Pawel", SECRET, NOW + 120_000, 3600);
     expect(verifySiteSessionToken(expired, SECRET, NOW + 61_000)).toBeNull();
     expect(verifySiteSessionToken(future, SECRET, NOW)).toBeNull();
   });
@@ -83,9 +83,9 @@ describe("site session tokens", () => {
   });
 
   it("reads a valid cookie and rejects an invalid cookie", () => {
-    const token = createSiteSessionToken("Janek", SECRET);
+    const token = createSiteSessionToken("Pawel", SECRET);
     vi.mocked(getCookie).mockReturnValueOnce(token).mockReturnValueOnce("invalid");
-    expect(getSiteSession()).toMatchObject({ sub: "Janek" });
+    expect(getSiteSession()).toMatchObject({ sub: "Pawel" });
     expect(getSiteSession()).toBeNull();
   });
 
