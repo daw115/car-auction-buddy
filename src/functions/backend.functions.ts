@@ -86,7 +86,13 @@ async function callBackendSafe<T>(
 let sourceCapabilitiesCache: { expiresAt: number; value: AuctionSourceCapabilities } | undefined;
 
 function fallbackSourceCapabilities(): AuctionSourceCapabilities {
-  const backendConfigured = !!process.env.API_BASE_URL && !!process.env.API_BEARER_TOKEN;
+  const legacyConfigured = !!process.env.API_BASE_URL && !!process.env.API_BEARER_TOKEN;
+  const ubuntuConfigured =
+    !!process.env.UBUNTU_API_BASE_URL &&
+    !!process.env.UBUNTU_API_BEARER_TOKEN &&
+    !!process.env.CF_ACCESS_CLIENT_ID &&
+    !!process.env.CF_ACCESS_CLIENT_SECRET;
+  const backendConfigured = ubuntuConfigured || legacyConfigured;
   const manheimEnabled = process.env.MANHEIM_BACKEND_ENABLED === "true";
   return {
     checkedAt: new Date().toISOString(),
