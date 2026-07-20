@@ -1,522 +1,523 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5";
-  };
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
       app_config: {
         Row: {
-          ai_analysis_mode: string;
-          ai_fallback_mode: string;
-          collect_all_prefiltered_results: boolean;
-          filter_seller_insurance_only: boolean;
-          id: number;
-          max_auction_window_hours: number;
-          min_auction_window_hours: number;
-          open_all_prefiltered_details: boolean;
-          updated_at: string;
-          use_mock_data: boolean;
-        };
+          ai_analysis_mode: string
+          ai_fallback_mode: string
+          collect_all_prefiltered_results: boolean
+          filter_seller_insurance_only: boolean
+          id: number
+          max_auction_window_hours: number
+          min_auction_window_hours: number
+          open_all_prefiltered_details: boolean
+          updated_at: string
+          use_mock_data: boolean
+        }
         Insert: {
-          ai_analysis_mode?: string;
-          ai_fallback_mode?: string;
-          collect_all_prefiltered_results?: boolean;
-          filter_seller_insurance_only?: boolean;
-          id?: number;
-          max_auction_window_hours?: number;
-          min_auction_window_hours?: number;
-          open_all_prefiltered_details?: boolean;
-          updated_at?: string;
-          use_mock_data?: boolean;
-        };
+          ai_analysis_mode?: string
+          ai_fallback_mode?: string
+          collect_all_prefiltered_results?: boolean
+          filter_seller_insurance_only?: boolean
+          id?: number
+          max_auction_window_hours?: number
+          min_auction_window_hours?: number
+          open_all_prefiltered_details?: boolean
+          updated_at?: string
+          use_mock_data?: boolean
+        }
         Update: {
-          ai_analysis_mode?: string;
-          ai_fallback_mode?: string;
-          collect_all_prefiltered_results?: boolean;
-          filter_seller_insurance_only?: boolean;
-          id?: number;
-          max_auction_window_hours?: number;
-          min_auction_window_hours?: number;
-          open_all_prefiltered_details?: boolean;
-          updated_at?: string;
-          use_mock_data?: boolean;
-        };
-        Relationships: [];
-      };
+          ai_analysis_mode?: string
+          ai_fallback_mode?: string
+          collect_all_prefiltered_results?: boolean
+          filter_seller_insurance_only?: boolean
+          id?: number
+          max_auction_window_hours?: number
+          min_auction_window_hours?: number
+          open_all_prefiltered_details?: boolean
+          updated_at?: string
+          use_mock_data?: boolean
+        }
+        Relationships: []
+      }
       clients: {
         Row: {
-          contact: string | null;
-          created_at: string;
-          id: string;
-          name: string;
-          notes: string | null;
-        };
+          contact: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+        }
         Insert: {
-          contact?: string | null;
-          created_at?: string;
-          id?: string;
-          name: string;
-          notes?: string | null;
-        };
+          contact?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+        }
         Update: {
-          contact?: string | null;
-          created_at?: string;
-          id?: string;
-          name?: string;
-          notes?: string | null;
-        };
-        Relationships: [];
-      };
+          contact?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
       operation_logs: {
         Row: {
-          client_id: string | null;
-          created_at: string;
-          details: Json | null;
-          duration_ms: number | null;
-          id: string;
-          level: string;
-          message: string;
-          operation: string;
-          record_id: string | null;
-          step: string | null;
-        };
+          client_id: string | null
+          created_at: string
+          details: Json | null
+          duration_ms: number | null
+          id: string
+          level: string
+          message: string
+          operation: string
+          record_id: string | null
+          step: string | null
+        }
         Insert: {
-          client_id?: string | null;
-          created_at?: string;
-          details?: Json | null;
-          duration_ms?: number | null;
-          id?: string;
-          level?: string;
-          message: string;
-          operation: string;
-          record_id?: string | null;
-          step?: string | null;
-        };
+          client_id?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          id?: string
+          level?: string
+          message: string
+          operation: string
+          record_id?: string | null
+          step?: string | null
+        }
         Update: {
-          client_id?: string | null;
-          created_at?: string;
-          details?: Json | null;
-          duration_ms?: number | null;
-          id?: string;
-          level?: string;
-          message?: string;
-          operation?: string;
-          record_id?: string | null;
-          step?: string | null;
-        };
+          client_id?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          id?: string
+          level?: string
+          message?: string
+          operation?: string
+          record_id?: string | null
+          step?: string | null
+        }
         Relationships: [
           {
-            foreignKeyName: "operation_logs_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
+            foreignKeyName: "operation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "operation_logs_record_id_fkey";
-            columns: ["record_id"];
-            isOneToOne: false;
-            referencedRelation: "records";
-            referencedColumns: ["id"];
+            foreignKeyName: "operation_logs_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "records"
+            referencedColumns: ["id"]
           },
-        ];
-      };
+        ]
+      }
       records: {
         Row: {
-          ai_input: Json | null;
-          ai_prompt: string | null;
-          analysis: Json | null;
-          analysis_completed_at: string | null;
-          analysis_error: string | null;
-          analysis_started_at: string | null;
-          analysis_status: string | null;
-          artifacts_meta: Json | null;
-          client_id: string | null;
-          created_at: string;
-          criteria: Json;
-          id: string;
-          last_error_at: string | null;
-          listings: Json;
-          mail_html: string | null;
-          max_retries: number;
-          next_retry_at: string | null;
-          report_html: string | null;
-          retry_count: number;
-          status: string;
-          title: string | null;
-          updated_at: string;
-        };
+          ai_input: Json | null
+          ai_prompt: string | null
+          analysis: Json | null
+          analysis_completed_at: string | null
+          analysis_error: string | null
+          analysis_started_at: string | null
+          analysis_status: string | null
+          artifacts_meta: Json | null
+          client_id: string | null
+          created_at: string
+          criteria: Json
+          id: string
+          last_error_at: string | null
+          listings: Json
+          mail_html: string | null
+          max_retries: number
+          next_retry_at: string | null
+          report_html: string | null
+          retry_count: number
+          status: string
+          title: string | null
+          updated_at: string
+        }
         Insert: {
-          ai_input?: Json | null;
-          ai_prompt?: string | null;
-          analysis?: Json | null;
-          analysis_completed_at?: string | null;
-          analysis_error?: string | null;
-          analysis_started_at?: string | null;
-          analysis_status?: string | null;
-          artifacts_meta?: Json | null;
-          client_id?: string | null;
-          created_at?: string;
-          criteria?: Json;
-          id?: string;
-          last_error_at?: string | null;
-          listings?: Json;
-          mail_html?: string | null;
-          max_retries?: number;
-          next_retry_at?: string | null;
-          report_html?: string | null;
-          retry_count?: number;
-          status?: string;
-          title?: string | null;
-          updated_at?: string;
-        };
+          ai_input?: Json | null
+          ai_prompt?: string | null
+          analysis?: Json | null
+          analysis_completed_at?: string | null
+          analysis_error?: string | null
+          analysis_started_at?: string | null
+          analysis_status?: string | null
+          artifacts_meta?: Json | null
+          client_id?: string | null
+          created_at?: string
+          criteria?: Json
+          id?: string
+          last_error_at?: string | null
+          listings?: Json
+          mail_html?: string | null
+          max_retries?: number
+          next_retry_at?: string | null
+          report_html?: string | null
+          retry_count?: number
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
         Update: {
-          ai_input?: Json | null;
-          ai_prompt?: string | null;
-          analysis?: Json | null;
-          analysis_completed_at?: string | null;
-          analysis_error?: string | null;
-          analysis_started_at?: string | null;
-          analysis_status?: string | null;
-          artifacts_meta?: Json | null;
-          client_id?: string | null;
-          created_at?: string;
-          criteria?: Json;
-          id?: string;
-          last_error_at?: string | null;
-          listings?: Json;
-          mail_html?: string | null;
-          max_retries?: number;
-          next_retry_at?: string | null;
-          report_html?: string | null;
-          retry_count?: number;
-          status?: string;
-          title?: string | null;
-          updated_at?: string;
-        };
+          ai_input?: Json | null
+          ai_prompt?: string | null
+          analysis?: Json | null
+          analysis_completed_at?: string | null
+          analysis_error?: string | null
+          analysis_started_at?: string | null
+          analysis_status?: string | null
+          artifacts_meta?: Json | null
+          client_id?: string | null
+          created_at?: string
+          criteria?: Json
+          id?: string
+          last_error_at?: string | null
+          listings?: Json
+          mail_html?: string | null
+          max_retries?: number
+          next_retry_at?: string | null
+          report_html?: string | null
+          retry_count?: number
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
         Relationships: [
           {
-            foreignKeyName: "records_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
+            foreignKeyName: "records_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
           },
-        ];
-      };
+        ]
+      }
       scrape_cache: {
         Row: {
-          cache_key: string;
-          config_snapshot: Json;
-          created_at: string;
-          criteria: Json;
-          expires_at: string;
-          id: string;
-          listings: Json;
-          listings_count: number;
-          source: string | null;
-        };
+          cache_key: string
+          config_snapshot: Json
+          created_at: string
+          criteria: Json
+          expires_at: string
+          id: string
+          listings: Json
+          listings_count: number
+          source: string | null
+        }
         Insert: {
-          cache_key: string;
-          config_snapshot?: Json;
-          created_at?: string;
-          criteria: Json;
-          expires_at?: string;
-          id?: string;
-          listings?: Json;
-          listings_count?: number;
-          source?: string | null;
-        };
+          cache_key: string
+          config_snapshot?: Json
+          created_at?: string
+          criteria: Json
+          expires_at?: string
+          id?: string
+          listings?: Json
+          listings_count?: number
+          source?: string | null
+        }
         Update: {
-          cache_key?: string;
-          config_snapshot?: Json;
-          created_at?: string;
-          criteria?: Json;
-          expires_at?: string;
-          id?: string;
-          listings?: Json;
-          listings_count?: number;
-          source?: string | null;
-        };
-        Relationships: [];
-      };
+          cache_key?: string
+          config_snapshot?: Json
+          created_at?: string
+          criteria?: Json
+          expires_at?: string
+          id?: string
+          listings?: Json
+          listings_count?: number
+          source?: string | null
+        }
+        Relationships: []
+      }
       site_user_passwords: {
         Row: {
-          password_hash: string;
-          password_salt: string | null;
-          updated_at: string;
-          username: string;
-        };
+          password_hash: string
+          password_salt: string | null
+          updated_at: string
+          username: string
+        }
         Insert: {
-          password_hash: string;
-          password_salt?: string | null;
-          updated_at?: string;
-          username: string;
-        };
+          password_hash: string
+          password_salt?: string | null
+          updated_at?: string
+          username: string
+        }
         Update: {
-          password_hash?: string;
-          password_salt?: string | null;
-          updated_at?: string;
-          username?: string;
-        };
-        Relationships: [];
-      };
+          password_hash?: string
+          password_salt?: string | null
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
       watchlist: {
         Row: {
-          active: boolean;
-          buy_now_usd: number | null;
-          category: string | null;
-          client_id: string | null;
-          created_at: string;
-          current_bid_usd: number | null;
-          id: string;
-          lot_id: string | null;
-          make: string | null;
-          model: string | null;
-          notes: string | null;
-          score: number | null;
-          snapshot: Json;
-          source: string | null;
-          title: string | null;
-          updated_at: string;
-          url: string | null;
-          vin: string | null;
-          year: number | null;
-        };
+          active: boolean
+          buy_now_usd: number | null
+          category: string | null
+          client_id: string | null
+          created_at: string
+          current_bid_usd: number | null
+          id: string
+          lot_id: string | null
+          make: string | null
+          model: string | null
+          notes: string | null
+          score: number | null
+          snapshot: Json
+          source: string | null
+          title: string | null
+          updated_at: string
+          url: string | null
+          vin: string | null
+          year: number | null
+        }
         Insert: {
-          active?: boolean;
-          buy_now_usd?: number | null;
-          category?: string | null;
-          client_id?: string | null;
-          created_at?: string;
-          current_bid_usd?: number | null;
-          id?: string;
-          lot_id?: string | null;
-          make?: string | null;
-          model?: string | null;
-          notes?: string | null;
-          score?: number | null;
-          snapshot?: Json;
-          source?: string | null;
-          title?: string | null;
-          updated_at?: string;
-          url?: string | null;
-          vin?: string | null;
-          year?: number | null;
-        };
+          active?: boolean
+          buy_now_usd?: number | null
+          category?: string | null
+          client_id?: string | null
+          created_at?: string
+          current_bid_usd?: number | null
+          id?: string
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          notes?: string | null
+          score?: number | null
+          snapshot?: Json
+          source?: string | null
+          title?: string | null
+          updated_at?: string
+          url?: string | null
+          vin?: string | null
+          year?: number | null
+        }
         Update: {
-          active?: boolean;
-          buy_now_usd?: number | null;
-          category?: string | null;
-          client_id?: string | null;
-          created_at?: string;
-          current_bid_usd?: number | null;
-          id?: string;
-          lot_id?: string | null;
-          make?: string | null;
-          model?: string | null;
-          notes?: string | null;
-          score?: number | null;
-          snapshot?: Json;
-          source?: string | null;
-          title?: string | null;
-          updated_at?: string;
-          url?: string | null;
-          vin?: string | null;
-          year?: number | null;
-        };
+          active?: boolean
+          buy_now_usd?: number | null
+          category?: string | null
+          client_id?: string | null
+          created_at?: string
+          current_bid_usd?: number | null
+          id?: string
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          notes?: string | null
+          score?: number | null
+          snapshot?: Json
+          source?: string | null
+          title?: string | null
+          updated_at?: string
+          url?: string | null
+          vin?: string | null
+          year?: number | null
+        }
         Relationships: [
           {
-            foreignKeyName: "watchlist_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
+            foreignKeyName: "watchlist_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
           },
-        ];
-      };
+        ]
+      }
       watchlist_history: {
         Row: {
-          current_bid_usd: number | null;
-          id: string;
-          payload: Json | null;
-          recorded_at: string;
-          score: number | null;
-          status: string | null;
-          watchlist_id: string;
-        };
+          current_bid_usd: number | null
+          id: string
+          payload: Json | null
+          recorded_at: string
+          score: number | null
+          status: string | null
+          watchlist_id: string
+        }
         Insert: {
-          current_bid_usd?: number | null;
-          id?: string;
-          payload?: Json | null;
-          recorded_at?: string;
-          score?: number | null;
-          status?: string | null;
-          watchlist_id: string;
-        };
+          current_bid_usd?: number | null
+          id?: string
+          payload?: Json | null
+          recorded_at?: string
+          score?: number | null
+          status?: string | null
+          watchlist_id: string
+        }
         Update: {
-          current_bid_usd?: number | null;
-          id?: string;
-          payload?: Json | null;
-          recorded_at?: string;
-          score?: number | null;
-          status?: string | null;
-          watchlist_id?: string;
-        };
+          current_bid_usd?: number | null
+          id?: string
+          payload?: Json | null
+          recorded_at?: string
+          score?: number | null
+          status?: string | null
+          watchlist_id?: string
+        }
         Relationships: [
           {
-            foreignKeyName: "watchlist_history_watchlist_id_fkey";
-            columns: ["watchlist_id"];
-            isOneToOne: false;
-            referencedRelation: "watchlist";
-            referencedColumns: ["id"];
+            foreignKeyName: "watchlist_history_watchlist_id_fkey"
+            columns: ["watchlist_id"]
+            isOneToOne: false
+            referencedRelation: "watchlist"
+            referencedColumns: ["id"]
           },
-        ];
-      };
-    };
+        ]
+      }
+    }
     Views: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     Functions: {
-      consume_site_auth_attempt: {
-        Args: { p_rate_key: string };
-        Returns: number;
-      };
-      reset_site_auth_attempts: {
-        Args: { p_rate_key: string };
-        Returns: undefined;
-      };
-    };
+      [_ in never]: never
+    }
     Enums: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     CompositeTypes: {
-      [_ in never]: never;
-    };
-  };
-};
+      [_ in never]: never
+    }
+  }
+}
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
+    schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
+  schema: keyof DatabaseWithoutInternals
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R;
+      Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R;
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
       }
       ? R
       : never
-    : never;
+    : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
+    schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
+  schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I;
+      Insert: infer I
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I;
+        Insert: infer I
       }
       ? I
       : never
-    : never;
+    : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
+    schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
+  schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U;
+      Update: infer U
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U;
+        Update: infer U
       }
       ? U
       : never
-    : never;
+    : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
+    schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
+  schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never;
+    : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
+    schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
+  schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never;
+    : never
 
 export const Constants = {
   public: {
     Enums: {},
   },
-} as const;
+} as const
