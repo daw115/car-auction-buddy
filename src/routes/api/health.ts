@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { probeUbuntuApi } from "@/server/ubuntu-api.server";
 
 type Status = "ok" | "down" | "unconfigured";
 
@@ -31,9 +32,16 @@ export const Route = createFileRoute("/api/health")({
     handlers: {
       GET: async () => {
         const startedAt = Date.now();
-        const [scraper, database] = await Promise.all([pingScraper(), pingDatabase()]);
+        const [scraper, database, ubuntuApi] = await Promise.all([
+          pingScraper(),
+          pingDatabase(),
+          probeUbuntuApi(),
+        ]);
 
         const ai: Status = process.env.ANTHROPIC_API_KEY ? "ok" : "unconfigured";
+        // Backwards-compatible readiness: Ubuntu API is optional in this
+        // migration phase — its `unconfigured`/`down` state MUST NOT flip the
+        // whole /api/health to 503 while no production screen depends on it.
         const allOk = database === "ok" && (scraper === "ok" || scraper === "unconfigured");
 
         return Response.json(
@@ -41,7 +49,16 @@ export const Route = createFileRoute("/api/health")({
             ok: allOk,
             checkedAt: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
-            services: { database, scraper, ai },
+            services: {
+              database,
+              scraper,
+              ai,
+              ubuntuApi: {
+                status: ubuntuApi.status,
+                latencyMs: ubuntuApi.latencyMs,
+                requestId: ubuntuApi.requestId,
+              },
+            },
           },
           { status: allOk ? 200 : 503 },
         );
