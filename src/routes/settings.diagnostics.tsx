@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle, Loader2, HelpCircle } from "lucide-react";
+import { JsonDetails } from "@/components/JsonDetails";
 
 type Check = {
   name: string;
@@ -25,6 +26,19 @@ type Diagnostics = {
   summary: { total: number; ok: number; missingRequired: number };
 };
 
+type HealthStatus = "ok" | "down" | "unconfigured";
+type HealthResponse = {
+  ok: boolean;
+  checkedAt: string;
+  durationMs: number;
+  services: { database: HealthStatus; scraper: HealthStatus; ai: HealthStatus };
+};
+
+type ConfigResponse = {
+  config: Record<string, unknown> | null;
+  env: Record<string, unknown>;
+};
+
 const CATEGORY_LABEL: Record<Check["category"], string> = {
   auth: "Autoryzacja / sesje",
   backend: "Backend / scraper",
@@ -32,11 +46,17 @@ const CATEGORY_LABEL: Record<Check["category"], string> = {
   supabase: "Lovable Cloud (Supabase)",
 };
 
+const SERVICE_LABEL: Record<keyof HealthResponse["services"], string> = {
+  database: "Baza danych",
+  scraper: "Backend / scraper (/health)",
+  ai: "Provider AI",
+};
+
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({
     meta: [
       { title: "Diagnostyka — USA Car Finder" },
-      { name: "description", content: "Sprawdzenie wymaganych zmiennych środowiskowych." },
+      { name: "description", content: "Sprawdzenie stanu backendu, konfiguracji i sekretów." },
     ],
   }),
   component: DiagnosticsPage,
@@ -53,7 +73,45 @@ function DiagnosticsPage() {
     refetchOnWindowFocus: false,
   });
 
+  const healthQuery = useQuery<HealthResponse>({
+    queryKey: ["diagnostics", "health"],
+    queryFn: async () => {
+      const res = await fetch("/api/health", { credentials: "include" });
+      // 200 lub 503 — obie odpowiedzi zawierają body z detalami
+      return (await res.json()) as HealthResponse;
+    },
+    refetchOnWindowFocus: false,
+    refetchInterval: 60_000,
+  });
+
+  const configQuery = useQuery<ConfigResponse>({
+    queryKey: ["diagnostics", "config"],
+    queryFn: async () => {
+      const res = await fetch("/api/config", { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  const envOk = query.data?.ok ?? null;
+  const healthOk = healthQuery.data?.ok ?? null;
+  const configOk = configQuery.data ? !!configQuery.data.config : configQuery.error ? false : null;
+  const readiness: "ready" | "degraded" | "loading" =
+    envOk === null || healthOk === null || configOk === null
+      ? "loading"
+      : envOk && healthOk && configOk
+        ? "ready"
+        : "degraded";
+
+  const refetchAll = () => {
+    void query.refetch();
+    void healthQuery.refetch();
+    void configQuery.refetch();
+  };
+
   const grouped = groupByCategory(query.data?.checks ?? []);
+  const anyFetching = query.isFetching || healthQuery.isFetching || configQuery.isFetching;
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-6 space-y-4">
@@ -61,26 +119,100 @@ function DiagnosticsPage() {
         <div>
           <h1 className="text-2xl font-bold">Diagnostyka środowiska</h1>
           <p className="text-sm text-muted-foreground">
-            Weryfikacja wymaganych zmiennych i sekretów runtime'u.
+            Stan backendu, konfiguracji aplikacji i sekretów runtime'u.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => query.refetch()}
-          disabled={query.isFetching}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${query.isFetching ? "animate-spin" : ""}`} />
+        <Button variant="outline" size="sm" onClick={refetchAll} disabled={anyFetching}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${anyFetching ? "animate-spin" : ""}`} />
           Odśwież
         </Button>
       </div>
 
-      {query.isLoading && <p className="text-sm text-muted-foreground">Sprawdzam…</p>}
+      <ReadinessBanner
+        readiness={readiness}
+        envOk={envOk}
+        healthOk={healthOk}
+        configOk={configOk}
+      />
+
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Backend /health</h2>
+          {healthQuery.data && (
+            <span className="text-xs text-muted-foreground">
+              {healthQuery.data.durationMs}ms ·{" "}
+              {new Date(healthQuery.data.checkedAt).toLocaleTimeString("pl-PL")}
+            </span>
+          )}
+        </div>
+        {healthQuery.isLoading && (
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Sprawdzam…
+          </p>
+        )}
+        {healthQuery.error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{(healthQuery.error as Error).message}</AlertDescription>
+          </Alert>
+        )}
+        {healthQuery.data && (
+          <div className="space-y-2">
+            {(Object.keys(healthQuery.data.services) as (keyof HealthResponse["services"])[]).map(
+              (k) => (
+                <ServiceRow key={k} label={SERVICE_LABEL[k]} status={healthQuery.data!.services[k]} />
+              ),
+            )}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4 space-y-3">
+        <h2 className="font-semibold">Konfiguracja /config</h2>
+        {configQuery.isLoading && (
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Sprawdzam…
+          </p>
+        )}
+        {configQuery.error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{(configQuery.error as Error).message}</AlertDescription>
+          </Alert>
+        )}
+        {configQuery.data && (
+          <>
+            <div className="flex items-center gap-2 text-sm">
+              {configQuery.data.config ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Rekord <code className="font-mono">app_config</code> odczytany z bazy.
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  Brak rekordu <code className="font-mono">app_config</code>.
+                </>
+              )}
+            </div>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                Pokaż surową odpowiedź
+              </summary>
+              <div className="mt-2">
+                <JsonDetails data={configQuery.data} />
+              </div>
+            </details>
+          </>
+        )}
+      </Card>
+
+      {query.isLoading && <p className="text-sm text-muted-foreground">Sprawdzam zmienne…</p>}
 
       {query.error && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Nie udało się pobrać diagnostyki</AlertTitle>
+          <AlertTitle>Nie udało się pobrać diagnostyki zmiennych</AlertTitle>
           <AlertDescription>{(query.error as Error).message}</AlertDescription>
         </Alert>
       )}
@@ -121,6 +253,76 @@ function DiagnosticsPage() {
           ))}
         </>
       )}
+    </div>
+  );
+}
+
+function ReadinessBanner({
+  readiness,
+  envOk,
+  healthOk,
+  configOk,
+}: {
+  readiness: "ready" | "degraded" | "loading";
+  envOk: boolean | null;
+  healthOk: boolean | null;
+  configOk: boolean | null;
+}) {
+  if (readiness === "loading") {
+    return (
+      <Alert>
+        <HelpCircle className="h-4 w-4" />
+        <AlertTitle className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> Sprawdzam gotowość aplikacji…
+        </AlertTitle>
+      </Alert>
+    );
+  }
+  if (readiness === "ready") {
+    return (
+      <Alert>
+        <CheckCircle2 className="h-4 w-4 text-green-600" />
+        <AlertTitle>Aplikacja gotowa do pracy</AlertTitle>
+        <AlertDescription>
+          Backend, konfiguracja i sekrety są w porządku.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  return (
+    <Alert variant="destructive">
+      <XCircle className="h-4 w-4" />
+      <AlertTitle>Aplikacja NIE jest w pełni gotowa</AlertTitle>
+      <AlertDescription>
+        <ul className="list-disc pl-5 mt-1 text-sm">
+          <li>Sekrety / zmienne: {envOk ? "OK" : "problem"}</li>
+          <li>Backend (/health): {healthOk ? "OK" : "problem"}</li>
+          <li>Konfiguracja (/config): {configOk ? "OK" : "problem"}</li>
+        </ul>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function ServiceRow({ label, status }: { label: string; status: HealthStatus }) {
+  const icon =
+    status === "ok" ? (
+      <CheckCircle2 className="h-4 w-4 text-green-600" />
+    ) : status === "down" ? (
+      <XCircle className="h-4 w-4 text-destructive" />
+    ) : (
+      <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+    );
+  const label2 =
+    status === "ok" ? "OK" : status === "down" ? "Niedostępny" : "Nieskonfigurowany";
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+      <span className="flex items-center gap-2">
+        {icon} {label}
+      </span>
+      <Badge variant={status === "ok" ? "outline" : status === "down" ? "destructive" : "secondary"}>
+        {label2}
+      </Badge>
     </div>
   );
 }
