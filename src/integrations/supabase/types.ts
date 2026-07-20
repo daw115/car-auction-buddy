@@ -53,6 +53,100 @@ export type Database = {
         }
         Relationships: []
       }
+      case_searches: {
+        Row: {
+          case_id: string
+          created_at: string
+          id: string
+          new_lot_ids: string[]
+          record_id: string
+          searched_by: string | null
+          triggered_by: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          id?: string
+          new_lot_ids?: string[]
+          record_id: string
+          searched_by?: string | null
+          triggered_by?: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          id?: string
+          new_lot_ids?: string[]
+          record_id?: string
+          searched_by?: string | null
+          triggered_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_searches_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "client_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_cases: {
+        Row: {
+          auto_refresh_enabled: boolean
+          auto_refresh_interval_hours: number
+          client_id: string
+          created_at: string
+          created_by: string | null
+          default_criteria: Json | null
+          description: string | null
+          id: string
+          last_auto_run_at: string | null
+          next_auto_run_at: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          auto_refresh_enabled?: boolean
+          auto_refresh_interval_hours?: number
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          default_criteria?: Json | null
+          description?: string | null
+          id?: string
+          last_auto_run_at?: string | null
+          next_auto_run_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          auto_refresh_enabled?: boolean
+          auto_refresh_interval_hours?: number
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          default_criteria?: Json | null
+          description?: string | null
+          id?: string
+          last_auto_run_at?: string | null
+          next_auto_run_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_cases_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients_v2"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           contact: string | null
@@ -74,6 +168,39 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+        }
+        Relationships: []
+      }
+      clients_v2: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

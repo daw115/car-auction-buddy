@@ -17,6 +17,7 @@ import { Route as McpRouteImport } from './routes/mcp'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
@@ -25,6 +26,7 @@ import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagn
 import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
+import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -36,7 +38,9 @@ import { Route as ApiScraperLogsStreamRouteImport } from './routes/api/scraper-l
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
+import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
+import { Route as ApiPublicHooksCasesRefreshRouteImport } from './routes/api/public/hooks/cases-refresh'
 
 const WatchlistRoute = WatchlistRouteImport.update({
   id: '/watchlist',
@@ -78,6 +82,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsRoute = ClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CalculatorRoute = CalculatorRouteImport.update({
   id: '/calculator',
   path: '/calculator',
@@ -117,6 +126,11 @@ const DevLogsRoute = DevLogsRouteImport.update({
   id: '/dev/logs',
   path: '/dev/logs',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
+  id: '/$clientId',
+  path: '/$clientId',
+  getParentRoute: () => ClientsRoute,
 } as any)
 const ApiVersionRoute = ApiVersionRouteImport.update({
   id: '/api/version',
@@ -176,16 +190,29 @@ const Char91DotmcpChar93InvokeToolToolRoute =
     path: '/.mcp/invoke-tool/$tool',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ClientsClientIdCasesCaseIdRoute =
+  ClientsClientIdCasesCaseIdRouteImport.update({
+    id: '/cases/$caseId',
+    path: '/cases/$caseId',
+    getParentRoute: () => ClientsClientIdRoute,
+  } as any)
 const ApiPublicHooksCleanupLogsRoute =
   ApiPublicHooksCleanupLogsRouteImport.update({
     id: '/api/public/hooks/cleanup-logs',
     path: '/api/public/hooks/cleanup-logs',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksCasesRefreshRoute =
+  ApiPublicHooksCasesRefreshRouteImport.update({
+    id: '/api/public/hooks/cases-refresh',
+    path: '/api/public/hooks/cases-refresh',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calculator': typeof CalculatorRoute
+  '/clients': typeof ClientsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
@@ -201,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
@@ -211,11 +239,14 @@ export interface FileRoutesByFullPath {
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
+  '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
+  '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calculator': typeof CalculatorRoute
+  '/clients': typeof ClientsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
@@ -230,6 +261,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
@@ -240,12 +272,15 @@ export interface FileRoutesByTo {
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
+  '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
+  '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/calculator': typeof CalculatorRoute
+  '/clients': typeof ClientsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
@@ -261,6 +296,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
@@ -271,13 +307,16 @@ export interface FileRoutesById {
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
+  '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
+  '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/calculator'
+    | '/clients'
     | '/dashboard'
     | '/database'
     | '/jobs'
@@ -293,6 +332,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/records'
     | '/api/version'
+    | '/clients/$clientId'
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
@@ -303,11 +343,14 @@ export interface FileRouteTypes {
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/scraper-logs/stream'
+    | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
+    | '/clients/$clientId/cases/$caseId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/calculator'
+    | '/clients'
     | '/dashboard'
     | '/database'
     | '/jobs'
@@ -322,6 +365,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/records'
     | '/api/version'
+    | '/clients/$clientId'
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
@@ -332,11 +376,14 @@ export interface FileRouteTypes {
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/scraper-logs/stream'
+    | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
+    | '/clients/$clientId/cases/$caseId'
   id:
     | '__root__'
     | '/'
     | '/calculator'
+    | '/clients'
     | '/dashboard'
     | '/database'
     | '/jobs'
@@ -352,6 +399,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/records'
     | '/api/version'
+    | '/clients/$clientId'
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
@@ -362,12 +410,15 @@ export interface FileRouteTypes {
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/scraper-logs/stream'
+    | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
+    | '/clients/$clientId/cases/$caseId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CalculatorRoute: typeof CalculatorRoute
+  ClientsRoute: typeof ClientsRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
   JobsRoute: typeof JobsRoute
@@ -388,6 +439,7 @@ export interface RootRouteChildren {
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiScraperLogsStreamRoute: typeof ApiScraperLogsStreamRoute
+  ApiPublicHooksCasesRefreshRoute: typeof ApiPublicHooksCasesRefreshRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
 
@@ -449,6 +501,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients': {
+      id: '/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof ClientsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/calculator': {
       id: '/calculator'
       path: '/calculator'
@@ -504,6 +563,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dev/logs'
       preLoaderRoute: typeof DevLogsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/clients/$clientId': {
+      id: '/clients/$clientId'
+      path: '/$clientId'
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof ClientsRoute
     }
     '/api/version': {
       id: '/api/version'
@@ -582,6 +648,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char91DotmcpChar93InvokeToolToolRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/$clientId/cases/$caseId': {
+      id: '/clients/$clientId/cases/$caseId'
+      path: '/cases/$caseId'
+      fullPath: '/clients/$clientId/cases/$caseId'
+      preLoaderRoute: typeof ClientsClientIdCasesCaseIdRouteImport
+      parentRoute: typeof ClientsClientIdRoute
+    }
     '/api/public/hooks/cleanup-logs': {
       id: '/api/public/hooks/cleanup-logs'
       path: '/api/public/hooks/cleanup-logs'
@@ -589,8 +662,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksCleanupLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/cases-refresh': {
+      id: '/api/public/hooks/cases-refresh'
+      path: '/api/public/hooks/cases-refresh'
+      fullPath: '/api/public/hooks/cases-refresh'
+      preLoaderRoute: typeof ApiPublicHooksCasesRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
+
+interface ClientsClientIdRouteChildren {
+  ClientsClientIdCasesCaseIdRoute: typeof ClientsClientIdCasesCaseIdRoute
+}
+
+const ClientsClientIdRouteChildren: ClientsClientIdRouteChildren = {
+  ClientsClientIdCasesCaseIdRoute: ClientsClientIdCasesCaseIdRoute,
+}
+
+const ClientsClientIdRouteWithChildren = ClientsClientIdRoute._addFileChildren(
+  ClientsClientIdRouteChildren,
+)
+
+interface ClientsRouteChildren {
+  ClientsClientIdRoute: typeof ClientsClientIdRouteWithChildren
+}
+
+const ClientsRouteChildren: ClientsRouteChildren = {
+  ClientsClientIdRoute: ClientsClientIdRouteWithChildren,
+}
+
+const ClientsRouteWithChildren =
+  ClientsRoute._addFileChildren(ClientsRouteChildren)
 
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
@@ -615,6 +718,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CalculatorRoute: CalculatorRoute,
+  ClientsRoute: ClientsRouteWithChildren,
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
   JobsRoute: JobsRoute,
@@ -636,6 +740,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiScraperLogsStreamRoute: ApiScraperLogsStreamRoute,
+  ApiPublicHooksCasesRefreshRoute: ApiPublicHooksCasesRefreshRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport
