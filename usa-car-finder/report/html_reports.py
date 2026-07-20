@@ -1,6 +1,7 @@
 """
 Renders client_report.html.j2 and broker_report.html.j2 from AnalyzedLot data.
 """
+import logging
 import os
 from datetime import datetime
 from html import escape
@@ -18,6 +19,8 @@ from pricing.import_calculator import (
     DEFAULT_EXCISE_RATE,
     AUCTION_FEE_RATE,
 )
+
+logger = logging.getLogger("report.html_reports")
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -42,8 +45,8 @@ def _resolve_pipeline_filter_bool(filter_key: str, env_var: str, default: bool) 
         override = get_pipeline_filter_override(filter_key)
         if override is not None:
             return override
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[html_reports] settings_db filter override lookup failed for %s, using .env default: %s", filter_key, exc)
     return os.getenv(env_var, str(default)).lower() == "true"
 
 

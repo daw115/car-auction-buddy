@@ -69,8 +69,8 @@ def _provider() -> str:
         override = get_ai_provider_override("llm_reports_provider")
         if override:
             return override.lower()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[hybrid_reports] settings_db provider override lookup failed, using .env default: %s", exc)
     return (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
 
 
@@ -81,8 +81,8 @@ def _resolve_kiro_model() -> str:
         override = get_ai_model_override("kiro")
         if override:
             return override
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[hybrid_reports] settings_db model override lookup failed, using .env default: %s", exc)
     return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
 
 

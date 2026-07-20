@@ -82,8 +82,8 @@ def _resolve_pipeline_filter_bool(filter_key: str, env_var: str, default: bool) 
         override = get_pipeline_filter_override(filter_key)
         if override is not None:
             return override
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[scraper] settings_db filter override lookup failed for %s, using .env default: %s", filter_key, exc)
     return os.getenv(env_var, str(default)).lower() == "true"
 
 

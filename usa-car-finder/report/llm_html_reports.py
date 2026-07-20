@@ -11,6 +11,7 @@ Skeleton wzorca (z usuniętymi base64 zdjęciami) jest cachowany — Anthropic m
 prompt caching (cache_control), Gemini ma context caching (jeszcze nie wszędzie).
 """
 import json
+import logging
 import os
 import re
 import subprocess
@@ -25,6 +26,8 @@ from dotenv import load_dotenv
 
 from parser.models import AnalyzedLot, ClientCriteria
 from report import llm_cache
+
+logger = logging.getLogger("report.llm_html_reports")
 
 # .env może być uruchamiany z różnych cwd (api, skrypty test'owe), więc szukamy explicite
 _ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -236,8 +239,8 @@ def _provider() -> str:
         override = get_ai_provider_override("llm_reports_provider")
         if override:
             return override.lower()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[llm_html_reports] settings_db provider override lookup failed, using .env default: %s", exc)
     return (os.getenv("LLM_REPORTS_PROVIDER", "gemini") or "gemini").lower()
 
 
@@ -248,8 +251,8 @@ def _resolve_kiro_model() -> str:
         override = get_ai_model_override("kiro")
         if override:
             return override
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[llm_html_reports] settings_db model override lookup failed, using .env default: %s", exc)
     return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
 
 

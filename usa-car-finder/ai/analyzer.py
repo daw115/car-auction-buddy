@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
@@ -13,6 +14,8 @@ from parser.models import CarLot, ClientCriteria, AIAnalysis, AnalyzedLot
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
+
+logger = logging.getLogger("ai.analyzer")
 
 EASTERN_STATES = {"NY", "NJ", "PA", "CT", "MA", "RI", "VT", "NH", "ME", "MD", "DE", "VA", "NC", "SC", "GA", "FL"}
 WESTERN_STATES = {"CA", "OR", "WA", "NV", "AZ", "UT", "CO", "NM"}
@@ -31,8 +34,8 @@ def _resolve_ai_provider(task_key: str, env_var: str, default: str) -> str:
         override = get_ai_provider_override(task_key)
         if override:
             return override.lower()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[analyzer] settings_db provider override lookup failed for %s, using .env default: %s", task_key, exc)
     return (os.getenv(env_var, default) or default).lower()
 
 
@@ -44,8 +47,8 @@ def _resolve_kiro_model() -> str:
         override = get_ai_model_override("kiro")
         if override:
             return override
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[analyzer] settings_db model override lookup failed, using .env default: %s", exc)
     return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
 
 SYSTEM_PROMPT = """Jesteś ekspertem od importu aut z USA do Polski.

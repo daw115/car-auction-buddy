@@ -190,8 +190,8 @@ def _resolve_kiro_model() -> str:
         override = get_ai_model_override("kiro")
         if override:
             return override
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[message_parser] settings_db model override lookup failed, using .env default: %s", exc)
     return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
 
 

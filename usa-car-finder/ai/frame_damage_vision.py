@@ -98,7 +98,8 @@ def _load_cache() -> dict:
         return {}
     try:
         data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        logger.warning("[frame_damage] cache parse failed, starting empty: %s", exc)
         return {}
     now = time.time()
     ttl_seconds = CACHE_TTL_DAYS * 86400
@@ -133,8 +134,8 @@ def _resolve_frame_damage_provider() -> str:
         override = get_ai_provider_override("frame_damage_ai_provider")
         if override:
             return override.lower()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[frame_damage] settings_db override lookup failed, using .env default: %s", exc)
     return (os.getenv("FRAME_DAMAGE_AI_PROVIDER", "gemini") or "gemini").lower()
 
 
