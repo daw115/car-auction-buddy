@@ -25,6 +25,8 @@ import {
   siteUserDeletePassword,
   siteUserHasPassword,
   siteUserLogin,
+  siteUserLogout,
+  siteUserSession,
   siteUserSetPassword,
 } from "@/functions/site-auth.functions";
 
@@ -39,10 +41,7 @@ function isChunkError(err: unknown): boolean {
   return CHUNK_ERROR_RE.test(msg);
 }
 
-async function userHasPasswordWithRetry(
-  username: SiteUser,
-  attempts = 2,
-): Promise<boolean> {
+async function userHasPasswordWithRetry(username: SiteUser, attempts = 2): Promise<boolean> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -57,8 +56,9 @@ async function userHasPasswordWithRetry(
   throw lastErr;
 }
 
-// Auto-logout: 60 minut nieaktywności.
+// Auto-logout: 60 minut nieaktywności. Aktywna karta weryfikuje sesję co 5 minut.
 const INACTIVITY_MS = 60 * 60 * 1000;
+const SESSION_CHECK_MS = 5 * 60 * 1000;
 
 type Step = "pickUser" | "enterPersonal" | "setPersonal" | "unlocked";
 
@@ -70,6 +70,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   const [personalPw, setPersonalPw] = useState("");
   const [personalPw2, setPersonalPw2] = useState("");
   const [error, setError] = useState("");
+  const [diagLog, setDiagLog] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<SiteUser | null>(null);
   const [deleteMasterPw, setDeleteMasterPw] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -77,21 +78,40 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   const [refreshTick, setRefreshTick] = useState(0);
   const inactivityTimer = useRef<number | null>(null);
 
-  // Bootstrap: sprawdź czy ktoś już zalogowany i czy sesja nie wygasła.
+  // Bootstrap zawsze potwierdza podpisaną sesję HttpOnly po stronie serwera.
+  // localStorage przechowuje wyłącznie dane UX i nigdy nie odblokowuje aplikacji samodzielnie.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const unlockedUser = localStorage.getItem(UNLOCKED_KEY);
-    const last = Number(localStorage.getItem(SITE_LAST_ACTIVE_KEY) || 0);
-    const expired = !last || Date.now() - last > INACTIVITY_MS;
+    let cancelled = false;
 
-    if (unlockedUser && SITE_USERS.includes(unlockedUser as SiteUser) && !expired) {
-      setUser(unlockedUser as SiteUser);
-      setStep("unlocked");
-      bumpSiteActivity();
-    } else if (expired && unlockedUser) {
-      localStorage.removeItem(UNLOCKED_KEY);
-    }
-    setReady(true);
+    const bootstrap = async () => {
+      try {
+        const session = await siteUserSession();
+        if (cancelled) return;
+        if (session.authenticated && session.username) {
+          setUser(session.username);
+          setStep("unlocked");
+          localStorage.setItem(UNLOCKED_KEY, session.username);
+          localStorage.setItem(SITE_CURRENT_USER_KEY, session.username);
+          bumpSiteActivity();
+        } else {
+          localStorage.removeItem(UNLOCKED_KEY);
+          localStorage.removeItem(SITE_CURRENT_USER_KEY);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          localStorage.removeItem(UNLOCKED_KEY);
+          localStorage.removeItem(SITE_CURRENT_USER_KEY);
+          console.error("Nie udało się potwierdzić sesji", err);
+        }
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    };
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Tracking aktywności + auto-logout.
@@ -105,11 +125,17 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     const scheduleLogout = () => {
       if (inactivityTimer.current) window.clearTimeout(inactivityTimer.current);
       inactivityTimer.current = window.setTimeout(() => {
-        handleLogout();
+        void handleLogout();
       }, INACTIVITY_MS);
     };
 
-    const events: Array<keyof WindowEventMap> = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    const events: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "keydown",
+      "click",
+      "scroll",
+      "touchstart",
+    ];
     events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     scheduleLogout();
     bumpSiteActivity();
@@ -120,14 +146,56 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     };
   }, [step]);
 
-  function handleLogout() {
+  // Okresowo weryfikuj wygaśnięcie sesji bez jej odnawiania. Dzięki temu
+  // wylogowanie nie może zostać cofnięte przez spóźnione żądanie odświeżenia.
+  useEffect(() => {
+    if (step !== "unlocked" || !user) return;
+    let cancelled = false;
+
+    const lockExpiredSession = () => {
+      localStorage.removeItem(UNLOCKED_KEY);
+      localStorage.removeItem(SITE_CURRENT_USER_KEY);
+      localStorage.removeItem(SITE_LAST_ACTIVE_KEY);
+      setUser(null);
+      setStep("pickUser");
+      setError("Sesja wygasła. Zaloguj się ponownie.");
+    };
+
+    const verifySession = async () => {
+      try {
+        const session = await siteUserSession();
+        if (!cancelled && (!session.authenticated || session.username !== user)) {
+          lockExpiredSession();
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Nie udało się zweryfikować sesji", err);
+        lockExpiredSession();
+      }
+    };
+
+    const sessionTimer = window.setInterval(() => void verifySession(), SESSION_CHECK_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(sessionTimer);
+    };
+  }, [step, user]);
+
+  async function handleLogout() {
     localStorage.removeItem(UNLOCKED_KEY);
+    localStorage.removeItem(SITE_CURRENT_USER_KEY);
+    localStorage.removeItem(SITE_LAST_ACTIVE_KEY);
     setUser(null);
     setStep("pickUser");
     setMasterPw("");
     setPersonalPw("");
     setPersonalPw2("");
     setError("");
+    try {
+      await siteUserLogout();
+    } catch (err) {
+      console.error("Nie udało się zakończyć sesji po stronie serwera", err);
+    }
   }
 
   async function hardRefreshApp() {
@@ -148,6 +216,10 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
     const url = new URL(window.location.href);
     url.searchParams.set("_r", String(Date.now()));
     window.location.replace(url.toString());
+  }
+
+  function diag(msg: string) {
+    setDiagLog((prev) => [`${new Date().toLocaleTimeString()}  ${msg}`, ...prev].slice(0, 20));
   }
 
   async function pickUser(u: SiteUser) {
@@ -246,7 +318,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
       <>
         {children}
         <button
-          onClick={handleLogout}
+          onClick={() => void handleLogout()}
           className="fixed bottom-3 right-3 z-50 inline-flex items-center gap-1.5 rounded-full bg-card/90 backdrop-blur border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-card shadow-sm"
           title="Wyloguj"
         >
@@ -319,9 +391,57 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
               <RefreshCw className="h-3.5 w-3.5" />
               Odśwież UI
             </Button>
+
+            {/* Panel diagnostyczny */}
+            <div className="mt-4 rounded-md border bg-muted/40 p-3 text-xs space-y-2">
+              <div className="font-semibold text-foreground flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                Diagnostyka logowania
+              </div>
+              <div className="space-y-1 text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Lista użytkowników:</span>
+                  <span className="font-mono text-foreground">
+                    {SITE_USERS.length} użytkowników
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Wybrany użytkownik:</span>
+                  <span className="font-mono text-foreground">{user ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Handler pickUser:</span>
+                  <span
+                    className={
+                      diagLog[0]?.includes("BŁĄD") ? "text-destructive" : "text-emerald-500"
+                    }
+                  >
+                    {diagLog[1]?.includes("START") && !diagLog[0]?.includes("BŁĄD")
+                      ? "działa"
+                      : diagLog[0]?.includes("BŁĄD")
+                        ? "błąd"
+                        : "nie testowano"}
+                  </span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => pickUser("Dawid")}
+                disabled={user === "Dawid"}
+              >
+                Testuj pickUser (Dawid)
+              </Button>
+              {diagLog.length > 1 && (
+                <pre className="max-h-28 overflow-auto rounded bg-background p-2 text-[10px] font-mono whitespace-pre-wrap">
+                  {diagLog.join("\n")}
+                </pre>
+              )}
+            </div>
           </>
         )}
-
 
         {step === "enterPersonal" && (
           <form onSubmit={submitPersonal} className="space-y-3">
@@ -440,9 +560,8 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Usunąć profil „{deleteTarget}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              Ta operacja usuwa hasło osobiste użytkownika. Przy następnym logowaniu
-              trzeba będzie ustawić je od nowa (wymagane hasło ogólne). Aby potwierdzić,
-              podaj hasło ogólne.
+              Ta operacja usuwa hasło osobiste użytkownika. Przy następnym logowaniu trzeba będzie
+              ustawić je od nowa (wymagane hasło ogólne). Aby potwierdzić, podaj hasło ogólne.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-1.5">

@@ -4,12 +4,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { generateReportPdf } from "@/server/pdf-report.server";
+import { siteSessionGuard } from "@/server/site-session.server";
 import type { AnalyzedLot } from "@/lib/types";
 
 export const Route = createFileRoute("/api/reports/pdf")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const unauthorized = await siteSessionGuard();
+        if (unauthorized) return unauthorized;
+
         const url = new URL(request.url);
         const recordId = url.searchParams.get("recordId");
         const mode = (url.searchParams.get("mode") ?? "client") as "broker" | "client";
@@ -42,7 +46,7 @@ export const Route = createFileRoute("/api/reports/pdf")({
         }
 
         // pobierz kurs (cache w funkcji wewnątrz, ale tu prosto):
-        let fx = { usd_pln: 4.0, usd_eur: 0.92 };
+        const fx = { usd_pln: 4.0, usd_eur: 0.92 };
         try {
           const r = await fetch("https://api.frankfurter.app/latest?from=USD&to=PLN,EUR");
           if (r.ok) {
@@ -54,8 +58,7 @@ export const Route = createFileRoute("/api/reports/pdf")({
           // fallback
         }
 
-        const clientName =
-          (row.clients as { name?: string } | null)?.name ?? row.title ?? "Klient";
+        const clientName = (row.clients as { name?: string } | null)?.name ?? row.title ?? "Klient";
 
         const pdf = await generateReportPdf({
           clientName,

@@ -9,8 +9,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
-    "lint": "eslint .",
     "test": "vitest run",
+    "lint": "eslint .",
     "format": "prettier --write .",
     "prepare": "husky",
     "build:check": "bun run build 2>&1 | tee /tmp/build-output.log || node scripts/parse-build-errors.mjs /tmp/build-output.log"
