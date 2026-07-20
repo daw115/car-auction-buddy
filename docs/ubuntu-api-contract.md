@@ -54,16 +54,32 @@ Lovable nie ma bezpośredniego dostępu do środowiska Ubuntu, więc żaden endp
 | `GET`  | `/config`  | Publicznie widoczna konfiguracja aplikacji (nie sekrety).                            | Tak          | Sesja                    | 5 s     | `required-unverified` |
 | `GET`  | `/version` | `{ commit, buildTime, version }` do dev.logs.                                        | Tak          | Sesja                    | 3 s     | `required-unverified` |
 
-### Records i klienci
+### Records, cache i klienci
 
-| Metoda   | Ścieżka                                               | Cel                                            | Idempotencja | Uprawnienie | Timeout | Status                                                                            |
-| -------- | ----------------------------------------------------- | ---------------------------------------------- | ------------ | ----------- | ------- | --------------------------------------------------------------------------------- |
-| `GET`    | `/records`                                            | Lista rekordów wyszukiwań (paginacja, filtry). | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery`                                                    |
-| `GET`    | `/records/{id}`                                       | Szczegóły rekordu.                             | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery`                                                    |
-| `POST`   | `/records/{id}/feedback/{lot_id}`                     | Zapis feedbacku dla lota.                      | Nie          | Sesja       | 8 s     | `required-unverified`                                                             |
-| `DELETE` | `/records/{id}/feedback/{lot_id}?source=copart\|iaai` | Usunięcie feedbacku.                           | Tak          | Sesja       | 5 s     | `verified-existing (kontrakt frontendu istnieje; wymaga potwierdzenia na Ubuntu)` |
-| `GET`    | `/clients`                                            | Lista klientów.                                | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery`                                                    |
-| `POST`   | `/clients`                                            | Utworzenie klienta.                            | Nie          | Sesja       | 8 s     | `blocked-by-backend-discovery`                                                    |
+Wszystkie ścieżki `/api/records/*`, `/api/llm-cache/*`, `/api/html-cache/*`, `/api/model-normalizations/*`, `/api/feedback/*`, `/api/parse-client-message`, `/api/db/overview` oraz `/api/capabilities` zostały wykryte wyłącznie w kodzie proxy (`src/functions/backend.functions.ts`). Do czasu potwierdzenia przez zespół Ubuntu pozostają `required-unverified`.
+
+| Metoda   | Ścieżka                                                | Cel                                            | Idempotencja           | Uprawnienie | Timeout | Status                         |
+| -------- | ------------------------------------------------------ | ---------------------------------------------- | ---------------------- | ----------- | ------- | ------------------------------ |
+| `GET`    | `/api/records`                                         | Lista rekordów wyszukiwań (paginacja, filtry). | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `GET`    | `/api/records/{id}`                                    | Szczegóły rekordu.                             | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `DELETE` | `/api/records/{id}`                                    | Usunięcie rekordu i artefaktów.                | Tak (200/204/404 OK)   | Sesja       | 30 s    | `required-unverified`          |
+| `POST`   | `/api/records/{id}/regenerate-bundles?engine=…`        | Regeneracja raportów.                          | Nie                    | Sesja       | 60 s    | `required-unverified`          |
+| `GET`    | `/api/records/{id}/feedback`                           | Lista feedbacku rekordu.                       | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `POST`   | `/api/records/{id}/feedback`                           | Zapis feedbacku dla lota.                      | Nie                    | Sesja       | 30 s    | `required-unverified`          |
+| `DELETE` | `/api/records/{id}/feedback/{lot_id}?source=copart\|iaai` | Usunięcie feedbacku (idempotentne).         | Tak (200/204/404 OK)   | Sesja       | 30 s    | `required-unverified`          |
+| `POST`   | `/api/feedback/analyze`                                | Meta-analiza feedbacku.                        | Nie                    | Sesja       | 60 s    | `required-unverified`          |
+| `GET`    | `/api/llm-cache/list`                                  | Lista wpisów cache LLM.                        | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `DELETE` | `/api/llm-cache`                                       | Wyczyszczenie cache LLM.                       | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `DELETE` | `/api/llm-cache/entry/{key}`                           | Usunięcie wpisu cache LLM.                     | Tak (200/204/404 OK)   | Sesja       | 30 s    | `required-unverified`          |
+| `GET`    | `/api/html-cache`                                      | Lista snapshotów HTML.                         | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `GET`    | `/api/html-cache/{source}/{filename}`                  | Podgląd pojedynczego snapshotu HTML.           | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `GET`    | `/api/model-normalizations`                            | Lista normalizacji modeli aut.                 | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `DELETE` | `/api/model-normalizations/{id}`                       | Usunięcie normalizacji.                        | Tak (200/204/404 OK)   | Sesja       | 30 s    | `required-unverified`          |
+| `POST`   | `/api/parse-client-message`                            | LLM zamienia wiadomość klienta na criteria.    | Nie                    | Sesja       | 60 s    | `required-unverified`          |
+| `GET`    | `/api/db/overview`                                     | Podgląd stanu bazy backendu.                   | Tak                    | Sesja       | 30 s    | `required-unverified`          |
+| `GET`    | `/api/capabilities`                                    | Dostępność źródeł aukcyjnych (copart/iaai/manheim). | Tak               | Sesja       | 30 s    | `required-unverified`          |
+| `GET`    | `/clients`                                             | Lista klientów.                                | Tak                    | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| `POST`   | `/clients`                                             | Utworzenie klienta.                            | Nie                    | Sesja       | 8 s     | `blocked-by-backend-discovery` |
 
 ### Jobs (scraper)
 
