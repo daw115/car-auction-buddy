@@ -11,7 +11,7 @@ import {
 } from "@/server/dev-auth.server";
 import { clearSiteSession, getSiteSession, setSiteSession } from "@/server/site-session.server";
 
-const SITE_USERS = ["Dawid", "Janek", "Iga", "Monte", "Pawel"] as const;
+const SITE_USERS = ["Dawid", "Pawel"] as const;
 const usernameSchema = z.enum(SITE_USERS);
 
 // Namespaced key for the shared rate-limit store — keeps site-login counters
