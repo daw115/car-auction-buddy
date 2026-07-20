@@ -178,14 +178,21 @@ function DiagnosticsPage() {
         )}
         {healthQuery.data && (
           <div className="space-y-2">
-            {(Object.keys(healthQuery.data.services) as (keyof HealthResponse["services"])[]).map(
-              (k) => (
-                <ServiceRow key={k} label={SERVICE_LABEL[k]} status={healthQuery.data!.services[k]} />
-              ),
-            )}
+            {(["database", "scraper", "ai"] as const).map((k) => (
+              <ServiceRow key={k} label={SERVICE_LABEL[k]} status={healthQuery.data!.services[k]} />
+            ))}
           </div>
         )}
       </Card>
+
+      <UbuntuApiCard
+        probe={healthQuery.data?.services.ubuntuApi}
+        envs={query.data?.checks.filter((c) => c.category === "ubuntu") ?? []}
+        loading={healthQuery.isLoading || query.isLoading}
+        healthError={healthQuery.error as Error | null}
+        envError={query.error as Error | null}
+      />
+
 
       <Card className="p-4 space-y-3">
         <h2 className="font-semibold">Konfiguracja /config</h2>
