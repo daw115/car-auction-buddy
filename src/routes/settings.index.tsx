@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
-import { Sparkles, SlidersHorizontal, ListChecks } from "lucide-react";
+import { Sparkles, SlidersHorizontal, ListChecks, Stethoscope } from "lucide-react";
 
 export const Route = createFileRoute("/settings/")({
   head: () => ({
