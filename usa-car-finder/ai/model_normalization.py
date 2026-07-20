@@ -25,7 +25,6 @@ import re
 import subprocess
 import sqlite3
 import threading
-import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
