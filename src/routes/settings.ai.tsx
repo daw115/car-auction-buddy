@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -8,11 +8,8 @@ import {
   type AiProviderTask,
   type AiModelsResponse,
 } from "@/functions/ai-providers.functions";
-import {
-  aiProvidersQuery,
-  aiModelsQuery,
-  settingsQueryKeys,
-} from "@/queries/settings.queries";
+import { aiProvidersQuery, aiModelsQuery, settingsQueryKeys } from "@/queries/settings.queries";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Loader2, RotateCcw, Cpu, AlertCircle } from "lucide-react";
+import { Loader2, RotateCcw, Cpu, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/settings/ai")({
   head: () => ({
@@ -76,65 +73,59 @@ function AiSettingsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <Link
-            to="/settings"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" /> Wróć do ustawień
-          </Link>
-          <Badge variant="outline" className="gap-1">
-            <Cpu className="h-3 w-3" /> AI per zadanie
-          </Badge>
-        </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        title="Ustawienia AI"
+        description="Wybierz dostawcę AI osobno dla każdego zadania. Zmiany są zapisywane natychmiast."
+        icon={<Cpu className="h-5 w-5" />}
+        actions={<Badge variant="outline">AI per zadanie</Badge>}
+      />
 
-        <h1 className="mb-2 text-3xl font-bold tracking-tight">Ustawienia AI</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          Wybór dostawcy AI osobno dla każdego zadania. Zmiana zapisywana natychmiast.
-          „Domyślne z serwera" oznacza wartość z pliku <code>.env</code> backendu.
-        </p>
-
-        {providersQ.isLoading ? (
-          <Card className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Ładowanie ustawień...
-          </Card>
-        ) : providersQ.isError ? (
-          <Card className="p-6">
-            <div className="flex items-start gap-2 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 mt-0.5" />
-              <div>
-                <div className="font-medium">Błąd ładowania</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {providersQ.error instanceof Error ? providersQ.error.message : String(providersQ.error)}
-                </div>
+      {providersQ.isLoading ? (
+        <Card className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Ładowanie ustawień...
+        </Card>
+      ) : providersQ.isError ? (
+        <Card className="p-6">
+          <div className="flex items-start gap-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 mt-0.5" />
+            <div>
+              <div className="font-medium">Błąd ładowania</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {providersQ.error instanceof Error
+                  ? providersQ.error.message
+                  : String(providersQ.error)}
               </div>
             </div>
-            <Button onClick={() => void providersQ.refetch()} variant="outline" size="sm" className="mt-4">
-              Spróbuj ponownie
-            </Button>
-          </Card>
-        ) : tasks && tasks.length > 0 ? (
-          <div className="space-y-3">
-            <KiroModelSelector visible={kiroActive} />
-            {tasks.map((task) => (
-              <TaskRow
-                key={task.key}
-                task={task}
-                saving={providersMut.isPending && providersMut.variables?.key === task.key}
-                errorMsg={fieldErrors[task.key]}
-                onChange={(v) => providersMut.mutate({ key: task.key, value: v })}
-                onReset={() => providersMut.mutate({ key: task.key, value: null })}
-              />
-            ))}
           </div>
-        ) : (
-          <Card className="p-6 text-sm text-muted-foreground">
-            Backend nie zwrócił żadnych zadań AI.
-          </Card>
-        )}
-      </div>
+          <Button
+            onClick={() => void providersQ.refetch()}
+            variant="outline"
+            size="sm"
+            className="mt-4"
+          >
+            Spróbuj ponownie
+          </Button>
+        </Card>
+      ) : tasks && tasks.length > 0 ? (
+        <div className="space-y-3">
+          <KiroModelSelector visible={kiroActive} />
+          {tasks.map((task) => (
+            <TaskRow
+              key={task.key}
+              task={task}
+              saving={providersMut.isPending && providersMut.variables?.key === task.key}
+              errorMsg={fieldErrors[task.key]}
+              onChange={(v) => providersMut.mutate({ key: task.key, value: v })}
+              onReset={() => providersMut.mutate({ key: task.key, value: null })}
+            />
+          ))}
+        </div>
+      ) : (
+        <Card className="p-6 text-sm text-muted-foreground">
+          Backend nie zwrócił żadnych zadań AI.
+        </Card>
+      )}
     </div>
   );
 }
@@ -162,9 +153,7 @@ function TaskRow({
           <div className="flex flex-wrap items-center gap-2">
             <div className="font-medium text-sm">{task.label}</div>
             {isOverride ? (
-              <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400">
-                nadpisane
-              </Badge>
+              <Badge className="bg-warning/15 text-warning hover:bg-warning/20">nadpisane</Badge>
             ) : (
               <Badge variant="secondary">domyślne z serwera</Badge>
             )}
@@ -175,7 +164,10 @@ function TaskRow({
             {" · "}
             aktywne: <span className="font-medium text-foreground">{task.effective ?? "—"}</span>
             {isOverride && task.env_value && (
-              <> {" · "} .env: <code className="text-[11px]">{task.env_value}</code></>
+              <>
+                {" "}
+                {" · "} .env: <code className="text-[11px]">{task.env_value}</code>
+              </>
             )}
           </div>
           {errorMsg && (
@@ -263,9 +255,7 @@ function KiroModelSelector({ visible }: { visible: boolean }) {
           <div className="flex flex-wrap items-center gap-2">
             <div className="font-medium text-sm">Model Kiro</div>
             {isOverride ? (
-              <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400">
-                nadpisane
-              </Badge>
+              <Badge className="bg-warning/15 text-warning hover:bg-warning/20">nadpisane</Badge>
             ) : (
               <Badge variant="secondary">domyślne z serwera</Badge>
             )}
@@ -274,12 +264,19 @@ function KiroModelSelector({ visible }: { visible: boolean }) {
             )}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            Globalne dla wszystkich zadań używających <code className="text-[11px]">{provider}</code>
+            Globalne dla wszystkich zadań używających{" "}
+            <code className="text-[11px]">{provider}</code>
             {data?.effective && (
-              <> · aktywne: <span className="font-medium text-foreground">{data.effective}</span></>
+              <>
+                {" "}
+                · aktywne: <span className="font-medium text-foreground">{data.effective}</span>
+              </>
             )}
             {isOverride && data?.env_value && (
-              <> · .env: <code className="text-[11px]">{data.env_value}</code></>
+              <>
+                {" "}
+                · .env: <code className="text-[11px]">{data.env_value}</code>
+              </>
             )}
           </div>
           {q.isError && (

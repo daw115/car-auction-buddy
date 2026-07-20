@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy record payloads are not fully typed yet */
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -14,11 +15,13 @@ import {
 } from "@/functions/backend.functions";
 import type { BackendRecord, SearchAuditEntry } from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
+import { cn } from "@/lib/utils";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorState } from "@/components/error-state";
 import {
   Select,
   SelectContent,
@@ -50,6 +53,12 @@ export function formatTimeUntilAuction(
   return { text: `⏰ za ${days} dni`, variant: "default" };
 }
 
+function parseAuditRecordId(recordId: string | null): number | null {
+  if (!recordId || !/^\d+$/.test(recordId)) return null;
+  const value = Number(recordId);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 export function BackendRecordsPanel({
   activeRecordId,
   onSelectRecord,
@@ -65,7 +74,14 @@ export function BackendRecordsPanel({
   const [sortBy, setSortBy] = useState<string>("default");
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const { data: recordsData, isLoading, refetch } = useQuery({
+  const {
+    data: recordsData,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["backend-records", statusFilter],
     queryFn: () => fnListBackend({ data: { limit: 100, status: statusFilter || undefined } }),
     refetchInterval: 30000,
@@ -132,8 +148,13 @@ export function BackendRecordsPanel({
         <h2 className="text-sm font-semibold">
           📂 Rekordy backendu ({records.length}/{total})
         </h2>
-        <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Odśwież listę rekordów"
+          onClick={() => void refetch()}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
         </Button>
       </div>
       <div className="flex flex-wrap gap-1 mb-2">
@@ -179,8 +200,19 @@ export function BackendRecordsPanel({
           </SelectContent>
         </Select>
       </div>
+      {isError && (
+        <ErrorState
+          title="Nie udało się pobrać rekordów"
+          description={
+            error instanceof Error ? error.message : "Sprawdź połączenie i spróbuj ponownie."
+          }
+          onRetry={() => void refetch()}
+          retrying={isFetching}
+          className="mb-2 px-4 py-6"
+        />
+      )}
       <div className="max-h-[600px] overflow-auto space-y-1">
-        {!sortedRecords.length && !isLoading && (
+        {!sortedRecords.length && !isLoading && !isError && (
           <div className="text-sm text-muted-foreground italic py-8 text-center">
             Brak rekordów{statusFilter ? ` o statusie "${statusFilter}"` : ""}
             {userFilter !== "all" ? ` (filtr: ${userFilter})` : ""}.
@@ -201,11 +233,19 @@ export function BackendRecordsPanel({
   );
 }
 
-export function SearchAuditPanel() {
+export function SearchAuditPanel({
+  limit = 50,
+  className,
+  maxHeightClassName = "max-h-[320px]",
+}: {
+  limit?: number;
+  className?: string;
+  maxHeightClassName?: string;
+} = {}) {
   const fnList = useServerFn(backendListSearchAudit);
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ["search-audit"],
-    queryFn: () => fnList({ data: { limit: 50 } }),
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
+    queryKey: ["search-audit", limit],
+    queryFn: () => fnList({ data: { limit } }),
     refetchInterval: 30000,
   });
   const [userFilter, setUserFilter] = useState<string>("all");
@@ -216,13 +256,18 @@ export function SearchAuditPanel() {
     return e.searched_by === userFilter;
   });
   return (
-    <Card className="p-3">
+    <Card className={cn("p-3", className)}>
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold">
-          🕓 Historia audytu wyszukiwań ({filtered.length}/{entries.length})
+          🕓 Historia audytu — ostatnie {limit} wpisów ({filtered.length}/{entries.length})
         </h2>
-        <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Odśwież historię audytu"
+          onClick={() => void refetch()}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
         </Button>
       </div>
       <div className="mb-2">
@@ -241,34 +286,63 @@ export function SearchAuditPanel() {
           </SelectContent>
         </Select>
       </div>
-      <div className="max-h-[320px] overflow-auto space-y-1">
-        {!filtered.length && !isLoading && (
+      {isError && (
+        <ErrorState
+          title="Nie udało się pobrać historii audytu"
+          description={
+            error instanceof Error ? error.message : "Sprawdź połączenie i spróbuj ponownie."
+          }
+          onRetry={() => void refetch()}
+          retrying={isFetching}
+          className="mb-2 px-4 py-6"
+        />
+      )}
+      <div className={cn("overflow-auto space-y-1", maxHeightClassName)}>
+        {!filtered.length && !isLoading && !isError && (
           <div className="text-xs italic text-muted-foreground py-4 text-center">
             Brak wpisów audytu{userFilter !== "all" ? ` (filtr: ${userFilter})` : ""}.
           </div>
         )}
-        {filtered.map((e) => (
-          <div key={e.id} className="text-[11px] p-1.5 rounded border border-border/50 hover:bg-muted/30">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {e.searched_by ? (
-                <Badge variant="secondary" className="text-[9px] py-0 px-1">
-                  👤 {e.searched_by}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-[9px] py-0 px-1 italic">
-                  nieprzypisane
-                </Badge>
-              )}
-              <span className="text-muted-foreground">
-                {new Date(e.created_at).toLocaleString("pl-PL")}
-              </span>
+        {filtered.map((entry) => {
+          const recordId = parseAuditRecordId(entry.record_id);
+          return (
+            <div
+              key={entry.id}
+              className="rounded border border-border/50 p-1.5 text-[11px] hover:bg-muted/30"
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
+                {entry.searched_by ? (
+                  <Badge variant="secondary" className="px-1 py-0 text-[9px]">
+                    👤 {entry.searched_by}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="px-1 py-0 text-[9px] italic">
+                    nieprzypisane
+                  </Badge>
+                )}
+                <span className="text-muted-foreground">
+                  {new Date(entry.created_at).toLocaleString("pl-PL")}
+                </span>
+                {recordId && (
+                  <Button
+                    asChild
+                    variant="link"
+                    size="sm"
+                    className="ml-auto h-auto p-0 text-[11px]"
+                  >
+                    <Link to="/records" search={{ recordId }}>
+                      Rekord #{recordId}
+                    </Link>
+                  </Button>
+                )}
+              </div>
+              <div className="mt-0.5 truncate text-foreground/80">
+                {[entry.make, entry.model].filter(Boolean).join(" ") || "—"}
+                {entry.budget_usd ? ` · $${entry.budget_usd.toLocaleString("en-US")}` : ""}
+              </div>
             </div>
-            <div className="mt-0.5 text-foreground/80 truncate">
-              {[e.make, e.model].filter(Boolean).join(" ") || "—"}
-              {e.budget_usd ? ` · $${e.budget_usd.toLocaleString("en-US")}` : ""}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Card>
   );
@@ -330,7 +404,11 @@ function BackendRecordRow({
             onDelete();
           }}
         >
-          {isDeleting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          {isDeleting ? (
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
         </Button>
       </div>
       <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
@@ -357,13 +435,7 @@ function BackendRecordRow({
   );
 }
 
-export function RecordDetailView({
-  recordId,
-  onClose,
-}: {
-  recordId: number;
-  onClose: () => void;
-}) {
+export function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(backendGetRecord);
   const fnRegenerateBundles = useServerFn(backendRegenerateBundles);
   const queryClient = useQueryClient();
@@ -446,9 +518,7 @@ export function RecordDetailView({
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold">
-            {(record as any).title ?? `Rekord #${recordId}`}
-          </h2>
+          <h2 className="text-xl font-bold">{(record as any).title ?? `Rekord #${recordId}`}</h2>
           <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
             <Badge>{(record as any).status}</Badge>
             <span>{new Date((record as any).created_at).toLocaleString("pl-PL")}</span>
@@ -562,7 +632,8 @@ export function RecordDetailView({
           </div>
           <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
           <div>
-            Max przebieg: {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}
+            Max przebieg:{" "}
+            {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}
           </div>
           {criteria.fuel_type && (
             <div>

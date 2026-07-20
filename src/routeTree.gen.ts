@@ -12,15 +12,18 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as RecordsRouteImport } from './routes/records'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalculatorRouteImport } from './routes/calculator'
+import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsFiltersRouteImport } from './routes/settings.filters'
+import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
@@ -49,6 +52,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecordsRoute = RecordsRouteImport.update({
@@ -81,6 +89,11 @@ const CalculatorRoute = CalculatorRouteImport.update({
   path: '/calculator',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -94,6 +107,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
 const SettingsFiltersRoute = SettingsFiltersRouteImport.update({
   id: '/filters',
   path: '/filters',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsDefaultCriteriaRoute = SettingsDefaultCriteriaRouteImport.update({
@@ -173,12 +191,14 @@ const ApiPublicHooksCleanupLogsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
@@ -191,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
@@ -201,12 +222,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
+  '/reports': typeof ReportsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
@@ -218,6 +241,7 @@ export interface FileRoutesByTo {
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
@@ -229,12 +253,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
   '/calculator': typeof CalculatorRoute
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
   '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
@@ -247,6 +273,7 @@ export interface FileRoutesById {
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
@@ -259,12 +286,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/audit'
     | '/calculator'
     | '/dashboard'
     | '/database'
     | '/jobs'
     | '/mcp'
     | '/records'
+    | '/reports'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
@@ -277,6 +306,7 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
+    | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings/'
     | '/.mcp/invoke-tool/$tool'
@@ -287,12 +317,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/audit'
     | '/calculator'
     | '/dashboard'
     | '/database'
     | '/jobs'
     | '/mcp'
     | '/records'
+    | '/reports'
     | '/sitemap.xml'
     | '/watchlist'
     | '/.mcp/list-tools'
@@ -304,6 +336,7 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
+    | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings'
     | '/.mcp/invoke-tool/$tool'
@@ -314,12 +347,14 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/audit'
     | '/calculator'
     | '/dashboard'
     | '/database'
     | '/jobs'
     | '/mcp'
     | '/records'
+    | '/reports'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
@@ -332,6 +367,7 @@ export interface FileRouteTypes {
     | '/dev/logs'
     | '/settings/ai'
     | '/settings/default-criteria'
+    | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings/'
     | '/.mcp/invoke-tool/$tool'
@@ -343,12 +379,14 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuditRoute: typeof AuditRoute
   CalculatorRoute: typeof CalculatorRoute
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
   JobsRoute: typeof JobsRoute
   McpRoute: typeof McpRoute
   RecordsRoute: typeof RecordsRoute
+  ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WatchlistRoute: typeof WatchlistRoute
@@ -387,6 +425,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/records': {
@@ -431,6 +476,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CalculatorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -450,6 +502,13 @@ declare module '@tanstack/react-router' {
       path: '/filters'
       fullPath: '/settings/filters'
       preLoaderRoute: typeof SettingsFiltersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/diagnostics': {
+      id: '/settings/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/settings/diagnostics'
+      preLoaderRoute: typeof SettingsDiagnosticsRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/default-criteria': {
@@ -556,6 +615,7 @@ declare module '@tanstack/react-router' {
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
   SettingsDefaultCriteriaRoute: typeof SettingsDefaultCriteriaRoute
+  SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsFiltersRoute: typeof SettingsFiltersRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -563,6 +623,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
   SettingsDefaultCriteriaRoute: SettingsDefaultCriteriaRoute,
+  SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsFiltersRoute: SettingsFiltersRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
@@ -573,12 +634,14 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuditRoute: AuditRoute,
   CalculatorRoute: CalculatorRoute,
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
   JobsRoute: JobsRoute,
   McpRoute: McpRoute,
   RecordsRoute: RecordsRoute,
+  ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WatchlistRoute: WatchlistRoute,

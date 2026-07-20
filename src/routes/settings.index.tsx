@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
-import { Sparkles, SlidersHorizontal, ListChecks } from "lucide-react";
+import { Sparkles, SlidersHorizontal, ListChecks, Stethoscope } from "lucide-react";
 
 export const Route = createFileRoute("/settings/")({
   head: () => ({
@@ -17,8 +17,8 @@ function SettingsHub() {
     <div className="mx-auto max-w-3xl p-4 md:p-6 space-y-4">
       <h1 className="text-2xl font-bold">Ustawienia</h1>
       <p className="text-sm text-muted-foreground">
-        Cała konfiguracja providerów LLM i filtrów pipeline'u jest po stronie backendu
-        (<code>usacar-api</code>). Wybierz sekcję:
+        Cała konfiguracja providerów LLM i filtrów pipeline'u jest po stronie backendu (
+        <code>usacar-api</code>). Wybierz sekcję:
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         <Link to="/settings/ai">
@@ -28,8 +28,8 @@ function SettingsHub() {
               <h2 className="font-semibold">Providery AI</h2>
             </div>
             <p className="text-xs text-muted-foreground">
-              Wybór providera i modelu dla analizy ofert, generowania raportów,
-              normalizacji modeli, wykrywania uszkodzeń ramy i agenta ofert.
+              Wybór providera i modelu dla analizy ofert, generowania raportów, normalizacji modeli,
+              wykrywania uszkodzeń ramy i agenta ofert.
             </p>
           </Card>
         </Link>
@@ -40,8 +40,8 @@ function SettingsHub() {
               <h2 className="font-semibold">Filtry systemowe</h2>
             </div>
             <p className="text-xs text-muted-foreground">
-              Globalne przełączniki pipeline'u: tylko sprzedawcy typu insurance,
-              wykluczenie kabrioletów itp.
+              Globalne przełączniki pipeline'u: tylko sprzedawcy typu insurance, wykluczenie
+              kabrioletów itp.
             </p>
           </Card>
         </Link>
@@ -52,8 +52,19 @@ function SettingsHub() {
               <h2 className="font-semibold">Domyślne kryteria</h2>
             </div>
             <p className="text-xs text-muted-foreground">
-              Wartości startowe formularza wyszukiwania (marka, budżet, wykluczone
-              uszkodzenia, sources). User może je nadpisać przed „Szukaj”.
+              Wartości startowe formularza wyszukiwania (marka, budżet, wykluczone uszkodzenia,
+              sources). User może je nadpisać przed „Szukaj”.
+            </p>
+          </Card>
+        </Link>
+        <Link to="/settings/diagnostics">
+          <Card className="h-full p-4 transition-colors hover:bg-accent">
+            <div className="mb-2 flex items-center gap-2">
+              <Stethoscope className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold">Diagnostyka</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Bezpieczne skróty do stanu danych, usług i logów dla zalogowanego operatora.
             </p>
           </Card>
         </Link>

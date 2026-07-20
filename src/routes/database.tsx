@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy diagnostics payloads are not fully typed yet */
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -14,12 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { PageHeader } from "@/components/page-header";
 import { BidfaxBadge } from "@/components/BidfaxBadge";
 import {
   backendDbOverview,
@@ -60,11 +56,7 @@ import {
   backendAnalyzeFeedback,
 } from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
-import {
-  AUCTION_SOURCES,
-  isAuctionSource,
-  type AuctionSource,
-} from "@/lib/auction-sources";
+import { AUCTION_SOURCES, isAuctionSource, type AuctionSource } from "@/lib/auction-sources";
 import { Textarea } from "@/components/ui/textarea";
 import {
   RefreshCw,
@@ -73,7 +65,6 @@ import {
   Trash2,
   Database,
   Search,
-  ArrowLeft,
   FileText,
   HardDrive,
   Cpu,
@@ -175,7 +166,9 @@ function OverviewSection() {
     }
   }, [fn]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   return (
     <Card>
@@ -188,7 +181,9 @@ function OverviewSection() {
       </CardHeader>
       <CardContent>
         {loading && !data ? (
-          <div className="flex justify-center py-6"><Spin /></div>
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
         ) : !data ? (
           <EmptyState text="Backend niedostępny" />
         ) : (
@@ -197,13 +192,23 @@ function OverviewSection() {
               icon={<FileText className="h-4 w-4" />}
               label="Search records"
               value={data.app_db?.search_records ?? 0}
-              sub={data.app_db?.latest_record_at ? `Najnowszy: ${fmtDate(data.app_db.latest_record_at)}` : undefined}
+              sub={
+                data.app_db?.latest_record_at
+                  ? `Najnowszy: ${fmtDate(data.app_db.latest_record_at)}`
+                  : undefined
+              }
             />
             <StatCard
               icon={<Cpu className="h-4 w-4" />}
               label="Jobs"
               value={data.jobs_db?.total ?? 0}
-              sub={data.jobs_db?.by_status ? Object.entries(data.jobs_db.by_status).map(([k, v]) => `${k}: ${v}`).join(", ") : undefined}
+              sub={
+                data.jobs_db?.by_status
+                  ? Object.entries(data.jobs_db.by_status)
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(", ")
+                  : undefined
+              }
             />
             <StatCard
               icon={<HardDrive className="h-4 w-4" />}
@@ -215,7 +220,9 @@ function OverviewSection() {
               icon={<Globe className="h-4 w-4" />}
               label="HTML cache"
               value={`${data.html_cache?.total_files ?? 0} plików`}
-              sub={data.html_cache?.total_size_kb ? fmtSize(data.html_cache.total_size_kb) : undefined}
+              sub={
+                data.html_cache?.total_size_kb ? fmtSize(data.html_cache.total_size_kb) : undefined
+              }
             />
           </div>
         )}
@@ -224,7 +231,17 @@ function OverviewSection() {
   );
 }
 
-function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string | number; sub?: string }) {
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  sub?: string;
+}) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
@@ -239,19 +256,44 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
 // ── Search Records Section ──
 
 function statusBadge(status: string | undefined) {
-  if (!status) return <Badge variant="outline" className="text-[10px]">—</Badge>;
+  if (!status)
+    return (
+      <Badge variant="outline" className="text-[10px]">
+        —
+      </Badge>
+    );
   switch (status) {
     case "done":
     case "new":
-      return <Badge variant="default" className="text-[10px]">✅ Ukończone</Badge>;
+      return (
+        <Badge variant="default" className="text-[10px]">
+          ✅ Ukończone
+        </Badge>
+      );
     case "cancelled":
-      return <Badge variant="secondary" className="text-[10px]">⛔ Anulowane</Badge>;
+      return (
+        <Badge variant="secondary" className="text-[10px]">
+          ⛔ Anulowane
+        </Badge>
+      );
     case "error":
-      return <Badge variant="destructive" className="text-[10px]">❌ Błąd</Badge>;
+      return (
+        <Badge variant="destructive" className="text-[10px]">
+          ❌ Błąd
+        </Badge>
+      );
     case "interrupted":
-      return <Badge variant="outline" className="text-[10px]">⚠️ Przerwane</Badge>;
+      return (
+        <Badge variant="outline" className="text-[10px]">
+          ⚠️ Przerwane
+        </Badge>
+      );
     default:
-      return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
+      return (
+        <Badge variant="outline" className="text-[10px]">
+          {status}
+        </Badge>
+      );
   }
 }
 
@@ -282,7 +324,9 @@ function RecordsSection() {
     }
   }, [fn, query, limit]);
 
-  useEffect(() => { load(); }, [limit]);
+  useEffect(() => {
+    load();
+  }, [limit]);
 
   const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
@@ -308,7 +352,9 @@ function RecordsSection() {
       const res = await fnDelete({ data: { id } });
       if (res.ok) {
         const kb = (res.bytes_freed / 1024).toFixed(0);
-        toast.success(`Usunięto rekord #${res.record_id} (${res.files_removed} plików, ${kb} KB zwolnione)`);
+        toast.success(
+          `Usunięto rekord #${res.record_id} (${res.files_removed} plików, ${kb} KB zwolnione)`,
+        );
         setConfirmDel(null);
         load();
       } else {
@@ -339,7 +385,12 @@ function RecordsSection() {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">📋 Search Records</CardTitle>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)} className="text-xs gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAnalyzeOpen(true)}
+            className="text-xs gap-1"
+          >
             <Brain className="h-3.5 w-3.5" /> Przeanalizuj feedback
           </Button>
           <Select value={userFilter} onValueChange={setUserFilter}>
@@ -349,7 +400,9 @@ function RecordsSection() {
             <SelectContent>
               <SelectItem value="all">👥 Wszyscy</SelectItem>
               {SITE_USERS.map((u) => (
-                <SelectItem key={u} value={u}>👤 {u}</SelectItem>
+                <SelectItem key={u} value={u}>
+                  👤 {u}
+                </SelectItem>
               ))}
               <SelectItem value="__none__">— Bez przypisania</SelectItem>
             </SelectContent>
@@ -370,7 +423,9 @@ function RecordsSection() {
             className="h-8 w-48"
           />
           <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-            <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-20">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="50">50</SelectItem>
               <SelectItem value="100">100</SelectItem>
@@ -384,7 +439,9 @@ function RecordsSection() {
       </CardHeader>
       <CardContent>
         {loading && records.length === 0 ? (
-          <div className="flex justify-center py-6"><Spin /></div>
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
         ) : filtered.length === 0 ? (
           <EmptyState text="Brak rekordów" />
         ) : (
@@ -411,13 +468,23 @@ function RecordsSection() {
                   const searchedBy =
                     r.searched_by ?? r.criteria?.searched_by ?? r.meta?.searched_by ?? null;
                   return (
-                    <TableRow key={r.id} className="cursor-pointer" onClick={() => openDetail(r.id)}>
-                      <TableCell className="text-xs whitespace-nowrap">{fmtDate(r.created_at)}</TableCell>
-                      <TableCell className="max-w-[200px] truncate text-xs">{r.title || "—"}</TableCell>
+                    <TableRow
+                      key={r.id}
+                      className="cursor-pointer"
+                      onClick={() => openDetail(r.id)}
+                    >
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {fmtDate(r.created_at)}
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate text-xs">
+                        {r.title || "—"}
+                      </TableCell>
                       <TableCell className="text-xs">{r.client?.name || r.client || "—"}</TableCell>
                       <TableCell className="text-xs">
                         {searchedBy ? (
-                          <Badge variant="secondary" className="text-[10px]">{searchedBy}</Badge>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {searchedBy}
+                          </Badge>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -426,7 +493,9 @@ function RecordsSection() {
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                         {r.analysis_notice || "—"}
                       </TableCell>
-                      <TableCell className="text-right text-xs">{r.collected_count ?? "—"}</TableCell>
+                      <TableCell className="text-right text-xs">
+                        {r.collected_count ?? "—"}
+                      </TableCell>
                       <TableCell
                         className={`text-right text-xs whitespace-nowrap ${durationColorClass(r.duration_seconds)}`}
                         title={
@@ -474,10 +543,14 @@ function RecordsSection() {
         >
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
             <DialogHeader>
-              <DialogTitle>Szczegóły rekordu {detailRecordId ? `#${detailRecordId}` : ""}</DialogTitle>
+              <DialogTitle>
+                Szczegóły rekordu {detailRecordId ? `#${detailRecordId}` : ""}
+              </DialogTitle>
             </DialogHeader>
             {detailLoading ? (
-              <div className="flex justify-center py-8"><Spin /></div>
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
             ) : detail && detailRecordId ? (
               <RecordDetailView record={detail} recordId={detailRecordId} />
             ) : null}
@@ -486,8 +559,10 @@ function RecordsSection() {
 
         <AnalyzeFeedbackDialog open={analyzeOpen} onOpenChange={setAnalyzeOpen} />
 
-
-        <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && !deletingId && setConfirmDel(null)}>
+        <AlertDialog
+          open={!!confirmDel}
+          onOpenChange={(o) => !o && !deletingId && setConfirmDel(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Usunąć wyszukiwanie?</AlertDialogTitle>
@@ -505,7 +580,10 @@ function RecordsSection() {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={!!deletingId}>Anuluj</AlertDialogCancel>
               <AlertDialogAction
-                onClick={(e) => { e.preventDefault(); handleDelete(); }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDelete();
+                }}
                 disabled={!!deletingId}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
@@ -542,9 +620,12 @@ function JobsSection() {
     }
   }, [fn]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
-  const filtered = statusFilter === "all" ? jobs : jobs.filter((j: any) => j.status === statusFilter);
+  const filtered =
+    statusFilter === "all" ? jobs : jobs.filter((j: any) => j.status === statusFilter);
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -564,7 +645,9 @@ function JobsSection() {
         <CardTitle className="text-base">⚙️ Jobs</CardTitle>
         <div className="flex items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-32">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Wszystkie</SelectItem>
               <SelectItem value="done">done</SelectItem>
@@ -580,7 +663,9 @@ function JobsSection() {
       </CardHeader>
       <CardContent>
         {loading && jobs.length === 0 ? (
-          <div className="flex justify-center py-6"><Spin /></div>
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
         ) : filtered.length === 0 ? (
           <EmptyState text="Brak jobów" />
         ) : (
@@ -600,21 +685,41 @@ function JobsSection() {
                 {filtered.map((j: any) => {
                   const phases = j.phases ?? [];
                   const lastPhase = phases[phases.length - 1];
-                  const dur = j.created_at && j.finished_at
-                    ? `${Math.round((new Date(j.finished_at).getTime() - new Date(j.created_at).getTime()) / 1000)}s`
-                    : "—";
+                  const dur =
+                    j.created_at && j.finished_at
+                      ? `${Math.round((new Date(j.finished_at).getTime() - new Date(j.created_at).getTime()) / 1000)}s`
+                      : "—";
                   return (
-                    <TableRow key={j.id} className="cursor-pointer" onClick={() => openDetail(j.id)}>
-                      <TableCell className="text-xs font-mono">{String(j.id).slice(0, 8)}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{fmtDate(j.created_at)}</TableCell>
+                    <TableRow
+                      key={j.id}
+                      className="cursor-pointer"
+                      onClick={() => openDetail(j.id)}
+                    >
+                      <TableCell className="text-xs font-mono">
+                        {String(j.id).slice(0, 8)}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {fmtDate(j.created_at)}
+                      </TableCell>
                       <TableCell>
-                        <Badge variant={j.status === "done" ? "default" : j.status === "error" ? "destructive" : "secondary"} className="text-[10px]">
+                        <Badge
+                          variant={
+                            j.status === "done"
+                              ? "default"
+                              : j.status === "error"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                          className="text-[10px]"
+                        >
                           {j.status}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs">{lastPhase?.name ?? "—"}</TableCell>
                       <TableCell className="text-xs">{dur}</TableCell>
-                      <TableCell><Eye className="h-3.5 w-3.5 text-muted-foreground" /></TableCell>
+                      <TableCell>
+                        <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -629,7 +734,9 @@ function JobsSection() {
               <DialogTitle>Szczegóły joba</DialogTitle>
             </DialogHeader>
             {detailLoading ? (
-              <div className="flex justify-center py-8"><Spin /></div>
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
             ) : detail ? (
               <div className="space-y-4">
                 {detail.phases && Array.isArray(detail.phases) && (
@@ -638,9 +745,16 @@ function JobsSection() {
                     <div className="space-y-1">
                       {detail.phases.map((p: any, i: number) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
-                          <Badge variant={p.status === "done" ? "default" : "secondary"} className="text-[10px]">{p.status ?? "?"}</Badge>
+                          <Badge
+                            variant={p.status === "done" ? "default" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {p.status ?? "?"}
+                          </Badge>
                           <span className="font-medium">{p.name}</span>
-                          {p.duration_s != null && <span className="text-muted-foreground">{p.duration_s}s</span>}
+                          {p.duration_s != null && (
+                            <span className="text-muted-foreground">{p.duration_s}s</span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -680,7 +794,9 @@ function LlmCacheSection() {
     }
   }, [fn]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleDelete = async (key: string) => {
     try {
@@ -719,7 +835,9 @@ function LlmCacheSection() {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">💾 LLM Cache</CardTitle>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-[10px]">{items.length} wpisów</Badge>
+          <Badge variant="secondary" className="text-[10px]">
+            {items.length} wpisów
+          </Badge>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" disabled={items.length === 0}>
@@ -730,7 +848,8 @@ function LlmCacheSection() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Wyczyścić cały LLM cache?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Usunie wszystkie {items.length} wpisów. Kolejne raporty będą generowane od nowa (~30s/lot).
+                  Usunie wszystkie {items.length} wpisów. Kolejne raporty będą generowane od nowa
+                  (~30s/lot).
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -746,7 +865,9 @@ function LlmCacheSection() {
       </CardHeader>
       <CardContent>
         {loading && items.length === 0 ? (
-          <div className="flex justify-center py-6"><Spin /></div>
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
         ) : items.length === 0 ? (
           <EmptyState text="Cache pusty" />
         ) : (
@@ -766,32 +887,55 @@ function LlmCacheSection() {
               <TableBody>
                 {items.map((it: any) => (
                   <TableRow key={it.cache_key}>
-                    <TableCell className="text-xs whitespace-nowrap">{fmtDate(it.generated_at)}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {fmtDate(it.generated_at)}
+                    </TableCell>
                     <TableCell className="text-xs">{it.source ?? "—"}</TableCell>
                     <TableCell className="text-xs font-mono">{it.lot_id ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px]">{it.kind ?? "—"}</Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {it.kind ?? "—"}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-xs">{it.provider ?? "—"}</TableCell>
-                    <TableCell className="text-right text-xs">{it.html_size ? fmtSize(it.html_size / 1024) : "—"}</TableCell>
+                    <TableCell className="text-right text-xs">
+                      {it.html_size ? fmtSize(it.html_size / 1024) : "—"}
+                    </TableCell>
                     <TableCell className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openHtml(it.cache_key); }}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openHtml(it.cache_key);
+                        }}
+                      >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>Usunąć wpis?</AlertDialogTitle>
-                            <AlertDialogDescription>Lot {it.lot_id} ({it.kind}) zostanie usunięty z cache.</AlertDialogDescription>
+                            <AlertDialogDescription>
+                              Lot {it.lot_id} ({it.kind}) zostanie usunięty z cache.
+                            </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Anuluj</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(it.cache_key)}>Usuń</AlertDialogAction>
+                            <AlertDialogAction onClick={() => handleDelete(it.cache_key)}>
+                              Usuń
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -828,7 +972,9 @@ function HtmlCacheSection() {
     }
   }, [fn, source]);
 
-  useEffect(() => { load(); }, [source]);
+  useEffect(() => {
+    load();
+  }, [source]);
 
   const openHtml = async (item: any) => {
     const itemSource = String(item.source ?? "").toLowerCase();
@@ -855,10 +1001,7 @@ function HtmlCacheSection() {
     return {
       ...auctionSource,
       count: sourceItems.length,
-      size: sourceItems.reduce(
-        (sum: number, item: any) => sum + (item.size_kb ?? 0),
-        0,
-      ),
+      size: sourceItems.reduce((sum: number, item: any) => sum + (item.size_kb ?? 0), 0),
     };
   });
 
@@ -873,7 +1016,9 @@ function HtmlCacheSection() {
               .join(" · ")}
           </Badge>
           <Select value={source} onValueChange={setSource}>
-            <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-28">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Wszystkie</SelectItem>
               {AUCTION_SOURCES.map((auctionSource) => (
@@ -890,7 +1035,9 @@ function HtmlCacheSection() {
       </CardHeader>
       <CardContent>
         {loading && items.length === 0 ? (
-          <div className="flex justify-center py-6"><Spin /></div>
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
         ) : items.length === 0 ? (
           <EmptyState text="Cache pusty" />
         ) : (
@@ -908,14 +1055,25 @@ function HtmlCacheSection() {
               <TableBody>
                 {items.map((it: any, i: number) => (
                   <TableRow key={`${it.source}-${it.filename}-${i}`}>
-                    <TableCell className="text-xs whitespace-nowrap">{fmtDate(it.modified_at)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px]">{it.source}</Badge>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {fmtDate(it.modified_at)}
                     </TableCell>
-                    <TableCell className="text-xs font-mono max-w-[250px] truncate">{it.filename}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px]">
+                        {it.source}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono max-w-[250px] truncate">
+                      {it.filename}
+                    </TableCell>
                     <TableCell className="text-right text-xs">{fmtSize(it.size_kb)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openHtml(it)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => openHtml(it)}
+                      >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -950,7 +1108,9 @@ function NormalizationsSection() {
     }
   }, [fn]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const items = data?.items ?? [];
   const stats = data?.stats;
@@ -984,7 +1144,9 @@ function NormalizationsSection() {
       </CardHeader>
       <CardContent>
         {loading && items.length === 0 ? (
-          <div className="flex justify-center py-6"><Spin /></div>
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
         ) : items.length === 0 ? (
           <EmptyState text="Brak normalizacji" />
         ) : (
@@ -1006,10 +1168,17 @@ function NormalizationsSection() {
                     <TableCell className="text-xs">{n.make}</TableCell>
                     <TableCell className="font-mono text-xs">{n.original_text}</TableCell>
                     <TableCell className="font-semibold text-xs">{n.normalized_model}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{n.reason || "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                      {n.reason || "—"}
+                    </TableCell>
                     <TableCell className="text-right text-xs">×{n.verified_count ?? 0}</TableCell>
                     <TableCell>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(n.id)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => handleDelete(n.id)}
+                      >
                         🗑️
                       </Button>
                     </TableCell>
@@ -1028,32 +1197,18 @@ function NormalizationsSection() {
 
 function DatabasePage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" /> Panel
-            </Link>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              <Database className="h-5 w-5" /> Baza danych
-            </h1>
-          </div>
-          <ThemeToggle />
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        <OverviewSection />
-        <RecordsSection />
-        <JobsSection />
-        <LlmCacheSection />
-        <HtmlCacheSection />
-        <NormalizationsSection />
-      </main>
+    <div className="space-y-6">
+      <PageHeader
+        title="Baza danych"
+        description="Przegląd rekordów, zadań, pamięci podręcznej i normalizacji backendu."
+        icon={<Database className="h-5 w-5" />}
+      />
+      <OverviewSection />
+      <RecordsSection />
+      <JobsSection />
+      <LlmCacheSection />
+      <HtmlCacheSection />
+      <NormalizationsSection />
     </div>
   );
 }
@@ -1072,8 +1227,7 @@ type FeedbackEntry = {
 
 function getRecordLots(record: any): any[] {
   // Direct shapes (legacy / local DB)
-  const direct =
-    record?.listings ?? record?.lots ?? record?.collected ?? null;
+  const direct = record?.listings ?? record?.lots ?? record?.collected ?? null;
   if (Array.isArray(direct) && direct.length > 0) return direct;
 
   // External backend shape: response.all_results / top_recommendations
@@ -1142,7 +1296,9 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [recordId, fnGet]);
 
   const sendVote = async (lot: any, vote: FeedbackVote, reasonText?: string) => {
@@ -1166,7 +1322,8 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
     } catch (e: any) {
       setFeedback((f) => {
         const next = { ...f };
-        if (prev) next[key] = prev; else delete next[key];
+        if (prev) next[key] = prev;
+        else delete next[key];
         return next;
       });
       const status = e?.status;
@@ -1241,13 +1398,19 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 text-xs">
         <Badge variant="outline">Lotów: {lots.length}</Badge>
-        <Badge variant="outline" className="text-emerald-600">👍 {upCount}</Badge>
-        <Badge variant="outline" className="text-red-600">👎 {downCount}</Badge>
+        <Badge variant="outline" className="text-emerald-600">
+          👍 {upCount}
+        </Badge>
+        <Badge variant="outline" className="text-red-600">
+          👎 {downCount}
+        </Badge>
         {record?.title && <Badge variant="secondary">{record.title}</Badge>}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-6"><Spin /></div>
+        <div className="flex justify-center py-6">
+          <Spin />
+        </div>
       ) : lots.length === 0 ? (
         <EmptyState text="Ten rekord nie zawiera lotów" />
       ) : (
@@ -1336,12 +1499,10 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
           />
           <div className="text-[10px] text-muted-foreground text-right">{reason.length}/500</div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDownModal(null)}>Anuluj</Button>
-            <Button
-              variant="destructive"
-              onClick={submitDown}
-              disabled={reason.trim().length < 5}
-            >
+            <Button variant="outline" onClick={() => setDownModal(null)}>
+              Anuluj
+            </Button>
+            <Button variant="destructive" onClick={submitDown} disabled={reason.trim().length < 5}>
               Odrzuć i zapisz
             </Button>
           </div>
@@ -1351,7 +1512,13 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
   );
 }
 
-function AnalyzeFeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function AnalyzeFeedbackDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   const fn = useServerFn(backendAnalyzeFeedback);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -1407,7 +1574,9 @@ function AnalyzeFeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                     <div className="text-xs text-muted-foreground mb-1">Preferowane marki</div>
                     <div className="flex flex-wrap gap-1">
                       {rec.preferred_makes.map((m: string) => (
-                        <Badge key={m} className="bg-emerald-600 hover:bg-emerald-700 text-white">{m}</Badge>
+                        <Badge key={m} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                          {m}
+                        </Badge>
                       ))}
                     </div>
                   </div>
@@ -1417,21 +1586,28 @@ function AnalyzeFeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                     <div className="text-xs text-muted-foreground mb-1">Unikane uszkodzenia</div>
                     <div className="flex flex-wrap gap-1">
                       {rec.avoided_damage_types.map((d: string) => (
-                        <Badge key={d} className="bg-red-600 hover:bg-red-700 text-white">{d}</Badge>
+                        <Badge key={d} className="bg-red-600 hover:bg-red-700 text-white">
+                          {d}
+                        </Badge>
                       ))}
                     </div>
                   </div>
                 )}
                 {rec.preferred_year_min != null && (
-                  <div className="text-xs">Min rocznik: <strong>{rec.preferred_year_min}</strong></div>
+                  <div className="text-xs">
+                    Min rocznik: <strong>{rec.preferred_year_min}</strong>
+                  </div>
                 )}
                 {rec.preferred_max_odometer_mi != null && (
                   <div className="text-xs">
-                    Max przebieg: <strong>{Number(rec.preferred_max_odometer_mi).toLocaleString()} mi</strong>
+                    Max przebieg:{" "}
+                    <strong>{Number(rec.preferred_max_odometer_mi).toLocaleString()} mi</strong>
                   </div>
                 )}
                 {rec.score_threshold != null && (
-                  <div className="text-xs">Min score: <strong>{rec.score_threshold}</strong></div>
+                  <div className="text-xs">
+                    Min score: <strong>{rec.score_threshold}</strong>
+                  </div>
                 )}
                 {rec.additional_notes && (
                   <div className="text-xs text-muted-foreground italic">{rec.additional_notes}</div>
@@ -1449,16 +1625,22 @@ function AnalyzeFeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                   👎 {stats.down ?? 0}
                 </Badge>
                 {stats.avg_score_up != null && (
-                  <Badge variant="outline">śr. score 👍: {Number(stats.avg_score_up).toFixed(1)}</Badge>
+                  <Badge variant="outline">
+                    śr. score 👍: {Number(stats.avg_score_up).toFixed(1)}
+                  </Badge>
                 )}
                 {stats.avg_score_down != null && (
-                  <Badge variant="outline">śr. score 👎: {Number(stats.avg_score_down).toFixed(1)}</Badge>
+                  <Badge variant="outline">
+                    śr. score 👎: {Number(stats.avg_score_down).toFixed(1)}
+                  </Badge>
                 )}
               </div>
             </section>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Zamknij</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Zamknij
+              </Button>
               <Button
                 onClick={() => {
                   try {

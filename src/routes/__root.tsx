@@ -1,4 +1,10 @@
-import { Outlet, Link, createRootRouteWithContext, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
@@ -14,22 +20,21 @@ interface RouterContext {
   queryClient: QueryClient;
 }
 
-
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Nie znaleziono strony</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
+          Ta strona nie istnieje lub została przeniesiona.
         </p>
         <div className="mt-6">
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Go home
+            Powrót do panelu
           </Link>
         </div>
       </div>
@@ -49,12 +54,28 @@ export const Route = createRootRouteWithContext<RouterContext>()({
           "Panel operacyjny do wyszukiwania aut z aukcji Copart, IAAI i Manheim, analiza AI i raporty dla klientów.",
       },
       { property: "og:title", content: "USA Car Finder — panel operatora" },
-      { property: "og:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
+      {
+        property: "og:description",
+        content:
+          "Web application for searching US auction cars, managing clients, AI analysis, and report generation.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:title", content: "USA Car Finder — panel operatora" },
-      { name: "twitter:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Web application for searching US auction cars, managing clients, AI analysis, and report generation.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png",
+      },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
@@ -71,7 +92,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="pl" suppressHydrationWarning>
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
@@ -106,4 +127,3 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
-

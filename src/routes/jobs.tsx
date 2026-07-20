@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Activity } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Activity, Search } from "lucide-react";
 
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { ActiveJobsPanel } from "@/components/panels/jobs-panel";
 import { ConnectionStatusPanel } from "@/components/panels/connection-status-panel";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/jobs")({
   head: () => ({
@@ -36,9 +37,19 @@ function JobsPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <ActiveJobsPanel
           emptyState={
-            <Card className="p-8 text-center text-sm text-muted-foreground">
-              Brak aktywnych zadań. Uruchom wyszukiwanie na stronie głównej, żeby zobaczyć tu postęp.
-            </Card>
+            <EmptyState
+              title="Brak aktywnych zadań"
+              description="Uruchom wyszukiwanie, aby monitorować tutaj postęp scrapera."
+              icon={<Activity className="h-6 w-6" />}
+              action={
+                <Button asChild>
+                  <Link to="/">
+                    <Search className="h-4 w-4" />
+                    Uruchom wyszukiwanie
+                  </Link>
+                </Button>
+              }
+            />
           }
         />
         <ConnectionStatusPanel />
@@ -46,4 +57,3 @@ function JobsPage() {
     </div>
   );
 }
-

@@ -12,8 +12,10 @@ import {
   HardDrive,
   Cpu,
   Filter,
+  FileText,
+  ShieldCheck,
+  Stethoscope,
 } from "lucide-react";
-
 
 import {
   Sidebar,
@@ -25,6 +27,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -39,19 +44,33 @@ const workItems: NavItem[] = [
   { title: "Szukaj", url: "/", icon: Search, exact: true },
   { title: "Aktywne joby", url: "/jobs", icon: Activity },
   { title: "Rekordy", url: "/records", icon: Database },
+  { title: "Raporty", url: "/reports", icon: FileText },
+  { title: "Audyt", url: "/audit", icon: ShieldCheck },
   { title: "Watchlist", url: "/watchlist", icon: Bookmark },
   { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
 ];
 
-
 const toolItems: NavItem[] = [
   { title: "Kalkulator", url: "/calculator", icon: Calculator },
   { title: "Baza danych", url: "/database", icon: HardDrive },
-  { title: "Ustawienia AI", url: "/settings/ai", icon: Cpu },
-  { title: "Filtry systemowe", url: "/settings/filters", icon: Filter },
-  { title: "Ustawienia", url: "/settings", icon: Settings, exact: true },
-  { title: "Logi (dev)", url: "/dev/logs", icon: Terminal },
 ];
+
+const settingsItems: NavItem[] = [
+  { title: "Providery AI", url: "/settings/ai", icon: Cpu },
+  { title: "Filtry systemowe", url: "/settings/filters", icon: Filter },
+  {
+    title: "Domyślne kryteria",
+    url: "/settings/default-criteria",
+    icon: Settings,
+  },
+  {
+    title: "Diagnostyka",
+    url: "/settings/diagnostics",
+    icon: Stethoscope,
+  },
+];
+
+const developerItems: NavItem[] = [{ title: "Logi", url: "/dev/logs", icon: Terminal }];
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -67,11 +86,7 @@ export function AppSidebar() {
     const active = isActive(item);
     return (
       <SidebarMenuItem key={item.url}>
-        <SidebarMenuButton
-          asChild
-          isActive={active}
-          tooltip={collapsed ? item.title : undefined}
-        >
+        <SidebarMenuButton asChild isActive={active} tooltip={collapsed ? item.title : undefined}>
           <Link to={item.url} className="flex items-center gap-2">
             <item.icon className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="truncate">{item.title}</span>}
@@ -104,7 +119,41 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Narzędzia</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{toolItems.map(renderItem)}</SidebarMenu>
+            <SidebarMenu>
+              {toolItems.map(renderItem)}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={currentPath.startsWith("/settings")}
+                  tooltip={collapsed ? "Ustawienia" : undefined}
+                >
+                  <Link to="/settings" className="flex items-center gap-2">
+                    <Settings className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="truncate">Ustawienia</span>}
+                  </Link>
+                </SidebarMenuButton>
+                {!collapsed && (
+                  <SidebarMenuSub>
+                    {settingsItems.map((item) => (
+                      <SidebarMenuSubItem key={item.url}>
+                        <SidebarMenuSubButton asChild isActive={isActive(item)}>
+                          <Link to={item.url}>
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                )}
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Deweloper</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>{developerItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

@@ -5,7 +5,21 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pause, Play, Trash2, ArrowLeft, ChevronRight, Copy, Check, Download, ArrowDownNarrowWide, ArrowUpNarrowWide, Link2, Layers, ChevronDown } from "lucide-react";
+import {
+  Pause,
+  Play,
+  Trash2,
+  ArrowLeft,
+  ChevronRight,
+  Copy,
+  Check,
+  Download,
+  ArrowDownNarrowWide,
+  ArrowUpNarrowWide,
+  Link2,
+  Layers,
+  ChevronDown,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -67,7 +81,14 @@ function DevLogsPage() {
   const copyExtra = async (entry: LogEntry) => {
     try {
       const payload = JSON.stringify(
-        { id: entry.id, ts: entry.ts, level: entry.level, scope: entry.scope, message: entry.message, extra: entry.extra ?? null },
+        {
+          id: entry.id,
+          ts: entry.ts,
+          level: entry.level,
+          scope: entry.scope,
+          message: entry.message,
+          extra: entry.extra ?? null,
+        },
         null,
         2,
       );
@@ -113,7 +134,11 @@ function DevLogsPage() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     downloadFile(
       `dev-logs-${stamp}.json`,
-      JSON.stringify({ exportedAt: new Date().toISOString(), count: filtered.length, entries: filtered }, null, 2),
+      JSON.stringify(
+        { exportedAt: new Date().toISOString(), count: filtered.length, entries: filtered },
+        null,
+        2,
+      ),
       "application/json",
     );
     toast.success(`Wyeksportowano ${filtered.length} wpisów (JSON)`);
@@ -125,7 +150,10 @@ function DevLogsPage() {
       return;
     }
     const esc = (s: string) =>
-      s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+      s.replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+      );
     const levelColor: Record<LogEntry["level"], string> = {
       info: "#22d3ee",
       warn: "#facc15",
@@ -135,7 +163,9 @@ function DevLogsPage() {
     };
     const rows = filtered
       .map((e) => {
-        const extra = e.extra ? `<pre class="extra">${esc(JSON.stringify(e.extra, null, 2))}</pre>` : "";
+        const extra = e.extra
+          ? `<pre class="extra">${esc(JSON.stringify(e.extra, null, 2))}</pre>`
+          : "";
         return `<tr>
   <td class="ts">${esc(new Date(e.ts).toLocaleString())}</td>
   <td><span class="level" style="background:${levelColor[e.level]}22;color:${levelColor[e.level]};border-color:${levelColor[e.level]}55">${e.level.toUpperCase()}</span></td>
@@ -252,7 +282,9 @@ ${rows}
       if (e.ts > g.lastTs) g.lastTs = e.ts;
     }
     const list = Array.from(map.values());
-    list.sort((a, b) => (sortDir === "asc" ? a.lastTs.localeCompare(b.lastTs) : b.lastTs.localeCompare(a.lastTs)));
+    list.sort((a, b) =>
+      sortDir === "asc" ? a.lastTs.localeCompare(b.lastTs) : b.lastTs.localeCompare(a.lastTs),
+    );
     return list;
   }, [filtered, groupByScope, sortDir]);
 
@@ -282,7 +314,9 @@ ${rows}
             className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={isOpen ? "Zwiń" : "Rozwiń"}
           >
-            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+            <ChevronRight
+              className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
+            />
           </button>
           <button
             type="button"
@@ -290,11 +324,20 @@ ${rows}
             title={`#${e.id} — kliknij, aby skopiować link wznawiający strumień od tego ID`}
             className="shrink-0 inline-flex items-center gap-1 rounded border border-border/50 bg-muted/30 px-1 py-0 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-border"
           >
-            {copiedLinkId === e.id ? <Check className="h-2.5 w-2.5" /> : <Link2 className="h-2.5 w-2.5" />}
+            {copiedLinkId === e.id ? (
+              <Check className="h-2.5 w-2.5" />
+            ) : (
+              <Link2 className="h-2.5 w-2.5" />
+            )}
             #{e.id}
           </button>
-          <span className="shrink-0 text-muted-foreground">{new Date(e.ts).toLocaleTimeString()}</span>
-          <Badge variant="outline" className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}>
+          <span className="shrink-0 text-muted-foreground">
+            {new Date(e.ts).toLocaleTimeString()}
+          </span>
+          <Badge
+            variant="outline"
+            className={`shrink-0 px-1.5 py-0 text-[10px] uppercase ${LEVEL_STYLES[e.level]}`}
+          >
             {e.level}
           </Badge>
           {!groupByScope ? (
@@ -327,16 +370,26 @@ ${rows}
                 onClick={() => copyExtra(e)}
               >
                 {copiedId === e.id ? (
-                  <><Check className="mr-1 h-3 w-3" />Skopiowano</>
+                  <>
+                    <Check className="mr-1 h-3 w-3" />
+                    Skopiowano
+                  </>
                 ) : (
-                  <><Copy className="mr-1 h-3 w-3" />Kopiuj JSON</>
+                  <>
+                    <Copy className="mr-1 h-3 w-3" />
+                    Kopiuj JSON
+                  </>
                 )}
               </Button>
             </div>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 text-[11px] leading-relaxed text-foreground/90">
               {hasExtra
                 ? JSON.stringify(e.extra, null, 2)
-                : JSON.stringify({ id: e.id, ts: e.ts, level: e.level, scope: e.scope, message: e.message }, null, 2)}
+                : JSON.stringify(
+                    { id: e.id, ts: e.ts, level: e.level, scope: e.scope, message: e.message },
+                    null,
+                    2,
+                  )}
             </pre>
           </div>
         ) : null}
@@ -345,7 +398,7 @@ ${rows}
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
+    <div className="min-h-dvh bg-background p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -408,15 +461,25 @@ ${rows}
                 onClick={() => setPaused((p) => !p)}
                 className="h-8"
               >
-                {paused ? <Play className="mr-1 h-3.5 w-3.5" /> : <Pause className="mr-1 h-3.5 w-3.5" />}
-                {paused ? `Wznów${pendingRef.current.length ? ` (${pendingRef.current.length})` : ""}` : "Pauza"}
+                {paused ? (
+                  <Play className="mr-1 h-3.5 w-3.5" />
+                ) : (
+                  <Pause className="mr-1 h-3.5 w-3.5" />
+                )}
+                {paused
+                  ? `Wznów${pendingRef.current.length ? ` (${pendingRef.current.length})` : ""}`
+                  : "Pauza"}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
                 className="h-8"
-                title={sortDir === "asc" ? "Najnowsze na dole — kliknij aby odwrócić" : "Najnowsze na górze — kliknij aby odwrócić"}
+                title={
+                  sortDir === "asc"
+                    ? "Najnowsze na dole — kliknij aby odwrócić"
+                    : "Najnowsze na górze — kliknij aby odwrócić"
+                }
               >
                 {sortDir === "asc" ? (
                   <ArrowDownNarrowWide className="mr-1 h-3.5 w-3.5" />
@@ -461,12 +524,7 @@ ${rows}
                   <DropdownMenuItem onClick={exportFilteredHtml}>Pobierz HTML</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setEntries([])}
-                className="h-8"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setEntries([])} className="h-8">
                 <Trash2 className="mr-1 h-3.5 w-3.5" />
                 Wyczyść
               </Button>
@@ -485,7 +543,10 @@ ${rows}
                 grouped.map((g) => {
                   const isCollapsed = collapsedScopes.has(g.scope);
                   return (
-                    <div key={g.scope} className="mb-2 rounded-md border border-border/60 bg-muted/10">
+                    <div
+                      key={g.scope}
+                      className="mb-2 rounded-md border border-border/60 bg-muted/10"
+                    >
                       <button
                         type="button"
                         onClick={() => toggleScope(g.scope)}
@@ -495,7 +556,10 @@ ${rows}
                           className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isCollapsed ? "" : "rotate-90"}`}
                         />
                         <span className="font-semibold text-foreground">{g.scope}</span>
-                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="px-1.5 py-0 text-[10px] text-muted-foreground"
+                        >
                           {g.entries.length}
                         </Badge>
                         <div className="flex items-center gap-1">
@@ -532,8 +596,8 @@ ${rows}
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <p>
-            Endpoint: <code>/api/dev/logs/stream</code> · Bufor 500 ostatnich wpisów ·
-            Auto-scroll wyłącza się podczas pauzy.
+            Endpoint: <code>/api/dev/logs/stream</code> · Bufor 500 ostatnich wpisów · Auto-scroll
+            wyłącza się podczas pauzy.
           </p>
           {lastId !== null ? (
             <button
@@ -684,7 +748,7 @@ function DevLogsGate() {
 
   if (status === "checking") {
     return (
-      <div className="min-h-screen bg-background p-6 text-sm text-muted-foreground">
+      <div className="min-h-dvh bg-background p-6 text-sm text-muted-foreground">
         Sprawdzanie dostępu…
       </div>
     );
@@ -692,7 +756,7 @@ function DevLogsGate() {
 
   if (status === "unavailable") {
     return (
-      <div className="min-h-screen bg-background p-4 md:p-6">
+      <div className="min-h-dvh bg-background p-4 md:p-6">
         <div className="mx-auto max-w-md">
           <Card className="p-6 space-y-3">
             <h1 className="text-lg font-semibold text-foreground">Dev Logs niedostępne</h1>
@@ -714,7 +778,7 @@ function DevLogsGate() {
     const lockMin = Math.floor(lockoutMs / 60000);
     const lockSec = Math.floor((lockoutMs % 60000) / 1000);
     return (
-      <div className="min-h-screen bg-background p-4 md:p-6">
+      <div className="min-h-dvh bg-background p-4 md:p-6">
         <div className="mx-auto max-w-md">
           <Card className="p-6 space-y-4">
             <div>
@@ -795,4 +859,3 @@ export const Route = createFileRoute("/dev/logs")({
   }),
   component: DevLogsGate,
 });
-

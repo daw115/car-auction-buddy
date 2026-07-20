@@ -74,9 +74,10 @@ type ReportMode = (typeof REPORT_MODES)[number]["id"];
 
 function recommendationTone(r?: string) {
   const v = (r ?? "").toUpperCase();
-  if (v === "POLECAM") return "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
-  if (v === "RYZYKO") return "bg-amber-500/15 text-amber-500 border-amber-500/30";
-  if (v === "ODRZUĆ" || v === "ODRZUC") return "bg-rose-500/15 text-rose-500 border-rose-500/30";
+  if (v === "POLECAM") return "bg-success/15 text-success border-success/30";
+  if (v === "RYZYKO") return "bg-warning/15 text-warning border-warning/30";
+  if (v === "ODRZUĆ" || v === "ODRZUC")
+    return "bg-destructive/15 text-destructive border-destructive/30";
   return "bg-muted text-muted-foreground border-border";
 }
 
@@ -914,12 +915,12 @@ function HomePage() {
                     : failed
                       ? live?.message
                       : undefined;
-                const errorPhases =
-                  failed && Array.isArray(live?.phases)
-                    ? (live!.phases as any[]).filter(
-                        (p) => p && (p.status === "error" || p.status === "failed" || p.error),
-                      )
-                    : undefined;
+                const errorPhases = failed
+                  ? live?.phases?.filter(
+                      (phase) =>
+                        phase.status === "error" || phase.status === "failed" || phase.error,
+                    )
+                  : undefined;
                 return (
                   <li
                     key={e.jobId}
@@ -963,12 +964,14 @@ function HomePage() {
                               <span className="text-muted-foreground">{errorMessage}</span>
                             </div>
                           )}
-                          {errorPhases?.map((p: any, i: number) => (
+                          {errorPhases?.map((phase, i) => (
                             <div key={i} className="border-l-2 border-destructive/40 pl-2">
-                              <span className="font-medium">{p.name || "phase"}</span>
-                              {p.status ? ` · ${p.status}` : ""}
-                              {(p.message || p.error) && (
-                                <div className="text-muted-foreground">{p.message || p.error}</div>
+                              <span className="font-medium">{phase.name || "phase"}</span>
+                              {phase.status ? ` · ${phase.status}` : ""}
+                              {(phase.message || phase.error) && (
+                                <div className="text-muted-foreground">
+                                  {phase.message || phase.error}
+                                </div>
                               )}
                             </div>
                           ))}

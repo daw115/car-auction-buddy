@@ -331,7 +331,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm p-6">
         <div className="flex flex-col items-center text-center mb-5">
           <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
@@ -354,10 +354,10 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
           <>
             <div key={refreshTick} className="grid grid-cols-2 gap-2">
               {SITE_USERS.map((u) => (
-                <div key={u} className="relative group">
+                <div key={u} className="flex min-w-0 items-center gap-1">
                   <Button
                     variant="outline"
-                    className="h-12 w-full justify-start gap-2 pr-9"
+                    className="h-12 min-w-0 flex-1 justify-start gap-2"
                     onClick={() => pickUser(u)}
                   >
                     <User className="h-4 w-4" />
@@ -365,13 +365,12 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
                   </Button>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setDeleteTarget(u);
                       setDeleteMasterPw("");
                       setDeleteError("");
                     }}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-60 hover:opacity-100"
+                    className="inline-flex h-10 w-8 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title={`Usuń profil ${u}`}
                     aria-label={`Usuń profil ${u}`}
                   >
@@ -392,54 +391,56 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
               Odśwież UI
             </Button>
 
-            {/* Panel diagnostyczny */}
-            <div className="mt-4 rounded-md border bg-muted/40 p-3 text-xs space-y-2">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-primary" />
-                Diagnostyka logowania
+            {/* Development diagnostics are opt-in and removed from production builds. */}
+            {import.meta.env.DEV && (
+              <div className="mt-4 rounded-md border bg-muted/40 p-3 text-xs space-y-2">
+                <div className="font-semibold text-foreground flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                  Diagnostyka logowania
+                </div>
+                <div className="space-y-1 text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>Lista użytkowników:</span>
+                    <span className="font-mono text-foreground">
+                      {SITE_USERS.length} użytkowników
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Wybrany użytkownik:</span>
+                    <span className="font-mono text-foreground">{user ?? "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Handler pickUser:</span>
+                    <span
+                      className={
+                        diagLog[0]?.includes("BŁĄD") ? "text-destructive" : "text-emerald-500"
+                      }
+                    >
+                      {diagLog[1]?.includes("START") && !diagLog[0]?.includes("BŁĄD")
+                        ? "działa"
+                        : diagLog[0]?.includes("BŁĄD")
+                          ? "błąd"
+                          : "nie testowano"}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => pickUser("Dawid")}
+                  disabled={user === "Dawid"}
+                >
+                  Testuj pickUser (Dawid)
+                </Button>
+                {diagLog.length > 1 && (
+                  <pre className="max-h-28 overflow-auto rounded bg-background p-2 text-[10px] font-mono whitespace-pre-wrap">
+                    {diagLog.join("\n")}
+                  </pre>
+                )}
               </div>
-              <div className="space-y-1 text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>Lista użytkowników:</span>
-                  <span className="font-mono text-foreground">
-                    {SITE_USERS.length} użytkowników
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Wybrany użytkownik:</span>
-                  <span className="font-mono text-foreground">{user ?? "—"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Handler pickUser:</span>
-                  <span
-                    className={
-                      diagLog[0]?.includes("BŁĄD") ? "text-destructive" : "text-emerald-500"
-                    }
-                  >
-                    {diagLog[1]?.includes("START") && !diagLog[0]?.includes("BŁĄD")
-                      ? "działa"
-                      : diagLog[0]?.includes("BŁĄD")
-                        ? "błąd"
-                        : "nie testowano"}
-                  </span>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-full text-xs"
-                onClick={() => pickUser("Dawid")}
-                disabled={user === "Dawid"}
-              >
-                Testuj pickUser (Dawid)
-              </Button>
-              {diagLog.length > 1 && (
-                <pre className="max-h-28 overflow-auto rounded bg-background p-2 text-[10px] font-mono whitespace-pre-wrap">
-                  {diagLog.join("\n")}
-                </pre>
-              )}
-            </div>
+            )}
           </>
         )}
 

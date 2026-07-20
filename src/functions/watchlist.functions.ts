@@ -4,6 +4,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const WatchlistInput = z.object({
+  active: z.boolean().optional(),
   client_id: z.string().uuid().optional().nullable(),
   source: z.string().max(64).optional().nullable(),
   lot_id: z.string().max(128).optional().nullable(),

@@ -8,20 +8,26 @@ const ROUTE_LABELS: Record<string, string> = {
   "/": "Szukaj",
   "/jobs": "Aktywne joby",
   "/records": "Rekordy",
+  "/reports": "Raporty",
+  "/audit": "Audyt",
   "/database": "Baza danych",
   "/watchlist": "Watchlist",
   "/dashboard": "Dashboard",
   "/calculator": "Kalkulator",
   "/settings": "Ustawienia",
+  "/settings/ai": "Providery AI",
+  "/settings/filters": "Filtry systemowe",
+  "/settings/default-criteria": "Domyślne kryteria",
+  "/settings/diagnostics": "Diagnostyka",
   "/dev/logs": "Logi (dev)",
 };
-
 
 export function AppTopbar() {
   const pathname = useRouterState({
     select: (router) => router.location.pathname,
   });
 
+  const isSettingsRoute = pathname.startsWith("/settings/");
   const label =
     ROUTE_LABELS[pathname] ??
     (pathname.startsWith("/dev/") ? "Dev" : pathname.replace(/^\//, "") || "Strona");
@@ -35,6 +41,14 @@ export function AppTopbar() {
           Panel
         </Link>
         <span className="text-muted-foreground/50">/</span>
+        {isSettingsRoute && (
+          <>
+            <Link to="/settings" className="hover:text-foreground transition-colors">
+              Ustawienia
+            </Link>
+            <span className="text-muted-foreground/50">/</span>
+          </>
+        )}
         <span className="font-medium text-foreground truncate">{label}</span>
       </nav>
       <div className="ml-auto flex items-center gap-2">

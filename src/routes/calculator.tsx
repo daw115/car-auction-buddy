@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -11,13 +11,14 @@ import {
   type FxRates,
 } from "@/functions/external.functions";
 import { calculateCost, US_STATES, type CostBreakdown, type FuelType } from "@/lib/cost-calculator";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Calculator, Search, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Loader2, Calculator, Search, AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/calculator")({
   head: () => ({
@@ -127,39 +128,28 @@ function CalculatorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" /> Panel
-            </Link>
-            <Separator orientation="vertical" className="h-5" />
-            <div className="flex items-center gap-2">
-              <Calculator className="h-4 w-4 text-primary" />
-              <h1 className="text-base font-semibold">Kalkulator importu + VIN decoder</h1>
-            </div>
-          </div>
-          {fx && (
-            <div className="text-xs text-muted-foreground">
-              Kurs: 1 USD = {fx.usd_pln.toFixed(3)} PLN · {fx.usd_eur.toFixed(3)} EUR
-              <span className="ml-2 opacity-60">
-                ({fx.fetched_at}, {fx.source})
-              </span>
+    <div className="space-y-6">
+      <PageHeader
+        title="Kalkulator importu + VIN decoder"
+        description="Dekoduj VIN, sprawdzaj akcje serwisowe i licz pełny koszt importu."
+        icon={<Calculator className="h-5 w-5" />}
+        actions={
+          fx ? (
+            <div className="text-right text-xs text-muted-foreground">
+              <div>
+                1 USD = {fx.usd_pln.toFixed(3)} PLN · {fx.usd_eur.toFixed(3)} EUR
+              </div>
               {fx.source !== "frankfurter.app" && (
-                <Badge variant="outline" className="ml-2 border-amber-500/50 text-amber-700">
+                <Badge variant="outline" className="mt-1 border-warning/50 text-warning">
                   {fx.source === "stale-cache" ? "ostatni poprawny kurs" : "kurs awaryjny"}
                 </Badge>
               )}
             </div>
-          )}
-        </div>
-      </header>
+          ) : undefined
+        }
+      />
 
-      <main className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* VIN decoder */}
         <Card className="p-4">
           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -370,7 +360,7 @@ function CalculatorPage() {
             </div>
           )}
         </Card>
-      </main>
+      </div>
     </div>
   );
 }
