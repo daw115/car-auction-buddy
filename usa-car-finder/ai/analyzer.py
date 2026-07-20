@@ -662,16 +662,20 @@ def _results_from_analysis_data(
         except (TypeError, ValueError):
             score_clamped = 0.0
 
-        analysis = AIAnalysis(
-            lot_id=lot_id,
-            score=score_clamped,
-            recommendation=ad.get("recommendation", "RYZYKO"),
-            red_flags=ad.get("red_flags", []),
-            estimated_repair_usd=ad.get("estimated_repair_usd"),
-            estimated_total_cost_usd=ad.get("estimated_total_cost_usd"),
-            client_description_pl=ad.get("client_description_pl", ""),
-            ai_notes=ad.get("ai_notes"),
-        )
+        try:
+            analysis = AIAnalysis(
+                lot_id=lot_id,
+                score=score_clamped,
+                recommendation=ad.get("recommendation", "RYZYKO"),
+                red_flags=ad.get("red_flags", []),
+                estimated_repair_usd=ad.get("estimated_repair_usd"),
+                estimated_total_cost_usd=ad.get("estimated_total_cost_usd"),
+                client_description_pl=ad.get("client_description_pl", ""),
+                ai_notes=ad.get("ai_notes"),
+            )
+        except Exception as exc:
+            logger.warning("[analyzer] pominięto lot %s — nieprawidłowe dane z odpowiedzi AI: %s", lot_id, exc)
+            continue
         results.append(AnalyzedLot(lot=lots_by_id[lot_id], analysis=analysis))
 
     return _rank_results(results, top_n)
