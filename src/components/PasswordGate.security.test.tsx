@@ -49,7 +49,7 @@ describe("PasswordGate server session bootstrap", () => {
   it("unlocks only after the signed server session is confirmed", async () => {
     vi.mocked(siteUserSession).mockResolvedValue({
       authenticated: true,
-      username: "Iga",
+      username: "Pawel",
     });
 
     render(
@@ -59,13 +59,13 @@ describe("PasswordGate server session bootstrap", () => {
     );
 
     expect(await screen.findByText("Chroniona treść")).toBeInTheDocument();
-    expect(localStorage.getItem("site_current_user_v1")).toBe("Iga");
+    expect(localStorage.getItem("site_current_user_v1")).toBe("Pawel");
   });
 
   it("clears local state and the HttpOnly session on logout", async () => {
     vi.mocked(siteUserSession).mockResolvedValue({
       authenticated: true,
-      username: "Monte",
+      username: "Pawel",
     });
     const user = userEvent.setup();
 
