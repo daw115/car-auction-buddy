@@ -19,7 +19,7 @@ import {
   backendRequest,
   backendRequestSafe,
   type BackendRequest,
-} from "@/server/backend-transport.server";
+} from "@/lib/backend-transport.server";
 import {
   auctionSourceCapabilitiesPayloadSchema,
   auctionSourceSchema,
