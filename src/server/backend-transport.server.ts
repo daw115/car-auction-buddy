@@ -120,8 +120,7 @@ function splitQuery(pathAndQuery: string): {
 function ubuntuErrorToTransport(err: unknown): BackendTransportError {
   if (err instanceof UbuntuApiError) {
     const status =
-      err.status ??
-      (err.kind === "timeout" ? 408 : err.kind === "unconfigured" ? 500 : 0);
+      err.status ?? (err.kind === "timeout" ? 408 : err.kind === "unconfigured" ? 500 : 0);
     let msg: string;
     switch (err.kind) {
       case "unauthorized":
@@ -162,10 +161,7 @@ async function requestLegacy<T>(req: BackendRequest): Promise<T> {
   const baseRaw = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
   const token = process.env.API_BEARER_TOKEN ?? "";
   if (!baseRaw || !token) {
-    throw terr(
-      500,
-      "Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.",
-    );
+    throw terr(500, "Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.");
   }
   const method = req.method ?? "GET";
   const timeoutMs = req.timeoutMs ?? 30_000;

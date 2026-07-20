@@ -124,9 +124,7 @@ describe("backendRequest — Ubuntu transport", () => {
     setUbuntuEnv();
     setLegacyEnv();
     for (const status of [401, 403, 500]) {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue(new Response("nope", { status }));
+      const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status }));
       globalThis.fetch = fetchMock as unknown as typeof fetch;
       await expect(backendRequest({ path: "/api/records" })).rejects.toMatchObject({
         status,
@@ -142,9 +140,7 @@ describe("backendRequest — Ubuntu transport", () => {
     setUbuntuEnv();
     setLegacyEnv();
     for (const method of ["POST", "PUT", "DELETE"] as const) {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue(new Response("boom", { status: 503 }));
+      const fetchMock = vi.fn().mockResolvedValue(new Response("boom", { status: 503 }));
       globalThis.fetch = fetchMock as unknown as typeof fetch;
       await expect(
         backendRequest({ path: "/api/records/1", method, body: {} }),
@@ -205,9 +201,7 @@ describe("backendRequest — error sanitization", () => {
     setUbuntuEnv();
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(
-        new Response(`{"detail":"secret-leaked-${UBU_BEARER}"}`, { status: 500 }),
-      );
+      .mockResolvedValue(new Response(`{"detail":"secret-leaked-${UBU_BEARER}"}`, { status: 500 }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     try {
@@ -246,9 +240,7 @@ describe("backendRequest — validator", () => {
 describe("backendRequestSafe", () => {
   it("returns the caller fallback when the request throws", async () => {
     setLegacyEnv();
-    globalThis.fetch = vi
-      .fn()
-      .mockRejectedValue(new Error("net")) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("net")) as unknown as typeof fetch;
     const res = await backendRequestSafe({ path: "/api/records" }, { records: [] });
     expect(res).toEqual({ records: [] });
   });
