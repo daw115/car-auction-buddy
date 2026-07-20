@@ -139,12 +139,21 @@ Wszystkie ścieżki `/api/records/*`, `/api/llm-cache/*`, `/api/html-cache/*`, `
 
 - **Request/response schemas nie są zdefiniowane** w tym dokumencie, dopóki zespół Ubuntu nie potwierdzi ich w OpenAPI/JSON Schema. Wszystkie oznaczenia „required-unverified" i „blocked-by-backend-discovery" wymagają discovery przed wdrożeniem.
 - **Nie wymyślaj schematów po stronie GUI**. Klient BFF przekazuje request `body` transparentnie po walidacji Zod-em na wejściu server function i traktuje odpowiedź jako `unknown` do czasu, aż schema zostanie potwierdzona (`validate` w `ubuntuApiRequest`).
-- **Idempotencja**: metody `GET`/`HEAD`/`DELETE` muszą być idempotentne. Ubuntu musi zwracać 404 (nie 500) na drugie `DELETE`.
+- **Idempotencja**: metody `GET`/`HEAD`/`DELETE` muszą pozostać idempotentne. Powtórzone `DELETE` może zwrócić `200`, `204` **lub** `404` — istotne jest, aby efekt uboczny wystąpił dokładnie raz. Nie zakładaj konkretnego kodu odpowiedzi po drugim wywołaniu.
 
 ## Rate limiting
 
 - Ubuntu powinno implementować per-user rate limit dla `/auth/login` (analogicznie do obecnego 5 prób / 15 min).
 - BFF **nie** implementuje własnego rate limitu dla wywołań gateway — polega na rate limicie backendu.
+
+## Wybór transportu (etap 2)
+
+- Wszystkie server functions korzystają z `src/server/backend-transport.server.ts`, które kieruje żądania na Ubuntu lub legacy w zależności od stanu zmiennych środowiskowych:
+  - **Ubuntu**: `UBUNTU_API_BASE_URL`, `UBUNTU_API_BEARER_TOKEN`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` — wszystkie cztery ustawione i URL waliduje się jako `https://`, bez credentials/query/hash.
+  - **Legacy**: żadna z czterech zmiennych Ubuntu nie jest ustawiona; używane są `API_BASE_URL` + `API_BEARER_TOKEN`.
+  - **Fail closed**: dowolna częściowa konfiguracja Ubuntu ⇒ żaden request nie zostaje wysłany i **nie ma** fallbacku do legacy.
+- Po wybraniu transportu Ubuntu **nie ma runtime fallbacku** do legacy przy timeout / 401 / 403 / 429 / 5xx / błędzie sieci. Fallback nigdy nie powtórzy mutacji na drugim backendzie.
+- Retry jest zamknięty w `ubuntu-api.server.ts` (`GET`/`HEAD`, jeden retry, tylko network / 502 / 503 / 504).
 
 ## Rejestr braków
 
