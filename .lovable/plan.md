@@ -1,79 +1,147 @@
+# Plan: Klienci, sprawy i cykliczne monitorowanie
+
 ## Cel
 
-Obecny `/` mieści wszystko (formularz wyszukiwania, status job-a, wyniki, watchlist-skróty, panel rekordów backendu, audyt, raporty, ustawienia) — ponad 3900 linii w jednym pliku, bez wyraźnej hierarchii. Po zmianie użytkownik wchodzi w konkretną sekcję z sidebara, każdy ekran robi jedną rzecz, a wygląd dostaje świeższą warstwę wizualną przy zachowaniu obecnej palety (operator-blue/cream).
+Dziś każde wyszukiwanie żyje samodzielnie w tabeli `records` (backend Ubuntu) i luźno w `watch_queue`. Brakuje warstwy „klient → sprawa → wyszukiwania". Chcemy:
 
-## Nowy układ aplikacji
+1. **CRM-lite**: dodawać i zarządzać klientami (imię, kontakt, notatki).
+2. **Sprawy (cases)**: klient może mieć wiele spraw (np. „szukamy Tesli Model 3", „auto rodzinne do 15k"), każda sprawa spina N wyszukiwań/rekordów.
+3. **Cykliczny monitoring**: każda sprawa może mieć włączone auto-odświeżanie (co X godzin) — jeśli pojawi się nowy lot w wynikach → powiadomienie + zapis diffu.
+4. **Ownership operatorów**: sprawa pokazuje którzy operatorzy (Dawid/Pawel) coś w niej robili (agregat z `searched_by`), z filtrem „moje sprawy".
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│ Sidebar (collapsible=icon)        Topbar: breadcrumb,   │
-│  • Szukaj          [Search]       active job pill,      │
-│  • Aktywne joby    [Activity]     theme, user, settings │
-│  • Wyniki / Rekordy[Database]    ─────────────────────  │
-│  • Watchlist       [Bookmark]                           │
-│  • Raporty         [FileText]     <Outlet />            │
-│  • Audyt           [ShieldCheck]                        │
-│  • Logi (dev)      [Terminal]                           │
-│  • Kalkulator      [Calculator]                         │
-│  • Ustawienia      [Settings]                           │
-└─────────────────────────────────────────────────────────┘
+## Zakres UI
+
+Nowe route'y w istniejącym shellu (sidebar dostaje pozycję **Klienci** [Users]):
+
+| Route | Zawartość |
+|---|---|
+| `/clients` | Lista klientów: search, sort, badge z liczbą aktywnych spraw i ostatnią aktywnością. CTA „Dodaj klienta". |
+| `/clients/$clientId` | Karta klienta: dane kontaktowe, notatki, lista spraw, timeline aktywności. |
+| `/clients/$clientId/cases/$caseId` | Widok sprawy: kryteria wyszukiwania (dziedziczone/edytowalne), lista przypiętych wyszukiwań, podgląd nowych lotów od ostatniego uruchomienia, sekcja „Cykliczne odświeżanie" (włącz/wyłącz + częstotliwość), sekcja „Operatorzy" (kto szukał). |
+| `/` (Szukaj) | Nowe pole „Sprawa" (opcjonalny select: klient → sprawa). Po submit wyszukiwanie ląduje przypięte do sprawy. |
+| `/records` | Filtr `client_id` / `case_id` + kolumna „Sprawa" z linkiem. |
+
+`app-sidebar.tsx` dostaje wpis **Klienci** między „Watchlist" a „Raporty".
+
+## Model danych (Supabase, migracja SQL)
+
+Nowe tabele w `public`:
+
+```sql
+-- klienci
+create table public.clients_v2 (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text,
+  phone text,
+  notes text,
+  created_by text,          -- SITE_USER (Dawid/Pawel)
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- sprawy
+create table public.client_cases (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references public.clients_v2(id) on delete cascade,
+  title text not null,
+  description text,
+  default_criteria jsonb,                 -- prefill dla formularza + auto-refresh
+  status text default 'open',             -- open | paused | closed
+  auto_refresh_enabled boolean default false,
+  auto_refresh_interval_hours int default 24,
+  last_auto_run_at timestamptz,
+  next_auto_run_at timestamptz,
+  created_by text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- powiązanie sprawy z rekordem/wyszukiwaniem (record_id = ID z backendu Ubuntu)
+create table public.case_searches (
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid references public.client_cases(id) on delete cascade,
+  record_id text not null,                -- id rekordu z Ubuntu /api/records
+  searched_by text,                       -- SITE_USER
+  new_lot_ids text[] default '{}',        -- loty nowe względem poprzedniego runu (diff)
+  created_at timestamptz default now(),
+  unique(case_id, record_id)
+);
+
+-- indeksy + GRANT + RLS (site_session-based, tak jak dziś w innych tabelach)
 ```
 
-`ResumeJobBanner` i `ActiveJobsPanel` migrują do topbara jako kompaktowy „pill" + drawer — przestają zajmować miejsce na każdym ekranie.
+Migracja dołoży też `GRANT ... TO service_role` (dostęp przez `supabaseAdmin` za `siteSessionGuard`, spójne z istniejącymi endpointami `/api/records`, `/api/config`).
 
-## Route'y po podziale
+Istniejąca tabela `clients` (5 kolumn) zostaje nietknięta w tej turze — nowy model idzie obok pod nazwą `clients_v2`, żeby uniknąć ryzyka. Migrację danych zaplanujemy osobno.
 
-| Route | Zawartość (wyciągane z `Panel()` w `src/routes/index.tsx`) |
-|---|---|
-| `/` (Szukaj) | Tylko formularz wyszukiwania + „Parse client message" + ostatni status uruchomionego job-a. Krótkie podsumowanie wyników → CTA „Zobacz w rekordach". |
-| `/jobs` | `ActiveJobsPanel`, `BatchJobCard`, `LiveJobLogs`, `ScraperProgress`, `AnalysisProgress`. |
-| `/records` | `BackendRecordsPanel` + `RecordDetailView` w split-pane (lista po lewej, detal po prawej). Dziś już istnieje `database.tsx` — zamieniamy go w pełnoprawny widok rekordów. |
-| `/reports` | `ScraperReportsSection` + `ReportUrlsPanel` (broker_bundle, client_bundle itp.) jako galeria kart per job. |
-| `/audit` | `SearchAuditPanel` z filtrami. |
-| `/watchlist` | Istnieje, zostaje. |
-| `/calculator`, `/settings`, `/dev/logs` | Istnieją, dostają tylko nowy chrome. |
+## Backend (server functions)
 
-`PasswordGate` zostaje bez zmian funkcjonalnie — tylko delikatny refresh wizualny (mniejsza diagnostyka schowana pod `<details>`).
+Nowy plik `src/functions/clients.functions.ts` (opakowuje `supabaseAdmin` + `siteSessionMiddleware`):
 
-## Odświeżenie wizualne
+- `listClients`, `getClient(id)`, `createClient`, `updateClient`, `deleteClient`
+- `listCases(clientId)`, `getCase(id)`, `createCase`, `updateCase`, `closeCase`
+- `attachSearchToCase({ caseId, recordId })` — używane po zakończeniu joba
+- `listCaseSearches(caseId)` — łączy `case_searches` + wywołuje `backendGetRecord` per record_id
+- `getCaseOperators(caseId)` — agreguje distinct `searched_by` z `case_searches`
+- `toggleCaseAutoRefresh({ caseId, enabled, intervalHours })`
+- `runCaseAutoRefreshNow(caseId)` — uruchamia scrape z `default_criteria`, porównuje wynik z ostatnim, zapisuje `new_lot_ids`
 
-- **Layout shell**: `SidebarProvider` + `AppSidebar` w `__root.tsx`, `SidebarTrigger` w topbarze (zawsze widoczny, sidebar `collapsible="icon"`).
-- **Typografia**: nagłówki sekcji `text-2xl font-semibold tracking-tight`, opisy `text-sm text-muted-foreground`. Spójna struktura każdej strony: `PageHeader` (tytuł + opis + akcje po prawej) → content w `Card`.
-- **Tokeny** (`src/styles.css`, oklch): dorzucam `--surface-elevated`, `--surface-muted`, subtelny `--shadow-card`, akcent statusu (`--success`, `--warning`) — bez zmiany istniejących `--primary/--background`.
-- **Karty**: zaokrąglenie `rounded-xl`, cieniem `shadow-sm`, hover `shadow-md` na klikalnych. Lista rekordów: zebra + status badge po lewej.
-- **CTA hierarchy**: jeden primary button per sekcja (np. „Uruchom wyszukiwanie"), reszta `variant="outline"` / `"ghost"`. Dziś wszystkie przyciski wyglądają tak samo.
-- **Status pill w topbarze**: gdy job działa — pulsujący kolor + nazwa + link „Pokaż" do `/jobs`.
+Rozszerzenie istniejących flow:
 
-## Szczegóły techniczne
+- `POST /api/search` (istnieje jako proxy) — dokładamy opcjonalny `case_id` w payloadzie; po sukcesie wołamy `attachSearchToCase`.
+- `queue.functions.ts` (istniejący watch queue) zostaje jako niższa warstwa; auto-refresh sprawy jest jej nadbudową (jedna sprawa = jeden watch skorelowany z `case_id`).
 
-- Nowe pliki:
-  - `src/components/app-sidebar.tsx` — `Sidebar` wg wzoru z knowledge file, `Link` + `useRouterState` dla active state.
-  - `src/components/app-topbar.tsx` — breadcrumb (z `useRouterState`), `ActiveJobPill`, `ThemeToggle`, menu profilu.
-  - `src/components/page-header.tsx` — reużywalny header (`title`, `description`, `actions`).
-  - `src/components/active-job-pill.tsx` — wyciągnięte z `ActiveJobsPanel`, używa już istniejącego `listActiveScraperJobs`.
-  - `src/routes/jobs.tsx`, `src/routes/records.tsx` (zamiana `database.tsx`), `src/routes/reports.tsx`, `src/routes/audit.tsx`.
-- Refactor `src/routes/index.tsx`:
-  - `Panel()` zostaje tylko z formularzem i krótkim podsumowaniem ostatniego job-a.
-  - Wyekstrahowane komponenty (`BackendRecordsPanel`, `RecordDetailView`, `ScraperReportsSection`, `SearchAuditPanel`, `ActiveJobsPanel`, `BatchJobCard`) przenoszę do `src/components/panels/` i importuję w nowych route'ach. Zachowuję sygnatury propsów, żeby nie ruszać logiki.
-- `__root.tsx`:
-  - Wrap `Outlet` w `SidebarProvider` → `<div className="flex min-h-screen w-full">` → `<AppSidebar />` + kolumna `<AppTopbar />` + `<main className="flex-1 p-6">{children}</main>`.
-  - `PasswordGate` zostaje na zewnątrz shell-a (jak dziś), żeby nie renderować sidebara dla niezalogowanych.
-- Stan globalny job-a: lekki context `ActiveJobContext` (zasilany istniejącym pollingiem) wystawiany przez topbar — żeby przejście między route'ami nie gubiło info o trwającym scrape.
-- Bez zmian backendowych: żadne `server functions`, schema DB, ani kontrakt API nie są dotykane. To wyłącznie reorganizacja front-endu + nowe tokeny CSS.
-- Trasy są typowane — `routeTree.gen.ts` przegeneruje się sam.
+## Cykliczny scheduler
 
-## Czego NIE zmieniam
+`pg_cron` w Supabase (znany wzorzec z `cleanup-logs`):
 
-- Logiki scrapera, AI, raportów, cache'u, watchlisty.
-- Kontraktu `POST /api/search` ani `pollScraperJob`.
-- `PasswordGate` (poza drobnym refreshem wizualnym i ukryciem diagnostyki za `<details>`).
-- Istniejących route'ów `calculator`, `settings`, `watchlist`, `dev.logs` — tylko nowy chrome wokół nich.
+```sql
+select cron.schedule(
+  'cases-auto-refresh',
+  '*/15 * * * *',
+  $$ select net.http_post(
+       url:='https://project--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app/api/public/hooks/cases-refresh',
+       headers:='{"Content-Type":"application/json","apikey":"<anon>"}'::jsonb,
+       body:='{}'::jsonb
+     ); $$
+);
+```
 
-## Kolejność wdrożenia
+Nowy public hook `src/routes/api/public/hooks/cases-refresh.ts`:
 
-1. Tokeny CSS + `PageHeader` + sidebar/topbar shell w `__root.tsx`.
-2. Wydzielenie paneli z `index.tsx` do `src/components/panels/` (bez zmian zachowania).
-3. Nowe route'y `jobs`, `records`, `reports`, `audit` — każdy montuje swój panel + `PageHeader`.
-4. Slim-down `Panel()` w `index.tsx` do formularza + krótkiego podsumowania.
-5. `ActiveJobPill` w topbarze + `ActiveJobContext`.
-6. QA wizualne na obecnym viewport (857×593) i desktop 1440.
+- Wyciąga sprawy gdzie `auto_refresh_enabled = true AND next_auto_run_at <= now()`.
+- Dla każdej: uruchamia `backendSearch(default_criteria)` (fire-and-forget lub z krótkim pollingiem), zapisuje nowy `record_id` w `case_searches`, liczy diff nowych lot_id vs poprzedni run, ustawia `last_auto_run_at` i `next_auto_run_at = now() + interval_hours`.
+- Bez PII w response, weryfikacja `apikey`.
+
+Powiadomienia w UI: badge „🆕 N nowych" na karcie sprawy + panel „Ostatni auto-run" z listą nowych lotów (klik → RecordDetailView).
+
+## Ownership operatorów
+
+- `searched_by` już leci do backendu (istnieje) — teraz kopiujemy je również do `case_searches.searched_by` przy attach.
+- Na widoku sprawy sekcja „Operatorzy" pokazuje avatary/inicjały (Dawid, Pawel) z liczbą wyszukiwań i datą ostatniej aktywności.
+- Na `/clients` filtr „Tylko moje" = `getCurrentSiteUser()` w `client_cases.created_by` OR distinct z `case_searches.searched_by`.
+- W `/records` dodajemy kolumnę „Sprawa" oraz łańcuch: klient → sprawa → operator.
+
+## Kolejność wdrożenia (do zrobienia po zaakceptowaniu planu)
+
+1. **Migracja SQL** (`clients_v2`, `client_cases`, `case_searches`, GRANT, RLS, indeksy) — jeden plik migracji.
+2. **Server functions** `clients.functions.ts` + rozszerzenie `POST /api/search` o `case_id`.
+3. **UI**: `/clients` (lista + dialog dodawania), `/clients/$clientId` (detal + sprawy), `/clients/$clientId/cases/$caseId` (widok sprawy).
+4. Integracja z formularzem wyszukiwania (`src/routes/index.tsx`): select „Sprawa" + prefill `default_criteria`.
+5. Panel „Operatorzy" i badge nowych lotów na karcie sprawy.
+6. **Cykliczny hook** `api/public/hooks/cases-refresh.ts` + `pg_cron` (SQL przez `supabase--insert`, nie migracja — zawiera URL i klucz).
+7. Wpis **Klienci** w `app-sidebar.tsx`, kolumna „Sprawa" w `/records`.
+8. Testy: unit dla helperów diff-owych (`computeNewLotIds`), integracyjny dla `attachSearchToCase`.
+
+## Poza zakresem tej tury
+
+- Migracja danych ze starej tabeli `clients` do `clients_v2`.
+- Powiadomienia e-mail/push (na razie tylko in-app badge).
+- Uprawnienia per operator (kto może edytować cudze sprawy) — wszyscy zalogowani widzą wszystko, tak jak dziś dla rekordów.
+- Zmiana kontraktu backendu Ubuntu — cała warstwa klient/sprawa jest w Supabase, backend nadal dostaje tylko `criteria` + `searched_by` + opcjonalnie `case_id` w metadanych.
+
+## Pytania otwarte
+
+- Czy sprawa powinna mieć **jeden zestaw kryteriów** (auto-refresh używa jednego) czy **wiele wariantów** (np. 3 różne max_budgets)? Domyślnie idę w wariant „jeden `default_criteria`" — ręczne uruchomienia mogą użyć innych.
+- Częstotliwość auto-refresh: `24h` jako default, min `6h`, max `168h` (tydzień). OK?
