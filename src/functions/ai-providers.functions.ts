@@ -1,14 +1,10 @@
 // Proxy do backendu FastAPI: /api/settings/ai-providers
+// Transport wybierany przez src/server/backend-transport.server.ts
+// (Ubuntu API za Cloudflare Access albo legacy API_BASE_URL — nigdy oba
+// na raz i bez runtime fallbacku).
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-
-type Cfg = { baseUrl: string; token: string };
-function cfg(): Cfg {
-  const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
-  const token = process.env.API_BEARER_TOKEN ?? "";
-  if (!baseUrl || !token) throw new Error("Backend nieskonfigurowany (API_BASE_URL / API_BEARER_TOKEN).");
-  return { baseUrl, token };
-}
+import { backendRequest } from "@/server/backend-transport.server";
 
 export type AiProviderTask = {
   key: string;
@@ -22,26 +18,12 @@ export type AiProviderTask = {
 export type AiProvidersResponse = { tasks: AiProviderTask[] };
 
 async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Promise<T> {
-  const { baseUrl, token } = cfg();
-  const res = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      ...(body != null ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
-  const txt = await res.text();
-  let parsed: any = txt;
-  try { parsed = JSON.parse(txt); } catch { /* keep text */ }
-  if (!res.ok) {
-    const msg = typeof parsed === "object" && parsed?.detail
-      ? (typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail))
-      : `Backend ${res.status}`;
-    throw new Error(msg);
+  try {
+    return await backendRequest<T>({ path, method, body });
+  } catch (err) {
+    const e = err as { status?: number; message?: string };
+    throw new Error(e?.message ?? "Błąd backendu");
   }
-  return parsed as T;
 }
 
 export const getAiProviders = createServerFn({ method: "GET" }).handler(async () => {
