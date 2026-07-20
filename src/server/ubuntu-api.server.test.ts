@@ -199,7 +199,9 @@ describe("ubuntuApiRequest", () => {
     });
     const fetchImpl = vi
       .fn()
-      .mockResolvedValue(new Response(stream, { status: 200, headers: { "content-type": "application/json" } }));
+      .mockResolvedValue(
+        new Response(stream, { status: 200, headers: { "content-type": "application/json" } }),
+      );
     await expect(
       ubuntuApiRequest({
         path: "/streamed",
@@ -233,7 +235,9 @@ describe("ubuntuApiRequest", () => {
     setEnv();
     const fetchImpl = vi
       .fn()
-      .mockResolvedValue(new Response("not json", { status: 200, headers: { "content-type": "application/json" } }));
+      .mockResolvedValue(
+        new Response("not json", { status: 200, headers: { "content-type": "application/json" } }),
+      );
     await expect(
       ubuntuApiRequest({ path: "/bad", fetchImpl: fetchImpl as unknown as typeof fetch }),
     ).rejects.toMatchObject({ kind: "invalid_response" });

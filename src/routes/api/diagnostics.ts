@@ -51,40 +51,91 @@ export const Route = createFileRoute("/api/diagnostics")({
           check("SITE_MASTER_PASSWORD", "auth", "Hasło nadrzędne do zarządzania profilami", true, {
             hint: "Wymagane do dodawania/usuwania kont w PasswordGate.",
           }),
-          check("API_BASE_URL", "backend", "URL produkcyjnego backendu FastAPI (legacy — do wygaszenia po migracji na Ubuntu API)", true, {
-            hint: "np. https://moneybitches.organof.org",
+          check(
+            "API_BASE_URL",
+            "backend",
+            "URL produkcyjnego backendu FastAPI (legacy — do wygaszenia po migracji na Ubuntu API)",
+            true,
+            {
+              hint: "np. https://moneybitches.organof.org",
+              legacy: true,
+            },
+          ),
+          check("SCRAPER_BASE_URL", "backend", "URL zewnętrznego scrapera (legacy proxy)", false, {
             legacy: true,
           }),
-          check("SCRAPER_BASE_URL", "backend", "URL zewnętrznego scrapera (legacy proxy)", false, { legacy: true }),
-          check("SCRAPER_API_TOKEN", "backend", "Token do scrapera (legacy)", false, { legacy: true }),
-          check("ANTHROPIC_API_KEY", "ai", "Klucz Anthropic (opcjonalny — backend ma własny)", false),
+          check("SCRAPER_API_TOKEN", "backend", "Token do scrapera (legacy)", false, {
+            legacy: true,
+          }),
+          check(
+            "ANTHROPIC_API_KEY",
+            "ai",
+            "Klucz Anthropic (opcjonalny — backend ma własny)",
+            false,
+          ),
           check("GEMINI_API_KEY", "ai", "Klucz Gemini (opcjonalny)", false),
           check("VITE_SUPABASE_URL", "supabase", "URL projektu Supabase (klient)", true),
           check("VITE_SUPABASE_PUBLISHABLE_KEY", "supabase", "Publiczny klucz Supabase", true),
-          check("SUPABASE_URL", "supabase", "URL projektu Supabase (serwer) — wymagany dla supabaseAdmin", true, {
-            hint: "Ustaw na Ubuntu w /etc/systemd/system/<serwis>.env lub w .env aplikacji. Ta sama wartość co VITE_SUPABASE_URL.",
-          }),
-          check("SUPABASE_SERVICE_ROLE_KEY", "supabase", "Service role key — dostęp serwera do DB z pominięciem RLS", true, {
-            hint: "Skopiuj z Lovable Cloud → Backend → Settings → API. Nigdy nie eksponuj klientowi.",
-          }),
-          check("REPORTS_API_KEY", "backend", "Klucz do usługi services/reports-api (FastAPI)", false, {
-            minLength: 32,
-            hint: "Wygeneruj: openssl rand -hex 32. Ta sama wartość w kliencie i w reports-api.",
-          }),
+          check(
+            "SUPABASE_URL",
+            "supabase",
+            "URL projektu Supabase (serwer) — wymagany dla supabaseAdmin",
+            true,
+            {
+              hint: "Ustaw na Ubuntu w /etc/systemd/system/<serwis>.env lub w .env aplikacji. Ta sama wartość co VITE_SUPABASE_URL.",
+            },
+          ),
+          check(
+            "SUPABASE_SERVICE_ROLE_KEY",
+            "supabase",
+            "Service role key — dostęp serwera do DB z pominięciem RLS",
+            true,
+            {
+              hint: "Skopiuj z Lovable Cloud → Backend → Settings → API. Nigdy nie eksponuj klientowi.",
+            },
+          ),
+          check(
+            "REPORTS_API_KEY",
+            "backend",
+            "Klucz do usługi services/reports-api (FastAPI)",
+            false,
+            {
+              minLength: 32,
+              hint: "Wygeneruj: openssl rand -hex 32. Ta sama wartość w kliencie i w reports-api.",
+            },
+          ),
           // Ubuntu API (additive, optional in this phase) — see docs/lovable-ubuntu-deployment.md.
           // Report presence only; never expose values, prefixes, or partial fragments.
-          check("UBUNTU_API_BASE_URL", "ubuntu", "Kanoniczny HTTPS URL FastAPI na Ubuntu (za Cloudflare Access)", false, {
-            hint: "Wymaga https, bez trailing slash, bez credentials. Server-only.",
-          }),
+          check(
+            "UBUNTU_API_BASE_URL",
+            "ubuntu",
+            "Kanoniczny HTTPS URL FastAPI na Ubuntu (za Cloudflare Access)",
+            false,
+            {
+              hint: "Wymaga https, bez trailing slash, bez credentials. Server-only.",
+            },
+          ),
           check("UBUNTU_API_BEARER_TOKEN", "ubuntu", "Bearer token dla FastAPI na Ubuntu", false, {
             hint: "Wystawiany przez backend Ubuntu. Server-only, nigdy nie loguj.",
           }),
-          check("CF_ACCESS_CLIENT_ID", "ubuntu", "Cloudflare Access service token — client id", false, {
-            hint: "Z Cloudflare Zero Trust → Access → Service Tokens.",
-          }),
-          check("CF_ACCESS_CLIENT_SECRET", "ubuntu", "Cloudflare Access service token — client secret", false, {
-            hint: "Z Cloudflare Zero Trust → Access → Service Tokens. Server-only.",
-          }),
+          check(
+            "CF_ACCESS_CLIENT_ID",
+            "ubuntu",
+            "Cloudflare Access service token — client id",
+            false,
+            {
+              hint: "Z Cloudflare Zero Trust → Access → Service Tokens.",
+            },
+          ),
+          check(
+            "CF_ACCESS_CLIENT_SECRET",
+            "ubuntu",
+            "Cloudflare Access service token — client secret",
+            false,
+            {
+              hint: "Z Cloudflare Zero Trust → Access → Service Tokens. Server-only.",
+            },
+          ),
         ];
 
         const missingRequired = checks.filter((c) => c.required && (!c.present || !c.lengthOk));

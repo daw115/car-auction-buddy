@@ -6,12 +6,12 @@ Lovable nie ma bezpośredniego dostępu do środowiska Ubuntu, więc żaden endp
 
 ## Statusy
 
-| Status                          | Znaczenie                                                                                                        |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `verified-existing`             | Endpoint istnieje na Ubuntu, jego schema została potwierdzona przez zespół backendu. **Wymaga ludzkiej weryfikacji.** |
-| `required-unverified`           | Endpoint jest wymagany przez GUI, prawdopodobnie istnieje, ale schema nie została potwierdzona.                  |
-| `missing`                       | Wiadomo, że endpoint nie istnieje i musi zostać dodany na Ubuntu.                                                |
-| `blocked-by-backend-discovery`  | Nie wiadomo, jak backend obecnie realizuje tę funkcję. Wymaga rozmowy z zespołem Ubuntu.                         |
+| Status                         | Znaczenie                                                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `verified-existing`            | Endpoint istnieje na Ubuntu, jego schema została potwierdzona przez zespół backendu. **Wymaga ludzkiej weryfikacji.** |
+| `required-unverified`          | Endpoint jest wymagany przez GUI, prawdopodobnie istnieje, ale schema nie została potwierdzona.                       |
+| `missing`                      | Wiadomo, że endpoint nie istnieje i musi zostać dodany na Ubuntu.                                                     |
+| `blocked-by-backend-discovery` | Nie wiadomo, jak backend obecnie realizuje tę funkcję. Wymaga rozmowy z zespołem Ubuntu.                              |
 
 ## Wspólne konwencje
 
@@ -35,59 +35,59 @@ Lovable nie ma bezpośredniego dostępu do środowiska Ubuntu, więc żaden endp
 
 ### Auth (PasswordGate)
 
-| Metoda   | Ścieżka                          | Cel                                                          | Idempotencja | Uprawnienie | Timeout | Status                          |
-| -------- | -------------------------------- | ------------------------------------------------------------ | ------------ | ----------- | ------- | ------------------------------- |
-| `POST`   | `/auth/login`                    | Zamiana `{ username, password }` na sesję.                   | Nie          | Publiczny (rate-limited) | 8 s    | `blocked-by-backend-discovery` |
-| `POST`   | `/auth/logout`                   | Unieważnienie bieżącej sesji.                                | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `GET`    | `/auth/session`                  | Aktualnie zalogowany użytkownik (`{ authenticated, username }`). | Tak      | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `POST`   | `/auth/users/{username}/password`| Reset hasła użytkownika (wymaga master password).            | Nie          | Master      | 8 s     | `blocked-by-backend-discovery` |
-| `DELETE` | `/auth/users/{username}`         | Usunięcie profilu (wymaga master password).                  | Tak (2nd call = 404) | Master | 5 s | `blocked-by-backend-discovery` |
-| `GET`    | `/auth/users/{username}/exists`  | Czy dla użytkownika ustawione jest hasło.                    | Tak          | Publiczny   | 3 s     | `blocked-by-backend-discovery` |
+| Metoda   | Ścieżka                           | Cel                                                              | Idempotencja         | Uprawnienie              | Timeout | Status                         |
+| -------- | --------------------------------- | ---------------------------------------------------------------- | -------------------- | ------------------------ | ------- | ------------------------------ |
+| `POST`   | `/auth/login`                     | Zamiana `{ username, password }` na sesję.                       | Nie                  | Publiczny (rate-limited) | 8 s     | `blocked-by-backend-discovery` |
+| `POST`   | `/auth/logout`                    | Unieważnienie bieżącej sesji.                                    | Tak                  | Sesja                    | 5 s     | `blocked-by-backend-discovery` |
+| `GET`    | `/auth/session`                   | Aktualnie zalogowany użytkownik (`{ authenticated, username }`). | Tak                  | Sesja                    | 5 s     | `blocked-by-backend-discovery` |
+| `POST`   | `/auth/users/{username}/password` | Reset hasła użytkownika (wymaga master password).                | Nie                  | Master                   | 8 s     | `blocked-by-backend-discovery` |
+| `DELETE` | `/auth/users/{username}`          | Usunięcie profilu (wymaga master password).                      | Tak (2nd call = 404) | Master                   | 5 s     | `blocked-by-backend-discovery` |
+| `GET`    | `/auth/users/{username}/exists`   | Czy dla użytkownika ustawione jest hasło.                        | Tak                  | Publiczny                | 3 s     | `blocked-by-backend-discovery` |
 
 > **Uwaga**: obecnie hasła użytkowników GUI trzymane są w tabeli Supabase `site_user_passwords`. Migracja tych endpointów będzie wymagała, aby Ubuntu przejął rolę authoritative source. Bez powyższych endpointów PasswordGate **nie może** działać na Ubuntu.
 
 ### Health i konfiguracja
 
-| Metoda | Ścieżka           | Cel                                                            | Idempotencja | Uprawnienie  | Timeout | Status                |
-| ------ | ----------------- | -------------------------------------------------------------- | ------------ | ------------ | ------- | --------------------- |
-| `GET`  | `/health`         | Liveness/readiness FastAPI. Zwraca `{ status: "ok" \| "degraded", checks?: {...} }`. | Tak | Publiczny (za CF Access) | 4 s | `required-unverified` |
-| `GET`  | `/config`         | Publicznie widoczna konfiguracja aplikacji (nie sekrety).      | Tak          | Sesja        | 5 s     | `required-unverified` |
-| `GET`  | `/version`        | `{ commit, buildTime, version }` do dev.logs.                  | Tak          | Sesja        | 3 s     | `required-unverified` |
+| Metoda | Ścieżka    | Cel                                                                                  | Idempotencja | Uprawnienie              | Timeout | Status                |
+| ------ | ---------- | ------------------------------------------------------------------------------------ | ------------ | ------------------------ | ------- | --------------------- |
+| `GET`  | `/health`  | Liveness/readiness FastAPI. Zwraca `{ status: "ok" \| "degraded", checks?: {...} }`. | Tak          | Publiczny (za CF Access) | 4 s     | `required-unverified` |
+| `GET`  | `/config`  | Publicznie widoczna konfiguracja aplikacji (nie sekrety).                            | Tak          | Sesja                    | 5 s     | `required-unverified` |
+| `GET`  | `/version` | `{ commit, buildTime, version }` do dev.logs.                                        | Tak          | Sesja                    | 3 s     | `required-unverified` |
 
 ### Records i klienci
 
-| Metoda   | Ścieżka                              | Cel                                              | Idempotencja | Uprawnienie | Timeout | Status                          |
-| -------- | ------------------------------------ | ------------------------------------------------ | ------------ | ----------- | ------- | ------------------------------- |
-| `GET`    | `/records`                           | Lista rekordów wyszukiwań (paginacja, filtry).   | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery` |
-| `GET`    | `/records/{id}`                      | Szczegóły rekordu.                                | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery` |
-| `POST`   | `/records/{id}/feedback/{lot_id}`    | Zapis feedbacku dla lota.                         | Nie          | Sesja       | 8 s     | `required-unverified`           |
-| `DELETE` | `/records/{id}/feedback/{lot_id}?source=copart\|iaai` | Usunięcie feedbacku.               | Tak          | Sesja       | 5 s     | `verified-existing (kontrakt frontendu istnieje; wymaga potwierdzenia na Ubuntu)` |
-| `GET`    | `/clients`                           | Lista klientów.                                   | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `POST`   | `/clients`                           | Utworzenie klienta.                               | Nie          | Sesja       | 8 s     | `blocked-by-backend-discovery` |
+| Metoda   | Ścieżka                                               | Cel                                            | Idempotencja | Uprawnienie | Timeout | Status                                                                            |
+| -------- | ----------------------------------------------------- | ---------------------------------------------- | ------------ | ----------- | ------- | --------------------------------------------------------------------------------- |
+| `GET`    | `/records`                                            | Lista rekordów wyszukiwań (paginacja, filtry). | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery`                                                    |
+| `GET`    | `/records/{id}`                                       | Szczegóły rekordu.                             | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery`                                                    |
+| `POST`   | `/records/{id}/feedback/{lot_id}`                     | Zapis feedbacku dla lota.                      | Nie          | Sesja       | 8 s     | `required-unverified`                                                             |
+| `DELETE` | `/records/{id}/feedback/{lot_id}?source=copart\|iaai` | Usunięcie feedbacku.                           | Tak          | Sesja       | 5 s     | `verified-existing (kontrakt frontendu istnieje; wymaga potwierdzenia na Ubuntu)` |
+| `GET`    | `/clients`                                            | Lista klientów.                                | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery`                                                    |
+| `POST`   | `/clients`                                            | Utworzenie klienta.                            | Nie          | Sesja       | 8 s     | `blocked-by-backend-discovery`                                                    |
 
 ### Jobs (scraper)
 
-| Metoda | Ścieżka                     | Cel                                          | Idempotencja | Uprawnienie | Timeout | Status                |
-| ------ | --------------------------- | -------------------------------------------- | ------------ | ----------- | ------- | --------------------- |
-| `POST` | `/api/search`               | Start pojedynczego wyszukiwania.             | Nie          | Sesja       | 20 s    | `required-unverified` |
-| `POST` | `/api/search/batch`         | Start batcha (limit 20).                     | Nie          | Sesja       | 20 s    | `required-unverified` |
-| `GET`  | `/api/jobs/{job_id}`        | Status joba (`queued/running/done/error/cancelled/interrupted`). | Tak | Sesja | 5 s | `required-unverified` |
-| `POST` | `/api/jobs/{job_id}/cancel` | Anulowanie joba.                             | Tak          | Sesja       | 5 s     | `required-unverified` |
-| `GET`  | `/api/jobs/{job_id}/logs`   | Pobranie logów joba.                         | Tak          | Sesja       | 10 s    | `required-unverified` |
+| Metoda | Ścieżka                     | Cel                                                              | Idempotencja | Uprawnienie | Timeout | Status                |
+| ------ | --------------------------- | ---------------------------------------------------------------- | ------------ | ----------- | ------- | --------------------- |
+| `POST` | `/api/search`               | Start pojedynczego wyszukiwania.                                 | Nie          | Sesja       | 20 s    | `required-unverified` |
+| `POST` | `/api/search/batch`         | Start batcha (limit 20).                                         | Nie          | Sesja       | 20 s    | `required-unverified` |
+| `GET`  | `/api/jobs/{job_id}`        | Status joba (`queued/running/done/error/cancelled/interrupted`). | Tak          | Sesja       | 5 s     | `required-unverified` |
+| `POST` | `/api/jobs/{job_id}/cancel` | Anulowanie joba.                                                 | Tak          | Sesja       | 5 s     | `required-unverified` |
+| `GET`  | `/api/jobs/{job_id}/logs`   | Pobranie logów joba.                                             | Tak          | Sesja       | 10 s    | `required-unverified` |
 
 ### Raporty
 
-| Metoda | Ścieżka                                     | Cel                                       | Idempotencja | Uprawnienie | Timeout | Status                          |
-| ------ | ------------------------------------------- | ----------------------------------------- | ------------ | ----------- | ------- | ------------------------------- |
-| `GET`  | `/reports/{record_id}/broker_bundle`        | URL/artefakt raportu broker.              | Tak          | Sesja       | 10 s    | `required-unverified` |
-| `GET`  | `/reports/{record_id}/client_bundle`        | URL/artefakt raportu klient.              | Tak          | Sesja       | 10 s    | `required-unverified` |
-| `GET`  | `/reports/{record_id}/client_short_bundle`  | Skrócony raport klient.                   | Tak          | Sesja       | 10 s    | `required-unverified` |
-| `POST` | `/reports/pdf`                              | Generacja PDF po stronie backendu.        | Nie          | Sesja       | 30 s    | `blocked-by-backend-discovery` |
+| Metoda | Ścieżka                                    | Cel                                | Idempotencja | Uprawnienie | Timeout | Status                         |
+| ------ | ------------------------------------------ | ---------------------------------- | ------------ | ----------- | ------- | ------------------------------ |
+| `GET`  | `/reports/{record_id}/broker_bundle`       | URL/artefakt raportu broker.       | Tak          | Sesja       | 10 s    | `required-unverified`          |
+| `GET`  | `/reports/{record_id}/client_bundle`       | URL/artefakt raportu klient.       | Tak          | Sesja       | 10 s    | `required-unverified`          |
+| `GET`  | `/reports/{record_id}/client_short_bundle` | Skrócony raport klient.            | Tak          | Sesja       | 10 s    | `required-unverified`          |
+| `POST` | `/reports/pdf`                             | Generacja PDF po stronie backendu. | Nie          | Sesja       | 30 s    | `blocked-by-backend-discovery` |
 
 ### Ustawienia
 
-| Metoda | Ścieżka                          | Cel                                            | Idempotencja | Uprawnienie | Timeout | Status                          |
-| ------ | -------------------------------- | ---------------------------------------------- | ------------ | ----------- | ------- | ------------------------------- |
+| Metoda | Ścieżka                          | Cel                                            | Idempotencja | Uprawnienie | Timeout | Status                |
+| ------ | -------------------------------- | ---------------------------------------------- | ------------ | ----------- | ------- | --------------------- |
 | `GET`  | `/api/settings/default-criteria` | Domyślne kryteria wyszukiwania.                | Tak          | Sesja       | 5 s     | `required-unverified` |
 | `PUT`  | `/api/settings/default-criteria` | Zapis domyślnych kryteriów (whole-object put). | Tak          | Sesja       | 5 s     | `required-unverified` |
 | `GET`  | `/api/settings/ai-providers`     | Konfiguracja AI (provider/model).              | Tak          | Sesja       | 5 s     | `required-unverified` |
@@ -97,27 +97,27 @@ Lovable nie ma bezpośredniego dostępu do środowiska Ubuntu, więc żaden endp
 
 ### Watchlist / Watch queue
 
-| Metoda   | Ścieżka                     | Cel                                       | Idempotencja | Uprawnienie | Timeout | Status                          |
-| -------- | --------------------------- | ----------------------------------------- | ------------ | ----------- | ------- | ------------------------------- |
-| `GET`    | `/watchlist`                | Lista watchlist-y.                        | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `POST`   | `/watchlist`                | Dodanie pozycji.                          | Nie          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `DELETE` | `/watchlist/{id}`           | Usunięcie pozycji.                        | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `GET`    | `/queue`                    | Lista watch queue.                        | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `POST`   | `/queue`                    | Dodanie zapytania do kolejki.             | Nie          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
-| `DELETE` | `/queue/{id}`               | Usunięcie z kolejki.                      | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| Metoda   | Ścieżka           | Cel                           | Idempotencja | Uprawnienie | Timeout | Status                         |
+| -------- | ----------------- | ----------------------------- | ------------ | ----------- | ------- | ------------------------------ |
+| `GET`    | `/watchlist`      | Lista watchlist-y.            | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| `POST`   | `/watchlist`      | Dodanie pozycji.              | Nie          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| `DELETE` | `/watchlist/{id}` | Usunięcie pozycji.            | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| `GET`    | `/queue`          | Lista watch queue.            | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| `POST`   | `/queue`          | Dodanie zapytania do kolejki. | Nie          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
+| `DELETE` | `/queue/{id}`     | Usunięcie z kolejki.          | Tak          | Sesja       | 5 s     | `blocked-by-backend-discovery` |
 
 ### Audit / logi operacyjne
 
-| Metoda | Ścieżka             | Cel                                       | Idempotencja | Uprawnienie | Timeout | Status                          |
-| ------ | ------------------- | ----------------------------------------- | ------------ | ----------- | ------- | ------------------------------- |
-| `GET`  | `/audit/search`     | Historia audytu wyszukiwań.               | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery` |
-| `GET`  | `/audit/operations` | Logi operacyjne (odpowiednik `operation_logs`). | Tak    | Sesja       | 10 s    | `blocked-by-backend-discovery` |
+| Metoda | Ścieżka             | Cel                                             | Idempotencja | Uprawnienie | Timeout | Status                         |
+| ------ | ------------------- | ----------------------------------------------- | ------------ | ----------- | ------- | ------------------------------ |
+| `GET`  | `/audit/search`     | Historia audytu wyszukiwań.                     | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery` |
+| `GET`  | `/audit/operations` | Logi operacyjne (odpowiednik `operation_logs`). | Tak          | Sesja       | 10 s    | `blocked-by-backend-discovery` |
 
 ### Diagnostyka
 
-| Metoda | Ścieżka         | Cel                                       | Idempotencja | Uprawnienie | Timeout | Status                          |
-| ------ | --------------- | ----------------------------------------- | ------------ | ----------- | ------- | ------------------------------- |
-| `GET`  | `/diagnostics`  | Wynik lokalnej diagnostyki backendu (SQLite, scraper, AI). | Tak | Sesja | 8 s | `blocked-by-backend-discovery` |
+| Metoda | Ścieżka        | Cel                                                        | Idempotencja | Uprawnienie | Timeout | Status                         |
+| ------ | -------------- | ---------------------------------------------------------- | ------------ | ----------- | ------- | ------------------------------ |
+| `GET`  | `/diagnostics` | Wynik lokalnej diagnostyki backendu (SQLite, scraper, AI). | Tak          | Sesja       | 8 s     | `blocked-by-backend-discovery` |
 
 ## Zasady schematów
 

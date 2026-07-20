@@ -38,7 +38,12 @@ export class UbuntuApiError extends Error {
   readonly status: number | null;
   readonly requestId: string;
 
-  constructor(kind: UbuntuApiErrorKind, message: string, requestId: string, status: number | null = null) {
+  constructor(
+    kind: UbuntuApiErrorKind,
+    message: string,
+    requestId: string,
+    status: number | null = null,
+  ) {
     super(message);
     this.name = "UbuntuApiError";
     this.kind = kind;

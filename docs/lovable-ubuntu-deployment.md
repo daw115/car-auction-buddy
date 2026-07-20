@@ -39,29 +39,29 @@ Lokalne pliki SQLite w ~/usacar/usa-car-finder/data/
 
 ### Nowe (Ubuntu API, server-only)
 
-| Nazwa                       | Wymagane | Opis                                                                              |
-| --------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `UBUNTU_API_BASE_URL`       | tak      | Kanoniczny HTTPS URL do FastAPI za CF Access (bez slash na końcu, bez credentials). |
-| `UBUNTU_API_BEARER_TOKEN`   | tak      | Bearer token wystawiany przez backend Ubuntu.                                     |
-| `CF_ACCESS_CLIENT_ID`       | tak      | Service token Cloudflare Access — client id.                                      |
-| `CF_ACCESS_CLIENT_SECRET`   | tak      | Service token Cloudflare Access — client secret.                                  |
+| Nazwa                     | Wymagane | Opis                                                                                |
+| ------------------------- | -------- | ----------------------------------------------------------------------------------- |
+| `UBUNTU_API_BASE_URL`     | tak      | Kanoniczny HTTPS URL do FastAPI za CF Access (bez slash na końcu, bez credentials). |
+| `UBUNTU_API_BEARER_TOKEN` | tak      | Bearer token wystawiany przez backend Ubuntu.                                       |
+| `CF_ACCESS_CLIENT_ID`     | tak      | Service token Cloudflare Access — client id.                                        |
+| `CF_ACCESS_CLIENT_SECRET` | tak      | Service token Cloudflare Access — client secret.                                    |
 
 ### Sesja PasswordGate (już istnieją)
 
-| Nazwa                        | Wymagane | Opis                                                     |
-| ---------------------------- | -------- | -------------------------------------------------------- |
-| `SITE_SESSION_SECRET`        | tak      | HMAC secret do podpisu cookie sesji (≥32 znaki).         |
-| `SITE_SESSION_TTL_SECONDS`   | nie      | TTL sesji (default 3600, zakres 300–86400).              |
-| `SITE_MASTER_PASSWORD`       | tak      | Hasło nadrzędne do zarządzania profilami.                |
+| Nazwa                      | Wymagane | Opis                                             |
+| -------------------------- | -------- | ------------------------------------------------ |
+| `SITE_SESSION_SECRET`      | tak      | HMAC secret do podpisu cookie sesji (≥32 znaki). |
+| `SITE_SESSION_TTL_SECONDS` | nie      | TTL sesji (default 3600, zakres 300–86400).      |
+| `SITE_MASTER_PASSWORD`     | tak      | Hasło nadrzędne do zarządzania profilami.        |
 
 ### Legacy (do wygaszenia po migracji ekranów)
 
-| Nazwa                    | Status | Notatka                                                                 |
-| ------------------------ | ------ | ----------------------------------------------------------------------- |
-| `API_BASE_URL`           | legacy | Obecny proxy do produkcyjnego FastAPI (bez CF Access). Zastąpi go `UBUNTU_API_BASE_URL`. |
-| `API_BEARER_TOKEN`       | legacy | Bearer do `API_BASE_URL`. Zastąpi go `UBUNTU_API_BEARER_TOKEN`.         |
-| `SCRAPER_BASE_URL`       | legacy | Legacy zewnętrzny scraper (nie Ubuntu).                                 |
-| `SCRAPER_API_TOKEN`      | legacy | Token do zewnętrznego scrapera.                                         |
+| Nazwa               | Status | Notatka                                                                                  |
+| ------------------- | ------ | ---------------------------------------------------------------------------------------- |
+| `API_BASE_URL`      | legacy | Obecny proxy do produkcyjnego FastAPI (bez CF Access). Zastąpi go `UBUNTU_API_BASE_URL`. |
+| `API_BEARER_TOKEN`  | legacy | Bearer do `API_BASE_URL`. Zastąpi go `UBUNTU_API_BEARER_TOKEN`.                          |
+| `SCRAPER_BASE_URL`  | legacy | Legacy zewnętrzny scraper (nie Ubuntu).                                                  |
+| `SCRAPER_API_TOKEN` | legacy | Token do zewnętrznego scrapera.                                                          |
 
 > Zmiennych legacy **nie usuwamy** dopóki żaden ekran nie zostanie w pełni przełączony na Ubuntu API. Współistnienie jest zamierzone.
 
@@ -129,7 +129,7 @@ Reguły:
 
 - `GET /api/health` → status 200, `ok: true`, sekcja `ubuntuApi` obecna.
 - `GET /api/diagnostics` (za sesją PasswordGate) → wszystkie envy Ubuntu API oznaczone jako obecne.
-- Zewnętrznie: `curl https://<tunnel-host> ` bez CF-Access-* → oczekiwane 403 z krawędzi Cloudflare (dowód, że backend nie jest bezpośrednio dostępny).
+- Zewnętrznie: `curl https://<tunnel-host> ` bez CF-Access-\* → oczekiwane 403 z krawędzi Cloudflare (dowód, że backend nie jest bezpośrednio dostępny).
 - Na Ubuntu: `ss -tlnp | grep :8000` → wyłącznie `127.0.0.1:8000`.
 
 ## Co pozostaje po stronie backendu Ubuntu
