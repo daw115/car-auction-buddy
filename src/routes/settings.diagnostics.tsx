@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle, Loader2, HelpCircle } from "lucide-react";
+import { JsonDetails } from "@/components/JsonDetails";
 
 type Check = {
   name: string;
@@ -25,6 +26,19 @@ type Diagnostics = {
   summary: { total: number; ok: number; missingRequired: number };
 };
 
+type HealthStatus = "ok" | "down" | "unconfigured";
+type HealthResponse = {
+  ok: boolean;
+  checkedAt: string;
+  durationMs: number;
+  services: { database: HealthStatus; scraper: HealthStatus; ai: HealthStatus };
+};
+
+type ConfigResponse = {
+  config: Record<string, unknown> | null;
+  env: Record<string, unknown>;
+};
+
 const CATEGORY_LABEL: Record<Check["category"], string> = {
   auth: "Autoryzacja / sesje",
   backend: "Backend / scraper",
@@ -32,11 +46,17 @@ const CATEGORY_LABEL: Record<Check["category"], string> = {
   supabase: "Lovable Cloud (Supabase)",
 };
 
+const SERVICE_LABEL: Record<keyof HealthResponse["services"], string> = {
+  database: "Baza danych",
+  scraper: "Backend / scraper (/health)",
+  ai: "Provider AI",
+};
+
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({
     meta: [
       { title: "Diagnostyka — USA Car Finder" },
-      { name: "description", content: "Sprawdzenie wymaganych zmiennych środowiskowych." },
+      { name: "description", content: "Sprawdzenie stanu backendu, konfiguracji i sekretów." },
     ],
   }),
   component: DiagnosticsPage,
@@ -52,6 +72,43 @@ function DiagnosticsPage() {
     },
     refetchOnWindowFocus: false,
   });
+
+  const healthQuery = useQuery<HealthResponse>({
+    queryKey: ["diagnostics", "health"],
+    queryFn: async () => {
+      const res = await fetch("/api/health", { credentials: "include" });
+      // 200 lub 503 — obie odpowiedzi zawierają body z detalami
+      return (await res.json()) as HealthResponse;
+    },
+    refetchOnWindowFocus: false,
+    refetchInterval: 60_000,
+  });
+
+  const configQuery = useQuery<ConfigResponse>({
+    queryKey: ["diagnostics", "config"],
+    queryFn: async () => {
+      const res = await fetch("/api/config", { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  const envOk = query.data?.ok ?? null;
+  const healthOk = healthQuery.data?.ok ?? null;
+  const configOk = configQuery.data ? !!configQuery.data.config : configQuery.error ? false : null;
+  const readiness: "ready" | "degraded" | "loading" =
+    envOk === null || healthOk === null || configOk === null
+      ? "loading"
+      : envOk && healthOk && configOk
+        ? "ready"
+        : "degraded";
+
+  const refetchAll = () => {
+    void query.refetch();
+    void healthQuery.refetch();
+    void configQuery.refetch();
+  };
 
   const grouped = groupByCategory(query.data?.checks ?? []);
 
