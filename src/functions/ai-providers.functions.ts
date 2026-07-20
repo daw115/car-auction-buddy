@@ -1,12 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy backend payloads are not fully typed yet */
 // Proxy do backendu FastAPI: /api/settings/ai-providers
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 
 type Cfg = { baseUrl: string; token: string };
 function cfg(): Cfg {
   const baseUrl = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
   const token = process.env.API_BEARER_TOKEN ?? "";
-  if (!baseUrl || !token) throw new Error("Backend nieskonfigurowany (API_BASE_URL / API_BEARER_TOKEN).");
+  if (!baseUrl || !token)
+    throw new Error("Backend nieskonfigurowany (API_BASE_URL / API_BEARER_TOKEN).");
   return { baseUrl, token };
 }
 
@@ -34,21 +37,31 @@ async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Pro
   });
   const txt = await res.text();
   let parsed: any = txt;
-  try { parsed = JSON.parse(txt); } catch { /* keep text */ }
+  try {
+    parsed = JSON.parse(txt);
+  } catch {
+    /* keep text */
+  }
   if (!res.ok) {
-    const msg = typeof parsed === "object" && parsed?.detail
-      ? (typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail))
-      : `Backend ${res.status}`;
+    const msg =
+      typeof parsed === "object" && parsed?.detail
+        ? typeof parsed.detail === "string"
+          ? parsed.detail
+          : JSON.stringify(parsed.detail)
+        : `Backend ${res.status}`;
     throw new Error(msg);
   }
   return parsed as T;
 }
 
-export const getAiProviders = createServerFn({ method: "GET" }).handler(async () => {
-  return call<AiProvidersResponse>("/api/settings/ai-providers", "GET");
-});
+export const getAiProviders = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    return call<AiProvidersResponse>("/api/settings/ai-providers", "GET");
+  });
 
 export const updateAiProviders = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       overrides: z.record(z.string(), z.union([z.string(), z.null()])),
@@ -80,6 +93,7 @@ export type AiModelsResponse = {
 };
 
 export const getAiModels = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ provider: z.string().min(1) }).parse)
   .handler(async ({ data }) => {
     return call<AiModelsResponse>(
@@ -89,6 +103,7 @@ export const getAiModels = createServerFn({ method: "GET" })
   });
 
 export const updateAiModels = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       overrides: z.record(z.string(), z.union([z.string(), z.null()])),

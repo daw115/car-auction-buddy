@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const PRIVATE_FUNCTION_MODULES = [
+  "ai-providers.functions.ts",
+  "backend.functions.ts",
+  "default-criteria.functions.ts",
   "external.functions.ts",
+  "pipeline-filters.functions.ts",
   "queue.functions.ts",
   "watchlist.functions.ts",
 ];
