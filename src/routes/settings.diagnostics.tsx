@@ -11,11 +11,12 @@ type Check = {
   name: string;
   present: boolean;
   required: boolean;
-  category: "auth" | "backend" | "ai" | "supabase";
+  category: "auth" | "backend" | "ai" | "supabase" | "ubuntu";
   description: string;
   hint?: string;
   minLength?: number;
   lengthOk?: boolean;
+  legacy?: boolean;
 };
 
 type Diagnostics = {
@@ -27,11 +28,21 @@ type Diagnostics = {
 };
 
 type HealthStatus = "ok" | "down" | "unconfigured";
+type UbuntuProbe = {
+  status: HealthStatus;
+  latencyMs?: number | null;
+  requestId?: string | null;
+};
 type HealthResponse = {
   ok: boolean;
   checkedAt: string;
   durationMs: number;
-  services: { database: HealthStatus; scraper: HealthStatus; ai: HealthStatus };
+  services: {
+    database: HealthStatus;
+    scraper: HealthStatus;
+    ai: HealthStatus;
+    ubuntuApi?: UbuntuProbe;
+  };
 };
 
 type ConfigResponse = {
@@ -44,13 +55,22 @@ const CATEGORY_LABEL: Record<Check["category"], string> = {
   backend: "Backend / scraper",
   ai: "Providery AI",
   supabase: "Lovable Cloud (Supabase)",
+  ubuntu: "Ubuntu API (migracja)",
 };
 
-const SERVICE_LABEL: Record<keyof HealthResponse["services"], string> = {
+const SERVICE_LABEL: Record<"database" | "scraper" | "ai", string> = {
   database: "Baza danych",
   scraper: "Backend / scraper (/health)",
   ai: "Provider AI",
 };
+
+const UBUNTU_ENV_NAMES = [
+  "UBUNTU_API_BASE_URL",
+  "UBUNTU_API_BEARER_TOKEN",
+  "CF_ACCESS_CLIENT_ID",
+  "CF_ACCESS_CLIENT_SECRET",
+] as const;
+
 
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({
