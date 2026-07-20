@@ -2,6 +2,7 @@
 // Transport przez src/server/backend-transport.server.ts.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
 
 export type PipelineFilter = {
@@ -27,11 +28,14 @@ async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Pro
   }
 }
 
-export const getPipelineFilters = createServerFn({ method: "GET" }).handler(async () => {
-  return call<PipelineFiltersResponse>("/api/settings/pipeline-filters", "GET");
-});
+export const getPipelineFilters = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    return call<PipelineFiltersResponse>("/api/settings/pipeline-filters", "GET");
+  });
 
 export const updatePipelineFilters = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       overrides: z.record(z.string(), z.union([z.boolean(), z.null()])),

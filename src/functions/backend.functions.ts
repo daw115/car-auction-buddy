@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy backend payloads are not fully typed yet */
 // Proxy do zewnętrznego backendu USA Car Finder (FastAPI).
 // Wszystkie wywołania idą przez server function (Cloudflare Worker),
 // żeby API_BEARER_TOKEN nie trafił nigdy do bundla klienta.
@@ -13,6 +14,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { CarLot, ClientCriteria, AnalyzedLot } from "@/lib/types";
 import {
@@ -216,9 +218,9 @@ export async function assertAuctionSourcesAvailable(
 }
 
 /** Dostępność źródeł potwierdzona przez backend; nie zwraca żadnych sekretów. */
-export const backendSourceCapabilities = createServerFn({ method: "GET" }).handler(async () =>
-  getSourceCapabilities(),
-);
+export const backendSourceCapabilities = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => getSourceCapabilities());
 
 // ---------- typy odpowiedzi backendu ----------
 
@@ -232,12 +234,19 @@ export type BackendSearchResponse = {
   analysis_notice?: string | null;
 };
 
+export type BackendJobPhase = {
+  name?: string;
+  status?: string;
+  message?: string;
+  error?: string | null;
+};
+
 export type BackendJobStatus = {
   job_id: string;
   status: string;
   progress?: number;
   phase?: string;
-  phases?: any[];
+  phases?: BackendJobPhase[];
   step?: string;
   message?: string;
   error?: string | null;
@@ -335,6 +344,7 @@ const searchExtras = {
 
 /** POST /api/search — synchroniczne wywołanie (do kilku minut). */
 export const backendSearch = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ criteria: criteriaShape, ...searchExtras }).parse)
   .handler(async ({ data }) => {
     await assertAuctionSourcesAvailable(data.criteria.sources);
@@ -363,6 +373,7 @@ export type BackendBatchResponse = {
 
 /** POST /api/search/batch — do 20 wyszukiwań w jednym requestcie. */
 export const backendSearchBatch = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       searches: z
@@ -387,6 +398,7 @@ export const backendSearchBatch = createServerFn({ method: "POST" })
 
 /** GET /api/jobs/{job_id} — polling statusu (używane przez batch + active pill). */
 export const backendJobStatus = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ jobId: z.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
     return callBackend<BackendJobStatus>({
@@ -399,6 +411,7 @@ export const backendJobStatus = createServerFn({ method: "GET" })
  * Scalone z legacy listActiveScraperJobs + listAllJobs. Zwraca zawsze { jobs, total }.
  */
 export const backendListJobs = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator((d: { activeOnly?: boolean; limit?: number } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const params = new URLSearchParams();
@@ -412,6 +425,7 @@ export const backendListJobs = createServerFn({ method: "GET" })
 
 /** DELETE /api/jobs/{id} (fallback POST /cancel). */
 export const backendCancelJob = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ jobId: z.string().min(1) }).parse)
   .handler(async ({ data }): Promise<{ ok: boolean; status?: string }> => {
     try {
@@ -436,20 +450,21 @@ export const backendCancelJob = createServerFn({ method: "POST" })
  * Zwraca zawsze { records, total }. Filtry opcjonalne.
  */
 export const backendListRecords = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator((d: { query?: string; status?: string; limit?: number } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const params = new URLSearchParams();
     if (data.query) params.set("query", data.query);
     if (data.status) params.set("status", data.status);
     if (data.limit) params.set("limit", String(data.limit));
-    return callBackendSafe<{ records: BackendRecord[]; total: number }>(
-      { path: `/api/records?${params}` },
-      { records: [], total: 0 },
-    );
+    return callBackend<{ records: BackendRecord[]; total: number }>({
+      path: `/api/records?${params}`,
+    });
   });
 
 /** GET /api/records/{id} — szczegóły rekordu. */
 export const backendGetRecord = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
     return callBackendSafe<Record<string, any> | null>(
@@ -460,6 +475,7 @@ export const backendGetRecord = createServerFn({ method: "GET" })
 
 /** DELETE /api/records/{id}. */
 export const backendDeleteRecord = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     try {
@@ -482,6 +498,7 @@ export const backendDeleteRecord = createServerFn({ method: "POST" })
 
 /** POST /api/records/{id}/regenerate-bundles?engine=... */
 export const backendRegenerateBundles = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       recordId: z.number().int(),
@@ -507,6 +524,7 @@ const reportModeSchema = z.enum([
 ]);
 
 export const backendGenerateReport = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       mode: reportModeSchema,
@@ -541,6 +559,7 @@ export const backendGenerateReport = createServerFn({ method: "POST" })
 
 /** GET /api/records/{id}/feedback. */
 export const backendGetFeedback = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ recordId: z.coerce.string().min(1).max(200) }).parse)
   .handler(async ({ data }) => {
     return callBackendSafe<any>(
@@ -551,6 +570,7 @@ export const backendGetFeedback = createServerFn({ method: "GET" })
 
 /** POST /api/records/{id}/feedback — typowany kciuk-w-górę/dół dla lotu. */
 export const backendSubmitFeedback = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       recordId: z.coerce.string().min(1),
@@ -571,6 +591,7 @@ export const backendSubmitFeedback = createServerFn({ method: "POST" })
 
 /** DELETE /api/records/{id}/feedback/{lot_id}?source=... */
 export const backendDeleteFeedback = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       recordId: z.coerce.string().min(1),
@@ -587,20 +608,23 @@ export const backendDeleteFeedback = createServerFn({ method: "POST" })
   });
 
 /** POST /api/feedback/analyze — meta-analiza. */
-export const backendAnalyzeFeedback = createServerFn({ method: "POST" }).handler(async () =>
-  callBackend<any>({ path: "/api/feedback/analyze", method: "POST" }),
-);
+export const backendAnalyzeFeedback = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => callBackend<any>({ path: "/api/feedback/analyze", method: "POST" }));
 
 // ---------- LLM cache ----------
 
-export const backendClearLlmCache = createServerFn({ method: "POST" }).handler(async () => {
-  return callBackendSafe<{ removed: number }>(
-    { path: "/api/llm-cache", method: "DELETE" },
-    { removed: 0 },
-  );
-});
+export const backendClearLlmCache = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    return callBackendSafe<{ removed: number }>(
+      { path: "/api/llm-cache", method: "DELETE" },
+      { removed: 0 },
+    );
+  });
 
 export const backendListLlmCacheEntries = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator((d: { limit?: number } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const params = new URLSearchParams();
@@ -613,6 +637,7 @@ export const backendListLlmCacheEntries = createServerFn({ method: "GET" })
   });
 
 export const backendDeleteLlmCacheEntry = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ key: z.string().min(1) }).parse)
   .handler(async ({ data }) => {
     await callBackend<any>({
@@ -625,6 +650,7 @@ export const backendDeleteLlmCacheEntry = createServerFn({ method: "POST" })
 // ---------- HTML cache ----------
 
 export const backendListHtmlCache = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator((d: { source?: string; limit?: number } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const params = new URLSearchParams();
@@ -639,6 +665,7 @@ export const backendListHtmlCache = createServerFn({ method: "GET" })
 
 /** Pobiera surowy HTML wyłącznie z dozwolonych endpointów cache. */
 export const backendFetchHtml = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.discriminatedUnion("kind", [
       z.object({
@@ -662,8 +689,9 @@ export const backendFetchHtml = createServerFn({ method: "POST" })
 
 // ---------- Model normalizations ----------
 
-export const backendListModelNormalizations = createServerFn({ method: "GET" }).handler(
-  async () => {
+export const backendListModelNormalizations = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
     return callBackendSafe<{
       items: Array<{
         id: string | number;
@@ -675,10 +703,10 @@ export const backendListModelNormalizations = createServerFn({ method: "GET" }).
       }>;
       stats?: { total: number; by_make: Record<string, number> };
     }>({ path: "/api/model-normalizations" }, { items: [] });
-  },
-);
+  });
 
 export const backendDeleteModelNormalization = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1) }).parse)
   .handler(async ({ data }) => {
     await callBackend<any>({
@@ -692,6 +720,7 @@ export const backendDeleteModelNormalization = createServerFn({ method: "POST" }
 
 /** POST /api/parse-client-message — LLM zamienia wiadomość klienta na criteria. */
 export const backendParseClientMessage = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ message: z.string().min(1).max(5000) }).parse)
   .handler(async ({ data }) => {
     try {
@@ -723,83 +752,88 @@ export const backendParseClientMessage = createServerFn({ method: "POST" })
 
 // ---------- Database browser ----------
 
-export const backendDbOverview = createServerFn({ method: "GET" }).handler(async () => {
-  return callBackendSafe<any>({ path: "/api/db/overview" }, null);
-});
+export const backendDbOverview = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    return callBackendSafe<any>({ path: "/api/db/overview" }, null);
+  });
 
 // ---------- Health ----------
 
 type ServiceStatus = "ok" | "down" | "unconfigured";
 
 /** Zbiorczy health-check: baza (Supabase) + backend (usacar-api /health). */
-export const backendHealth = createServerFn({ method: "GET" }).handler(
-  async (): Promise<{
-    checkedAt: string;
-    durationMs: number;
-    services: {
-      database: { status: ServiceStatus; error?: string };
-      backend: { status: ServiceStatus; url?: string; error?: string };
-    };
-  }> => {
-    const startedAt = Date.now();
+export const backendHealth = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(
+    async (): Promise<{
+      checkedAt: string;
+      durationMs: number;
+      services: {
+        database: { status: ServiceStatus; error?: string };
+        backend: { status: ServiceStatus; url?: string; error?: string };
+      };
+    }> => {
+      const startedAt = Date.now();
 
-    let dbStatus: ServiceStatus = "ok";
-    let dbError: string | undefined;
-    try {
-      const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
-      if (error) {
-        dbStatus = "down";
-        dbError = error.message;
-      }
-    } catch (e) {
-      dbStatus = "down";
-      dbError = (e as Error).message;
-    }
-
-    const backendUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
-    let backendStatus: ServiceStatus = "unconfigured";
-    let backendErrorMsg: string | undefined;
-    if (backendUrl) {
+      let dbStatus: ServiceStatus = "ok";
+      let dbError: string | undefined;
       try {
-        const token = process.env.API_BEARER_TOKEN;
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        const res = await fetch(`${backendUrl}/health`, {
-          signal: ctrl.signal,
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        clearTimeout(timer);
-        if (res.ok) backendStatus = "ok";
-        else {
-          backendStatus = "down";
-          backendErrorMsg = `HTTP ${res.status}`;
+        const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
+        if (error) {
+          dbStatus = "down";
+          dbError = error.message;
         }
       } catch (e) {
-        backendStatus = "down";
-        backendErrorMsg = (e as Error).message?.includes("abort")
-          ? "Timeout (5s)"
-          : (e as Error).message;
+        dbStatus = "down";
+        dbError = (e as Error).message;
       }
-    }
 
-    return {
-      checkedAt: new Date().toISOString(),
-      durationMs: Date.now() - startedAt,
-      services: {
-        database: { status: dbStatus, error: dbError },
-        backend: {
-          status: backendStatus,
-          url: backendUrl ? new URL(backendUrl).host : undefined,
-          error: backendErrorMsg,
+      const backendUrl = process.env.API_BASE_URL?.replace(/\/+$/, "");
+      let backendStatus: ServiceStatus = "unconfigured";
+      let backendErrorMsg: string | undefined;
+      if (backendUrl) {
+        try {
+          const token = process.env.API_BEARER_TOKEN;
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 5000);
+          const res = await fetch(`${backendUrl}/health`, {
+            signal: ctrl.signal,
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          clearTimeout(timer);
+          if (res.ok) backendStatus = "ok";
+          else {
+            backendStatus = "down";
+            backendErrorMsg = `HTTP ${res.status}`;
+          }
+        } catch (e) {
+          backendStatus = "down";
+          backendErrorMsg = (e as Error).message?.includes("abort")
+            ? "Timeout (5s)"
+            : (e as Error).message;
+        }
+      }
+
+      return {
+        checkedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAt,
+        services: {
+          database: { status: dbStatus, error: dbError },
+          backend: {
+            status: backendStatus,
+            url: backendUrl ? new URL(backendUrl).host : undefined,
+            error: backendErrorMsg,
+          },
         },
-      },
-    };
-  },
-);
+      };
+    },
+  );
 
 // ---------- Search audit (Supabase operation_logs) ----------
 
 export const backendListSearchAudit = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ limit: z.number().min(1).max(200).optional() }).parse)
   .handler(async ({ data }): Promise<{ entries: SearchAuditEntry[] }> => {
     const { data: rows, error } = await supabaseAdmin

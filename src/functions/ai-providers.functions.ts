@@ -4,6 +4,7 @@
 // na raz i bez runtime fallbacku).
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
 
 export type AiProviderTask = {
@@ -26,11 +27,14 @@ async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Pro
   }
 }
 
-export const getAiProviders = createServerFn({ method: "GET" }).handler(async () => {
-  return call<AiProvidersResponse>("/api/settings/ai-providers", "GET");
-});
+export const getAiProviders = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(async () => {
+    return call<AiProvidersResponse>("/api/settings/ai-providers", "GET");
+  });
 
 export const updateAiProviders = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       overrides: z.record(z.string(), z.union([z.string(), z.null()])),
@@ -62,6 +66,7 @@ export type AiModelsResponse = {
 };
 
 export const getAiModels = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ provider: z.string().min(1) }).parse)
   .handler(async ({ data }) => {
     return call<AiModelsResponse>(
@@ -71,6 +76,7 @@ export const getAiModels = createServerFn({ method: "GET" })
   });
 
 export const updateAiModels = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
   .inputValidator(
     z.object({
       overrides: z.record(z.string(), z.union([z.string(), z.null()])),
