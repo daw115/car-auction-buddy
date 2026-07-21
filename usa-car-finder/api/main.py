@@ -6,16 +6,16 @@ import re
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
-from datetime import datetime, timedelta
+from typing import Literal, Optional, Union
+from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -1317,6 +1317,123 @@ def _require_bearer(authorization: Optional[str] = Header(default=None)) -> None
     token = authorization[7:].strip()
     if token != SCRAPER_API_TOKEN:
         raise HTTPException(status_code=403, detail="Nieprawidłowy token")
+
+
+class UnavailableSourceCapability(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    available: Literal[False] = False
+    mode: Literal["unavailable"] = "unavailable"
+    reason: str = Field(max_length=200)
+
+
+class LiveSourceCapability(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    available: Literal[True] = True
+    mode: Literal["live"] = "live"
+
+
+class OfficialApiSourceCapability(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    available: Literal[True] = True
+    mode: Literal["official_api"] = "official_api"
+
+
+LiveOrUnavailableCapability = Union[LiveSourceCapability, UnavailableSourceCapability]
+OfficialApiOrUnavailableCapability = Union[
+    OfficialApiSourceCapability,
+    UnavailableSourceCapability,
+]
+
+
+class AuctionSourceCapabilities(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    copart: LiveOrUnavailableCapability
+    iaai: LiveOrUnavailableCapability
+    manheim: OfficialApiOrUnavailableCapability
+
+
+class AuctionSourceCapabilitiesPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    checked_at: datetime = Field(serialization_alias="checkedAt")
+    sources: AuctionSourceCapabilities
+
+    @field_validator("checked_at")
+    @classmethod
+    def checked_at_must_be_timezone_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("checkedAt must include a timezone")
+        return value
+
+
+# Static implementation readiness only. "live" means this backend is configured
+# to execute the implementation; it is deliberately not an upstream health probe.
+_IMPLEMENTED_LIVE_AUCTION_SOURCES = frozenset({"copart", "iaai"})
+_LIVE_BACKEND_UNAVAILABLE_REASON = "live_backend_not_configured"
+_MANHEIM_UNAVAILABLE_REASON = "credentials_or_adapter_missing"
+
+
+def _manheim_official_adapter_ready() -> bool:
+    """Return official-adapter readiness without importing or calling providers.
+
+    This revision contains no official Manheim adapter or adapter configuration,
+    so readiness is fail-closed regardless of MANHEIM_BACKEND_ENABLED.
+    """
+    return False
+
+
+def build_auction_source_capabilities(
+    *,
+    checked_at: datetime,
+    copart_ready: bool,
+    iaai_ready: bool,
+    manheim_enabled: bool,
+    manheim_adapter_ready: bool,
+) -> AuctionSourceCapabilitiesPayload:
+    """Purely map known implementation/configuration readiness to the contract."""
+
+    def live_capability(ready: bool) -> LiveOrUnavailableCapability:
+        if ready:
+            return LiveSourceCapability()
+        return UnavailableSourceCapability(reason=_LIVE_BACKEND_UNAVAILABLE_REASON)
+
+    if manheim_enabled and manheim_adapter_ready:
+        manheim: OfficialApiOrUnavailableCapability = OfficialApiSourceCapability()
+    else:
+        manheim = UnavailableSourceCapability(reason=_MANHEIM_UNAVAILABLE_REASON)
+
+    return AuctionSourceCapabilitiesPayload(
+        checked_at=checked_at,
+        sources=AuctionSourceCapabilities(
+            copart=live_capability(copart_ready),
+            iaai=live_capability(iaai_ready),
+            manheim=manheim,
+        ),
+    )
+
+
+@app.get("/api/capabilities", response_model=AuctionSourceCapabilitiesPayload)
+async def get_auction_source_capabilities(
+    _auth: None = Depends(_require_bearer),
+) -> AuctionSourceCapabilitiesPayload:
+    live_backend_configured = not USE_MOCK_DATA
+    return build_auction_source_capabilities(
+        checked_at=datetime.now(timezone.utc),
+        copart_ready=(
+            live_backend_configured and "copart" in _IMPLEMENTED_LIVE_AUCTION_SOURCES
+        ),
+        iaai_ready=(
+            live_backend_configured and "iaai" in _IMPLEMENTED_LIVE_AUCTION_SOURCES
+        ),
+        manheim_enabled=(
+            os.getenv("MANHEIM_BACKEND_ENABLED", "").strip().lower() == "true"
+        ),
+        manheim_adapter_ready=_manheim_official_adapter_ready(),
+    )
 
 
 @app.post("/api/search")
@@ -4101,18 +4218,38 @@ async def logs_stream(
     )
 
 
-@app.get("/api/logs/viewer", response_class=None)
+@app.get("/api/logs/viewer", response_class=HTMLResponse)
 async def logs_viewer(_auth: None = Depends(_require_bearer)):
-    """Prosty HTML viewer — otwórz w przeglądarce żeby oglądać logi live.
+    """Prosty HTML viewer dla jawnie niechronionego środowiska lokalnego.
 
-    Konwencja URL z auth: dla SSE Bearer auth nie działa w EventSource (browser
-    nie pozwala custom headers). Zamiast tego viewer wbudowuje token w fetch.
+    Gdy serwerowy bearer jest skonfigurowany, viewer celowo nie uruchamia
+    streamingu: przeglądarka nie może otrzymać ani odtworzyć tego credentiala.
     """
-    from fastapi.responses import HTMLResponse
-    token = SCRAPER_API_TOKEN or ""
-    public_base = PUBLIC_BASE_URL or ""
+    response_headers = {
+        "Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "Content-Security-Policy": (
+            "default-src 'none'; style-src 'unsafe-inline'; "
+            "script-src 'unsafe-inline'; connect-src 'self'; "
+            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        ),
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+    }
+    if SCRAPER_API_TOKEN:
+        return HTMLResponse(
+            content=(
+                "<!DOCTYPE html><html lang='pl'><head><meta charset='UTF-8'>"
+                "<title>Log viewer disabled</title></head><body>"
+                "Log viewer is disabled while server authentication is configured."
+                "</body></html>"
+            ),
+            status_code=403,
+            headers=response_headers,
+        )
 
-    # HTML viewer z fetch + ReadableStream
+    # HTML viewer z fetch + ReadableStream dla jawnie niechronionego local dev.
     html = """<!DOCTYPE html>
 <html lang='pl'><head>
 <meta charset='UTF-8'><title>📡 Logi serwera (live)</title>
@@ -4144,8 +4281,6 @@ async def logs_viewer(_auth: None = Depends(_require_bearer)):
 </div>
 <div id='logs'></div>
 <script>
-const TOKEN = '__TOKEN__';
-const BASE = '__BASE__';
 let autoscroll = true;
 let paused = false;
 let abortCtl = null;
@@ -4185,8 +4320,7 @@ async function connect() {
   statusEl.textContent = 'Łączę...';
   statusEl.classList.add('disconnected');
   try {
-    const res = await fetch(BASE + '/api/logs/stream', {
-      headers: { 'Authorization': 'Bearer ' + TOKEN },
+    const res = await fetch('/api/logs/stream', {
       signal: abortCtl.signal,
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -4235,8 +4369,7 @@ filterEl.addEventListener('input', () => {});  // dynamiczny filtr działa od na
 connect();
 </script>
 </body></html>"""
-    html = html.replace("__TOKEN__", token).replace("__BASE__", public_base or "")
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, headers=response_headers)
 
 
 @app.get("/health")
