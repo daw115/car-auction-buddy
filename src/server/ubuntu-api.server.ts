@@ -370,6 +370,72 @@ export async function ubuntuApiRequest<T = unknown>(
   return performRequest<T>(config, request, requestId, 0);
 }
 
+export type UbuntuApiStreamRequest = {
+  path: string;
+  query?: Record<string, string | number | boolean | undefined | null>;
+  headers?: Record<string, string>;
+  /** Aborting this signal cancels the upstream connection. */
+  signal?: AbortSignal;
+  /** Passed to fetch. Only used in tests to inject a mock. */
+  fetchImpl?: typeof fetch;
+};
+
+export type UbuntuApiStreamResult = {
+  body: ReadableStream<Uint8Array> | null;
+  status: number;
+  requestId: string;
+};
+
+/**
+ * Streaming variant for Server-Sent Events proxies (e.g. live job logs).
+ * Unlike `ubuntuApiRequest`, the response body is returned unbuffered so the
+ * caller can pipe it straight through to the browser. No retry — SSE
+ * reconnection is the caller's responsibility. Auth headers are identical to
+ * `ubuntuApiRequest` and cannot be overridden by `headers`.
+ */
+export async function ubuntuApiStreamRequest(
+  request: UbuntuApiStreamRequest,
+): Promise<UbuntuApiStreamResult> {
+  const requestId = generateRequestId();
+  const config = readUbuntuApiConfig();
+  if (!config) {
+    throw new UbuntuApiError("unconfigured", publicMessage("unconfigured", null), requestId);
+  }
+  const fetchImpl = request.fetchImpl ?? fetch;
+  const url = buildUrl(config.baseUrl, request.path, request.query);
+  const headers: Record<string, string> = {
+    ...(request.headers ?? {}),
+    Accept: "text/event-stream",
+    Authorization: `Bearer ${config.bearerToken}`,
+    "CF-Access-Client-Id": config.cfAccessClientId,
+    "CF-Access-Client-Secret": config.cfAccessClientSecret,
+    "X-Request-Id": requestId,
+  };
+
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers,
+      signal: request.signal,
+    });
+    if (!response.ok) {
+      const kind = statusToKind(response.status);
+      throw new UbuntuApiError(
+        kind,
+        publicMessage(kind, response.status),
+        requestId,
+        response.status,
+      );
+    }
+    return { body: response.body, status: response.status, requestId };
+  } catch (error) {
+    if (error instanceof UbuntuApiError) throw error;
+    const aborted = (error as { name?: string })?.name === "AbortError";
+    const kind: UbuntuApiErrorKind = aborted ? "timeout" : "network_error";
+    throw new UbuntuApiError(kind, publicMessage(kind, null), requestId);
+  }
+}
+
 /**
  * Non-throwing probe for /api/health and diagnostics screens. Never leaks
  * URL, tokens, or upstream error bodies.

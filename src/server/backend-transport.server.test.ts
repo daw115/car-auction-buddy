@@ -274,3 +274,82 @@ describe("backendRequestSafe — configuration and text responses", () => {
     ).resolves.toBe("<html>report</html>");
   });
 });
+
+describe("backendStreamRequest", () => {
+  it("streams via Ubuntu transport with CF-Access + bearer headers, no retry", async () => {
+    setUbuntuEnv();
+    setLegacyEnv(); // Ubuntu must win.
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: line1\n\n"));
+        controller.close();
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { backendStreamRequest } = await import("./backend-transport.server");
+    const result = await backendStreamRequest({ path: "/api/logs/stream" });
+    expect(result.status).toBe(200);
+    expect(result.body).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${UBU_URL}/api/logs/stream`);
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${UBU_BEARER}`);
+    expect(headers["CF-Access-Client-Id"]).toBe(CF_ID);
+    expect(headers["CF-Access-Client-Secret"]).toBe(CF_SECRET);
+    expect(headers.Accept).toBe("text/event-stream");
+  });
+
+  it("streams via legacy transport using API_BASE_URL + API_BEARER_TOKEN", async () => {
+    setLegacyEnv();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { backendStreamRequest } = await import("./backend-transport.server");
+    const result = await backendStreamRequest({ path: "/api/logs/stream" });
+    expect(result.status).toBe(200);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${LEG_URL}/api/logs/stream`);
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${LEG_BEARER}`);
+  });
+
+  it("throws a sanitized error and does not issue a request when Ubuntu config is partial", async () => {
+    process.env.UBUNTU_API_BASE_URL = UBU_URL;
+    setLegacyEnv();
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { backendStreamRequest } = await import("./backend-transport.server");
+    await expect(backendStreamRequest({ path: "/api/logs/stream" })).rejects.toMatchObject({
+      status: 500,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("propagates a sanitized error on non-2xx upstream status", async () => {
+    setUbuntuEnv();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status: 401 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { backendStreamRequest } = await import("./backend-transport.server");
+    await expect(backendStreamRequest({ path: "/api/logs/stream" })).rejects.toMatchObject({
+      status: 401,
+    });
+  });
+});

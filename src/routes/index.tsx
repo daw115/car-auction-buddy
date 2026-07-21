@@ -25,6 +25,7 @@ import {
   getUnavailableAuctionSources,
   normalizeAuctionSources,
 } from "@/lib/auction-sources";
+import { RERUN_CRITERIA_STORAGE_KEY, extractRerunCriteria } from "@/lib/rerun-criteria";
 
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
@@ -195,6 +196,27 @@ function HomePage() {
   // przed ewentualnym nadpisaniem z rozpoznanej wiadomości klienta.
   const defaultsQ = useQuery(defaultCriteriaQuery());
   const prefilledRef = useRef(false);
+
+  // Rerun z widoku rekordu ("Edytuj i szukaj") — sessionStorage handoff, bez
+  // zmian w routingu/URL. Ma priorytet nad prefillem z default-criteria i
+  // konsumuje/kasuje wpis przy pierwszym renderze.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem(RERUN_CRITERIA_STORAGE_KEY);
+    if (!raw) return;
+    window.sessionStorage.removeItem(RERUN_CRITERIA_STORAGE_KEY);
+    try {
+      const parsed = extractRerunCriteria(JSON.parse(raw));
+      if (parsed) {
+        setCriteria(parsed);
+        prefilledRef.current = true; // blokuje późniejsze nadpisanie przez default-criteria
+        toast.info(`Kryteria z rekordu wczytane: ${parsed.make} ${parsed.model ?? ""}`.trim());
+      }
+    } catch {
+      // ignoruj uszkodzony wpis — formularz zostaje pusty/domyślny
+    }
+  }, []);
+
   useEffect(() => {
     if (prefilledRef.current) return;
     if (!defaultsQ.data) return;

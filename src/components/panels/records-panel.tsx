@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- legacy record payloads are not fully typed yet */
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, RefreshCw, Trash2, Play, PenLine } from "lucide-react";
 
 import {
   backendListRecords,
@@ -12,10 +12,14 @@ import {
   backendGetRecord,
   backendRegenerateBundles,
   backendListSearchAudit,
+  backendSearch,
 } from "@/functions/backend.functions";
 import type { BackendRecord, SearchAuditEntry } from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
 import { cn } from "@/lib/utils";
+import { normalizeAuctionSources } from "@/lib/auction-sources";
+import type { ClientCriteria } from "@/lib/types";
+import { RERUN_CRITERIA_STORAGE_KEY } from "@/lib/rerun-criteria";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -438,7 +442,10 @@ function BackendRecordRow({
 export function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(backendGetRecord);
   const fnRegenerateBundles = useServerFn(backendRegenerateBundles);
+  const fnSearch = useServerFn(backendSearch);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [rerunning, setRerunning] = useState(false);
 
   const { data: record, isLoading } = useQuery({
     queryKey: ["backend-record-detail", recordId],
@@ -513,6 +520,55 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
   const artifactUrls = (record as any).artifact_urls || {};
   const searchedBy = getRecordSearchedBy(record);
 
+  const rerunCriteria: ClientCriteria | null =
+    criteria && typeof criteria.make === "string" && criteria.make.trim()
+      ? {
+          make: criteria.make,
+          model: criteria.model ?? null,
+          year_from: criteria.year_from ?? null,
+          year_to: criteria.year_to ?? null,
+          budget_usd: criteria.budget_usd ?? null,
+          max_odometer_mi: criteria.max_odometer_mi ?? null,
+          fuel_type: criteria.fuel_type ?? null,
+          excluded_damage_types: criteria.excluded_damage_types ?? [],
+          max_results: criteria.max_results ?? 15,
+          sources: normalizeAuctionSources(criteria.sources),
+        }
+      : null;
+
+  function handleEditAndRerun() {
+    if (!rerunCriteria) {
+      toast.error("Rekord nie ma zapisanych kryteriów wyszukiwania.");
+      return;
+    }
+    window.sessionStorage.setItem(RERUN_CRITERIA_STORAGE_KEY, JSON.stringify(rerunCriteria));
+    void navigate({ to: "/" });
+  }
+
+  async function handleRerunNow() {
+    if (!rerunCriteria) {
+      toast.error("Rekord nie ma zapisanych kryteriów wyszukiwania.");
+      return;
+    }
+    setRerunning(true);
+    toast.info("Ponawiam wyszukiwanie…");
+    try {
+      const res = await fnSearch({ data: { criteria: rerunCriteria } });
+      const total = res.analyzed_lots?.length ?? res.listings?.length ?? 0;
+      toast.success(
+        total > 0
+          ? `Nowe wyszukiwanie: ${total} ofert (job ${res.job_id}).`
+          : "Nowe wyszukiwanie nie znalazło ofert.",
+      );
+      await queryClient.invalidateQueries({ queryKey: ["backend-records"] });
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err.message || "Nie udało się ponowić wyszukiwania.");
+    } finally {
+      setRerunning(false);
+    }
+  }
+
   return (
     <Card className="p-4">
       {/* HEADER */}
@@ -542,9 +598,34 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
             )}
           </div>
         </div>
-        <Button variant="ghost" onClick={onClose}>
-          ← Zamknij
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!rerunCriteria || rerunning}
+            onClick={handleEditAndRerun}
+            title="Przenieś kryteria tego rekordu do formularza wyszukiwania"
+          >
+            <PenLine className="mr-1.5 h-3.5 w-3.5" /> Edytuj i szukaj
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!rerunCriteria || rerunning}
+            onClick={handleRerunNow}
+            title="Ponów wyszukiwanie od razu z tymi samymi kryteriami"
+          >
+            {rerunning ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Ponów teraz
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            ← Zamknij
+          </Button>
+        </div>
       </div>
 
       {/* AUTO-BUNDLE REPORTS */}

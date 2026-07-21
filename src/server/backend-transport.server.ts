@@ -21,7 +21,12 @@
 // by callers: `{ status: number, message: string, body?: unknown }`.
 // Messages are sanitized — no URLs, tokens, headers, or upstream bodies.
 
-import { isUbuntuApiConfigured, ubuntuApiRequest, UbuntuApiError } from "./ubuntu-api.server";
+import {
+  isUbuntuApiConfigured,
+  ubuntuApiRequest,
+  ubuntuApiStreamRequest,
+  UbuntuApiError,
+} from "./ubuntu-api.server";
 
 export type BackendMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 export type BackendResponseType = "json" | "text";
@@ -284,4 +289,70 @@ export async function backendRequestSafe<T>(req: BackendRequest, fallback: T): P
     }
     return fallback;
   }
+}
+
+export type BackendStreamRequest = {
+  path: string;
+  /** Aborting this signal cancels the upstream connection. */
+  signal?: AbortSignal;
+  /** Test seam — dependency-inject fetch for the legacy branch only. */
+  fetchImpl?: typeof fetch;
+};
+
+export type BackendStreamResult = {
+  body: ReadableStream<Uint8Array> | null;
+  status: number;
+};
+
+async function streamLegacy(req: BackendStreamRequest): Promise<BackendStreamResult> {
+  const baseRaw = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
+  const token = process.env.API_BEARER_TOKEN ?? "";
+  if (!baseRaw || !token) {
+    throw terr(500, "Backend nieskonfigurowany — brak sekretów API_BASE_URL / API_BEARER_TOKEN.");
+  }
+  const fetchImpl = req.fetchImpl ?? fetch;
+  try {
+    const res = await fetchImpl(`${baseRaw}${req.path}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+      signal: req.signal,
+    });
+    if (!res.ok) {
+      const msg =
+        res.status >= 500 ? "Błąd backendu, spróbuj ponownie za chwilę." : `Backend ${res.status}`;
+      throw terr(res.status, msg);
+    }
+    return { body: res.body, status: res.status };
+  } catch (err) {
+    if (err && typeof err === "object" && "status" in err) throw err;
+    if ((err as Error).name === "AbortError") {
+      throw terr(408, "Przekroczono limit czasu — spróbuj ponownie.");
+    }
+    throw terr(0, (err as Error).message || "Błąd połączenia z backendem.");
+  }
+}
+
+async function streamUbuntu(req: BackendStreamRequest): Promise<BackendStreamResult> {
+  try {
+    const result = await ubuntuApiStreamRequest({
+      path: req.path,
+      signal: req.signal,
+      fetchImpl: req.fetchImpl,
+    });
+    return { body: result.body, status: result.status };
+  } catch (err) {
+    throw ubuntuErrorToTransport(err);
+  }
+}
+
+/**
+ * Unified streaming request (e.g. SSE log proxies). No retry — reconnection
+ * is the caller's responsibility. No runtime fallback between transports.
+ */
+export async function backendStreamRequest(
+  req: BackendStreamRequest,
+): Promise<BackendStreamResult> {
+  const transport = selectBackendTransport();
+  if (transport === "ubuntu") return streamUbuntu(req);
+  return streamLegacy(req);
 }

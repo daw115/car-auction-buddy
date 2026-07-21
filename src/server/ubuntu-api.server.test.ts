@@ -9,6 +9,7 @@ import {
   probeUbuntuApi,
   readUbuntuApiConfig,
   ubuntuApiRequest,
+  ubuntuApiStreamRequest,
   UbuntuApiError,
 } from "./ubuntu-api.server";
 
@@ -358,5 +359,72 @@ describe("text responses", () => {
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Accept).toBe("text/html, */*");
     expect(headers.Authorization).toBe(`Bearer ${BEARER}`);
+  });
+});
+
+describe("ubuntuApiStreamRequest", () => {
+  it("throws unconfigured with no network activity when env is missing", async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      ubuntuApiStreamRequest({
+        path: "/api/logs/stream",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+    ).rejects.toMatchObject({ kind: "unconfigured" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("returns the raw response body unbuffered with auth + CF Access headers", async () => {
+    setEnv();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: hello\n\n"));
+        controller.close();
+      },
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      );
+    const result = await ubuntuApiStreamRequest({
+      path: "/api/logs/stream",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result.status).toBe(200);
+    expect(result.body).not.toBeNull();
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("https://ubuntu.example.org/api/api/logs/stream");
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${BEARER}`);
+    expect(headers["CF-Access-Client-Id"]).toBe(CF_ID);
+    expect(headers["CF-Access-Client-Secret"]).toBe(CF_SECRET);
+    expect(headers.Accept).toBe("text/event-stream");
+  });
+
+  it("does not retry and surfaces a sanitized error on non-2xx status", async () => {
+    setEnv();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response("nope", { status: 403 }));
+    await expect(
+      ubuntuApiStreamRequest({
+        path: "/api/logs/stream",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+    ).rejects.toMatchObject({ kind: "access_denied", status: 403 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("sanitizes network errors without leaking secrets", async () => {
+    setEnv();
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("connection refused to secret host"));
+    await expect(
+      ubuntuApiStreamRequest({
+        path: "/api/logs/stream",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+    ).rejects.toSatisfy((err: unknown) => {
+      if (!(err instanceof UbuntuApiError)) return false;
+      return err.kind === "network_error" && !err.message.includes(BEARER);
+    });
   });
 });
