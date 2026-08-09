@@ -38,6 +38,21 @@ function safeEqualHex(a: string, b: string): boolean {
   }
 }
 
+// Constant-time comparison for the master password. Plain `!==` leaks the length
+// of the matching prefix through timing, which matters now that the dashboard is
+// reachable from the open internet rather than only from Lovable's backend.
+function safeEqualUtf8(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  try {
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
 export const siteUserHasPassword = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ username: usernameSchema }).parse(d))
   .handler(async ({ data }) => {
@@ -165,7 +180,7 @@ export const siteUserSetPassword = createServerFn({ method: "POST" })
       // password. Ops must set SITE_MASTER_PASSWORD before bootstrap/reset.
       return { ok: false as const, error: "not_configured" as const };
     }
-    if (data.masterPassword !== expectedMaster) {
+    if (!safeEqualUtf8(data.masterPassword, expectedMaster)) {
       registerFailedAttempt(rateKey);
       return { ok: false as const, error: "master" as const };
     }
@@ -193,11 +208,27 @@ export const siteUserDeletePassword = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
+    const request = getRequest();
+    const rateKey = siteRateKey(request);
+
+    // Same lockout as login and set-password. This endpoint gates on the same
+    // guessable secret and it DESTROYS a credential, so leaving it unlimited let
+    // anyone brute-force the master password without ever tripping a counter.
+    const pre = checkLoginRateLimit(rateKey);
+    if (!pre.allowed) {
+      return {
+        ok: false as const,
+        error: "rate_limited" as const,
+        retryAfterSeconds: pre.retryAfterSeconds,
+      };
+    }
+
     const expectedMaster = process.env.SITE_MASTER_PASSWORD;
     if (!expectedMaster || expectedMaster.length === 0) {
       return { ok: false as const, error: "not_configured" as const };
     }
-    if (data.masterPassword !== expectedMaster) {
+    if (!safeEqualUtf8(data.masterPassword, expectedMaster)) {
+      registerFailedAttempt(rateKey);
       return { ok: false as const, error: "master" as const };
     }
     const { error } = await supabaseAdmin
@@ -205,6 +236,7 @@ export const siteUserDeletePassword = createServerFn({ method: "POST" })
       .delete()
       .eq("username", data.username);
     if (error) throw new Error(error.message);
+    resetAttempts(rateKey);
     return { ok: true as const };
   });
 
