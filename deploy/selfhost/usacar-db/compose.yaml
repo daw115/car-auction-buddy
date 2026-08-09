@@ -1,0 +1,62 @@
+# Baza dashboardu USA Car Finder — zastępuje Supabase Cloud zarządzaną przez Lovable.
+#
+# Aplikacja rozmawia z bazą przez @supabase/supabase-js, który jest klientem PostgREST,
+# nie Postgresa. Dlatego stack to Postgres + PostgREST, a nie sam Postgres — dzięki temu
+# warstwa danych w kodzie zostaje bez zmian.
+#
+# Caddy jest potrzebny, bo supabase-js twardo skleja ${SUPABASE_URL}/rest/v1.
+# Przepisuje /rest/v1/* -> PostgREST i nie wystawia niczego więcej.
+#
+# WSZYSTKO słucha wyłącznie na 127.0.0.1. Z internetu widoczny jest tylko dashboard.
+
+name: usacar-db
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?brak POSTGRES_PASSWORD w .env}
+      POSTGRES_DB: postgres
+    volumes:
+      # Od obrazów 18+ montuje się /var/lib/postgresql (bez /data). Katalog danych
+      # ląduje w podkatalogu z numerem wersji, dzięki czemu pg_upgrade --link
+      # nie przecina granicy montowania. Stara ścieżka /data powoduje odmowę startu.
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  postgrest:
+    image: postgrest/postgrest:v13.0.8
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD:?brak AUTHENTICATOR_PASSWORD}@postgres:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${PGRST_JWT_SECRET:?brak PGRST_JWT_SECRET}
+      PGRST_DB_MAX_ROWS: 100000
+      PGRST_LOG_LEVEL: warn
+    # Bez mapowania portu — osiągalny wyłącznie przez restproxy w sieci compose.
+
+  restproxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - postgrest
+    ports:
+      - "127.0.0.1:3001:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  pgdata:
+    name: usacar-pgdata

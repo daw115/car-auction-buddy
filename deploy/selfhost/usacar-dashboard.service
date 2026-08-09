@@ -1,0 +1,35 @@
+[Unit]
+Description=USA Car Finder Dashboard (TanStack Start / Nitro node-server)
+After=network-online.target usacar-api.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dawid
+WorkingDirectory=/opt/usacar-dashboard/current
+EnvironmentFile=/etc/usacar/dashboard.env
+Environment=NODE_ENV=production
+# Bez tego Nitro slucha na wszystkich interfejsach, a maszyna ma jeszcze
+# interfejs Tailscale — dashboard wycieklby poza tunel Cloudflare.
+Environment=NITRO_HOST=127.0.0.1
+Environment=NITRO_PORT=3000
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+ExecStart=/usr/bin/node /opt/usacar-dashboard/current/server/index.mjs
+Restart=always
+RestartSec=5
+
+# Log do journald, nie do pliku przez append: — /var/log/usacar-api.log urosl
+# tak do 4.6 MB bez rotacji. journald rotuje sam.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=usacar-dashboard
+
+# Aplikacja nic nie zapisuje na dysk w czasie pracy (sprawdzone: brak node:fs,
+# writeFile, createWriteStream, process.cwd w src/).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

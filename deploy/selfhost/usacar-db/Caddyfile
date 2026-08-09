@@ -1,0 +1,18 @@
+# Cienki proxy, żeby @supabase/supabase-js trafił w PostgREST.
+# Klient twardo skleja ${SUPABASE_URL}/rest/v1, a PostgREST serwuje z korzenia.
+#
+# handle_path zdejmuje prefiks /rest/v1, więc:
+#   /rest/v1/watchlist       -> /watchlist
+#   /rest/v1/rpc/consume_... -> /rpc/consume_...
+#
+# Cokolwiek innego dostaje 404 — to ma być wąska furtka, nie brama.
+
+:8080 {
+	handle_path /rest/v1/* {
+		reverse_proxy postgrest:3000
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}
