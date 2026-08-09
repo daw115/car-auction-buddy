@@ -27,6 +27,7 @@ cloudflared  (ingress → 127.0.0.1:3000)
 | `usacar-dashboard.service`             | `/etc/systemd/system/`                      |
 | `usacar-deploy-dashboard.sh`           | `/usr/local/bin/`                           |
 | `usacar-watchdog.sh`                   | `/usr/local/bin/`                           |
+| `usacar-backup.{sh,service,timer}`     | `/usr/local/bin/` + `/etc/systemd/system/`  |
 | `usacar-db/compose.yaml` + `Caddyfile` | `/opt/usacar-db/`                           |
 | `usacar-db/00-roles.sql`               | jednorazowo, przed migracjami               |
 | `usacar-db/mint-jwt.py`                | wystawia tokeny zastępujące klucze Supabase |
@@ -70,6 +71,38 @@ usacar-deploy-dashboard.sh feat/selfhost
 Bramki (build, `tsc`, granica klient/serwer) idą **przed** dotknięciem
 `releases/`, a przy nieudanym health-checku symlink `current` wraca na
 poprzedni release.
+
+## Backup
+
+`usacar-backup.timer` uruchamia się codziennie o 03:30 (`Persistent=true`, więc
+nadrabia, gdy serwer był wyłączony). Zrzut trafia do `/home/dawid/backups/<data>/`,
+retencja 14 dni, ~20 MB na przebieg.
+
+Obejmuje wszystko, czego nie da się odtworzyć z gita: bazy SQLite backendu,
+`client_searches`, zrzut Postgresa i konfigurację z sekretami. SQLite kopiowany
+przez `VACUUM INTO`, nie `cp` — zwykłe kopiowanie żywej bazy potrafi złapać plik
+w połowie transakcji.
+
+Retencja czyści stare katalogi **tylko gdy bieżący przebieg się powiódł**,
+inaczej seria awarii po cichu zjadłaby wszystkie dobre kopie.
+
+Odtworzenie:
+
+```bash
+B=/home/dawid/backups/<data>
+zstd -dc $B/client_searches.tar.zst | tar -C /tmp/restore -xf -   # raporty
+zstd -dc $B/postgres.sql.zst | psql "postgres://postgres@127.0.0.1:5433/postgres"
+cp $B/sqlite/app.db /home/dawid/usacar/usa-car-finder/data/       # przy zatrzymanym usacar-api
+```
+
+Sprawdzone realnie: `PRAGMA integrity_check` = ok na każdej bazie, liczby wierszy
+zgodne z oryginałem (92 rekordy, 93 joby, 4 ustawienia, 3 wpisy kolejki,
+201 lookupów), 1350 plików raportów, 12 tabel w zrzucie Postgresa.
+
+> **Kopia leży na tym samym dysku co dane.** Chroni przed skasowaniem pliku
+> i błędem aplikacji, nie przed awarią dysku ani utratą maszyny. Ściągaj
+> okresowo poza serwer:
+> `scp -r wsl2-cf:/home/dawid/backups/<data> .`
 
 ## Pułapki, które kosztowały czas
 

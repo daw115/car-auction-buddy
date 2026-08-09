@@ -1,0 +1,14 @@
+[Unit]
+Description=USA Car Finder — nocny backup (codziennie 03:30)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# WSL2 bywa wylaczone w nocy razem z hostem Windows — bez tego backup po prostu
+# by nie wystartowal i nikt by nie zauwazyl. Persistent nadrabia po starcie.
+Persistent=true
+# Rozrzut, zeby backup nie startowal co do sekundy razem z innymi timerami.
+RandomizedDelaySec=600
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=USA Car Finder — nocny backup (SQLite, raporty, Postgres, konfiguracja)
+After=usacar-api.service docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+# root, bo czyta /etc/usacar/dashboard.env i /opt/usacar-db/.env (oba 0600).
+User=root
+ExecStart=/usr/local/bin/usacar-backup.sh
+# Backup nie moze konkurowac o CPU ze scraperem na dwurdzeniowym CPU.
+Nice=15
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=usacar-backup
