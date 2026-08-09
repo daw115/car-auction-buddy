@@ -1,0 +1,22 @@
+{
+  "contract": "legacy_queue_characterization_v1",
+  "api": {
+    "post": {"method": "POST", "path": "/api/queue", "status_code": 201},
+    "get": {"method": "GET", "path": "/api/queue"},
+    "delete": {"method": "DELETE", "path": "/api/queue/{watch_id}", "missing_status_code": 404},
+    "active_list_fields": [
+      "id", "label", "interval_hours", "created_at", "last_run_at",
+      "next_run_at", "runs_count", "last_result_count", "status",
+      "recurring", "preferred_hour"
+    ]
+  },
+  "interval_hours": {"default": 12, "minimum": 1, "maximum": 168},
+  "legacy": {
+    "schedule_kind": null,
+    "retry_until_found": true,
+    "recurring_stays_active_on_zero": true,
+    "recurring_notifies_on_zero": true,
+    "telegram_scope": "global",
+    "shared_search_semaphore": true
+  }
+}

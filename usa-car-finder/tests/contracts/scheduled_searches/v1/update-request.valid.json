@@ -1,0 +1,6 @@
+{
+  "label": "RAV4 Hybrid — codziennie",
+  "interval_hours": 24,
+  "notifications": {"telegram_global": true},
+  "expected_version": 3
+}

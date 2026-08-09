@@ -1,0 +1,43 @@
+{
+  "executions": [
+    {
+      "id": "018f7f15-7638-7c53-a4e8-4c18c79c1302",
+      "schedule_id": 42,
+      "owner_site_user": "operator@example.com",
+      "scheduled_for": "2026-07-21T10:00:00Z",
+      "criteria_snapshot": {"make": "Toyota", "model": "RAV4", "max_results": 100, "sources": ["copart", "iaai", "manheim"]},
+      "interval_hours_snapshot": 24,
+      "status": "failed",
+      "attempt_count": 3,
+      "job_id": "schedule:018f7f15-7638-7c53-a4e8-4c18c79c1302",
+      "record_id": null,
+      "result_count": null,
+      "error": {"code": "backend_unavailable", "message": "Backend jest chwilowo niedostępny.", "retryable": true},
+      "notification_status": "not_requested",
+      "notification_attempts": 0,
+      "started_at": "2026-07-21T10:00:05Z",
+      "finished_at": "2026-07-21T10:03:05Z",
+      "created_at": "2026-07-21T10:00:00Z"
+    },
+    {
+      "id": "018f7f15-7638-7c53-a4e8-4c18c79c1301",
+      "schedule_id": 42,
+      "owner_site_user": "operator@example.com",
+      "scheduled_for": "2026-07-20T10:00:00Z",
+      "criteria_snapshot": {"make": "Toyota", "model": "RAV4", "max_results": 100, "sources": ["copart", "iaai", "manheim"]},
+      "interval_hours_snapshot": 24,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "job_id": "schedule:018f7f15-7638-7c53-a4e8-4c18c79c1301",
+      "record_id": 321,
+      "result_count": 0,
+      "error": null,
+      "notification_status": "not_requested",
+      "notification_attempts": 0,
+      "started_at": "2026-07-20T10:00:03Z",
+      "finished_at": "2026-07-20T10:01:10Z",
+      "created_at": "2026-07-20T10:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}

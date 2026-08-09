@@ -1,0 +1,17 @@
+{
+  "label": "RAV4 Hybrid daily",
+  "criteria": {
+    "make": "Toyota",
+    "model": "RAV4",
+    "year_from": 2020,
+    "year_to": 2024,
+    "budget_usd": 35000,
+    "max_odometer_mi": 60000,
+    "fuel_type": "Hybrid",
+    "excluded_damage_types": ["Flood", "Burn"],
+    "max_results": 100,
+    "sources": ["copart", "iaai", "manheim"]
+  },
+  "interval_hours": 168,
+  "notifications": {"telegram_global": false}
+}

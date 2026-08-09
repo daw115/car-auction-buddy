@@ -1,0 +1,27 @@
+{
+  "manifest_format": "scheduled-search-contract-manifest/v1",
+  "contract": "scheduled_searches_v1",
+  "contract_version": 1,
+  "criteria_contract_version": 1,
+  "base_path": "/api/queue/schedules",
+  "fixtures": [
+    {"file": "criteria.valid.json", "role": "criteria"},
+    {"file": "create-request.valid.json", "role": "request"},
+    {"file": "update-request.valid.json", "role": "request"},
+    {"file": "state-request.valid.json", "role": "request"},
+    {"file": "schedule-envelope.success.json", "role": "response"},
+    {"file": "schedule-list.success.json", "role": "response"},
+    {"file": "errors.public.json", "role": "error"},
+    {"file": "capability.available.json", "role": "capability"},
+    {"file": "execution-history.success.json", "role": "history"}
+  ],
+  "routes": [
+    {"method": "POST", "path": "/api/queue/schedules", "success_status": 201},
+    {"method": "GET", "path": "/api/queue/schedules", "success_status": 200},
+    {"method": "GET", "path": "/api/queue/schedules/{id}", "success_status": 200},
+    {"method": "PATCH", "path": "/api/queue/schedules/{id}", "success_status": 200},
+    {"method": "PUT", "path": "/api/queue/schedules/{id}/state", "success_status": 200},
+    {"method": "DELETE", "path": "/api/queue/schedules/{id}", "success_status": 200},
+    {"method": "GET", "path": "/api/queue/schedules/{id}/executions", "success_status": 200}
+  ]
+}

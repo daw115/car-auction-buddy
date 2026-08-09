@@ -1,0 +1,9 @@
+{
+  "capability": "scheduled_searches_v1",
+  "available": true,
+  "contract_version": 1,
+  "criteria_contract_version": 1,
+  "max_results": 100,
+  "sources": ["copart", "iaai", "manheim"],
+  "worker_enabled": false
+}

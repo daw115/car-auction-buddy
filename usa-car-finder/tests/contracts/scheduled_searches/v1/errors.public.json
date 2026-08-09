@@ -1,0 +1,19 @@
+{
+  "validation_error": {
+    "error": {
+      "code": "validation_error",
+      "message": "Nieprawidłowe dane zaplanowanego wyszukiwania.",
+      "fields": {"interval_hours": "Wymagana liczba całkowita od 1 do 168."},
+      "request_id": "018f7f15-7638-7c53-a4e8-4c18c79c1387"
+    }
+  },
+  "active_limit_exceeded": {
+    "error": {
+      "code": "active_limit_exceeded",
+      "message": "Osiągnięto limit aktywnych zaplanowanych wyszukiwań.",
+      "active_count": 20,
+      "limit": 20,
+      "request_id": "018f7f15-7638-7c53-a4e8-4c18c79c1388"
+    }
+  }
+}
