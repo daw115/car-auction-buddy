@@ -3609,19 +3609,19 @@ _AI_PROVIDER_TASKS: dict[str, dict] = {
     "ai_analysis_mode": {
         "label": "Analiza i scoring lotów",
         "env_var": "AI_ANALYSIS_MODE",
-        "options": ["auto", "openai", "anthropic", "gemini", "kiro", "local"],
+        "options": ["auto", "openai", "anthropic", "gemini", "kiro", "claude-code", "local"],
         "default": "auto",
     },
     "llm_reports_provider": {
         "label": "Raporty (klient/broker) + parsowanie wiadomości klienta + legacy LLM raport",
         "env_var": "LLM_REPORTS_PROVIDER",
-        "options": ["gemini", "anthropic", "kiro"],
+        "options": ["gemini", "anthropic", "kiro", "claude-code"],
         "default": "gemini",
     },
     "model_normalization_ai_provider": {
         "label": "Normalizacja nazw modeli",
         "env_var": "MODEL_NORMALIZATION_AI_PROVIDER",
-        "options": ["gemini", "anthropic", "kiro"],
+        "options": ["gemini", "anthropic", "kiro", "claude-code"],
         "default": "gemini",
     },
     "frame_damage_ai_provider": {

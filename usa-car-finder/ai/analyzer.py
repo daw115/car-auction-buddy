@@ -51,6 +51,20 @@ def _resolve_kiro_model() -> str:
         logger.debug("[analyzer] settings_db model override lookup failed, using .env default: %s", exc)
     return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
 
+
+def _resolve_claude_code_model() -> str:
+    """Model Claude Code: nadpisanie z dashboardu ma pierwszeństwo przed
+    .env CLAUDE_CODE_MODEL. Przyjmuje aliasy CLI ('sonnet', 'opus', 'haiku')
+    albo pełne identyfikatory modeli."""
+    try:
+        from api.settings_db import get_ai_model_override
+        override = get_ai_model_override("claude-code")
+        if override:
+            return override
+    except Exception as exc:
+        logger.debug("[analyzer] settings_db model override lookup failed, using .env default: %s", exc)
+    return os.getenv("CLAUDE_CODE_MODEL", "sonnet")
+
 SYSTEM_PROMPT = """Jesteś ekspertem od importu aut z USA do Polski.
 Analizujesz dane z aukcji Copart i IAAI dla klienta-brokera importowego.
 
@@ -400,6 +414,18 @@ def analyze_lots(
             if strict_ai:
                 raise
             print(f"[AI] Gemini API niedostępne ({exc}). Używam lokalnego scoringu.")
+            return _analyze_lots_locally(lots, criteria, top_n=top_n)
+
+    if ai_mode == "claude-code":
+        # Bez klucza API — Claude Code korzysta z sesji zalogowanego użytkownika,
+        # więc jedyne, co można sprawdzić z góry, to obecność binarki. Brak
+        # sesji wyjdzie dopiero przy wywołaniu i ma czytelny komunikat.
+        try:
+            return _analyze_lots_with_claude_code(lots, criteria, top_n=top_n)
+        except Exception as exc:
+            if strict_ai:
+                raise
+            print(f"[AI] Claude Code niedostępne ({exc}). Używam lokalnego scoringu.")
             return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
     kiro_key = os.getenv("KIRO_API_KEY")
@@ -1144,6 +1170,104 @@ def _call_kiro(model: str, system: str, user_prompt: str, max_tokens: int = 8192
     raise last_exc
 
 
+_CLAUDE_CODE_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+_CLAUDE_CODE_FENCE_RE = re.compile(r"^\s*```[a-zA-Z]*\s*|\s*```\s*$")
+
+
+def _call_claude_code(model: str, system: str, user_prompt: str, max_tokens: int = 8192) -> str:
+    """Wywołuje Claude Code w trybie headless (`claude -p`) — jeden proces
+    subprocess na wywołanie, uwierzytelnienie z subskrypcji zalogowanego
+    użytkownika (OAuth), bez ANTHROPIC_API_KEY.
+
+    Świadome decyzje:
+    - prompt idzie przez stdin, nie argv — prompty analizy potrafią mieć
+      dziesiątki kilobajtów i jako argument przekroczyłyby ARG_MAX;
+    - BEZ flagi --bare: wyłącza ona odczyt OAuth i keychaina, czyli dokładnie
+      to uwierzytelnienie, z którego tu korzystamy (zostaje sam ANTHROPIC_API_KEY);
+    - cwd ustawiony na pusty katalog, bo bez --bare Claude Code sam doczytuje
+      CLAUDE.md z drzewa projektu i zanieczyściłby prompt analizy;
+    - narzędzia wyłączone — to zadanie czysto tekstowe, a każde uruchomienie
+      narzędzia to dodatkowa tura i ryzyko, że odpowiedź nie będzie JSON-em.
+    """
+    cli_path = os.getenv("CLAUDE_CLI_PATH", os.path.expanduser("~/.local/bin/claude"))
+    timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300"))
+    max_retries = int(os.getenv("CLAUDE_CODE_MAX_RETRIES", "3"))
+
+    workdir = os.getenv("CLAUDE_CODE_WORKDIR", os.path.expanduser("~/.usacar-claude-cwd"))
+    try:
+        os.makedirs(workdir, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"Nie mogę utworzyć katalogu roboczego Claude Code ({workdir}): {exc}") from exc
+
+    prompt = f"{system}\n\n{user_prompt}"
+    cmd = [
+        cli_path, "-p",
+        "--model", model,
+        "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+        "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
+    ]
+
+    last_exc: Exception = RuntimeError("Claude Code: brak odpowiedzi")
+    for attempt in range(max_retries):
+        try:
+            result = subprocess.run(
+                cmd,
+                input=prompt,
+                capture_output=True, text=True, timeout=timeout, cwd=workdir,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            last_exc = RuntimeError(f"Claude Code timeout po {timeout}s")
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 30)
+                print(f"[AI] Claude Code timeout, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                continue
+            raise last_exc from exc
+
+        text = _CLAUDE_CODE_ANSI_RE.sub("", result.stdout).strip()
+
+        # Wygasła sesja kończy się kodem 0 i komunikatem na stdout, nie błędem —
+        # bez tego sprawdzenia poszłoby to dalej jako "pusta odpowiedź" i nikt
+        # by nie wiedział, że wystarczy `claude /login`.
+        if "Not logged in" in text or "Please run /login" in text:
+            raise RuntimeError(
+                "Claude Code niezalogowany — uruchom `claude /login` na serwerze "
+                "jako użytkownik usługi (sesja subskrypcji wygasła)"
+            )
+
+        if result.returncode != 0:
+            sanitized = _sanitize_error_text((result.stderr or text)[:500])
+            last_exc = RuntimeError(f"Claude Code exit {result.returncode}: {sanitized}")
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 2, 30)
+                print(f"[AI] Claude Code błąd (exit {result.returncode}), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                time.sleep(wait)
+                continue
+            raise last_exc
+
+        if not text:
+            last_exc = RuntimeError(f"Claude Code pusta odpowiedź (stderr: {result.stderr[:300]})")
+            if attempt < max_retries - 1:
+                time.sleep(3)
+                continue
+            raise last_exc
+
+        # Claude Code owija JSON w blok ```json — tniemy fence, a potem do
+        # pierwszego { lub [, tak samo jak przy kiro-cli.
+        text = _CLAUDE_CODE_FENCE_RE.sub("", text).strip()
+        json_start = min(
+            (i for i in (text.find("{"), text.find("[")) if i >= 0),
+            default=-1,
+        )
+        if json_start > 0:
+            text = text[json_start:]
+        return text
+
+    raise last_exc
+
+
 def _analyze_lots_with_kiro(
     lots: List[CarLot],
     criteria: ClientCriteria,
@@ -1209,6 +1333,72 @@ def _analyze_lots_with_kiro(
         raise RuntimeError("Kiro: żaden chunk nie zwrócił poprawnych analiz")
 
     print(f"[AI] Łącznie zebrano {len(all_analyses)} analiz Kiro z {n_chunks} chunków")
+    return _results_from_analysis_data(all_analyses, lots, top_n)
+
+
+def _analyze_lots_with_claude_code(
+    lots: List[CarLot],
+    criteria: ClientCriteria,
+    top_n: int = 5,
+) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
+    """Analiza przez Claude Code (`claude -p`) z chunkingiem — jak przy Kiro,
+    każdy chunk to osobny proces. Chunki są większe niż przy Gemini, bo start
+    procesu kosztuje ~7 s i to on, a nie sam model, dominuje czas wywołania.
+    """
+    model = _resolve_claude_code_model()
+    chunk_size = int(os.getenv("CLAUDE_CODE_CHUNK_SIZE", "5"))
+    chunk_delay_ms = int(os.getenv("CLAUDE_CODE_CHUNK_DELAY_MS", "1000"))
+    max_tokens = int(os.getenv("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "8192"))
+    max_lots_for_ai = int(os.getenv("CLAUDE_CODE_MAX_LOTS", "15"))
+
+    if len(lots) > max_lots_for_ai:
+        print(f"[AI] Pre-filtr heurystyczny: {len(lots)} → top {max_lots_for_ai} (limit subskrypcji)")
+        _, all_local = _analyze_lots_locally(lots, criteria, top_n=max_lots_for_ai)
+        lots = [r.lot for r in all_local[:max_lots_for_ai]]
+
+    n_chunks = (len(lots) + chunk_size - 1) // chunk_size
+    print(f"[AI] Analizuję {len(lots)} lotów przez Claude Code ({model}, chunki po {chunk_size}, total {n_chunks} call, delay {chunk_delay_ms}ms)...")
+
+    all_analyses: list[dict] = []
+    for chunk_idx in range(n_chunks):
+        if chunk_idx > 0 and chunk_delay_ms > 0:
+            time.sleep(chunk_delay_ms / 1000.0)
+        start = chunk_idx * chunk_size
+        chunk_lots = lots[start:start + chunk_size]
+        chunk_prompt = _analysis_user_prompt(_lot_payloads(chunk_lots), criteria)
+
+        try:
+            raw = _call_claude_code(
+                model=model,
+                system=SYSTEM_PROMPT,
+                user_prompt=chunk_prompt,
+                max_tokens=max_tokens,
+            ).strip()
+            chunk_analyses = _parse_analysis_json(raw)
+            all_analyses.extend(chunk_analyses)
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: zwrócono {len(chunk_analyses)} analiz")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
+            shrunk = chunk_lots[:max(1, len(chunk_lots) // 2)]
+            chunk_prompt = _analysis_user_prompt(_lot_payloads(shrunk), criteria)
+            try:
+                raw = _call_claude_code(
+                    model=model,
+                    system=SYSTEM_PROMPT,
+                    user_prompt=chunk_prompt,
+                    max_tokens=max_tokens,
+                ).strip()
+                all_analyses.extend(_parse_analysis_json(raw))
+                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
+            except Exception as inner_exc:
+                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
+        except Exception as exc:
+            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
+
+    if not all_analyses:
+        raise RuntimeError("Claude Code: żaden chunk nie zwrócił poprawnych analiz")
+
+    print(f"[AI] Łącznie zebrano {len(all_analyses)} analiz Claude Code z {n_chunks} chunków")
     return _results_from_analysis_data(all_analyses, lots, top_n)
 
 

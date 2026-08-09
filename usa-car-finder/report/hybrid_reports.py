@@ -92,6 +92,8 @@ def _reports_model_label() -> str:
         return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     if provider == "kiro":
         return _resolve_kiro_model()
+    if provider == "claude-code":
+        return os.getenv("CLAUDE_CODE_MODEL", "sonnet")
     return os.getenv("ANTHROPIC_MODEL")
 
 
@@ -341,6 +343,55 @@ def _call_kiro_json(system: str, user: str, max_tokens: int = 1500) -> dict:
         raise RuntimeError(f"Kiro JSON parse failed: {e}")
 
 
+def _call_claude_code_json(system: str, user: str, max_tokens: int = 1500) -> dict:
+    """Wywołuje Claude Code w trybie headless (`claude -p`), uwierzytelnienie
+    z sesji zalogowanego użytkownika (OAuth) — bez ANTHROPIC_API_KEY.
+
+    Prompt idzie przez stdin (raporty bywają duże, argv ma limit), cwd to pusty
+    katalog (bez --bare Claude Code doczytuje CLAUDE.md z drzewa projektu),
+    a narzędzia są wyłączone — to zadanie czysto tekstowe.
+    Flagi --bare NIE używamy: wyłącza odczyt OAuth, czyli to uwierzytelnienie,
+    z którego tu korzystamy.
+    """
+    cli_path = os.getenv("CLAUDE_CLI_PATH", os.path.expanduser("~/.local/bin/claude"))
+    model = os.getenv("CLAUDE_CODE_MODEL", "sonnet")
+    timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "180"))
+    workdir = os.getenv("CLAUDE_CODE_WORKDIR", os.path.expanduser("~/.usacar-claude-cwd"))
+    os.makedirs(workdir, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            [
+                cli_path, "-p", "--model", model,
+                "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob",
+                "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
+            ],
+            input=f"{system}\n\n{user}",
+            capture_output=True, text=True, timeout=timeout, cwd=workdir,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Claude Code timeout po {timeout}s") from exc
+
+    text = _KIRO_ANSI_RE.sub("", result.stdout).strip()
+
+    # Wygasła sesja kończy się kodem 0 i komunikatem na stdout, nie błędem.
+    if "Not logged in" in text or "Please run /login" in text:
+        raise RuntimeError(
+            "Claude Code niezalogowany — uruchom `claude /login` na serwerze "
+            "jako użytkownik usługi (sesja subskrypcji wygasła)"
+        )
+    if result.returncode != 0:
+        raise RuntimeError(f"Claude Code exit {result.returncode}: {(result.stderr or text)[:500]}")
+    if not text:
+        raise RuntimeError(f"Claude Code pusta odpowiedź (stderr: {result.stderr[:300]})")
+    try:
+        return _parse_json_loose(text)
+    except RuntimeError as e:
+        raise RuntimeError(f"Claude Code JSON parse failed: {e}")
+
+
 def _call_llm_json(system: str, user: str, max_tokens: int = 1500) -> dict:
     """Provider dispatch z fallback."""
     provider = _provider()
@@ -365,6 +416,14 @@ def _call_llm_json(system: str, user: str, max_tokens: int = 1500) -> dict:
                 except Exception as ke:
                     if fallback and has_anthropic:
                         logger.warning(f"[Hybrid] Kiro failed ({type(ke).__name__}), fallback Anthropic")
+                        return _call_claude_json(system, user, max_tokens)
+                    raise
+            if provider == "claude-code":
+                try:
+                    return _call_claude_code_json(system, user, max_tokens)
+                except Exception as cce:
+                    if fallback and has_anthropic:
+                        logger.warning(f"[Hybrid] Claude Code failed ({type(cce).__name__}), fallback Anthropic")
                         return _call_claude_json(system, user, max_tokens)
                     raise
             return _call_claude_json(system, user, max_tokens)
