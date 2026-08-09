@@ -292,6 +292,11 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
           setError(
             "Serwer nie ma skonfigurowanego hasła ogólnego (SITE_MASTER_PASSWORD). Skontaktuj się z administratorem.",
           );
+        } else if (res.error === "rate_limited") {
+          // Bez tego blokada wygląda dokładnie jak literówka i użytkownik
+          // próbuje w kółko, nie wiedząc, że serwer i tak go nie wpuści.
+          const mins = Math.ceil((res.retryAfterSeconds ?? 60) / 60);
+          setError(`Zbyt wiele nieudanych prób. Spróbuj ponownie za ~${mins} min.`);
         } else {
           setError("Nieprawidłowe hasło ogólne");
         }
@@ -602,6 +607,9 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
                     setDeleteError(
                       "Serwer nie ma skonfigurowanego hasła ogólnego (SITE_MASTER_PASSWORD).",
                     );
+                  } else if (res.error === "rate_limited") {
+                    const mins = Math.ceil((res.retryAfterSeconds ?? 60) / 60);
+                    setDeleteError(`Zbyt wiele nieudanych prób. Spróbuj ponownie za ~${mins} min.`);
                   } else {
                     setDeleteError("Nieprawidłowe hasło ogólne");
                   }
