@@ -13,7 +13,6 @@ import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RecordsRouteImport } from './routes/records'
-import { Route as McpRouteImport } from './routes/mcp'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -32,12 +31,9 @@ import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
-import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } from './routes/[.well-known]/oauth-protected-resource'
-import { Route as Char91DotmcpChar93ListToolsRouteImport } from './routes/[.mcp]/list-tools'
 import { Route as ApiScraperLogsStreamRouteImport } from './routes/api/scraper-logs.stream'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
-import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
 import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
 import { Route as ApiPublicHooksCasesRefreshRouteImport } from './routes/api/public/hooks/cases-refresh'
@@ -60,11 +56,6 @@ const SettingsRoute = SettingsRouteImport.update({
 const RecordsRoute = RecordsRouteImport.update({
   id: '/records',
   path: '/records',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const McpRoute = McpRouteImport.update({
-  id: '/mcp',
-  path: '/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JobsRoute = JobsRouteImport.update({
@@ -157,18 +148,6 @@ const ApiConfigRoute = ApiConfigRouteImport.update({
   path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
-const Char91DotwellKnownChar93OauthProtectedResourceRoute =
-  Char91DotwellKnownChar93OauthProtectedResourceRouteImport.update({
-    id: '/.well-known/oauth-protected-resource',
-    path: '/.well-known/oauth-protected-resource',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const Char91DotmcpChar93ListToolsRoute =
-  Char91DotmcpChar93ListToolsRouteImport.update({
-    id: '/.mcp/list-tools',
-    path: '/.mcp/list-tools',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiScraperLogsStreamRoute = ApiScraperLogsStreamRouteImport.update({
   id: '/api/scraper-logs/stream',
   path: '/api/scraper-logs/stream',
@@ -184,12 +163,6 @@ const ApiDevAuthRoute = ApiDevAuthRouteImport.update({
   path: '/api/dev/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const Char91DotmcpChar93InvokeToolToolRoute =
-  Char91DotmcpChar93InvokeToolToolRouteImport.update({
-    id: '/.mcp/invoke-tool/$tool',
-    path: '/.mcp/invoke-tool/$tool',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ClientsClientIdCasesCaseIdRoute =
   ClientsClientIdCasesCaseIdRouteImport.update({
     id: '/cases/$caseId',
@@ -216,13 +189,10 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
-  '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
-  '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
-  '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
@@ -235,7 +205,6 @@ export interface FileRoutesByFullPath {
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
-  '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
@@ -250,12 +219,9 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
-  '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
-  '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
-  '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
@@ -268,7 +234,6 @@ export interface FileRoutesByTo {
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings': typeof SettingsIndexRoute
-  '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
@@ -284,13 +249,10 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
   '/jobs': typeof JobsRoute
-  '/mcp': typeof McpRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/watchlist': typeof WatchlistRoute
-  '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
-  '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
@@ -303,7 +265,6 @@ export interface FileRoutesById {
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
-  '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
@@ -320,13 +281,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/database'
     | '/jobs'
-    | '/mcp'
     | '/records'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
-    | '/.mcp/list-tools'
-    | '/.well-known/oauth-protected-resource'
     | '/api/config'
     | '/api/diagnostics'
     | '/api/health'
@@ -339,7 +297,6 @@ export interface FileRouteTypes {
     | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings/'
-    | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/scraper-logs/stream'
@@ -354,12 +311,9 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/database'
     | '/jobs'
-    | '/mcp'
     | '/records'
     | '/sitemap.xml'
     | '/watchlist'
-    | '/.mcp/list-tools'
-    | '/.well-known/oauth-protected-resource'
     | '/api/config'
     | '/api/diagnostics'
     | '/api/health'
@@ -372,7 +326,6 @@ export interface FileRouteTypes {
     | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings'
-    | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/scraper-logs/stream'
@@ -387,13 +340,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/database'
     | '/jobs'
-    | '/mcp'
     | '/records'
     | '/settings'
     | '/sitemap.xml'
     | '/watchlist'
-    | '/.mcp/list-tools'
-    | '/.well-known/oauth-protected-resource'
     | '/api/config'
     | '/api/diagnostics'
     | '/api/health'
@@ -406,7 +356,6 @@ export interface FileRouteTypes {
     | '/settings/diagnostics'
     | '/settings/filters'
     | '/settings/'
-    | '/.mcp/invoke-tool/$tool'
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/scraper-logs/stream'
@@ -422,20 +371,16 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
   JobsRoute: typeof JobsRoute
-  McpRoute: typeof McpRoute
   RecordsRoute: typeof RecordsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WatchlistRoute: typeof WatchlistRoute
-  Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
-  Char91DotwellKnownChar93OauthProtectedResourceRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   ApiConfigRoute: typeof ApiConfigRoute
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiRecordsRoute: typeof ApiRecordsRoute
   ApiVersionRoute: typeof ApiVersionRoute
   DevLogsRoute: typeof DevLogsRoute
-  Char91DotmcpChar93InvokeToolToolRoute: typeof Char91DotmcpChar93InvokeToolToolRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiScraperLogsStreamRoute: typeof ApiScraperLogsStreamRoute
@@ -471,13 +416,6 @@ declare module '@tanstack/react-router' {
       path: '/records'
       fullPath: '/records'
       preLoaderRoute: typeof RecordsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mcp': {
-      id: '/mcp'
-      path: '/mcp'
-      fullPath: '/mcp'
-      preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/jobs': {
@@ -606,20 +544,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/.well-known/oauth-protected-resource': {
-      id: '/.well-known/oauth-protected-resource'
-      path: '/.well-known/oauth-protected-resource'
-      fullPath: '/.well-known/oauth-protected-resource'
-      preLoaderRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/.mcp/list-tools': {
-      id: '/.mcp/list-tools'
-      path: '/.mcp/list-tools'
-      fullPath: '/.mcp/list-tools'
-      preLoaderRoute: typeof Char91DotmcpChar93ListToolsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/scraper-logs/stream': {
       id: '/api/scraper-logs/stream'
       path: '/api/scraper-logs/stream'
@@ -639,13 +563,6 @@ declare module '@tanstack/react-router' {
       path: '/api/dev/auth'
       fullPath: '/api/dev/auth'
       preLoaderRoute: typeof ApiDevAuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/.mcp/invoke-tool/$tool': {
-      id: '/.mcp/invoke-tool/$tool'
-      path: '/.mcp/invoke-tool/$tool'
-      fullPath: '/.mcp/invoke-tool/$tool'
-      preLoaderRoute: typeof Char91DotmcpChar93InvokeToolToolRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/clients/$clientId/cases/$caseId': {
@@ -722,21 +639,16 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
   JobsRoute: JobsRoute,
-  McpRoute: McpRoute,
   RecordsRoute: RecordsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WatchlistRoute: WatchlistRoute,
-  Char91DotmcpChar93ListToolsRoute: Char91DotmcpChar93ListToolsRoute,
-  Char91DotwellKnownChar93OauthProtectedResourceRoute:
-    Char91DotwellKnownChar93OauthProtectedResourceRoute,
   ApiConfigRoute: ApiConfigRoute,
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiRecordsRoute: ApiRecordsRoute,
   ApiVersionRoute: ApiVersionRoute,
   DevLogsRoute: DevLogsRoute,
-  Char91DotmcpChar93InvokeToolToolRoute: Char91DotmcpChar93InvokeToolToolRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiScraperLogsStreamRoute: ApiScraperLogsStreamRoute,
