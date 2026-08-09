@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy record payloads are not fully typed yet */
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, RefreshCw, Trash2, Play, PenLine } from "lucide-react";
 
 import {
   backendListRecords,
@@ -11,9 +12,13 @@ import {
   backendGetRecord,
   backendRegenerateBundles,
   backendListSearchAudit,
+  backendSearch,
 } from "@/functions/backend.functions";
 import type { BackendRecord, SearchAuditEntry } from "@/functions/backend.functions";
 import { SITE_USERS } from "@/lib/site-user";
+import { normalizeAuctionSources } from "@/lib/auction-sources";
+import type { ClientCriteria } from "@/lib/types";
+import { RERUN_CRITERIA_STORAGE_KEY } from "@/lib/rerun-criteria";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,7 +70,11 @@ export function BackendRecordsPanel({
   const [sortBy, setSortBy] = useState<string>("default");
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const { data: recordsData, isLoading, refetch } = useQuery({
+  const {
+    data: recordsData,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ["backend-records", statusFilter],
     queryFn: () => fnListBackend({ data: { limit: 100, status: statusFilter || undefined } }),
     refetchInterval: 30000,
@@ -248,7 +257,10 @@ export function SearchAuditPanel() {
           </div>
         )}
         {filtered.map((e) => (
-          <div key={e.id} className="text-[11px] p-1.5 rounded border border-border/50 hover:bg-muted/30">
+          <div
+            key={e.id}
+            className="text-[11px] p-1.5 rounded border border-border/50 hover:bg-muted/30"
+          >
             <div className="flex items-center gap-1.5 flex-wrap">
               {e.searched_by ? (
                 <Badge variant="secondary" className="text-[9px] py-0 px-1">
@@ -330,7 +342,11 @@ function BackendRecordRow({
             onDelete();
           }}
         >
-          {isDeleting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          {isDeleting ? (
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
         </Button>
       </div>
       <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
@@ -357,16 +373,13 @@ function BackendRecordRow({
   );
 }
 
-export function RecordDetailView({
-  recordId,
-  onClose,
-}: {
-  recordId: number;
-  onClose: () => void;
-}) {
+export function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
   const fnDetailBackend = useServerFn(backendGetRecord);
   const fnRegenerateBundles = useServerFn(backendRegenerateBundles);
+  const fnSearch = useServerFn(backendSearch);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [rerunning, setRerunning] = useState(false);
 
   const { data: record, isLoading } = useQuery({
     queryKey: ["backend-record-detail", recordId],
@@ -441,14 +454,61 @@ export function RecordDetailView({
   const artifactUrls = (record as any).artifact_urls || {};
   const searchedBy = getRecordSearchedBy(record);
 
+  const rerunCriteria: ClientCriteria | null =
+    criteria && typeof criteria.make === "string" && criteria.make.trim()
+      ? {
+          make: criteria.make,
+          model: criteria.model ?? null,
+          year_from: criteria.year_from ?? null,
+          year_to: criteria.year_to ?? null,
+          budget_usd: criteria.budget_usd ?? null,
+          max_odometer_mi: criteria.max_odometer_mi ?? null,
+          fuel_type: criteria.fuel_type ?? null,
+          excluded_damage_types: criteria.excluded_damage_types ?? [],
+          max_results: criteria.max_results ?? 15,
+          sources: normalizeAuctionSources(criteria.sources),
+        }
+      : null;
+
+  function handleEditAndRerun() {
+    if (!rerunCriteria) {
+      toast.error("Rekord nie ma zapisanych kryteriów wyszukiwania.");
+      return;
+    }
+    window.sessionStorage.setItem(RERUN_CRITERIA_STORAGE_KEY, JSON.stringify(rerunCriteria));
+    void navigate({ to: "/" });
+  }
+
+  async function handleRerunNow() {
+    if (!rerunCriteria) {
+      toast.error("Rekord nie ma zapisanych kryteriów wyszukiwania.");
+      return;
+    }
+    setRerunning(true);
+    toast.info("Ponawiam wyszukiwanie…");
+    try {
+      const res = await fnSearch({ data: { criteria: rerunCriteria } });
+      const total = res.analyzed_lots?.length ?? res.listings?.length ?? 0;
+      toast.success(
+        total > 0
+          ? `Nowe wyszukiwanie: ${total} ofert (job ${res.job_id}).`
+          : "Nowe wyszukiwanie nie znalazło ofert.",
+      );
+      await queryClient.invalidateQueries({ queryKey: ["backend-records"] });
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err.message || "Nie udało się ponowić wyszukiwania.");
+    } finally {
+      setRerunning(false);
+    }
+  }
+
   return (
     <Card className="p-4">
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold">
-            {(record as any).title ?? `Rekord #${recordId}`}
-          </h2>
+          <h2 className="text-xl font-bold">{(record as any).title ?? `Rekord #${recordId}`}</h2>
           <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
             <Badge>{(record as any).status}</Badge>
             <span>{new Date((record as any).created_at).toLocaleString("pl-PL")}</span>
@@ -472,9 +532,34 @@ export function RecordDetailView({
             )}
           </div>
         </div>
-        <Button variant="ghost" onClick={onClose}>
-          ← Zamknij
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!rerunCriteria || rerunning}
+            onClick={handleEditAndRerun}
+            title="Przenieś kryteria tego rekordu do formularza wyszukiwania"
+          >
+            <PenLine className="mr-1.5 h-3.5 w-3.5" /> Edytuj i szukaj
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!rerunCriteria || rerunning}
+            onClick={handleRerunNow}
+            title="Ponów wyszukiwanie od razu z tymi samymi kryteriami"
+          >
+            {rerunning ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Ponów teraz
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            ← Zamknij
+          </Button>
+        </div>
       </div>
 
       {/* AUTO-BUNDLE REPORTS */}
@@ -562,7 +647,8 @@ export function RecordDetailView({
           </div>
           <div>Budżet: {criteria.budget_usd ? `$${criteria.budget_usd}` : "bez limitu"}</div>
           <div>
-            Max przebieg: {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}
+            Max przebieg:{" "}
+            {criteria.max_odometer_mi ? `${criteria.max_odometer_mi} mi` : "bez limitu"}
           </div>
           {criteria.fuel_type && (
             <div>

@@ -25,6 +25,7 @@ import {
   getUnavailableAuctionSources,
   normalizeAuctionSources,
 } from "@/lib/auction-sources";
+import { RERUN_CRITERIA_STORAGE_KEY, extractRerunCriteria } from "@/lib/rerun-criteria";
 
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
@@ -142,6 +143,15 @@ type BatchEntry = {
   initialStatus?: string;
 };
 
+/** Faza joba w postaci, w jakiej przychodzi z backendu — wszystkie pola opcjonalne,
+ *  bo starsze joby nie mają kompletu. Używane tylko do wyświetlenia błędów. */
+type JobPhase = {
+  name?: string;
+  status?: string;
+  message?: string;
+  error?: string;
+};
+
 function HomePage() {
   const runSearch = useServerFn(backendSearch);
   const runBatch = useServerFn(backendSearchBatch);
@@ -194,6 +204,27 @@ function HomePage() {
   // przed ewentualnym nadpisaniem z rozpoznanej wiadomości klienta.
   const defaultsQ = useQuery(defaultCriteriaQuery());
   const prefilledRef = useRef(false);
+
+  // Rerun z widoku rekordu ("Edytuj i szukaj") — sessionStorage handoff, bez
+  // zmian w routingu/URL. Ma priorytet nad prefillem z default-criteria i
+  // konsumuje/kasuje wpis przy pierwszym renderze.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem(RERUN_CRITERIA_STORAGE_KEY);
+    if (!raw) return;
+    window.sessionStorage.removeItem(RERUN_CRITERIA_STORAGE_KEY);
+    try {
+      const parsed = extractRerunCriteria(JSON.parse(raw));
+      if (parsed) {
+        setCriteria(parsed);
+        prefilledRef.current = true; // blokuje późniejsze nadpisanie przez default-criteria
+        toast.info(`Kryteria z rekordu wczytane: ${parsed.make} ${parsed.model ?? ""}`.trim());
+      }
+    } catch {
+      // ignoruj uszkodzony wpis — formularz zostaje pusty/domyślny
+    }
+  }, []);
+
   useEffect(() => {
     if (prefilledRef.current) return;
     if (!defaultsQ.data) return;
@@ -916,7 +947,7 @@ function HomePage() {
                       : undefined;
                 const errorPhases =
                   failed && Array.isArray(live?.phases)
-                    ? (live!.phases as any[]).filter(
+                    ? (live!.phases as JobPhase[]).filter(
                         (p) => p && (p.status === "error" || p.status === "failed" || p.error),
                       )
                     : undefined;
@@ -963,7 +994,7 @@ function HomePage() {
                               <span className="text-muted-foreground">{errorMessage}</span>
                             </div>
                           )}
-                          {errorPhases?.map((p: any, i: number) => (
+                          {errorPhases?.map((p, i) => (
                             <div key={i} className="border-l-2 border-destructive/40 pl-2">
                               <span className="font-medium">{p.name || "phase"}</span>
                               {p.status ? ` · ${p.status}` : ""}
