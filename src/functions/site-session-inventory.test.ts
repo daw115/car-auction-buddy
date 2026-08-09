@@ -44,4 +44,30 @@ describe("site session protection inventory", () => {
     expect(exportedFunctions).toHaveLength(5);
     expect(source).not.toContain("FALLBACK_MASTER_PASSWORD");
   });
+
+  // These handlers are public by design — they are what an unauthenticated
+  // visitor calls to get in. That makes SITE_MASTER_PASSWORD the only thing
+  // standing between the internet and the app, so every handler that checks it
+  // must also be rate limited and must compare in constant time.
+  // siteUserDeletePassword shipped without either and could be brute-forced
+  // without ever tripping a counter.
+  it("rate limits and constant-time compares every master-password handler", () => {
+    const source = readFileSync(resolve("src/functions/site-auth.functions.ts"), "utf8");
+    const blocks = source.split(/^export const /m).slice(1);
+    const gated = blocks.filter((b) => b.includes("SITE_MASTER_PASSWORD"));
+
+    expect(gated.length).toBeGreaterThan(0);
+    for (const block of gated) {
+      const name = block.slice(0, block.indexOf(" "));
+      expect(block, `${name} must check the lockout before comparing`).toContain(
+        "checkLoginRateLimit(",
+      );
+      expect(block, `${name} must count a wrong master password`).toContain(
+        "registerFailedAttempt(",
+      );
+      expect(block, `${name} must not compare the master password with !==`).not.toMatch(
+        /!==\s*expectedMaster/,
+      );
+    }
+  });
 });
