@@ -65,10 +65,16 @@ sudo -n systemctl restart usacar-dashboard.service
 
 echo "==> health-check"
 for i in $(seq 1 30); do
-  if curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$PORT/api/version"; then
+  # -fs bez -S: pierwsza proba prawie zawsze trafia w usluge, ktora jeszcze
+  # wstaje, a "curl: (7) Failed to connect" tuz przed "OK" tylko myli.
+  if curl -fs -o /dev/null --max-time 5 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; then
     echo "    OK po ${i}×2s"
-    RUNNING="$(curl -fsS --max-time 5 "http://127.0.0.1:$PORT/api/version" | grep -o '"short":"[^"]*"' || true)"
-    echo "    wdrożone: $RUNNING"
+    RUNNING="$(curl -fs --max-time 5 "http://127.0.0.1:$PORT/api/version" 2>/dev/null \
+               | grep -o '"short":"[^"]*"' | cut -d'"' -f4 || true)"
+    echo "    wdrożone: ${RUNNING:-?}  (oczekiwano $SHA)"
+    if [ -n "$RUNNING" ] && [ "$RUNNING" != "$SHA" ]; then
+      echo "    UWAGA: dziala inna wersja niz wdrazana"
+    fi
     # Przycinanie starych release'ów dopiero po potwierdzeniu, że nowy żyje.
     ls -1dt "$ROOT"/releases/*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf
     exit 0
