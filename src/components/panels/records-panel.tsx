@@ -19,6 +19,7 @@ import { SITE_USERS } from "@/lib/site-user";
 import { normalizeAuctionSources } from "@/lib/auction-sources";
 import type { ClientCriteria } from "@/lib/types";
 import { RERUN_CRITERIA_STORAGE_KEY } from "@/lib/rerun-criteria";
+import { WhatsappDraftDialog } from "@/components/panels/whatsapp-draft-dialog";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -556,6 +557,14 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
             )}
             Ponów teraz
           </Button>
+          <WhatsappDraftDialog
+            lots={allResults as unknown as Record<string, unknown>[]}
+            budgetPln={
+              (criteria as any)?.budget_pln_to ?? (criteria as any)?.budget_pln_from ?? null
+            }
+            settlement={(criteria as any)?.settlement === "company" ? "company" : "private"}
+            disabled={allResults.length === 0}
+          />
           <Button variant="ghost" onClick={onClose}>
             ← Zamknij
           </Button>

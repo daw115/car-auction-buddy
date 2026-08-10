@@ -415,6 +415,33 @@ export const backendSearchBatch = createServerFn({ method: "POST" })
 // ---------- JOBS ----------
 
 /** GET /api/jobs/{job_id} — polling statusu (używane przez batch + active pill). */
+/** POST /api/offers/whatsapp — gotowa wiadomość do klienta plus link wa.me.
+ *
+ *  Nic nie wysyła. Treść wraca do brokera, a on decyduje — wiadomość idzie pod
+ *  jego nazwiskiem, więc akceptacja człowieka jest tu warunkiem, nie opcją. */
+export const backendWhatsappDraft = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      lots: z.array(z.record(z.string(), z.unknown())).max(10),
+      client: z
+        .object({
+          name: z.string().max(120).optional().nullable(),
+          phone: z.string().max(40).optional().nullable(),
+        })
+        .optional(),
+      budgetPln: z.number().min(0).max(5_000_000).optional().nullable(),
+      settlement: z.enum(["private", "company"]).optional(),
+    }).parse,
+  )
+  .handler(async ({ data }) =>
+    callBackend<{ text: string | null; offers: number; waMeUrl: string | null }>({
+      path: "/api/offers/whatsapp",
+      method: "POST",
+      body: data,
+    }),
+  );
+
 export const backendJobStatus = createServerFn({ method: "GET" })
   .middleware([siteSessionMiddleware])
   .inputValidator(z.object({ jobId: z.string().min(1).max(200) }).parse)
