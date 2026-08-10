@@ -77,12 +77,24 @@ Trim/wariant zostaw tylko jeśli to RZECZYWIŚCIE odrębny model (M3, M5, S5, RS
 WAŻNE ZASADY (per kazde auto w cars[]):
 - Pole `make` jest WYMAGANE — jeśli klient nie podał marki, pomin to auto
 - Pozostałe pola są OPCJONALNE — jeśli klient nie podał, zostaw null
-- Budget: tylko jeśli klient podał kwotę. Konwertuj PLN→USD (kurs 4.0)
+- Budget: kwota od klienta to prawie zawsze budżet POD KLUCZ W POLSCE, w złotówkach
+  ("budżet 50/60 tys", "mam 80 tysięcy"). NIE PRZELICZAJ jej na dolary i NIE wpisuj do
+  budget_usd — sufit ceny aukcyjnej liczy osobny moduł, bo zależy od stanu USA i formy
+  zakupu. Wpisz budget_pln_from / budget_pln_to (widełki "50/60" to from=50000, to=60000;
+  pojedyncza kwota idzie do budget_pln_to). budget_usd wypełnij TYLKO gdy klient wprost
+  mówi o cenie na aukcji w dolarach.
 - Year: parsuj "(2018-2020)" → year_from=2018, year_to=2020
 - Odometer: "do 60 tys mil" → 60000; "100 tys km" → konwertuj km→mi (×0.621)
 - Sources: domyślnie ["copart", "iaai"]
 - excluded_damage_types: zawsze ["Flood", "Fire"] + dodaj inne jeśli klient wykluczył
 - max_results: domyślnie 30
+- segment: gdy klient mówi o typie nadwozia ("suv", "kombi", "sedan") a nie o modelu.
+  To NIE jest filtr wyszukiwania — sam segment niczego nie zawęzi na Copart/IAAI —
+  ale pozwala potem zaproponować konkretne modele w budżecie.
+- settlement: "private" gdy kupuje na siebie, "company" gdy na firmę/VAT. Gdy nie mówi:
+  zostaw null, to jest pytanie do zadania, nie do zgadnięcia (przesuwa sufit o ~1400 USD).
+- risk: "none" gdy chce auto nieuszkodzone, "light" przy lekkiej kosmetyce,
+  "repairable" gdy godzi się na powypadkowe do naprawy. Gdy nie mówi — null.
 - ZAWSZE wypełnij pole `original_text` — dokładne to co klient napisał (np. "BMW M440i coupé")
   żebyśmy mogli zwrócić warning gdy znormalizowaliśmy.
 
@@ -103,6 +115,11 @@ Zwróć WYŁĄCZNIE JSON o schemacie:
       "max_results": 30
     }
   ],
+  "segment": null,
+  "budget_pln_from": null,
+  "budget_pln_to": null,
+  "settlement": null,
+  "risk": null,
   "_summary": "1-2 zdania po polsku co wyciagnales",
   "_warnings": ["lista ostrzezen — gdy znormalizowales model dodaj 'BMW M440i znormalizowano do 4 Series (M440i to trim, nie model w Copart/IAAI)'"]
 }
