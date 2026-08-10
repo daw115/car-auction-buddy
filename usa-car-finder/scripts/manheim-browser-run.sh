@@ -62,11 +62,17 @@ echo "[manheim-browser] Chrome, profil $PROFILE_DIR"
 # --no-sandbox: WSL2 bez user namespaces przewraca się na sandboxie Chrome.
 # --no-first-run/--no-default-browser-check: bez tego wita nas kreator, który
 # na wirtualnym ekranie tylko przeszkadza.
+# Dymki Chrome ("Restore pages?", "Can't update Chrome") wyskakują nad nagłówkiem
+# strony i zasłaniają pole wyszukiwania — na wirtualnym ekranie nie ma ich kto
+# zamknąć, a przy automatyzacji przechwytują kliknięcia. Wyłączamy je u źródła.
 google-chrome \
     --user-data-dir="$PROFILE_DIR" \
     --no-sandbox \
     --no-first-run \
     --no-default-browser-check \
+    --disable-session-crashed-bubble \
+    --hide-crash-restore-bubble \
+    --simulate-outdated-no-au="Tue, 31 Dec 2099 23:59:59 GMT" \
     --disable-features=Translate \
     --window-size=1600,1000 \
     "$START_URL" &
