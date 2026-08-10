@@ -84,6 +84,28 @@ def collector_seen_recently() -> bool:
     return (time.time() - float(last)) <= window
 
 
+def unavailable_reason() -> str:
+    """Dlaczego Manheim jest niedostępny — w słowach, które kierują do naprawy.
+
+    "manheim_session_not_configured" było prawdziwe, ale bezużyteczne: tak samo
+    brzmiało przy braku przeglądarki, jak przy zalogowanej przeglądarce odbijanej
+    na bramce autoryzacji, gdzie wystarczyło poprawić jedno pole w opcjach.
+    """
+    if source_mode() != "collector":
+        return "manheim_session_not_configured"
+    try:
+        from api.manheim_ingest import last_rejection
+    except Exception:
+        return "manheim_session_not_configured"
+
+    rejection = last_rejection()
+    if rejection and (time.time() - float(rejection["at"])) <= 3600:
+        if rejection["status"] == 403:
+            return "collector_token_mismatch"
+        return "collector_unauthorized"
+    return "collector_not_seen_recently"
+
+
 def config_ready() -> bool:
     """Czy konfiguracja pozwala w ogóle wejść na Manheima.
 

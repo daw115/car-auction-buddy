@@ -1375,6 +1375,7 @@ def build_auction_source_capabilities(
     iaai_ready: bool,
     manheim_enabled: bool,
     manheim_session_ready: bool,
+    manheim_reason: Optional[str] = None,
 ) -> AuctionSourceCapabilitiesPayload:
     """Purely map known implementation/configuration readiness to the contract."""
 
@@ -1386,7 +1387,11 @@ def build_auction_source_capabilities(
     if manheim_enabled and manheim_session_ready:
         manheim: LiveOrUnavailableCapability = LiveSourceCapability()
     else:
-        manheim = UnavailableSourceCapability(reason=_MANHEIM_UNAVAILABLE_REASON)
+        # Powód mówi, co naprawić. Jeden komunikat na wszystkie przyczyny kazał
+        # operatorowi zgadywać, czy brakuje przeglądarki, logowania, czy tokena.
+        manheim = UnavailableSourceCapability(
+            reason=manheim_reason or _MANHEIM_UNAVAILABLE_REASON
+        )
 
     return AuctionSourceCapabilitiesPayload(
         checked_at=checked_at,
@@ -1405,6 +1410,7 @@ async def get_auction_source_capabilities(
     # Lekki moduł bez Playwrighta/browser_context — discovery zdolności musi
     # zostać wolne od efektów ubocznych (tests/test_contract_preservation.py).
     from scraper.manheim_session import session_ready as manheim_session_ready
+    from scraper.manheim_session import unavailable_reason as _manheim_unavailable_reason
 
     live_backend_configured = not USE_MOCK_DATA
     return build_auction_source_capabilities(
@@ -1420,6 +1426,7 @@ async def get_auction_source_capabilities(
             and os.getenv("MANHEIM_BACKEND_ENABLED", "").strip().lower() == "true"
         ),
         manheim_session_ready=manheim_session_ready(),
+        manheim_reason=_manheim_unavailable_reason(),
     )
 
 
@@ -1446,13 +1453,21 @@ async def _require_manheim_ingest_token(
     zablokować operatora, który już ma ten pierwszy. Gdy oba puste — endpoint
     otwarty, jak reszta w trybie lokalnym.
     """
+    from api import manheim_ingest as ingest_store
+
     ingest_token = os.getenv("MANHEIM_INGEST_TOKEN", "").strip()
     accepted = {token for token in (ingest_token, SCRAPER_API_TOKEN) if token}
     if not accepted:
         return
     if not authorization or not authorization.lower().startswith("bearer "):
+        ingest_store.note_rejection(401, "kolektor nie podał tokena")
         raise HTTPException(status_code=401, detail="Brak Bearer tokena")
     if authorization[7:].strip() not in accepted:
+        # Najczęstsza przyczyna: token w opcjach rozszerzenia został z poprzedniej
+        # wartości .env. Zapisujemy to, bo inaczej Manheim po prostu "znika".
+        ingest_store.note_rejection(
+            403, "token rozszerzenia nie zgadza się z MANHEIM_INGEST_TOKEN ani SCRAPER_API_TOKEN"
+        )
         raise HTTPException(status_code=403, detail="Nieprawidłowy token")
 
 

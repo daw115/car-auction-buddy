@@ -28,6 +28,10 @@ _seen_at: dict[str, float] = {}
 _last_ingest_at: Optional[float] = None
 _raw_batches = 0
 _last_batch: list[dict] = []
+# Kolektor odbity na bramce autoryzacji. Bez tego jedynym śladem nieaktualnego
+# tokena w rozszerzeniu była linijka w jego opcjach, do której nikt nie zagląda —
+# a na zewnątrz wyglądało to jak "brak skonfigurowanej sesji Manheima".
+_last_rejection: Optional[dict] = None
 
 
 def storage_dir() -> Path:
@@ -200,6 +204,22 @@ def vehicles() -> list[dict]:
         ]
 
 
+def note_rejection(status_code: int, detail: str) -> None:
+    """Kolektor pukał i został odbity — zapamiętaj, bo to najczęstsza awaria."""
+    global _last_rejection
+    with _lock:
+        _last_rejection = {
+            "at": time.time(),
+            "status": status_code,
+            "detail": detail,
+        }
+
+
+def last_rejection() -> Optional[dict]:
+    with _lock:
+        return dict(_last_rejection) if _last_rejection else None
+
+
 def status() -> dict:
     with _lock:
         _prune_locked()
@@ -208,6 +228,7 @@ def status() -> dict:
             "lastIngestAt": _last_ingest_at,
             "ttlSeconds": ttl_seconds(),
             "rawBatchesSaved": _raw_batches,
+            "lastRejection": dict(_last_rejection) if _last_rejection else None,
         }
 
 

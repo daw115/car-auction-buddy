@@ -152,10 +152,12 @@ def test_authenticated_endpoint_is_schema_valid_and_manheim_flag_alone_denies(
     assert datetime.fromisoformat(payload["checkedAt"].replace("Z", "+00:00")).utcoffset() == timezone.utc.utcoffset(None)
     assert payload["sources"]["copart"] == {"available": True, "mode": "live"}
     assert payload["sources"]["iaai"] == {"available": True, "mode": "live"}
+    # Sama flaga nie wystarczy — i powód mówi, czego brakuje. W trybie kolektora
+    # znaczy to "przeglądarka się nie odezwała", a nie "nie ma konfiguracji".
     assert payload["sources"]["manheim"] == {
         "available": False,
         "mode": "unavailable",
-        "reason": "manheim_session_not_configured",
+        "reason": "collector_not_seen_recently",
     }
 
     route = next(
@@ -182,3 +184,30 @@ def test_mock_configuration_does_not_claim_live_capability(
             "mode": "unavailable",
             "reason": "live_backend_not_configured",
         }
+
+
+def test_rejected_collector_is_named_as_a_token_mismatch(monkeypatch):
+    """Najczęstsza awaria Manheima ma mieć własny powód, nie wspólny worek.
+
+    Zalogowana przeglądarka odbijana na 403 wyglądała dotąd identycznie jak brak
+    konfiguracji — a naprawa to jedno pole w opcjach rozszerzenia.
+    """
+    from api import manheim_ingest as ingest_store
+    from scraper.manheim_session import unavailable_reason
+
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "collector")
+    ingest_store.note_rejection(403, "token rozszerzenia się nie zgadza")
+    assert unavailable_reason() == "collector_token_mismatch"
+
+    ingest_store.note_rejection(401, "kolektor nie podał tokena")
+    assert unavailable_reason() == "collector_unauthorized"
+
+
+def test_rejection_shows_up_in_the_ingest_status(monkeypatch):
+    from api import manheim_ingest as ingest_store
+
+    ingest_store.note_rejection(403, "token rozszerzenia się nie zgadza")
+    rejection = ingest_store.status()["lastRejection"]
+
+    assert rejection["status"] == 403
+    assert "token" in rejection["detail"]
