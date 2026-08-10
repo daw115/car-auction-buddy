@@ -169,8 +169,14 @@ def status() -> dict:
 
 
 def clear() -> None:
-    global _last_batch
+    """Czyści magazyn RAZEM ze znacznikiem ostatniego ingestu.
+
+    Bez zerowania `_last_ingest_at` pusty magazyn nadal raportowałby, że
+    kolektor żyje — a na tym opiera się gotowość źródła w /api/capabilities.
+    """
+    global _last_batch, _last_ingest_at
     with _lock:
         _vehicles.clear()
         _seen_at.clear()
         _last_batch = []
+        _last_ingest_at = None

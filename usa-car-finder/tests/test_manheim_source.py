@@ -76,6 +76,7 @@ def _used_profile(tmp_path):
 
 def test_cdp_url_alone_makes_manheim_ready(monkeypatch, tmp_path):
     """Droga produkcyjna: Chrome operatora po CDP, bez rozpakowanej wtyczki."""
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "browser")
     monkeypatch.setenv("MANHEIM_EXTENSION_DIR", str(tmp_path / "bez-wtyczki"))
     monkeypatch.setenv("MANHEIM_CHROME_PROFILE_DIR", str(tmp_path / "bez-profilu"))
     monkeypatch.setenv("MANHEIM_CHROME_CDP_URL", "http://127.0.0.1:9223")
@@ -90,6 +91,7 @@ def test_cdp_url_alone_makes_manheim_ready(monkeypatch, tmp_path):
 
 def test_readiness_ignores_global_extension_and_headless_switches(monkeypatch, tmp_path):
     """Manheim ma własny headed kontekst — USE_EXTENSIONS/HEADLESS go nie dotyczą."""
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "browser")
     monkeypatch.setenv("MANHEIM_CHROME_CDP_URL", "")
     monkeypatch.setenv("MANHEIM_EXTENSION_DIR", str(_unpacked_plugin(tmp_path)))
     monkeypatch.setenv("MANHEIM_CHROME_PROFILE_DIR", str(_used_profile(tmp_path)))
@@ -103,6 +105,7 @@ def test_readiness_ignores_global_extension_and_headless_switches(monkeypatch, t
 
 def test_config_ready_does_not_require_an_existing_profile(monkeypatch, tmp_path):
     """Pierwsze uruchomienie (probe) musi móc dopiero założyć profil."""
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "browser")
     monkeypatch.setenv("MANHEIM_CHROME_CDP_URL", "")
     monkeypatch.setenv("MANHEIM_EXTENSION_DIR", str(_unpacked_plugin(tmp_path)))
     monkeypatch.setenv("MANHEIM_CHROME_PROFILE_DIR", str(tmp_path / "jeszcze-nie-ma"))
@@ -112,6 +115,7 @@ def test_config_ready_does_not_require_an_existing_profile(monkeypatch, tmp_path
 
 
 def test_readiness_false_when_plugin_directory_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "browser")
     monkeypatch.setenv("MANHEIM_CHROME_CDP_URL", "")
     monkeypatch.setenv("MANHEIM_EXTENSION_DIR", str(tmp_path / "nie-ma"))
     monkeypatch.setenv("MANHEIM_CHROME_PROFILE_DIR", str(_used_profile(tmp_path)))
@@ -348,3 +352,43 @@ def test_collector_mode_is_explicit_about_an_empty_store(monkeypatch, tmp_path):
 
     criteria = ClientCriteria(make="Toyota", sources=["manheim"])
     assert asyncio.run(manheim_scraper.ManheimScraper().scrape(criteria)) == []
+
+
+def test_collector_mode_readiness_follows_the_collector_not_the_profile(monkeypatch, tmp_path):
+    """W trybie kolektora profil Chrome ani CDP nic nie znaczą.
+
+    Liczy się jedno: czy po drugiej stronie stoi przeglądarka, która przyjmie
+    zlecenie — czyli czy kolektor odezwał się niedawno.
+    """
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "collector")
+    monkeypatch.setenv("MANHEIM_EXTENSION_DIR", str(tmp_path / "bez-wtyczki"))
+    monkeypatch.setenv("MANHEIM_CHROME_PROFILE_DIR", str(tmp_path / "bez-profilu"))
+    monkeypatch.setenv("MANHEIM_CHROME_CDP_URL", "")
+
+    # Konfiguracja zawsze gotowa — backend niczego nie uruchamia.
+    assert manheim_session.config_ready() is True
+
+    monkeypatch.setattr(manheim_session, "collector_seen_recently", lambda: False)
+    assert manheim_session.session_ready() is False
+
+    monkeypatch.setattr(manheim_session, "collector_seen_recently", lambda: True)
+    assert manheim_session.session_ready() is True
+
+
+def test_collector_liveness_uses_the_configured_window(monkeypatch):
+    from api import manheim_ingest
+
+    monkeypatch.setenv("MANHEIM_COLLECTOR_ALIVE_SECONDS", "120")
+    manheim_ingest.clear()
+    assert manheim_session.collector_seen_recently() is False
+
+    now = manheim_session.time.time()
+    monkeypatch.setattr(
+        manheim_ingest, "status", lambda: {"lastIngestAt": now - 30}
+    )
+    assert manheim_session.collector_seen_recently() is True
+
+    monkeypatch.setattr(
+        manheim_ingest, "status", lambda: {"lastIngestAt": now - 600}
+    )
+    assert manheim_session.collector_seen_recently() is False
