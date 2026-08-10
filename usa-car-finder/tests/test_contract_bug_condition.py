@@ -21,8 +21,7 @@ def assert_consumer_shape(payload: object) -> None:
     for source in ("copart", "iaai", "manheim"):
         item = sources[source]
         assert isinstance(item.get("available"), bool)
-        allowed = {"official_api", "unavailable"} if source == "manheim" else {"live", "unavailable"}
-        assert item.get("mode") in allowed
+        assert item.get("mode") in {"live", "unavailable"}
         assert item["available"] == (item["mode"] != "unavailable")
         assert "reason" not in item or isinstance(item["reason"], str) and len(item["reason"]) <= 200
 

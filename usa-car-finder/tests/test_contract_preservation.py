@@ -156,8 +156,11 @@ def test_copart_iaai_defaults_and_source_validation_are_preserved(make: str) -> 
         "copart",
         "iaai",
     ]
+    # Manheim dołączył jako trzecie źródło live (sesja z wtyczki BidWise) —
+    # wcześniej model go odrzucał, bo backend nie miał żadnego adaptera.
+    assert ClientCriteria(make=make, sources=["manheim"]).sources == ["manheim"]
     with pytest.raises(ValidationError):
-        ClientCriteria(make=make, sources=["manheim"])
+        ClientCriteria(make=make, sources=["ove"])
 
 
 def test_capability_discovery_is_side_effect_free_on_unfixed_and_fixed_app(

@@ -1334,18 +1334,7 @@ class LiveSourceCapability(BaseModel):
     mode: Literal["live"] = "live"
 
 
-class OfficialApiSourceCapability(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    available: Literal[True] = True
-    mode: Literal["official_api"] = "official_api"
-
-
 LiveOrUnavailableCapability = Union[LiveSourceCapability, UnavailableSourceCapability]
-OfficialApiOrUnavailableCapability = Union[
-    OfficialApiSourceCapability,
-    UnavailableSourceCapability,
-]
 
 
 class AuctionSourceCapabilities(BaseModel):
@@ -1353,7 +1342,7 @@ class AuctionSourceCapabilities(BaseModel):
 
     copart: LiveOrUnavailableCapability
     iaai: LiveOrUnavailableCapability
-    manheim: OfficialApiOrUnavailableCapability
+    manheim: LiveOrUnavailableCapability
 
 
 class AuctionSourceCapabilitiesPayload(BaseModel):
@@ -1372,18 +1361,9 @@ class AuctionSourceCapabilitiesPayload(BaseModel):
 
 # Static implementation readiness only. "live" means this backend is configured
 # to execute the implementation; it is deliberately not an upstream health probe.
-_IMPLEMENTED_LIVE_AUCTION_SOURCES = frozenset({"copart", "iaai"})
+_IMPLEMENTED_LIVE_AUCTION_SOURCES = frozenset({"copart", "iaai", "manheim"})
 _LIVE_BACKEND_UNAVAILABLE_REASON = "live_backend_not_configured"
-_MANHEIM_UNAVAILABLE_REASON = "credentials_or_adapter_missing"
-
-
-def _manheim_official_adapter_ready() -> bool:
-    """Return official-adapter readiness without importing or calling providers.
-
-    This revision contains no official Manheim adapter or adapter configuration,
-    so readiness is fail-closed regardless of MANHEIM_BACKEND_ENABLED.
-    """
-    return False
+_MANHEIM_UNAVAILABLE_REASON = "manheim_session_not_configured"
 
 
 def build_auction_source_capabilities(
@@ -1392,7 +1372,7 @@ def build_auction_source_capabilities(
     copart_ready: bool,
     iaai_ready: bool,
     manheim_enabled: bool,
-    manheim_adapter_ready: bool,
+    manheim_session_ready: bool,
 ) -> AuctionSourceCapabilitiesPayload:
     """Purely map known implementation/configuration readiness to the contract."""
 
@@ -1401,8 +1381,8 @@ def build_auction_source_capabilities(
             return LiveSourceCapability()
         return UnavailableSourceCapability(reason=_LIVE_BACKEND_UNAVAILABLE_REASON)
 
-    if manheim_enabled and manheim_adapter_ready:
-        manheim: OfficialApiOrUnavailableCapability = OfficialApiSourceCapability()
+    if manheim_enabled and manheim_session_ready:
+        manheim: LiveOrUnavailableCapability = LiveSourceCapability()
     else:
         manheim = UnavailableSourceCapability(reason=_MANHEIM_UNAVAILABLE_REASON)
 
@@ -1420,6 +1400,10 @@ def build_auction_source_capabilities(
 async def get_auction_source_capabilities(
     _auth: None = Depends(_require_bearer),
 ) -> AuctionSourceCapabilitiesPayload:
+    # Lekki moduł bez Playwrighta/browser_context — discovery zdolności musi
+    # zostać wolne od efektów ubocznych (tests/test_contract_preservation.py).
+    from scraper.manheim_session import session_ready as manheim_session_ready
+
     live_backend_configured = not USE_MOCK_DATA
     return build_auction_source_capabilities(
         checked_at=datetime.now(timezone.utc),
@@ -1430,10 +1414,125 @@ async def get_auction_source_capabilities(
             live_backend_configured and "iaai" in _IMPLEMENTED_LIVE_AUCTION_SOURCES
         ),
         manheim_enabled=(
-            os.getenv("MANHEIM_BACKEND_ENABLED", "").strip().lower() == "true"
+            live_backend_configured
+            and os.getenv("MANHEIM_BACKEND_ENABLED", "").strip().lower() == "true"
         ),
-        manheim_adapter_ready=_manheim_official_adapter_ready(),
+        manheim_session_ready=manheim_session_ready(),
     )
+
+
+class ManheimIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    captures: list[dict] = Field(default_factory=list, max_length=200)
+    # Ustawiane przez rozszerzenie, gdy paczka jest odpowiedzią na zlecone
+    # wyszukiwanie — wtedy wynik trafia też do konkretnego zadania.
+    job_id: Optional[str] = Field(default=None, alias="jobId", max_length=64)
+    error: Optional[str] = Field(default=None, max_length=300)
+
+
+async def _require_manheim_ingest_token(
+    authorization: Optional[str] = Header(None),
+) -> None:
+    """Osobny token dla kolektora w przeglądarce.
+
+    Rozszerzenie nie powinno nosić pełnego SCRAPER_API_TOKEN-a (ten daje dostęp
+    do całego API), ale ustawienie samego MANHEIM_INGEST_TOKEN nie może też
+    zablokować operatora, który już ma ten pierwszy. Gdy oba puste — endpoint
+    otwarty, jak reszta w trybie lokalnym.
+    """
+    ingest_token = os.getenv("MANHEIM_INGEST_TOKEN", "").strip()
+    accepted = {token for token in (ingest_token, SCRAPER_API_TOKEN) if token}
+    if not accepted:
+        return
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Brak Bearer tokena")
+    if authorization[7:].strip() not in accepted:
+        raise HTTPException(status_code=403, detail="Nieprawidłowy token")
+
+
+@app.post("/api/manheim/ingest")
+async def manheim_ingest(
+    request: ManheimIngestRequest,
+    _auth: None = Depends(_require_manheim_ingest_token),
+):
+    """Odbiera próbki z rozszerzenia manheim-collector.
+
+    Push z przeglądarki zamiast scrape'u, bo sesję Manheima utrzymuje BidWise
+    przez chrome.debugger — a Chrome ma jeden slot debuggera na kartę. Zmierzone:
+    podpięcie Playwrighta do takiej karty zamyka ją w ciągu 5 sekund.
+    """
+    from api import manheim_ingest as ingest_store
+    from api import manheim_jobs
+
+    summary = ingest_store.store(request.captures)
+    if request.job_id:
+        summary["job"] = manheim_jobs.complete(
+            request.job_id, ingest_store.last_batch_records(), request.error
+        )
+    return summary
+
+
+class ManheimSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    keyword: str = Field(min_length=1, max_length=120)
+    timeout_seconds: int = Field(default=60, ge=1, le=180, alias="timeoutSeconds")
+
+
+@app.post("/api/manheim/search")
+async def manheim_search(
+    request: ManheimSearchRequest,
+    _auth: None = Depends(_require_manheim_ingest_token),
+):
+    """Zleca rozszerzeniu wyszukiwanie i czeka na wynik.
+
+    Ręczny odpowiednik tego, co robi źródło `manheim` w pipelinie — przydatny
+    do sprawdzenia, czy karta z BidWise odpowiada, bez odpalania całej analizy.
+    """
+    from api import manheim_jobs
+
+    job_id = manheim_jobs.create(request.keyword)
+    deadline = asyncio.get_event_loop().time() + request.timeout_seconds
+    while asyncio.get_event_loop().time() < deadline:
+        job = manheim_jobs.get(job_id)
+        if job and job["status"] in ("done", "error"):
+            records = job["records"]
+            return {
+                "jobId": job_id,
+                "status": job["status"],
+                "error": job["error"],
+                "vehicles": len(records),
+                "sample": [
+                    {
+                        key: record.get(key)
+                        for key in ("vin", "sourceYear", "sourceMake", "sourceModel", "odometer")
+                    }
+                    for record in records[:3]
+                ],
+            }
+        await asyncio.sleep(1)
+    return {"jobId": job_id, "status": "timeout", "vehicles": 0, "sample": []}
+
+
+@app.get("/api/manheim/next-job")
+async def manheim_next_job(_auth: None = Depends(_require_manheim_ingest_token)):
+    """Odpytywane przez rozszerzenie. Zwraca zadanie albo pustkę.
+
+    Kierunek jest odwrócony (backend nie woła przeglądarki, tylko czeka), bo
+    tylko strona ma sesję Manheima — patrz api/manheim_jobs.py.
+    """
+    from api import manheim_jobs
+
+    return manheim_jobs.next_pending() or {}
+
+
+@app.get("/api/manheim/status")
+async def manheim_ingest_status(_auth: None = Depends(_require_manheim_ingest_token)):
+    from api import manheim_ingest as ingest_store
+    from api import manheim_jobs
+
+    return {**ingest_store.status(), **manheim_jobs.status()}
 
 
 @app.post("/api/search")
@@ -3634,7 +3733,7 @@ _AI_PROVIDER_TASKS: dict[str, dict] = {
     "offer_agent_ai_provider": {
         "label": "Agent ofert (automatyzacja mailowa)",
         "env_var": "OFFER_AGENT_AI_PROVIDER",
-        "options": ["gemini", "anthropic", "kiro"],
+        "options": ["gemini", "anthropic", "kiro", "claude-code"],
         "default": "gemini",
     },
 }

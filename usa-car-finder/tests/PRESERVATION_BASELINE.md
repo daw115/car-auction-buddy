@@ -26,7 +26,7 @@ Observed read-only through SSH alias `wsl2-cf-kiro` before writing tests.
 - Bearer dependency: protected mode rejects missing credentials with 401, invalid credentials with 403, and accepts the exact valid bearer; empty local-development token is open.
 - `/api/logs/stream`: GET route, `DefaultPlaceholder` response metadata, dependency exactly `_require_bearer`.
 - Representative unchanged routes: `/health` GET (`health`), `/config` GET (`config`), `/api/search` POST (`dashboard_search`, bearer), `/api/logs/tail` GET (`logs_tail`, bearer), and `/api/logs/stream` GET (`logs_stream`, bearer).
-- Auction source defaults: `ClientCriteria.sources == ["copart", "iaai"]`; each source and both together are accepted; `manheim` is rejected by the unfixed backend criteria model.
+- Auction source defaults: `ClientCriteria.sources == ["copart", "iaai"]`; each source and both together are accepted. `manheim` is now accepted as a third live source (BidWise-backed session); unknown ids are still rejected.
 - Capability discovery side-effect baseline: absent route returns 404 without network, scraper/browser, subprocess, or SQLite calls. The same sentinel test permits the future route's 200 response but never those side effects.
 - Normalization scope: only volatile timestamps and SSE chunk boundaries may be normalized. Neither is needed by the assertions above.
 

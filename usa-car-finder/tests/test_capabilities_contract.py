@@ -24,12 +24,7 @@ def _assert_exact_frontend_contract(payload: object) -> None:
         assert isinstance(capability, dict)
         assert set(capability) <= {"available", "mode", "reason"}
         assert isinstance(capability.get("available"), bool)
-        allowed_modes = (
-            {"official_api", "unavailable"}
-            if source == "manheim"
-            else {"live", "unavailable"}
-        )
-        assert capability.get("mode") in allowed_modes
+        assert capability.get("mode") in {"live", "unavailable"}
         assert capability["available"] == (capability["mode"] != "unavailable")
         if "reason" in capability:
             assert isinstance(capability["reason"], str)
@@ -44,7 +39,7 @@ def test_pure_builder_maps_readiness_to_exact_source_contract() -> None:
         copart_ready=True,
         iaai_ready=False,
         manheim_enabled=True,
-        manheim_adapter_ready=False,
+        manheim_session_ready=False,
     ).model_dump(mode="json", by_alias=True)
 
     _assert_exact_frontend_contract(payload)
@@ -59,9 +54,34 @@ def test_pure_builder_maps_readiness_to_exact_source_contract() -> None:
         "manheim": {
             "available": False,
             "mode": "unavailable",
-            "reason": "credentials_or_adapter_missing",
+            "reason": "manheim_session_not_configured",
         },
     }
+
+
+def test_manheim_is_live_only_when_flag_and_session_agree() -> None:
+    checked_at = datetime(2026, 7, 19, 12, 30, tzinfo=timezone.utc)
+
+    def manheim(*, enabled: bool, session: bool) -> dict:
+        payload = api_main.build_auction_source_capabilities(
+            checked_at=checked_at,
+            copart_ready=True,
+            iaai_ready=True,
+            manheim_enabled=enabled,
+            manheim_session_ready=session,
+        ).model_dump(mode="json", by_alias=True)
+        _assert_exact_frontend_contract(payload)
+        return payload["sources"]["manheim"]
+
+    assert manheim(enabled=True, session=True) == {"available": True, "mode": "live"}
+    unavailable = {
+        "available": False,
+        "mode": "unavailable",
+        "reason": "manheim_session_not_configured",
+    }
+    assert manheim(enabled=True, session=False) == unavailable
+    assert manheim(enabled=False, session=True) == unavailable
+    assert manheim(enabled=False, session=False) == unavailable
 
 
 def test_strict_models_reject_extra_sources_and_oversized_reasons() -> None:
@@ -73,7 +93,7 @@ def test_strict_models_reject_extra_sources_and_oversized_reasons() -> None:
             "manheim": {
                 "available": False,
                 "mode": "unavailable",
-                "reason": "credentials_or_adapter_missing",
+                "reason": "manheim_session_not_configured",
             },
         },
     }
@@ -103,12 +123,18 @@ def test_strict_models_reject_extra_sources_and_oversized_reasons() -> None:
 
 
 def test_authenticated_endpoint_is_schema_valid_and_manheim_flag_alone_denies(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     sentinel = "task-3-3-server-only-sentinel"
     monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", sentinel)
     monkeypatch.setattr(api_main, "USE_MOCK_DATA", False)
     monkeypatch.setenv("MANHEIM_BACKEND_ENABLED", "true")
+    # Sesja Manheima zależy od katalogów na dysku — celujemy w nieistniejące,
+    # żeby test sprawdzał regułę ("sama flaga nie wystarczy"), a nie to, czy
+    # akurat na tej maszynie ktoś zalogował BidWise.
+    monkeypatch.setenv("MANHEIM_CHROME_CDP_URL", "")
+    monkeypatch.setenv("MANHEIM_EXTENSION_DIR", str(tmp_path / "bez-wtyczki"))
+    monkeypatch.setenv("MANHEIM_CHROME_PROFILE_DIR", str(tmp_path / "bez-profilu"))
     client = TestClient(api_main.app)
 
     assert client.get("/api/capabilities").status_code == 401
@@ -129,7 +155,7 @@ def test_authenticated_endpoint_is_schema_valid_and_manheim_flag_alone_denies(
     assert payload["sources"]["manheim"] == {
         "available": False,
         "mode": "unavailable",
-        "reason": "credentials_or_adapter_missing",
+        "reason": "manheim_session_not_configured",
     }
 
     route = next(
