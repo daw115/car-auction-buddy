@@ -92,10 +92,60 @@ def _call_kiro_text(system: str, user_prompt: str, max_tokens: int = 8000) -> st
     return text
 
 
+def _call_claude_code_text(system: str, user_prompt: str, max_tokens: int = 8000) -> str:
+    """Claude Code w trybie headless, uwierzytelnienie sesją zalogowanego
+    użytkownika (bez klucza API).
+
+    Osobna zmienna modelu niż reszta zadań: oferta to jedno wywołanie na
+    wyszukiwanie, a jednocześnie jedyny tekst, który czyta klient — stać nas
+    tu na mocniejszy model niż przy analizie kilkunastu lotów.
+    """
+    cli_path = os.getenv("CLAUDE_CLI_PATH", os.path.expanduser("~/.local/bin/claude"))
+    model = os.getenv("CLAUDE_CODE_OFFER_MODEL") or os.getenv("CLAUDE_CODE_MODEL", "opus")
+    timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300"))
+    workdir = os.getenv("CLAUDE_CODE_WORKDIR", os.path.expanduser("~/.usacar-claude-cwd"))
+    os.makedirs(workdir, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            [
+                cli_path, "-p", "--model", model,
+                "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob",
+                "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
+            ],
+            input=f"{system}\n\n{user_prompt}",
+            capture_output=True, text=True, timeout=timeout, cwd=workdir,
+            # Obecny ANTHROPIC_API_KEY przesłoniłby zalogowaną subskrypcję.
+            env={
+                k: v for k, v in os.environ.items()
+                if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+                             "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
+                             "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")
+            },
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Claude Code timeout po {timeout}s") from exc
+
+    text = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    if "Not logged in" in text or "Please run /login" in text:
+        raise RuntimeError(
+            "Claude Code niezalogowany — uruchom `claude /login` na serwerze "
+            "jako użytkownik usługi (sesja subskrypcji wygasła)"
+        )
+    if result.returncode != 0:
+        raise RuntimeError(f"Claude Code exit {result.returncode}: {(result.stderr or text)[:300]}")
+    if not text:
+        raise RuntimeError(f"Claude Code pusta odpowiedź (stderr: {result.stderr[:300]})")
+    return text
+
+
 _OFFER_AGENT_CALLERS = {
     "gemini": _call_gemini_text,
     "kiro": _call_kiro_text,
     "anthropic": _call_anthropic_text,
+    "claude-code": _call_claude_code_text,
 }
 
 
@@ -274,16 +324,28 @@ ZADANIE:
    - TOP {top_count} rekomendacji szczegółowo
    - {remaining_count} dodatkowych propozycji kompaktowo
 
-2. Wygeneruj SKRÓCONĄ wersję (tryb SHORT, max 200 słów, format HTML)
-   - Hook + 3 najmocniejsze argumenty
-   - Kalkulacja w 1 linii
-   - CTA z linkiem do pełnej oferty
+2. Wygeneruj SKRÓCONĄ wersję — TO JEST OFERTA, KTÓRĄ CZYTA KLIENT (format HTML)
+
+   Ma być PROSTA, KRÓTKA i ZACHĘCAJĄCA. Twarde zasady:
+   - MAKSIMUM 150 słów. Krócej znaczy lepiej.
+   - Zdania krótkie, do 15 słów. Jedno zdanie = jedna myśl.
+   - Język potoczny, nie branżowy. Klient nie wie, co to "lot", "salvage title",
+     "score" ani "prefiltr" — pisz "auto", "auto powypadkowe", "ocena".
+   - Struktura: jedno zdanie otwarcia → 3 auta, każde w jednej linii
+     (rok, marka, model, przebieg, cena w PLN "pod klucz") → jedno zdanie
+     zachęty z konkretnym następnym krokiem.
+   - Ton: życzliwy i konkretny, jak dobry doradca. Bez wykrzykników, bez
+     "niepowtarzalna okazja", bez presji czasu.
+   - Uszkodzenia: nie ukrywaj, ale nie strasz. Jedno spokojne słowo wystarczy
+     ("po stłuczce przodu", "do drobnej naprawy"). Szczegóły są w pełnej ofercie.
+   - Żadnych tabel, żadnych list zagnieżdżonych, żadnego żargonu.
 
 WAŻNE:
 - Używaj HTML (nie markdown)
-- Zachowaj profesjonalny ton
 - Wszystkie ceny w PLN (przelicz USD * 4.0)
-- Bądź uczciwy wobec uszkodzeń
+- Bądź uczciwy wobec uszkodzeń — zachęcający nie znaczy naciągający
+- Pełna oferta (punkt 1) zostaje szczegółowa i techniczna — jest dla sprzedającego,
+  nie dla klienta. Nie skracaj jej.
 - Dodaj sekcję NOTATKI STRATEGICZNE na końcu pełnej oferty
 
 Odpowiedz w formacie:
