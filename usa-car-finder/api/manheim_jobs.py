@@ -10,21 +10,57 @@ Kolejka jest w pamięci procesu i celowo malutka: zadanie żyje kilkadziesiąt
 sekund, a nieodebrane wygasa. Trwałość byłaby tu zbędna — jak backend padnie,
 wyszukiwanie i tak trzeba powtórzyć.
 """
+import json
 import logging
 import os
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger("api.manheim_jobs")
 
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}
-# Szablony żądań podpatrzone przez kolektor. Trzymamy je TU, a nie w
-# chrome.storage: przeglądarka bywa restartowana i przeładowywana, a backend
-# jest jedynym miejscem, które i tak przeżywa wszystko po drodze.
+# Szablony żądań podpatrzone przez kolektor — na dysku, nie tylko w pamięci.
+# Sama pamięć procesu nie wystarcza: każdy deploy i restart usługi kasowałby je,
+# a wtedy zlecenia padają aż ktoś ręcznie wyszuka coś w przeglądarce.
 _templates: dict[str, dict] = {}
+_templates_loaded = False
+
+
+def templates_path() -> Path:
+    return Path(os.getenv("MANHEIM_TEMPLATES_PATH", "./data/manheim_templates.json"))
+
+
+def _load_templates_locked() -> None:
+    """Wczytuje szablony z dysku raz na proces."""
+    global _templates_loaded
+    if _templates_loaded:
+        return
+    _templates_loaded = True
+    path = templates_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if isinstance(data, dict):
+        _templates.update(
+            {k: v for k, v in data.items() if isinstance(v, dict) and v.get("url")}
+        )
+        logger.info("[manheim-jobs] wczytano szablony: %s", ", ".join(sorted(_templates)))
+
+
+def _save_templates_locked() -> None:
+    """Szablon niesie nagłówki autoryzacji strony, więc plik tylko dla właściciela."""
+    path = templates_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(_templates, ensure_ascii=False), encoding="utf-8")
+        path.chmod(0o600)
+    except OSError as exc:
+        logger.warning("[manheim-jobs] nie zapisałem szablonów do %s: %s", path, exc)
 
 
 def job_ttl_seconds() -> float:
@@ -77,19 +113,26 @@ def create(keyword: str) -> str:
 def store_templates(templates: dict) -> int:
     """Zapamiętuje szablony przysłane przez kolektor. Zwraca ile znanych."""
     with _lock:
+        _load_templates_locked()
+        changed = False
         for name, template in (templates or {}).items():
             if isinstance(template, dict) and template.get("url"):
                 _templates[name] = template
+                changed = True
+        if changed:
+            _save_templates_locked()
         return len(_templates)
 
 
 def templates() -> dict[str, dict]:
     with _lock:
+        _load_templates_locked()
         return dict(_templates)
 
 
 def next_pending() -> Optional[dict]:
     with _lock:
+        _load_templates_locked()
         _prune_locked()
         for job in sorted(_jobs.values(), key=lambda item: item["createdAt"]):
             if job["status"] == "pending":
@@ -131,6 +174,7 @@ def get(job_id: str) -> Optional[dict]:
 
 def status() -> dict[str, Any]:
     with _lock:
+        _load_templates_locked()
         _prune_locked()
         counts: dict[str, int] = {}
         for job in _jobs.values():
@@ -145,6 +189,8 @@ def status() -> dict[str, Any]:
 
 
 def clear() -> None:
+    global _templates_loaded
     with _lock:
         _jobs.clear()
         _templates.clear()
+        _templates_loaded = True  # test nie ma wczytywać stanu z dysku

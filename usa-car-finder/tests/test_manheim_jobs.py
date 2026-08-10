@@ -148,3 +148,29 @@ def test_templates_survive_and_ride_along_with_the_job():
     job_id = manheim_jobs.create("bmw x5")
     taken = manheim_jobs.next_pending()
     assert taken["templates"]["getSearches"]["url"].endswith("/graphql")
+
+
+def test_templates_survive_a_backend_restart(monkeypatch, tmp_path):
+    """Pamięć procesu nie wystarcza — deploy albo restart usługi ją kasuje.
+
+    Objaw był mylący: zlecenia wracały z "brak szablonu" mimo że przeglądarka
+    stała nietknięta.
+    """
+    path = tmp_path / "manheim_templates.json"
+    monkeypatch.setenv("MANHEIM_TEMPLATES_PATH", str(path))
+    manheim_jobs.clear()
+
+    template = {
+        "url": "https://onesearch-api.manheim.com/graphql",
+        "body": {"operationName": "getSearches"},
+    }
+    manheim_jobs.store_templates({"getSearches": template})
+    assert path.exists()
+    assert oct(path.stat().st_mode)[-3:] == "600", "plik niesie nagłówki autoryzacji"
+
+    # Symulacja restartu procesu: czyścimy pamięć i pozwalamy wczytać z dysku.
+    manheim_jobs._templates.clear()
+    manheim_jobs._templates_loaded = False
+
+    assert "getSearches" in manheim_jobs.templates()
+    assert manheim_jobs.status()["templates"] == ["getSearches"]
