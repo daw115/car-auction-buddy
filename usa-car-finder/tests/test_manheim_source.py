@@ -521,3 +521,30 @@ def test_pre_rank_keeps_manheim_even_when_the_heuristic_dislikes_it():
 
     assert len(top) == 10
     assert sum(1 for l in top if l.source == "manheim") == 3
+
+
+def test_manheim_lots_with_a_sale_date_survive_the_auction_window(monkeypatch):
+    """Datowane loty Manheima wypadały co do jednego, mimo działającego kolektora.
+
+    Wyjątek obejmował tylko loty BEZ daty, a sprzedaże czasowe Manheima mają
+    termin — zwykle poza oknem 12h-120h, bo to okno pilnuje, żeby broker zdążył
+    zalicytować na Copart/IAAI w tym tygodniu. Do rynku dealerskiego się nie stosuje.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("MANHEIM_IGNORE_AUCTION_WINDOW", "true")
+    scraper = AutomatedScraper()
+    daleko = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    blisko = (datetime.now(timezone.utc) + timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+
+    lots = [
+        CarLot(source="manheim", lot_id="m1", url="u", auction_date=daleko),
+        CarLot(source="manheim", lot_id="m2", url="u"),  # bez daty (OVE/Buy Now)
+        CarLot(source="copart", lot_id="c1", url="u", auction_date=blisko),
+        CarLot(source="copart", lot_id="c2", url="u", auction_date=daleko),
+    ]
+
+    kept = {lot.lot_id for lot in scraper._filter_by_auction_date(lots, min_hours=12, max_hours=120)}
+
+    assert {"m1", "m2"} <= kept, "Manheim ma przechodzić niezależnie od terminu"
+    assert "c1" in kept and "c2" not in kept, "Copart nadal podlega oknu"

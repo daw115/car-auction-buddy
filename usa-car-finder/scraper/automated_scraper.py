@@ -374,7 +374,8 @@ class AutomatedScraper:
         Filtruje loty, zostawiając tylko te, których aukcja kończy się pomiędzy min_hours a max_hours.
 
         Format auction_date: "YYYY-MM-DD HH:MM:SS" (UTC) lub "YYYY-MM-DD".
-        Loty bez daty aukcji są odrzucane.
+        Loty bez daty aukcji są odrzucane — poza Manheimem, który ma własny
+        kalendarz (patrz MANHEIM_IGNORE_AUCTION_WINDOW niżej).
         """
         if min_hours > max_hours:
             min_hours, max_hours = max_hours, min_hours
@@ -384,17 +385,25 @@ class AutomatedScraper:
         deadline = now + timedelta(hours=max_hours)
         filtered = []
 
-        keep_dateless_manheim = (
+        skip_window_for_manheim = (
             os.getenv("MANHEIM_IGNORE_AUCTION_WINDOW", "true").lower() == "true"
         )
 
         for lot in lots:
+            # Manheim ma własny kalendarz: OVE / Buy Now / Private Store nie mają
+            # terminu w ogóle, a sprzedaże czasowe bywają rozpisane na tygodnie.
+            # Okno 12h-120h istnieje po to, żeby broker dostawał loty Copart/IAAI,
+            # na które zdąży zalicytować w tym tygodniu — do rynku dealerskiego się
+            # nie stosuje. Wcześniej wyjątek obejmował tylko loty BEZ daty, więc
+            # datowane loty Manheima wypadały co do jednego i źródło znikało
+            # z wyników mimo poprawnie działającego kolektora.
+            if lot.source == "manheim" and skip_window_for_manheim:
+                filtered.append(lot)
+                continue
+
             if not lot.auction_date:
-                # Manheim: OVE / Buy Now / Private Store nie mają terminu zakończenia
-                # aukcji — odrzucanie ich tu wycięłoby całe źródło do zera. Copart/IAAI
-                # bez daty nadal odrzucamy, tam brak daty oznacza niekompletny scrape.
-                if lot.source == "manheim" and keep_dateless_manheim:
-                    filtered.append(lot)
+                # Copart/IAAI bez daty odrzucamy — tam brak daty oznacza
+                # niekompletny scrape, a nie inny model sprzedaży.
                 continue
 
             try:
