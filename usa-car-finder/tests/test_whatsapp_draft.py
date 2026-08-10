@@ -105,3 +105,47 @@ def test_offer_notes_fall_back_when_price_is_unknown():
 
     assert "Toyota RAV4" in text
     assert text.rstrip().endswith("?")
+
+
+def test_endpoint_returns_text_and_link_but_sends_nothing(monkeypatch):
+    """Backend oddaje treść brokerowi — wysyłka zostaje decyzją człowieka."""
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
+    payload = {
+        "lots": [lot(price=6000.0).model_dump()],
+        "client": {"name": "Wojciech Beyger", "phone": "605083832"},
+        "budgetPln": 60_000,
+        "settlement": "private",
+    }
+
+    response = TestClient(api_main.app).post("/api/offers/whatsapp", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["offers"] == 1
+    assert "zł" in body["text"] and "/10" not in body["text"]
+    assert body["waMeUrl"].startswith("https://wa.me/48605083832?text=")
+
+
+def test_endpoint_without_phone_still_returns_the_text():
+    """Brak numeru nie może blokować treści — broker skopiuje ją ręcznie."""
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+
+    response = TestClient(api_main.app).post(
+        "/api/offers/whatsapp",
+        json={"lots": [lot().model_dump()], "client": {"name": "Piotr"}},
+    )
+
+    body = response.json()
+    assert body["text"] and body["waMeUrl"] is None
+
+
+def test_endpoint_with_no_affordable_lots_returns_nothing_to_send():
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+
+    response = TestClient(api_main.app).post("/api/offers/whatsapp", json={"lots": []})
+    assert response.json() == {"text": None, "offers": 0, "waMeUrl": None}

@@ -1520,6 +1520,52 @@ async def manheim_search(
     return {"jobId": job_id, "status": "timeout", "vehicles": 0, "sample": []}
 
 
+class WhatsappDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    lots: list[dict] = Field(default_factory=list, max_length=10)
+    client: Optional[ClientContext] = None
+    budget_pln: Optional[float] = Field(default=None, alias="budgetPln")
+    settlement: str = "private"
+
+
+@app.post("/api/offers/whatsapp")
+async def offers_whatsapp_draft(
+    request: WhatsappDraftRequest,
+    _auth: None = Depends(_require_bearer),
+):
+    """Gotowa wiadomość do klienta plus link wa.me.
+
+    NICZEGO NIE WYSYŁA — treść trafia do brokera, a on decyduje. Wiadomość idzie
+    pod jego nazwiskiem, więc akceptacja człowieka jest tu warunkiem, nie opcją.
+    """
+    from parser.models import CarLot
+    from report.whatsapp import build_draft
+
+    lots: list[CarLot] = []
+    for payload in request.lots:
+        try:
+            lots.append(CarLot(**payload))
+        except Exception:
+            logger.debug("[whatsapp] pomijam lot o nieprawidłowym kształcie", exc_info=True)
+
+    draft = build_draft(
+        lots,
+        client_name=(request.client.name if request.client else None),
+        budget_pln=request.budget_pln,
+        settlement="company" if request.settlement == "company" else "private",
+    )
+    if draft is None:
+        return {"text": None, "offers": 0, "waMeUrl": None}
+
+    phone = request.client.phone if request.client else None
+    return {
+        "text": draft.text,
+        "offers": draft.offers,
+        "waMeUrl": draft.wa_me_url(phone) if phone else None,
+    }
+
+
 @app.get("/api/manheim/next-job")
 async def manheim_next_job(_auth: None = Depends(_require_manheim_ingest_token)):
     """Odpytywane przez rozszerzenie. Zwraca zadanie albo pustkę.
