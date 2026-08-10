@@ -19,6 +19,10 @@ const MAX_BUFFER = 40;
 
 let buffer = [];
 let flushTimer = null;
+// Ile szablonów widział service worker przy ostatnim zleceniu — doklejamy to do
+// raportu błędu, żeby odróżnić "backend nic nie przysłał" od "zgubiło się po
+// drodze do strony".
+let lastJobTemplateCount = -1;
 
 async function config() {
   const stored = await chrome.storage.local.get(DEFAULTS);
@@ -103,7 +107,8 @@ async function pollForJob() {
     return;
   }
 
-  await setStatus(`zlecenie: ${job.keyword}`);
+  lastJobTemplateCount = Object.keys(job.templates || {}).length;
+  await setStatus(`zlecenie: ${job.keyword} (szablony: ${lastJobTemplateCount})`);
   try {
     // frameId 0 = ramka główna. Bez tego zlecenie idzie do wszystkich ramek,
     // a te z innym originem kończą na CORS i odsyłają błąd szybciej niż
@@ -131,7 +136,7 @@ async function reportJob(jobId, capture, error) {
       body: JSON.stringify({
         captures: capture ? [capture] : [],
         jobId,
-        error: error || null,
+        error: error ? `${error} [worker widział: ${lastJobTemplateCount}]` : null,
       }),
     });
     await setStatus(error ? `zlecenie ${jobId}: ${error}` : `zlecenie ${jobId}: HTTP ${response.status}`);
