@@ -211,3 +211,25 @@ def test_rejection_shows_up_in_the_ingest_status(monkeypatch):
 
     assert rejection["status"] == 403
     assert "token" in rejection["detail"]
+
+
+def test_html_reports_open_instead_of_downloading(tmp_path, monkeypatch):
+    """Raport klient/broker to strona do czytania, nie plik do pobrania.
+
+    Bez rozpoznanego typu HTML leciał jako octet-stream, a `filename=` ustawiał
+    Content-Disposition: attachment — przeglądarka ściągała raport zamiast go
+    otworzyć.
+    """
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
+    monkeypatch.setattr(api_main, "SEARCH_ARTIFACT_DIR", tmp_path)
+    (tmp_path / "raport_klient.html").write_text("<h1>Oferta</h1>", encoding="utf-8")
+
+    with TestClient(api_main.app) as client:
+        response = client.get("/artifacts/raport_klient.html")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "attachment" not in response.headers.get("content-disposition", "")

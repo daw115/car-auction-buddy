@@ -368,14 +368,20 @@ async def download_artifact(filename: str):
         raise HTTPException(status_code=404, detail="Nie znaleziono artefaktu")
 
     media_types = {
+        ".html": "text/html; charset=utf-8",
         ".json": "application/json",
         ".md": "text/markdown; charset=utf-8",
         ".txt": "text/plain; charset=utf-8",
     }
+    suffix = path.suffix.lower()
+    # Raporty klient/broker to strony do czytania. Podanie `filename=` ustawia
+    # Content-Disposition: attachment, więc przeglądarka je ŚCIĄGAŁA zamiast
+    # otworzyć — a plik bez rozpoznanego typu leciał jako octet-stream.
+    viewable = suffix in (".html", ".md", ".txt", ".json")
     return FileResponse(
         path=str(path),
-        media_type=media_types.get(path.suffix.lower(), "application/octet-stream"),
-        filename=path.name,
+        media_type=media_types.get(suffix, "application/octet-stream"),
+        filename=None if viewable else path.name,
     )
 
 
