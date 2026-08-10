@@ -368,6 +368,14 @@ def _call_claude_code_json(system: str, user: str, max_tokens: int = 1500) -> di
             ],
             input=f"{system}\n\n{user}",
             capture_output=True, text=True, timeout=timeout, cwd=workdir,
+            # Bez wyciecia ANTHROPIC_* Claude Code uzna klucz API z .env za
+            # nadrzedny wobec zalogowanej subskrypcji i padnie na martwym kluczu.
+            env={
+                k: v for k, v in os.environ.items()
+                if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+                             "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
+                             "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")
+            },
         )
     except FileNotFoundError as exc:
         raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc

@@ -1173,6 +1173,28 @@ def _call_kiro(model: str, system: str, user_prompt: str, max_tokens: int = 8192
 _CLAUDE_CODE_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
 _CLAUDE_CODE_FENCE_RE = re.compile(r"^\s*```[a-zA-Z]*\s*|\s*```\s*$")
 
+# Claude Code przy obecnym ANTHROPIC_API_KEY uznaje go za nadrzedny wobec
+# zalogowanej subskrypcji i konczy sie bledem:
+#   "ANTHROPIC_API_KEY or another auth source is set and takes precedence
+#    over your claude.ai login"
+# Backend ma ten klucz w .env (do bezposrednich wywolan Anthropic API), wiec
+# podproces musi go dostac wyczyszczonego — inaczej Claude Code probuje uzyc
+# cudzego, martwego klucza zamiast sesji uzytkownika.
+_CLAUDE_CODE_STRIPPED_ENV = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+)
+
+
+def _claude_code_env() -> dict:
+    """Srodowisko dla podprocesu Claude Code — bez zmiennych, ktore przestawiaja
+    go na uwierzytelnienie kluczem API lub na innego dostawce."""
+    return {k: v for k, v in os.environ.items() if k not in _CLAUDE_CODE_STRIPPED_ENV}
+
 
 def _call_claude_code(model: str, system: str, user_prompt: str, max_tokens: int = 8192) -> str:
     """Wywołuje Claude Code w trybie headless (`claude -p`) — jeden proces
@@ -1206,6 +1228,7 @@ def _call_claude_code(model: str, system: str, user_prompt: str, max_tokens: int
         "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep",
         "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
     ]
+    env = _claude_code_env()
 
     last_exc: Exception = RuntimeError("Claude Code: brak odpowiedzi")
     for attempt in range(max_retries):
@@ -1213,7 +1236,7 @@ def _call_claude_code(model: str, system: str, user_prompt: str, max_tokens: int
             result = subprocess.run(
                 cmd,
                 input=prompt,
-                capture_output=True, text=True, timeout=timeout, cwd=workdir,
+                capture_output=True, text=True, timeout=timeout, cwd=workdir, env=env,
             )
         except FileNotFoundError as exc:
             raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc
