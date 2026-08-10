@@ -129,11 +129,14 @@ def test_endpoint_returns_text_and_link_but_sends_nothing(monkeypatch):
     assert body["waMeUrl"].startswith("https://wa.me/48605083832?text=")
 
 
-def test_endpoint_without_phone_still_returns_the_text():
+def test_endpoint_without_phone_still_returns_the_text(monkeypatch):
     """Brak numeru nie może blokować treści — broker skopiuje ją ręcznie."""
     from fastapi.testclient import TestClient
     from api import main as api_main
 
+    # Inne moduły testowe ustawiają token w środowisku — bez tego endpoint
+    # odpowiada 401 i test mierzy autoryzację zamiast treści.
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
     response = TestClient(api_main.app).post(
         "/api/offers/whatsapp",
         json={"lots": [lot().model_dump()], "client": {"name": "Piotr"}},
@@ -143,9 +146,10 @@ def test_endpoint_without_phone_still_returns_the_text():
     assert body["text"] and body["waMeUrl"] is None
 
 
-def test_endpoint_with_no_affordable_lots_returns_nothing_to_send():
+def test_endpoint_with_no_affordable_lots_returns_nothing_to_send(monkeypatch):
     from fastapi.testclient import TestClient
     from api import main as api_main
 
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
     response = TestClient(api_main.app).post("/api/offers/whatsapp", json={"lots": []})
     assert response.json() == {"text": None, "offers": 0, "waMeUrl": None}
