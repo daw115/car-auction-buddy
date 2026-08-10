@@ -78,13 +78,14 @@ mkdir -p extensions/auctiongate extensions/autohelperbot
 # Włącz w .env:
 # USE_EXTENSIONS=true
 # KEEP_BROWSER_OPEN=true               # jeden stały Chrome z profilem data/chrome_profile
-# BROWSER_CHANNEL=chrome               # Google Chrome; AuctionGate blokuje start bundled Chromium
-# BROWSER_EXECUTABLE_PATH=             # opcjonalnie pełna ścieżka, jeśli channel=chrome nie wystarczy
+# BROWSER_CHANNEL=chromium             # Chrome >=137 ignoruje --load-extension (patrz sekcja Manheim)
+# BROWSER_EXECUTABLE_PATH=             # opcjonalnie pełna ścieżka do binarki Chromium
 # DISABLED_EXTENSIONS=                 # np. auctiongate, tylko awaryjnie
 # USE_MOCK_DATA=false
 # AI_ANALYSIS_MODE=auto                  # auto | anthropic | local
-# Uwaga: pełny AuctionGate ładuje się poprawnie w Google Chrome. Bundled Chromium
-# potrafi zawiesić start na service workerze tego rozszerzenia.
+# Uwaga: AuctionGate potrafi zawiesić start bundled Chromium na swoim service
+# workerze — stąd DISABLED_EXTENSIONS=auctiongate. Przejście na Google Chrome
+# NIE jest już obejściem: od Chrome 137 rozszerzenia nie ładują się tam wcale.
 # FILTER_SELLER_INSURANCE_ONLY=false   # opcjonalnie true, aby zostawić tylko seller_type=insurance
 # FORCE_REFRESH=true                   # true = zawsze pobieraj świeże strony (bez cache)
 # CACHE_MAX_AGE_HOURS=24               # po ilu godzinach cache lotu uznać za przeterminowany
@@ -106,6 +107,92 @@ mkdir -p extensions/auctiongate extensions/autohelperbot
 # Gdy USE_EXTENSIONS=true, scraper odczytuje dane botów bezpośrednio z iframe
 # na stronie detalu, zamiast liczyć na zapisanie iframe w HTML.
 ```
+
+## Manheim (źródło uzupełniające, TOP 3)
+
+Manheim wymaga konta dealerskiego, a sesję utrzymuje wtyczka **BidWise (Eridan)**.
+Ustalenia z rozpoznania na żywo, wszystkie zmierzone:
+
+| próba | wynik |
+| --- | --- |
+| wyłączenie BidWise | `search.manheim.com` → przekierowanie na publiczne `site.manheim.com` |
+| Chrome ≥ 137 + `--load-extension` | wtyczka w ogóle się nie ładuje |
+| Chromium + `--load-extension` | ładuje się, po ~10 s wyłącza SAMA SIEBIE (`disable_reasons=1`) |
+| Playwright/CDP na karcie Manheima | karta znika w ciągu 5 s, także bez żadnej interakcji |
+
+Przyczyna ostatniego: BidWise trzyma slot `chrome.debugger` (tak wstrzykuje
+autoryzację), a Chrome dopuszcza jednego klienta debuggera na kartę. Dlatego
+**dane nie są scrapowane, tylko przychodzą pushem ze strony** — przez własne
+rozszerzenie `extensions/manheim-collector`, które nie dotyka debuggera.
+
+```bash
+# 1. Chrome z BidWise (raz: zainstaluj ze Web Store i zaloguj)
+bash scripts/manheim_chrome_debug.sh
+
+# 2. Kolektor: chrome://extensions → Developer mode → Load unpacked
+#    → extensions/manheim-collector
+
+# 3. .env
+# MANHEIM_BACKEND_ENABLED=true
+# MANHEIM_SOURCE_MODE=collector
+
+# 4. Backend + wyszukiwanie na Manheimie w tym oknie
+python -m api.main
+curl -s http://127.0.0.1:8000/api/manheim/status
+```
+
+Jak to działa:
+
+- SPA woła `POST onesearch-api.manheim.com/graphql`: `getSearches` z hasłem
+  (`{"keyword":"toyota rav4",…}` — JSON zapakowany w string) zwraca `searchId`,
+  a `getExecuteSearchId` pełne wyniki.
+- Wyniki wracają jako **gzip w base64** w `stringifiedJSON` przy `compressed: true`
+  (zmierzone: 1,13 MB → 100 lotów). Rozpakowuje to `parser/manheim_records.py`.
+- Każdy lot przychodzi w dwóch fragmentach (opis + pod-obiekt z detalami), więc
+  rekordy scalamy po VIN-ie: 200 surowych → 100 pojazdów.
+- `api/manheim_ingest.py` trzyma je z TTL (`MANHEIM_INGEST_TTL_MINUTES`), a źródło
+  `manheim` filtruje po kryteriach klienta i oddaje TOP 3.
+
+Czego się spodziewać:
+
+- `GET /api/capabilities` zwraca `manheim: {available: true, mode: "live"}` tylko
+  przy komplecie konfiguracji; inaczej `unavailable` z
+  `reason: manheim_session_not_configured`.
+- Loty OVE / Buy Now / Private Store nie mają terminu zakończenia aukcji —
+  domyślnie (`MANHEIM_IGNORE_AUCTION_WINDOW=true`) przechodzą przez filtr okna
+  czasowego, inaczej Manheim zawsze dawałby 0 wyników.
+- `FILTER_SELLER_INSURANCE_ONLY=true` wycina Manheima w całości — to rynek
+  dealerski, `seller_type` zawsze `dealer`.
+### Wyszukiwanie na żądanie
+
+Źródło `manheim` nie czeka na to, aż operator sam czegoś poszuka — zleca hasło
+i dostaje świeże wyniki. Kierunek jest odwrócony, bo backend nie ma jak wejść
+na Manheima:
+
+```
+źródło manheim → zadanie {keyword}                (api/manheim_jobs.py)
+rozszerzenie   → GET  /api/manheim/next-job       (co ~5 s, chrome.alarms)
+strona         → getSearches {keyword}            → {"id": …}
+strona         → getExecuteSearchId {searchId}    → wyniki
+rozszerzenie   → POST /api/manheim/ingest {jobId} → backend budzi czekające źródło
+```
+
+Zmierzone na żywo: 100 pojazdów w ~7 sekund od zlecenia. Ręczne wyzwolenie
+(bez odpalania analizy AI):
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/manheim/search \
+  -H "Content-Type: application/json" \
+  -d '{"keyword":"Toyota RAV4","timeoutSeconds":70}'
+```
+
+Dwie rzeczy warte zapamiętania:
+
+- Szablon żądania pochodzi z ruchu samej aplikacji, więc **po przeładowaniu
+  karty trzeba raz wyszukać ręcznie**. Zanim to nastąpi, zlecenie kończy się
+  czytelnym błędem, a źródło sięga po to, co kolektor zebrał wcześniej.
+- Zadanie wydane, a nieodesłane w `MANHEIM_JOB_LEASE_SECONDS`, wraca do kolejki
+  — service worker MV3 bywa usypiany w trakcie roboty.
 
 ## Architektura
 

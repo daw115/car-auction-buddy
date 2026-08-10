@@ -1,2 +1,11 @@
 # Chrome extension compiled packages (regeneratable, large binary)
 extensions/*.crx
+# BidWise (~15 MB) — kopiowana z lokalnego Chrome przez
+# scripts/sync_bidwise_extension.py, więc nie trzymamy jej w repo.
+extensions/bidwise/
+# Surowe paczki z kolektora — diagnostyka, nie kod.
+data/manheim_ingest/
+# Bazy, cache HTML i profile przegladarki — nigdy do repo.
+data/
+# Cache Hypothesis (regenerowalny).
+.hypothesis/
