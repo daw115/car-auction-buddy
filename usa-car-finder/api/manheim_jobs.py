@@ -135,7 +135,13 @@ def status() -> dict[str, Any]:
         counts: dict[str, int] = {}
         for job in _jobs.values():
             counts[job["status"]] = counts.get(job["status"], 0) + 1
-        return {"jobs": len(_jobs), "byStatus": counts}
+        return {
+            "jobs": len(_jobs),
+            "byStatus": counts,
+            # Bez szablonu kolektor nie powtórzy wyszukiwania, więc to pierwsza
+            # rzecz do sprawdzenia, gdy zlecenia zaczynają wracać puste.
+            "templates": sorted(_templates),
+        }
 
 
 def clear() -> None:
