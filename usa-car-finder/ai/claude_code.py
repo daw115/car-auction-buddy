@@ -139,8 +139,21 @@ def _workdir() -> str:
     return path
 
 
-def build_command(system: str, *, model: str, effort: Optional[str] = None) -> list[str]:
-    """Argumenty wywołania. Wydzielone, żeby dało się je sprawdzić testem bez uruchamiania CLI."""
+def build_command(
+    system: str,
+    *,
+    model: str,
+    effort: Optional[str] = None,
+    allowed_tools: str = "",
+    add_dirs: Optional[list[str]] = None,
+) -> list[str]:
+    """Argumenty wywołania. Wydzielone, żeby dało się je sprawdzić testem bez uruchamiania CLI.
+
+    Domyślnie bez narzędzi: zadania tekstowe ich nie potrzebują, a każde
+    uruchomienie narzędzia to nieprzewidywalny czas i koszt. Wyjątkiem jest
+    analiza zdjęć — model musi móc je odczytać z dysku, bo `claude -p` nie
+    przyjmuje obrazów inaczej niż przez narzędzie Read (zmierzone na CLI 2.1.220).
+    """
     cmd = [
         cli_path(), "-p",
         "--model", model,
@@ -148,8 +161,10 @@ def build_command(system: str, *, model: str, effort: Optional[str] = None) -> l
         "--output-format", "json",
         "--strict-mcp-config",
         "--no-session-persistence",
-        "--allowedTools", "",
+        "--allowedTools", allowed_tools,
     ]
+    for directory in add_dirs or []:
+        cmd += ["--add-dir", directory]
     if effort:
         cmd += ["--effort", effort]
     return cmd
@@ -214,6 +229,8 @@ def call(
     timeout: Optional[int] = None,
     retries: Optional[int] = None,
     label: str = "call",
+    allowed_tools: str = "",
+    add_dirs: Optional[list[str]] = None,
 ) -> str:
     """Tekst odpowiedzi. Prompt idzie przez stdin, bo bywa większy niż limit argv.
 
@@ -223,7 +240,13 @@ def call(
     chosen = _model(model, model_env)
     timeout_s = timeout or int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_S)))
     attempts = retries or int(os.getenv("CLAUDE_CODE_MAX_RETRIES", str(DEFAULT_RETRIES)))
-    cmd = build_command(system, model=chosen, effort=effort or os.getenv("CLAUDE_CODE_EFFORT") or None)
+    cmd = build_command(
+        system,
+        model=chosen,
+        effort=effort or os.getenv("CLAUDE_CODE_EFFORT") or None,
+        allowed_tools=allowed_tools,
+        add_dirs=add_dirs,
+    )
     env, workdir = _env(), _workdir()
 
     last: Exception = RuntimeError("Claude Code: brak odpowiedzi")

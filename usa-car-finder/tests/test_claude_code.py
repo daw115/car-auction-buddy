@@ -4,6 +4,7 @@ Testy nie uruchamiają CLI. Sprawdzają to, co da się zepsuć po cichu: flagi d
 o cache'u promptów, czyszczenie środowiska i rozpoznanie wygasłej sesji.
 """
 import json
+import os
 import subprocess
 
 import pytest
@@ -213,3 +214,39 @@ def test_cli_is_found_in_the_native_install_dir_when_not_on_path(monkeypatch, tm
 def test_explicit_path_wins_over_everything(monkeypatch):
     monkeypatch.setenv("CLAUDE_CLI_PATH", "/opt/claude/bin/claude")
     assert claude_code.cli_path() == "/opt/claude/bin/claude"
+
+
+def test_text_calls_stay_toolless_so_the_prompt_cache_keeps_working():
+    """Domyślne argv nie może się ruszyć — na nim stoi cache promptów.
+
+    Analiza wysyła ten sam prefiks systemowy przy każdym wywołaniu; zmiana
+    choćby kolejności flag zamienia cache HIT w MISS i mnoży koszt.
+    """
+    cmd = build_command("SYSTEM", model="sonnet")
+
+    assert "--allowedTools" in cmd
+    assert cmd[cmd.index("--allowedTools") + 1] == ""
+    assert "--add-dir" not in cmd
+
+
+def test_vision_calls_may_read_exactly_one_directory():
+    """`claude -p` nie przyjmuje obrazów inaczej niż przez narzędzie Read."""
+    cmd = build_command("SYSTEM", model="opus", allowed_tools="Read", add_dirs=["/tmp/zdjecia"])
+
+    assert cmd[cmd.index("--allowedTools") + 1] == "Read"
+    assert cmd[cmd.index("--add-dir") + 1] == "/tmp/zdjecia"
+
+
+def test_every_process_has_its_own_model_knob():
+    """Każdy proces dobiera model do zadania, zamiast dziedziczyć jeden globalny."""
+    from ai import claude_code
+
+    for env_var, expected in (
+        ("CLAUDE_CODE_VISION_MODEL", "opus"),
+        ("CLAUDE_CODE_NORMALIZE_MODEL", "haiku"),
+    ):
+        os.environ[env_var] = expected
+        try:
+            assert claude_code._model(None, env_var) == expected
+        finally:
+            del os.environ[env_var]

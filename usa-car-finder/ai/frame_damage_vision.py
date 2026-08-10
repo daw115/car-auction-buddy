@@ -136,7 +136,10 @@ def _resolve_frame_damage_provider() -> str:
             return override.lower()
     except Exception as exc:
         logger.debug("[frame_damage] settings_db override lookup failed, using .env default: %s", exc)
-    return (os.getenv("FRAME_DAMAGE_AI_PROVIDER", "gemini") or "gemini").lower()
+    # Domyślnie Claude Code: to jedyny dostawca, który na tym serwerze faktycznie
+    # ma poświadczenia. Gemini zostaje jako opcja, ale bez GEMINI_API_KEY check
+    # cicho się nie wykonywał i uszkodzenia konstrukcji nikt nie sprawdzał.
+    return (os.getenv("FRAME_DAMAGE_AI_PROVIDER", "claude-code") or "claude-code").lower()
 
 
 def _parse_frame_damage_json(raw: str, cache_key: str) -> Optional[dict]:
@@ -200,6 +203,80 @@ def _call_vision_anthropic(images: list[str], user_text: str, cache_key: str) ->
 
     raw = "".join(b.text for b in resp.content if b.type == "text")
     return _parse_frame_damage_json(raw, cache_key)
+
+
+def _call_vision_claude_code(images: list[str], user_text: str, cache_key: str) -> Optional[dict]:
+    """Analiza zdjęć przez Claude Code w trybie headless.
+
+    `claude -p` nie przyjmuje obrazów w prompcie — jedyną drogą jest ściągnięcie
+    ich na dysk i pozwolenie modelowi odczytać je narzędziem Read (zmierzone na
+    CLI 2.1.220). Dlatego to jedyne miejsce, gdzie wołamy CLI z narzędziem;
+    zakres ograniczamy do Read i do katalogu tymczasowego z tymi zdjęciami.
+
+    Zdjęcia pobieramy sami, bo CDN Copartu nie oddaje ich zdalnemu API
+    dostawcy modelu — z serwera schodzą bez przeszkód.
+    """
+    import shutil
+    import tempfile
+
+    from ai import claude_code
+
+    if not claude_code.is_available():
+        logger.warning("[frame_damage] Claude Code niedostępny — pomijam vision check")
+        return None
+
+    timeout = int(os.getenv("FRAME_DAMAGE_DOWNLOAD_TIMEOUT", "30"))
+    workdir = tempfile.mkdtemp(prefix="frame-damage-")
+    try:
+        paths: list[str] = []
+        for index, url in enumerate(images):
+            downloaded = _download_image_bytes(url, timeout)
+            if not downloaded:
+                continue
+            data, suffix = downloaded
+            path = os.path.join(workdir, f"zdjecie_{index + 1}{suffix}")
+            with open(path, "wb") as handle:
+                handle.write(data)
+            paths.append(path)
+
+        if not paths:
+            logger.warning("[frame_damage] %s: nie udało się pobrać żadnego zdjęcia", cache_key)
+            return None
+
+        listing = "\n".join(f"- {path}" for path in paths)
+        prompt = (
+            f"{user_text}\n\nObejrzyj WSZYSTKIE poniższe zdjęcia, zanim odpowiesz:\n{listing}"
+        )
+        raw = claude_code.call(
+            SYSTEM_PROMPT,
+            prompt,
+            model_env="CLAUDE_CODE_VISION_MODEL",
+            allowed_tools="Read",
+            add_dirs=[workdir],
+            timeout=int(os.getenv("FRAME_DAMAGE_TIMEOUT_SECONDS", "180")),
+            label=f"frame_damage {cache_key}",
+        )
+        return _parse_frame_damage_json(raw, cache_key)
+    except Exception as exc:
+        logger.warning("[frame_damage] %s: Claude Code nie odpowiedział: %s", cache_key, exc)
+        return None
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _download_image_bytes(url: str, timeout: int) -> Optional[tuple[bytes, str]]:
+    """Surowe bajty zdjęcia plus rozszerzenie — dla dostawców czytających z dysku."""
+    import requests
+
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+        suffix = {"image/png": ".png", "image/webp": ".webp"}.get(content_type, ".jpg")
+        return resp.content, suffix
+    except Exception as exc:
+        logger.debug("[frame_damage] nie pobrałem %s: %s", url, exc)
+        return None
 
 
 def _download_image_b64(url: str, timeout: int) -> Optional[tuple[str, str]]:
@@ -313,24 +390,31 @@ def check_frame_damage(lot: CarLot, *, force: bool = False) -> Optional[dict]:
     )
 
     provider = _resolve_frame_damage_provider()
+    has_gemini_key = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+
     if provider == "kiro":
         # Kiro CLI to subprocess tekstowy (kiro-cli chat --no-interactive "prompt") —
-        # nie ma potwierdzonego mechanizmu za łączenia obrazów do promptu (brak
-        # udokumentowanej flagi --image/--file w headless mode). Zamiast zgadywać
-        # i ryzykować cichy błąd, jawnie logujemy i spadamy do Gemini (vision-native).
+        # nie ma potwierdzonego mechanizmu załączania obrazów do promptu (brak
+        # udokumentowanej flagi --image/--file w headless mode). Claude Code tę
+        # drogę ma: zdjęcia z dysku czyta narzędziem Read.
         logger.info(
             "[frame_damage] FRAME_DAMAGE_AI_PROVIDER=kiro nieobsługiwane dla zadania "
-            "wizyjnego (kiro-cli nie ma potwierdzonego wejścia obrazkowego) — używam Gemini"
+            "wizyjnego (kiro-cli nie ma wejścia obrazkowego) — używam Claude Code"
         )
-        provider = "gemini"
+        provider = "claude-code"
 
-    if provider == "anthropic":
+    if provider in ("claude-code", "claude_code", "claudecode"):
+        data = _call_vision_claude_code(images, user_text, cache_key)
+        if data is None and has_gemini_key:
+            logger.info("[frame_damage] Claude Code bez wyniku — fallback Gemini")
+            data = _call_vision_gemini(images, user_text, cache_key)
+    elif provider == "anthropic":
         data = _call_vision_anthropic(images, user_text, cache_key)
     else:
         data = _call_vision_gemini(images, user_text, cache_key)
-        if data is None and os.getenv("ANTHROPIC_API_KEY"):
-            logger.info("[frame_damage] %s nie zwrócił wyniku — fallback Anthropic", provider)
-            data = _call_vision_anthropic(images, user_text, cache_key)
+        if data is None:
+            logger.info("[frame_damage] %s bez wyniku — fallback Claude Code", provider)
+            data = _call_vision_claude_code(images, user_text, cache_key)
 
     if not data or "frame_damaged" not in data:
         return None

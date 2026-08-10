@@ -460,10 +460,47 @@ def _verify_with_kiro_impl(make: str, original_text: str, raw_model: Optional[st
     return _parse_normalize_response(raw, raw_model, "kiro", model_name)
 
 
+def _verify_with_claude_code_impl(
+    make: str, original_text: str, raw_model: Optional[str] = None
+) -> Optional[dict]:
+    """Normalizacja nazwy modelu przez Claude Code w trybie headless.
+
+    Dashboard pozwalał wybrać tego dostawcę, ale w rejestrze go nie było — wybór
+    cicho spadał na Gemini, czyli na klucz, którego ten serwer nie ma. Zadanie
+    jest czysto tekstowe i krótkie ("FORD EDGE SEL" -> "Edge"), więc domyślnie
+    idzie najtańszym modelem.
+    """
+    from ai import claude_code
+
+    if not claude_code.is_available():
+        logger.warning("[model_normalization] Claude Code niedostępny")
+        return None
+
+    raw_model_line = f"Sparsowany model: {raw_model}\n" if raw_model else ""
+    user_msg = VERIFY_USER_TEMPLATE.format(
+        make=make, original_text=original_text, raw_model_line=raw_model_line
+    )
+    model_name = os.getenv("CLAUDE_CODE_NORMALIZE_MODEL", "haiku")
+    try:
+        raw = claude_code.call(
+            VERIFY_SYSTEM_PROMPT,
+            user_msg,
+            model=model_name,
+            timeout=int(os.getenv("CLAUDE_CODE_NORMALIZE_TIMEOUT", "90")),
+            label="normalizacja modelu",
+        )
+    except Exception as exc:
+        logger.warning("[model_normalization] Claude Code nie odpowiedział: %s", exc)
+        return None
+    return _parse_normalize_response(raw, raw_model, "claude-code", model_name)
+
+
 _NORMALIZE_PROVIDERS = {
     "gemini": _verify_with_gemini_impl,
     "kiro": _verify_with_kiro_impl,
     "anthropic": _verify_with_anthropic_impl,
+    "claude-code": _verify_with_claude_code_impl,
+    "claude_code": _verify_with_claude_code_impl,
 }
 
 
@@ -488,7 +525,7 @@ def _resolve_normalize_provider() -> str:
             return override.lower()
     except Exception:
         pass
-    return (os.getenv("MODEL_NORMALIZATION_AI_PROVIDER", "gemini") or "gemini").lower()
+    return (os.getenv("MODEL_NORMALIZATION_AI_PROVIDER", "claude-code") or "claude-code").lower()
 
 
 def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str] = None) -> Optional[dict]:
@@ -508,8 +545,11 @@ def verify_with_anthropic(make: str, original_text: str, raw_model: Optional[str
     result = impl(make, original_text, raw_model)
     if result is not None:
         return result
-    if provider != "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
-        logger.info("[model_normalization] %s nie zwrócił wyniku — fallback Anthropic", provider)
+    if provider not in ("claude-code", "claude_code"):
+        logger.info("[model_normalization] %s bez wyniku — fallback Claude Code", provider)
+        return _verify_with_claude_code_impl(make, original_text, raw_model)
+    if os.getenv("ANTHROPIC_API_KEY"):
+        logger.info("[model_normalization] Claude Code bez wyniku — fallback Anthropic")
         return _verify_with_anthropic_impl(make, original_text, raw_model)
     return None
 

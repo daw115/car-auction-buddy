@@ -3820,15 +3820,18 @@ _AI_PROVIDER_TASKS: dict[str, dict] = {
     "model_normalization_ai_provider": {
         "label": "Normalizacja nazw modeli",
         "env_var": "MODEL_NORMALIZATION_AI_PROVIDER",
-        "options": ["gemini", "anthropic", "kiro", "claude-code"],
-        "default": "gemini",
+        "options": ["claude-code", "gemini", "anthropic", "kiro"],
+        "default": "claude-code",
     },
     "frame_damage_ai_provider": {
         "label": "Wykrywanie uszkodzeń ramy (analiza zdjęć)",
         "env_var": "FRAME_DAMAGE_AI_PROVIDER",
-        # Bez "kiro": zadanie wizyjne, kiro-cli nie ma potwierdzonego wejścia obrazkowego.
-        "options": ["gemini", "anthropic"],
-        "default": "gemini",
+        # Bez "kiro": zadanie wizyjne, kiro-cli nie ma potwierdzonego wejścia
+        # obrazkowego. Claude Code ma: czyta zdjęcia z dysku narzędziem Read
+        # (zmierzone na CLI 2.1.220), więc jest tu domyślny — jako jedyny
+        # dostawca, który na tym serwerze faktycznie ma poświadczenia.
+        "options": ["claude-code", "gemini", "anthropic"],
+        "default": "claude-code",
     },
     "offer_agent_ai_provider": {
         "label": "Agent ofert (automatyzacja mailowa)",
