@@ -161,8 +161,11 @@ Czego się spodziewać:
 - Loty OVE / Buy Now / Private Store nie mają terminu zakończenia aukcji —
   domyślnie (`MANHEIM_IGNORE_AUCTION_WINDOW=true`) przechodzą przez filtr okna
   czasowego, inaczej Manheim zawsze dawałby 0 wyników.
-- `FILTER_SELLER_INSURANCE_ONLY=true` wycina Manheima w całości — to rynek
-  dealerski, `seller_type` zawsze `dealer`.
+- `FILTER_SELLER_INSURANCE_ONLY=true` **nie** wycina już Manheima: to rynek
+  dealerski (`seller_type` zawsze `dealer`), więc filtr zjadałby całe źródło,
+  a operator nie mógłby tego rozwiązać inaczej niż wyłączeniem filtra dla
+  wszystkich źródeł. Filtr dotyczy Copart/IAAI; `MANHEIM_RESPECT_INSURANCE_FILTER=true`
+  przywraca stare, ścisłe cięcie.
 ### Wyszukiwanie na żądanie
 
 Źródło `manheim` nie czeka na to, aż operator sam czegoś poszuka — zleca hasło

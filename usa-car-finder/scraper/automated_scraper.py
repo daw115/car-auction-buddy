@@ -241,17 +241,7 @@ class AutomatedScraper:
 
         # 6. Opcjonalne filtrowanie po seller_type (tylko ubezpieczyciele)
         if self.filter_insurance_only:
-            before_seller_filter = len(all_lots)
-            unknown_seller_count = sum(1 for lot in all_lots if lot.seller_type is None)
-            confirmed_non_insurance = sum(1 for lot in all_lots if lot.seller_type == "dealer")
-            all_lots = [lot for lot in all_lots if lot.seller_type in ("insurance", None)]
-            logger.info(
-                "Filtr seller_type: %d → %d lotów (odrzucono %d dealer, zachowano %d unknown)",
-                before_seller_filter,
-                len(all_lots),
-                confirmed_non_insurance,
-                unknown_seller_count,
-            )
+            all_lots = self._apply_seller_filter(all_lots)
 
         # Sort: env-driven. 'auction_date_asc' (default) = najbliższe aukcje pierwsze
         # (zgodnie z user request — broker decyduje szybko po aukcjach kończących się rychło).
@@ -640,6 +630,46 @@ class AutomatedScraper:
             )
 
         return filtered
+
+    def _apply_seller_filter(self, lots: List[CarLot]) -> List[CarLot]:
+        """Zostawia tylko oferty od ubezpieczycieli — z wyjątkiem Manheima.
+
+        Manheim jest z definicji rynkiem dealerskim (seller_type zawsze
+        "dealer"), więc ten filtr wycinałby całe źródło do zera. Operator
+        wybierający Manheim i tryb insurance-only dostawał sprzeczność nie do
+        rozwiązania inaczej niż wyłączeniem filtra dla wszystkich źródeł.
+        MANHEIM_RESPECT_INSURANCE_FILTER=true przywraca stare, ścisłe cięcie.
+        """
+        exempt_manheim = (
+            os.getenv("MANHEIM_RESPECT_INSURANCE_FILTER", "false").lower() != "true"
+        )
+        before = len(lots)
+        unknown = sum(1 for lot in lots if lot.seller_type is None)
+        dealers = sum(1 for lot in lots if lot.seller_type == "dealer")
+        manheim_exempted = sum(
+            1 for lot in lots if lot.source == "manheim" and lot.seller_type == "dealer"
+        ) if exempt_manheim else 0
+
+        kept = [
+            lot
+            for lot in lots
+            if lot.seller_type in ("insurance", None)
+            or (exempt_manheim and lot.source == "manheim")
+        ]
+        logger.info(
+            "Filtr seller_type: %d → %d lotów (odrzucono %d dealer, zachowano %d unknown)",
+            before,
+            len(kept),
+            dealers - manheim_exempted,
+            unknown,
+        )
+        if manheim_exempted:
+            logger.info(
+                "Filtr seller_type: %d lotów Manheim zachowanych mimo trybu insurance-only "
+                "(rynek dealerski; MANHEIM_RESPECT_INSURANCE_FILTER=true przywraca odrzucanie)",
+                manheim_exempted,
+            )
+        return kept
 
     @staticmethod
     def _truncate_with_manheim_quota(lots: List[CarLot], limit: int) -> List[CarLot]:

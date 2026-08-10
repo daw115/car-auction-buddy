@@ -392,3 +392,29 @@ def test_collector_liveness_uses_the_configured_window(monkeypatch):
         manheim_ingest, "status", lambda: {"lastIngestAt": now - 600}
     )
     assert manheim_session.collector_seen_recently() is False
+
+
+def test_insurance_only_filter_does_not_wipe_out_manheim(monkeypatch):
+    """Manheim to rynek dealerski — filtr "tylko ubezpieczyciele" zjadał go w całości.
+
+    Wybranie Manheima przy FILTER_SELLER_INSURANCE_ONLY=true dawało sprzeczność,
+    której operator nie mógł rozwiązać inaczej niż wyłączeniem filtra dla
+    wszystkich źródeł.
+    """
+    monkeypatch.delenv("MANHEIM_RESPECT_INSURANCE_FILTER", raising=False)
+    monkeypatch.setenv("FILTER_SELLER_INSURANCE_ONLY", "true")
+    scraper = AutomatedScraper()
+    assert scraper.filter_insurance_only is True
+
+    lots = [
+        CarLot(source="manheim", lot_id="m1", url="m1", make="BMW", seller_type="dealer"),
+        CarLot(source="copart", lot_id="c1", url="c1", make="BMW", seller_type="dealer"),
+        CarLot(source="copart", lot_id="c2", url="c2", make="BMW", seller_type="insurance"),
+    ]
+    kept = scraper._apply_seller_filter(lots)
+    assert {lot.lot_id for lot in kept} == {"m1", "c2"}
+
+    # Operator może przywrócić stare, ścisłe zachowanie.
+    monkeypatch.setenv("MANHEIM_RESPECT_INSURANCE_FILTER", "true")
+    kept_strict = scraper._apply_seller_filter(lots)
+    assert {lot.lot_id for lot in kept_strict} == {"c2"}
