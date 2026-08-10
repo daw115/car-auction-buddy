@@ -420,7 +420,10 @@ class AutomatedScraper:
             return explicit_match.group(1)
         # Manheim: /vdp/<id> — identyfikatory bywają alfanumeryczne (work order,
         # UUID), więc nie wolno ich przepuścić przez wyciąganie samych cyfr niżej.
-        vdp_match = re.search(r"/vdp/([A-Za-z0-9_-]+)", url, flags=re.IGNORECASE)
+        # Kropka MUSI być w klasie znaków: Manheim używa identyfikatorów typu
+        # "OVE.FAAO.453999130" i bez niej zostawało samo "OVE" — wspólne dla
+        # wszystkich lotów OVE, więc różne auta zlewały się w jedno.
+        vdp_match = re.search(r"/vdp/([A-Za-z0-9._-]+)", url, flags=re.IGNORECASE)
         if vdp_match:
             return vdp_match.group(1)
         clean = url.split("?", 1)[0].rstrip("/")

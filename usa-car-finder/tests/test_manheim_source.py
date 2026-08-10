@@ -418,3 +418,52 @@ def test_insurance_only_filter_does_not_wipe_out_manheim(monkeypatch):
     monkeypatch.setenv("MANHEIM_RESPECT_INSURANCE_FILTER", "true")
     kept_strict = scraper._apply_seller_filter(lots)
     assert {lot.lot_id for lot in kept_strict} == {"c2"}
+
+
+def test_dotted_manheim_ids_are_not_truncated():
+    """OVE.FAAO.453999130 -> "OVE" sprawiało, że wszystkie loty OVE miały jeden id."""
+    extract = AutomatedScraper._extract_lot_id_from_url
+    assert extract("https://search.manheim.com/results#/vdp/OVE.FAAO.453999130") == (
+        "OVE.FAAO.453999130"
+    )
+    assert extract("https://www.copart.com/lot/45661246") == "45661246"
+
+
+def test_vehicles_sharing_a_nested_id_stay_separate(monkeypatch, tmp_path):
+    """Różne pojazdy nie mogą zlać się w jeden przez wspólne pole `id`.
+
+    pick() schodzi w zagnieżdżenia, więc wspólny identyfikator sprzedaży
+    potrafił dać dwóm autom ten sam URL — a że plik nazywamy hashem URL-a,
+    drugie auto nadpisywało pierwsze i lista wynikowa robiła się kopiami.
+    """
+    import asyncio
+
+    def record(vin):
+        return {
+            "vin": vin,
+            "sourceYear": "2025",
+            "sourceMake": "Toyota",
+            "sourceModel": ["RAV4"],
+            "odometer": 35_452,
+            # Wspólne dla obu — tak wygląda payload Manheima.
+            "sale": {"id": "WSPOLNY-ID-SPRZEDAZY"},
+        }
+
+    records = [record("2T3P1RFV7SW514400"), record("JTMRWRFV9PD204814")]
+    monkeypatch.setattr(
+        manheim_scraper.ManheimScraper, "_collector_records", staticmethod(lambda: records)
+    )
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "collector")
+    monkeypatch.setenv("MANHEIM_JOB_TIMEOUT_SECONDS", "0")
+    monkeypatch.setenv("HTML_CACHE_DIR", str(tmp_path))
+
+    saved = asyncio.run(
+        manheim_scraper.ManheimScraper().scrape(
+            ClientCriteria(make="Toyota", model="RAV4", sources=["manheim"])
+        )
+    )
+
+    assert len(saved) == 2
+    assert len({path for path, _ in saved}) == 2, "każdy lot musi mieć własny plik"
+    vins = {parse_manheim_html(__import__("pathlib").Path(path)).vin for path, _ in saved}
+    assert vins == {"2T3P1RFV7SW514400", "JTMRWRFV9PD204814"}

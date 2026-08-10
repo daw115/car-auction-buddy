@@ -157,7 +157,11 @@ class ManheimScraper(BaseScraper):
         return f"{SEARCH_URL}#/vdp/{lot_id}"
 
     def _candidate_from_record(self, record: dict) -> Optional[ListingCandidate]:
-        lot_id = str(pick(record, "lot_id") or pick(record, "vin") or "").strip()
+        # VIN przed identyfikatorem aukcji: pick() schodzi w zagnieżdżenia i
+        # potrafi trafić na wspólne pole `id` (np. sprzedaży), przez co różne
+        # pojazdy dostawały ten sam URL, nadpisywały ten sam plik i wracały
+        # jako kilka kopii jednego auta. VIN jest unikalny z definicji.
+        lot_id = str(pick(record, "vin") or pick(record, "lot_id") or "").strip()
         if not lot_id:
             return None
 
@@ -188,6 +192,27 @@ class ManheimScraper(BaseScraper):
             ),
             raw_data=record,
         )
+
+    @staticmethod
+    def _unique_by_url(candidates: list[ListingCandidate]) -> list[ListingCandidate]:
+        """Siatka bezpieczeństwa: dwa kandydaty pod jednym URL-em to jeden plik.
+
+        Zapisany dokument nazywamy hashem URL-a, więc kolizja cicho nadpisuje
+        poprzedni lot i lista wynikowa robi się kopiami jednego auta.
+        """
+        seen: set[str] = set()
+        unique: list[ListingCandidate] = []
+        for candidate in candidates:
+            if candidate.url in seen:
+                logger.warning(
+                    "[Manheim] Pomijam lot %s — ten sam URL co wcześniejszy (%s)",
+                    candidate.lot_id,
+                    candidate.url,
+                )
+                continue
+            seen.add(candidate.url)
+            unique.append(candidate)
+        return unique
 
     def _matches_criteria(self, record: dict, criteria: ClientCriteria) -> bool:
         """Prefiltr po stronie listy — Manheim oddaje TOP 3, więc odrzucamy
@@ -456,7 +481,7 @@ class ManheimScraper(BaseScraper):
             if candidate is not None
         ]
         candidates.sort(key=self.candidate_sort_key)
-        candidates = candidates[:limit]
+        candidates = self._unique_by_url(candidates)[:limit]
 
         self.last_listing_metadata = {
             candidate.url: {
