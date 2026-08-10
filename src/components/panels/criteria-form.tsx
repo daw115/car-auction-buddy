@@ -29,6 +29,9 @@ const SOURCE_UNAVAILABLE_MESSAGES: Record<string, string> = {
   capabilities_unreachable: "nie można potwierdzić capabilities backendu",
   invalid_capabilities_response: "backend zwrócił nieprawidłowe capabilities",
   credentials_or_adapter_missing: "brak adaptera lub poświadczeń API",
+  manheim_session_not_configured: "brak zalogowanej wtyczki BidWise w profilu scrapera",
+  live_backend_not_configured: "backend nie działa w trybie live",
+  enabled_by_server_configuration: "włączone w konfiguracji backendu",
 };
 
 export function CriteriaForm({
@@ -200,7 +203,7 @@ export function CriteriaForm({
                     {capabilitiesLoading
                       ? "sprawdzam…"
                       : available
-                        ? "API aktywne"
+                        ? "sesja aktywna"
                         : `niedostępne: ${reason}`}
                   </span>
                 )}
@@ -214,8 +217,8 @@ export function CriteriaForm({
           </p>
         )}
         <p className="text-[11px] text-muted-foreground">
-          Manheim jest dostępny tylko po potwierdzeniu oficjalnego adaptera Marketplace API przez
-          backend. Aplikacja nie używa mocków ani nie omija logowania Manheim.
+          Manheim korzysta z sesji zalogowanej wtyczki BidWise w profilu scrapera i oddaje TOP 3
+          wyniki. Aplikacja nie używa mocków ani nie omija logowania Manheim.
         </p>
       </div>
     </>

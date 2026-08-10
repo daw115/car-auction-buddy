@@ -67,6 +67,9 @@ const SOURCE_UNAVAILABLE_MESSAGES: Record<string, string> = {
   capabilities_unreachable: "nie można potwierdzić capabilities backendu",
   invalid_capabilities_response: "backend zwrócił nieprawidłowe capabilities",
   credentials_or_adapter_missing: "brak adaptera lub poświadczeń API",
+  manheim_session_not_configured: "brak zalogowanej wtyczki BidWise w profilu scrapera",
+  live_backend_not_configured: "backend nie działa w trybie live",
+  enabled_by_server_configuration: "włączone w konfiguracji backendu",
 };
 
 function parseCsv(s: string): string[] {
@@ -381,7 +384,7 @@ function DefaultCriteriaPage() {
                             : "bg-amber-500/10 text-amber-600"
                         }`}
                       >
-                        {available ? "API aktywne" : `niedostępne: ${reason}`}
+                        {available ? "sesja aktywna" : `niedostępne: ${reason}`}
                       </span>
                     )}
                   </label>
@@ -399,8 +402,9 @@ function DefaultCriteriaPage() {
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Manheim wymaga potwierdzonego oficjalnego adaptera Marketplace API. Niedostępne,
-              wcześniej zapisane źródło można odznaczyć, ale nie można go ponownie zaznaczyć.
+              Manheim jedzie na sesji z wtyczki BidWise w profilu scrapera i oddaje TOP 3 wyniki.
+              Niedostępne, wcześniej zapisane źródło można odznaczyć, ale nie można go ponownie
+              zaznaczyć.
             </p>
           </div>
 

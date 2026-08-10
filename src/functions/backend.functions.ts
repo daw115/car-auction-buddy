@@ -111,12 +111,12 @@ function fallbackSourceCapabilities(): AuctionSourceCapabilities {
       },
       manheim: {
         available: backendConfigured && manheimEnabled,
-        mode: backendConfigured && manheimEnabled ? "official_api" : "unavailable",
+        mode: backendConfigured && manheimEnabled ? "live" : "unavailable",
         reason:
           backendConfigured && manheimEnabled
             ? "enabled_by_server_configuration"
             : backendConfigured
-              ? "credentials_or_adapter_missing"
+              ? "manheim_session_not_configured"
               : "backend_unconfigured",
       },
     },
@@ -206,7 +206,7 @@ export async function assertAuctionSourcesAvailable(
   throw backendError(
     503,
     includesManheim
-      ? "Manheim Marketplace nie jest skonfigurowany w backendzie. Wymagany jest oficjalny adapter i poświadczenia API."
+      ? "Manheim nie jest skonfigurowany w backendzie. Wymagana jest zalogowana wtyczka BidWise w profilu scrapera (MANHEIM_BACKEND_ENABLED, USE_EXTENSIONS, HEADLESS=false)."
       : `Niedostępne źródła aukcyjne: ${unavailable.join(", ")}.`,
     {
       sources: unavailable.map((source) => ({

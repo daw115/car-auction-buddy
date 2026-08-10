@@ -13,13 +13,13 @@ describe("auction sources", () => {
     expect(auctionSourceSchema.parse("manheim")).toBe("manheim");
   });
 
-  it("requires official_api mode before Manheim can be marked available", () => {
+  it("accepts Manheim as a live source and rejects retired modes", () => {
     const payload = {
       checkedAt: "2026-07-19T00:00:00.000Z",
       sources: {
         copart: { available: true as const, mode: "live" as const },
         iaai: { available: true as const, mode: "live" as const },
-        manheim: { available: true as const, mode: "official_api" as const },
+        manheim: { available: true as const, mode: "live" as const },
       },
     };
 
@@ -29,7 +29,7 @@ describe("auction sources", () => {
         ...payload,
         sources: {
           ...payload.sources,
-          manheim: { available: true, mode: "live" },
+          manheim: { available: true, mode: "official_api" },
         },
       }).success,
     ).toBe(false);
@@ -55,21 +55,23 @@ describe("auction sources", () => {
       sources: {
         copart: { available: true, mode: "live" },
         iaai: { available: true, mode: "live" },
-        manheim: { available: true, mode: "official_api" },
+        manheim: { available: true, mode: "live" },
       },
     };
 
     expect(getUnavailableAuctionSources(["manheim"], capabilities)).toEqual([]);
 
-    const inconsistentCapabilities: AuctionSourceCapabilities = {
+    const sessionMissing: AuctionSourceCapabilities = {
       ...capabilities,
       sources: {
         ...capabilities.sources,
-        manheim: { available: true, mode: "live" },
+        manheim: {
+          available: false,
+          mode: "unavailable",
+          reason: "manheim_session_not_configured",
+        },
       },
     };
-    expect(getUnavailableAuctionSources(["manheim"], inconsistentCapabilities)).toEqual([
-      "manheim",
-    ]);
+    expect(getUnavailableAuctionSources(["manheim"], sessionMissing)).toEqual(["manheim"]);
   });
 });

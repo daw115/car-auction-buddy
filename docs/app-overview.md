@@ -10,7 +10,7 @@ Data: 2026-06-26.
 Webowy asystent do **wyszukiwania, analizy i monitorowania** aukcji
 samochodowych (Copart / IAAI / Manheim). Łączy:
 
-- zewnętrzne REST API z cache wyników; adapter Manheim powinien korzystać z oficjalnego Marketplace Searches API,
+- zewnętrzne REST API z cache wyników; źródło Manheim działa na sesji wtyczki BidWise w profilu scrapera i oddaje TOP 3 wyniki,
 - analizę AI (Anthropic / Gemini) ofert pod kątem opłacalności,
 - watchlist + raporty PDF,
 - kolejkę ponownych sprawdzeń (gdy brak wyników) z powiadomieniem na Telegram,

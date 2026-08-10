@@ -16,11 +16,11 @@ export const AUCTION_SOURCES: ReadonlyArray<{
   {
     id: "manheim",
     label: "Manheim",
-    description: "Marketplace Manheim (Simulcast, OVE i Manheim Express)",
+    description: "Marketplace Manheim — TOP 3 wyniki z sesji wtyczki BidWise",
   },
 ];
 
-export type AuctionSourceMode = "live" | "official_api" | "unavailable";
+export type AuctionSourceMode = "live" | "unavailable";
 
 export type AuctionSourceCapability = {
   available: boolean;
@@ -47,21 +47,12 @@ const liveSourceCapabilitySchema = z.discriminatedUnion("available", [
   }),
   unavailableSourceCapabilitySchema,
 ]);
-const manheimSourceCapabilitySchema = z.discriminatedUnion("available", [
-  z.object({
-    available: z.literal(true),
-    mode: z.literal("official_api"),
-    reason: capabilityReasonSchema,
-  }),
-  unavailableSourceCapabilitySchema,
-]);
-
 export const auctionSourceCapabilitiesPayloadSchema = z.object({
   checkedAt: z.string().optional(),
   sources: z.object({
     copart: liveSourceCapabilitySchema,
     iaai: liveSourceCapabilitySchema,
-    manheim: manheimSourceCapabilitySchema,
+    manheim: liveSourceCapabilitySchema,
   }),
 });
 
@@ -79,11 +70,10 @@ export function normalizeAuctionSources(
 }
 
 export function isAuctionSourceCapabilityAvailable(
-  source: AuctionSource,
+  _source: AuctionSource,
   capability: AuctionSourceCapability | null | undefined,
 ): boolean {
-  if (!capability?.available || capability.mode === "unavailable") return false;
-  return source !== "manheim" || capability.mode === "official_api";
+  return !!capability?.available && capability.mode !== "unavailable";
 }
 
 export function getUnavailableAuctionSources(
@@ -91,6 +81,8 @@ export function getUnavailableAuctionSources(
   capabilities: AuctionSourceCapabilities | null | undefined,
 ): AuctionSource[] {
   if (!capabilities) {
+    // Bez odpowiedzi z backendu Manheim zostaje zablokowany: wymaga zalogowanej
+    // wtyczki BidWise w profilu scrapera, więc "brak informacji" ≠ "dostępny".
     return (sources ?? []).filter((source) => source === "manheim");
   }
   return (sources ?? []).filter(

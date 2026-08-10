@@ -1,6 +1,6 @@
 # Car Auction Buddy
 
-Aplikacja webowa do wyszukiwania, analizy i raportowania ofert pojazdów z aukcji Copart, IAAI i Manheim. Integracja Manheim korzysta z oficjalnego Marketplace API obsługiwanego przez zewnętrzny backend.
+Aplikacja webowa do wyszukiwania, analizy i raportowania ofert pojazdów z aukcji Copart, IAAI i Manheim. Manheim jedzie na sesji zalogowanej wtyczki BidWise w profilu Chrome scrapera (logowanie Manheim wymaga OTP) i oddaje TOP 3 wyniki jako źródło uzupełniające.
 
 Szczegółowy przewodnik dla kontrybutorów → [`CLAUDE.md`](CLAUDE.md).
 
@@ -12,11 +12,11 @@ Szczegółowy przewodnik dla kontrybutorów → [`CLAUDE.md`](CLAUDE.md).
 
 Projekt rozdziela kod serwerowy na dwie warstwy:
 
-| Warstwa | Katalog | Może importować `@/server/*`? | Dostępna z klienta? |
-|---------|---------|-------------------------------|---------------------|
-| **Helpery server-only** | `src/server/*.server.ts` | ✅ | ❌ — Vite blokuje import w bundlu klienta |
-| **RPC wrappery** | `src/functions/*.functions.ts` | ✅ | ✅ — `createServerFn` zamienia ciało na stub fetch |
-| **Kod klienta** | `src/components/`, `src/routes/`, `src/hooks/`, `src/lib/` | ❌ — ESLint + CI blokują | ✅ |
+| Warstwa                 | Katalog                                                    | Może importować `@/server/*`? | Dostępna z klienta?                                |
+| ----------------------- | ---------------------------------------------------------- | ----------------------------- | -------------------------------------------------- |
+| **Helpery server-only** | `src/server/*.server.ts`                                   | ✅                            | ❌ — Vite blokuje import w bundlu klienta          |
+| **RPC wrappery**        | `src/functions/*.functions.ts`                             | ✅                            | ✅ — `createServerFn` zamienia ciało na stub fetch |
+| **Kod klienta**         | `src/components/`, `src/routes/`, `src/hooks/`, `src/lib/` | ❌ — ESLint + CI blokują      | ✅                                                 |
 
 Pliki `*.functions.ts` są **jedynym mostem** między klientem a serwerem. TanStack Start w czasie builda:
 
