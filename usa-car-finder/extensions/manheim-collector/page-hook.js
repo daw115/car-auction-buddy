@@ -190,7 +190,7 @@
     return inner.id || null;
   }
 
-  async function replay(jobId, keyword) {
+  async function replay(jobId, keyword, delivered) {
     // Zlecenie trafia do WSZYSTKICH ramek karty, a podramki mają inny origin —
     // ich żądanie do onesearch-api ginie na CORS. Odpowiada tylko ramka główna.
     if (window.top !== window) return;
@@ -201,9 +201,11 @@
       emit({
         kind: "replay-result",
         jobId,
+        // Liczba dostarczonych szablonów rozstrzyga, czy problem jest po
+        // stronie backendu (0), czy przekazania do strony.
         error:
-          "Brak podpatrzonego szablonu zapytania. Zrób RAZ ręczne wyszukiwanie " +
-          "na Manheimie w tej karcie — wtedy wtyczka zapamięta kształt żądania.",
+          `Brak szablonu zapytania (dostarczono ze zlecenia: ${delivered}). ` +
+          "Zrób RAZ ręczne wyszukiwanie na Manheimie w tej karcie.",
       });
       return;
     }
@@ -244,7 +246,7 @@
     if (data.command === "replay") {
       // Szablony dołączone do zlecenia mają wypełnić lukę po restarcie karty.
       restoreTemplates(data.templates);
-      replay(data.jobId, data.keyword);
+      replay(data.jobId, data.keyword, Object.keys(data.templates || {}).length);
     }
     if (data.command === "templates") restoreTemplates(data.templates);
   });
