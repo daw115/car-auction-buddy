@@ -20,10 +20,12 @@ import { normalizeAuctionSources } from "@/lib/auction-sources";
 import type { ClientCriteria } from "@/lib/types";
 import { RERUN_CRITERIA_STORAGE_KEY } from "@/lib/rerun-criteria";
 import { WhatsappDraftDialog } from "@/components/panels/whatsapp-draft-dialog";
+import { budgetVerdictOf, landedLabel, overBudgetLabel } from "@/lib/budget";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
@@ -388,6 +390,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
   });
 
   const [sortBy, setSortBy] = useState<"score" | "auction_date">("auction_date");
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const parsedData = useMemo(() => {
     if (!record) return null;
@@ -470,6 +473,32 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
           sources: normalizeAuctionSources(criteria.sources),
         }
       : null;
+
+  // Klucz selekcji to source+lot_id: samo lot_id nie jest unikalne między giełdami.
+  function lotKey(lot: any) {
+    return `${lot?.source ?? ""}/${lot?.lot_id ?? ""}`;
+  }
+
+  const selectedLots = allResults.filter((al: any) => selected[lotKey(al.lot)]);
+  const selectedOverBudget = selectedLots.some((al: any) => budgetVerdictOf(al.lot)?.over);
+
+  function toggleSelected(lot: any) {
+    const key = lotKey(lot);
+    setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function selectAll(value: boolean) {
+    // Hurtowe zaznaczenie omija auta ponad budżet — te broker dobiera pojedynczo.
+    setSelected(
+      value
+        ? Object.fromEntries(
+            allResults
+              .filter((al: any) => !budgetVerdictOf(al.lot)?.over)
+              .map((al: any) => [lotKey(al.lot), true]),
+          )
+        : {},
+    );
+  }
 
   function handleEditAndRerun() {
     if (!rerunCriteria) {
@@ -558,12 +587,13 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
             Ponów teraz
           </Button>
           <WhatsappDraftDialog
-            lots={allResults as unknown as Record<string, unknown>[]}
+            lots={selectedLots.map((al: any) => al.lot) as Record<string, unknown>[]}
             budgetPln={
               (criteria as any)?.budget_pln_to ?? (criteria as any)?.budget_pln_from ?? null
             }
             settlement={(criteria as any)?.settlement === "company" ? "company" : "private"}
-            disabled={allResults.length === 0}
+            hasOverBudget={selectedOverBudget}
+            disabled={selectedLots.length === 0}
           />
           <Button variant="ghost" onClick={onClose}>
             ← Zamknij
@@ -684,6 +714,15 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">🚗 Loty z analizą AI ({allResults.length})</h3>
             <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                Zaznaczone: <b>{selectedLots.length}</b>
+              </span>
+              <Button size="sm" variant="outline" onClick={() => selectAll(true)}>
+                Zaznacz w budżecie
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => selectAll(false)}>
+                Wyczyść
+              </Button>
               <span className="text-xs text-muted-foreground">Sortuj:</span>
               <Button
                 size="sm"
@@ -709,16 +748,29 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
               const reports = autoReports[lot.lot_id] || {};
               const isShowcase = al.is_top_recommendation;
               const auctionInfo = formatTimeUntilAuction(lot.auction_date);
+              const budget = budgetVerdictOf(lot);
+              const overBudget = budget?.over === true;
+              const isSel = !!selected[lotKey(lot)];
 
               return (
                 <div
-                  key={lot.lot_id}
-                  className={`p-3 rounded border transition-colors ${
-                    isShowcase
-                      ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/40 text-foreground"
-                      : "border-border"
+                  key={lotKey(lot)}
+                  className={`p-3 rounded border transition-colors flex gap-3 ${
+                    isSel
+                      ? "border-primary bg-primary/5"
+                      : overBudget
+                        ? "border-dashed border-border bg-muted/30 opacity-60"
+                        : isShowcase
+                          ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/40 text-foreground"
+                          : "border-border"
                   }`}
                 >
+                  <Checkbox
+                    checked={isSel}
+                    onCheckedChange={() => toggleSelected(lot)}
+                    className="mt-1"
+                    aria-label={`Dodaj ${lot.year ?? ""} ${lot.make ?? ""} ${lot.model ?? ""} do oferty`}
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-semibold text-sm">
@@ -774,6 +826,17 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                       <span>{lot.location_state}</span>
                       {lot.odometer_mi && <span>{lot.odometer_mi.toLocaleString()} mi</span>}
                       {lot.current_bid_usd && <span>${lot.current_bid_usd.toLocaleString()}</span>}
+                      {landedLabel(budget) && (
+                        <span className="font-medium">{landedLabel(budget)}</span>
+                      )}
+                      {overBudget && budget && (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-500/40 bg-amber-500/10 text-xs text-amber-600"
+                        >
+                          {overBudgetLabel(budget)}
+                        </Badge>
+                      )}
                       {lot.seller_type && (
                         <Badge variant="outline" className="text-xs">
                           {lot.seller_type}

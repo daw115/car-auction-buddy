@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -19,10 +20,12 @@ import {
 } from "@/components/ui/dialog";
 
 type Props = {
-  /** Loty z rekordu — backend sam wybiera 3-4 najlepsze mieszczące się w budżecie. */
+  /** Loty zaznaczone przez brokera — backend bierze z nich 3-4 pierwsze. */
   lots: Record<string, unknown>[];
   budgetPln?: number | null;
   settlement?: "private" | "company";
+  /** Wśród zaznaczonych jest auto droższe niż budżet klienta. */
+  hasOverBudget?: boolean;
   disabled?: boolean;
 };
 
@@ -31,13 +34,22 @@ type Props = {
  *  Nic tu nie wysyła wiadomości. Link wa.me tylko otwiera WhatsApp z wpisanym
  *  tekstem — przycisk „wyślij” zostaje po stronie człowieka, bo wiadomość idzie
  *  pod jego nazwiskiem i to on odpowiada za to, co klient dostanie. */
-export function WhatsappDraftDialog({ lots, budgetPln, settlement, disabled }: Props) {
+export function WhatsappDraftDialog({
+  lots,
+  budgetPln,
+  settlement,
+  hasOverBudget = false,
+  disabled,
+}: Props) {
   const generate = useServerFn(backendWhatsappDraft);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState<string | null>(null);
+  // Domyślnie NIE. Auto ponad budżet wchodzi do wiadomości dopiero, gdy broker
+  // świadomie to zaznaczy — i wtedy treść mówi o tym klientowi wprost.
+  const [allowOverBudget, setAllowOverBudget] = useState(false);
   const [waMeUrl, setWaMeUrl] = useState<string | null>(null);
   const [offers, setOffers] = useState(0);
 
@@ -50,13 +62,20 @@ export function WhatsappDraftDialog({ lots, budgetPln, settlement, disabled }: P
           client: { name: name.trim() || null, phone: phone.trim() || null },
           budgetPln: budgetPln ?? null,
           ...(settlement ? { settlement } : {}),
+          allowOverBudget,
         },
       });
       setText(res.text);
       setWaMeUrl(res.waMeUrl);
       setOffers(res.offers);
       if (!res.text) {
-        toast.warning("Żaden lot nie mieści się w budżecie — nie ma czego wysyłać.");
+        toast.warning(
+          hasOverBudget && !allowOverBudget
+            ? "Zaznaczone auta są ponad budżet. Zaznacz zgodę poniżej, żeby weszły do treści."
+            : "Żaden lot nie mieści się w budżecie — nie ma czego wysyłać.",
+        );
+      } else if (res.skipped) {
+        toast.info(`Pominięto ${res.skipped} — ponad budżet klienta.`);
       }
     } catch (e) {
       const err = e as { message?: string };
@@ -116,6 +135,20 @@ export function WhatsappDraftDialog({ lots, budgetPln, settlement, disabled }: P
             />
           </div>
         </div>
+
+        {hasOverBudget && (
+          <label className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+            <Checkbox
+              checked={allowOverBudget}
+              onCheckedChange={(v) => setAllowOverBudget(v === true)}
+              className="mt-0.5"
+            />
+            <span>
+              Wśród zaznaczonych jest auto droższe niż budżet klienta. Zaznacz, żeby weszło do
+              wiadomości — w treści będzie opisane jako powyżej budżetu.
+            </span>
+          </label>
+        )}
 
         {text !== null && (
           <div className="space-y-1.5">

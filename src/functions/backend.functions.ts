@@ -432,10 +432,11 @@ export const backendWhatsappDraft = createServerFn({ method: "POST" })
         .optional(),
       budgetPln: z.number().min(0).max(5_000_000).optional().nullable(),
       settlement: z.enum(["private", "company"]).optional(),
+      allowOverBudget: z.boolean().optional(),
     }).parse,
   )
   .handler(async ({ data }) =>
-    callBackend<{ text: string | null; offers: number; waMeUrl: string | null }>({
+    callBackend<{ text: string | null; offers: number; waMeUrl: string | null; skipped?: number }>({
       path: "/api/offers/whatsapp",
       method: "POST",
       body: data,

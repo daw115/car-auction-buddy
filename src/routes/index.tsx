@@ -26,6 +26,7 @@ import {
   normalizeAuctionSources,
 } from "@/lib/auction-sources";
 import { RERUN_CRITERIA_STORAGE_KEY, extractRerunCriteria } from "@/lib/rerun-criteria";
+import { budgetVerdictOf, landedLabel, overBudgetLabel } from "@/lib/budget";
 
 import { ClientMessageCard, type ParseError } from "@/components/panels/client-message-card";
 
@@ -636,7 +637,15 @@ function HomePage() {
   }
 
   function selectAll(v: boolean) {
-    setSelected(v ? Object.fromEntries(listings.map((l) => [l.lot_id, true])) : {});
+    // Zaznacza tylko auta w budżecie. Droższe broker dobiera pojedynczo, świadomie —
+    // hurtowe zaznaczenie nie może po cichu wpuścić ich do oferty.
+    setSelected(
+      v
+        ? Object.fromEntries(
+            listings.filter((l) => !budgetVerdictOf(l)?.over).map((l) => [l.lot_id, true]),
+          )
+        : {},
+    );
   }
 
   async function onGenerateReport(mode: ReportMode) {
@@ -1066,11 +1075,17 @@ function HomePage() {
               {listings.map((lot) => {
                 const a = analyzedByLotId[lot.lot_id];
                 const isSel = !!selected[lot.lot_id];
+                const budget = budgetVerdictOf(lot);
+                const overBudget = budget?.over === true;
                 return (
                   <div
                     key={`${lot.source}-${lot.lot_id}`}
                     className={`rounded-lg border p-3 transition ${
-                      isSel ? "border-primary bg-primary/5" : "border-border"
+                      isSel
+                        ? "border-primary bg-primary/5"
+                        : overBudget
+                          ? "border-dashed border-border bg-muted/30 opacity-60"
+                          : "border-border"
                     }`}
                   >
                     <div className="flex gap-3">
@@ -1095,6 +1110,14 @@ function HomePage() {
                           <Badge variant="outline" className="text-[10px] uppercase">
                             {lot.source}
                           </Badge>
+                          {overBudget && budget && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600"
+                            >
+                              {overBudgetLabel(budget)}
+                            </Badge>
+                          )}
                           {a?.analysis.recommendation && (
                             <Badge
                               variant="outline"
@@ -1113,6 +1136,12 @@ function HomePage() {
                         <div className="mt-1 text-xs">
                           Bid: <b>{fmtUsd(lot.current_bid_usd)}</b> · Buy now:{" "}
                           <b>{fmtUsd(lot.buy_now_price_usd)}</b>
+                          {landedLabel(budget) && (
+                            <>
+                              {" "}
+                              · <b>{landedLabel(budget)}</b>
+                            </>
+                          )}
                           {a?.analysis.estimated_total_cost_usd != null && (
                             <>
                               {" "}
