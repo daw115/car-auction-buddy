@@ -119,6 +119,24 @@ def _save_cache(cache: dict) -> None:
         logger.warning("[frame_damage] cache save failed: %s", exc)
 
 
+# Copart serwuje ten sam kadr w dwóch wariantach: `_hrs` (pełna rozdzielczość)
+# i `_thb` (miniatura ~5 KB). Miniatura nie niesie informacji o lonżeronach.
+_THUMBNAIL_MARKERS = ("_thb.", "/thb/", "thumb")
+
+
+def _pick_diagnostic_images(images: list[str]) -> list[str]:
+    """Zdjęcia, na których cokolwiek widać — pełna rozdzielczość przed miniaturami.
+
+    Zwykłe wzięcie pierwszych N kończyło się analizą trzech miniatur po 5 KB:
+    model uczciwie odmawiał werdyktu, a my płaciliśmy za obejrzenie zarysów.
+    """
+    pelne = [url for url in images if not any(m in url.lower() for m in _THUMBNAIL_MARKERS)]
+    miniatury = [url for url in images if url not in pelne]
+    # Miniatury dokładamy tylko, gdy brakuje pełnych — lepsze cztery kadry słabe
+    # niż jeden dobry, ale nigdy kosztem wyrzucenia dobrego.
+    return (pelne + miniatury)[:MAX_IMAGES]
+
+
 def should_check_frame(lot: CarLot) -> bool:
     """True gdy lot kwalifikuje się do vision check (FRONT/REAR damage + zdjęcia)."""
     if not lot.images or len(lot.images) < 2:
@@ -382,8 +400,7 @@ def check_frame_damage(lot: CarLot, *, force: bool = False) -> Optional[dict]:
         logger.info("[frame_damage] CACHE HIT %s: frame_damaged=%s", cache_key, cached.get("frame_damaged"))
         return {**cached, "checked_via": "cache"}
 
-    # Wybierz max N zdjęć (uniknięcie token explosion)
-    images = (lot.images or [])[:MAX_IMAGES]
+    images = _pick_diagnostic_images(lot.images or [])
     if not images:
         return None
 

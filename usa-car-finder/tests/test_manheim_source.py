@@ -548,3 +548,33 @@ def test_manheim_lots_with_a_sale_date_survive_the_auction_window(monkeypatch):
 
     assert {"m1", "m2"} <= kept, "Manheim ma przechodzić niezależnie od terminu"
     assert "c1" in kept and "c2" not in kept, "Copart nadal podlega oknu"
+
+
+def test_vision_prefers_full_resolution_photos_over_thumbnails():
+    """Miniatura po 5 KB nie pokazuje lonżeronów — a płacimy za nią tyle samo.
+
+    Copart serwuje ten sam kadr jako `_hrs` i `_thb`. Wzięcie pierwszych czterech
+    adresów dawało trzy miniatury, model uczciwie odmawiał werdyktu i cały check
+    szedł w kosz.
+    """
+    from ai.frame_damage_vision import _pick_diagnostic_images
+
+    urls = [
+        "https://cs.copart.com/a/x1_thb.jpg",
+        "https://cs.copart.com/a/x1_hrs.jpg",
+        "https://cs.copart.com/a/x2_thb.jpg",
+        "https://cs.copart.com/a/x2_hrs.jpg",
+        "https://cs.copart.com/a/x3_thb.jpg",
+    ]
+
+    wybrane = _pick_diagnostic_images(urls)
+
+    assert wybrane[0].endswith("_hrs.jpg")
+    assert wybrane[1].endswith("_hrs.jpg")
+    assert sum(1 for u in wybrane if "_hrs" in u) == 2
+
+
+def test_thumbnails_are_used_when_nothing_better_exists():
+    from ai.frame_damage_vision import _pick_diagnostic_images
+
+    assert _pick_diagnostic_images(["https://x/a_thb.jpg"]) == ["https://x/a_thb.jpg"]
