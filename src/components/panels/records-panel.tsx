@@ -428,7 +428,13 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
     if (!parsedData) return [];
     const arr = [...parsedData.allResults];
     if (sortBy === "score") {
-      const order: Record<string, number> = { POLECAM: 0, RYZYKO: 1, ODRZUĆ: 2 };
+      // PONAD BUDŻET przed ODRZUĆ: to auta z realną oceną, tylko za drogie.
+      const order: Record<string, number> = {
+        POLECAM: 0,
+        RYZYKO: 1,
+        "PONAD BUDŻET": 2,
+        ODRZUĆ: 3,
+      };
       arr.sort((a, b) => {
         const ra = order[a.analysis?.recommendation] ?? 99;
         const rb = order[b.analysis?.recommendation] ?? 99;
@@ -608,7 +614,8 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
         <Card className="p-3 mb-4 border-amber-500/30 bg-amber-500/5">
           <div className="text-sm font-semibold mb-2">📦 Auto-zbiorcze raporty</div>
           <div className="text-xs text-muted-foreground mb-2">
-            Klient = tylko POLECAM. Broker = wszystkie showcase (POLECAM + RYZYKO).
+            Klient = tylko POLECAM. Broker = wszystkie showcase (POLECAM + RYZYKO). Auta ponad
+            budżet nie wchodzą do showcase, nawet z wysoką oceną — dobierasz je ręcznie.
           </div>
           <div className="flex gap-2 flex-wrap">
             {artifactUrls.client_bundle && (
@@ -808,9 +815,15 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                               ? "default"
                               : ai.recommendation === "RYZYKO"
                                 ? "secondary"
-                                : "destructive"
+                                : ai.recommendation === "PONAD BUDŻET"
+                                  ? "outline"
+                                  : "destructive"
                           }
-                          className="text-xs shrink-0 ml-auto"
+                          className={`text-xs shrink-0 ml-auto ${
+                            ai.recommendation === "PONAD BUDŻET"
+                              ? "border-amber-500/40 bg-amber-500/10 text-amber-600"
+                              : ""
+                          }`}
                         >
                           {ai.recommendation} · {ai.score?.toFixed(1)}/10
                         </Badge>

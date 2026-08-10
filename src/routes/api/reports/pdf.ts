@@ -2,6 +2,7 @@
 // GET /api/reports/pdf?recordId=<uuid>&mode=broker|client
 
 import { createFileRoute } from "@tanstack/react-router";
+import { isOverBudget } from "@/lib/budget";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { generateReportPdf } from "@/server/pdf-report.server";
 import { siteSessionGuard } from "@/server/site-session.server";
@@ -37,8 +38,12 @@ export const Route = createFileRoute("/api/reports/pdf")({
         // dla klienta — TOP3 + 2 odrzucone (jak ustaliliśmy)
         let lots = [...analysis].sort((a, b) => b.analysis.score - a.analysis.score);
         if (mode === "client") {
-          const top3 = lots.slice(0, 3);
-          const fillers = lots.slice(-2).reverse(); // 2 najgorsze
+          // Auto ponad budżet ma dziś normalną, wysoką ocenę — sortowanie po score
+          // wypchnęłoby je na szczyt PDF-a dla klienta, bez słowa o przekroczeniu kwoty.
+          // Broker dobiera je świadomie w innym miejscu, nie automat.
+          const affordable = lots.filter((l) => !isOverBudget(l.lot));
+          const top3 = (affordable.length > 0 ? affordable : lots).slice(0, 3);
+          const fillers = (affordable.length > 0 ? affordable : lots).slice(-2).reverse(); // 2 najgorsze
           // unique by lot_id
           const seen = new Set(top3.map((l) => l.lot.lot_id));
           const fill = fillers.filter((l) => !seen.has(l.lot.lot_id));

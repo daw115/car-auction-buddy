@@ -66,7 +66,7 @@ export type ClientCriteria = {
 export type AIAnalysis = {
   lot_id: string;
   score: number;
-  recommendation: "POLECAM" | "RYZYKO" | "ODRZUĆ" | string;
+  recommendation: "POLECAM" | "RYZYKO" | "PONAD BUDŻET" | "ODRZUĆ" | string;
   red_flags: string[];
   estimated_repair_usd?: number | null;
   estimated_total_cost_usd?: number | null;

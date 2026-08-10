@@ -79,6 +79,9 @@ function recommendationTone(r?: string) {
   if (v === "POLECAM") return "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
   if (v === "RYZYKO") return "bg-amber-500/15 text-amber-500 border-amber-500/30";
   if (v === "ODRZUĆ" || v === "ODRZUC") return "bg-rose-500/15 text-rose-500 border-rose-500/30";
+  // Karta ponad budżet jest już wyszarzona, więc szary badge znikałby na szarym tle —
+  // a to jedyne miejsce, gdzie widać, że auto dostało dobrą ocenę.
+  if (v === "PONAD BUDŻET") return "bg-amber-500/20 text-amber-600 border-amber-500/40";
   return "bg-muted text-muted-foreground border-border";
 }
 

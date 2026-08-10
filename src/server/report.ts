@@ -13,7 +13,8 @@ const esc = (v: unknown): string => {
     .replace(/'/g, "&#39;");
 };
 const dash = (v: unknown): string => (v === null || v === undefined || v === "" ? "—" : esc(v));
-const fmtNum = (v: unknown): string => (typeof v === "number" ? v.toLocaleString("pl-PL") : dash(v));
+const fmtNum = (v: unknown): string =>
+  typeof v === "number" ? v.toLocaleString("pl-PL") : dash(v);
 
 export function renderReportHtml(opts: {
   clientName: string;
@@ -26,6 +27,7 @@ export function renderReportHtml(opts: {
   const polecam = lots.filter((l) => l.analysis.recommendation === "POLECAM").length;
   const ryzyko = lots.filter((l) => l.analysis.recommendation === "RYZYKO").length;
   const odrzuc = lots.filter((l) => l.analysis.recommendation === "ODRZUĆ").length;
+  const ponadBudzet = lots.filter((l) => l.analysis.recommendation === "PONAD BUDŻET").length;
 
   const lotHtml = lots
     .map((item) => {
@@ -34,8 +36,10 @@ export function renderReportHtml(opts: {
         analysis.recommendation === "POLECAM"
           ? "POLECAM"
           : analysis.recommendation === "RYZYKO"
-          ? "RYZYKO"
-          : "ODRZUC";
+            ? "RYZYKO"
+            : analysis.recommendation === "PONAD BUDŻET"
+              ? "PONAD-BUDZET"
+              : "ODRZUC";
       const flags =
         analysis.red_flags && analysis.red_flags.length > 0
           ? `<div class="flags">${analysis.red_flags
@@ -50,7 +54,7 @@ export function renderReportHtml(opts: {
       const keys = lot.keys === true ? "Tak" : lot.keys === false ? "Nie" : "—";
       const airbags = lot.airbags_deployed ? "ODPALONE" : "OK";
       const loc = `${esc(lot.location_city ?? "")}${lot.location_state ? ", " : ""}${esc(
-        lot.location_state ?? ""
+        lot.location_state ?? "",
       )}`;
 
       return `
@@ -104,6 +108,7 @@ export function renderReportHtml(opts: {
   .POLECAM { background: #d4edda; color: #155724; }
   .RYZYKO  { background: #fff3cd; color: #856404; }
   .ODRZUC  { background: #f8d7da; color: #721c24; }
+  .PONAD-BUDZET { background: #fdf3e3; color: #8a5a13; }
   .score   { font-size: 20pt; font-weight: bold; color: #1a3a5c; }
   .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 10px 0; }
   .info-item { font-size: 9pt; }
@@ -125,6 +130,7 @@ export function renderReportHtml(opts: {
 <div class="summary"><div class="summary-grid">
   <div class="summary-item"><div class="num" style="color:#7dffb3">${polecam}</div><div class="lbl">POLECAM</div></div>
   <div class="summary-item"><div class="num" style="color:#ffe08a">${ryzyko}</div><div class="lbl">RYZYKO</div></div>
+  <div class="summary-item"><div class="num" style="color:#e0a458">${ponadBudzet}</div><div class="lbl">PONAD BUDŻET</div></div>
   <div class="summary-item"><div class="num" style="color:#ff8a8a">${odrzuc}</div><div class="lbl">ODRZUĆ</div></div>
 </div></div>
 ${lotHtml}
