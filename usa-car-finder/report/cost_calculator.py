@@ -1,135 +1,112 @@
-"""Deterministyczny kalkulator kosztów importu auta z USA do Polski.
+"""Koszty importu dla raportów per lot — nakładka na kalkulator z arkusza.
 
-Eliminuje konieczność dawania LLM-owi tych liczb — wszystko liczymy w Pythonie
-i wstawiamy w template Jinja2. LLM zajmuje się tylko storytellingiem.
+Wcześniej ten moduł liczył import po własnym, podręcznikowym modelu (cło + akcyza + VAT
+płacone w Polsce, homologacja, tłumaczenia, rejestracja) i wychodziły z niego kwoty o 9-25%
+wyższe niż z `pricing/import_calculator.py`, czyli z kalkulatora przepisanego z arkusza.
+Skutek: raport per lot pokazywał inną cenę tego samego auta niż mail ofertowy i wiadomość
+na WhatsAppie. Dwie ceny za jedno auto to nie jest rozbieżność do wyjaśnienia w rozmowie,
+tylko podważona wiarygodność całej oferty.
 
-Wartości referencyjne (2025/2026, można dostroić przez env):
-- USD/PLN: ~4.05
-- Auction fee Copart/IAAI: ~$600 + 10% bid (uproszczone)
-- Transport USA dom→port: $400-800 (zal. od stanu)
-- Ocean freight East Coast → Gdynia: ~$1100
-- Cło UE (10% wartości CIF dla aut osobowych)
-- Akcyza PL: 3.1% (silnik <2.0L) / 18.6% (silnik >=2.0L)
-- VAT PL: 23% wartości (cło + akcyza włączone)
-- Homologacja + tłumaczenia + rejestracja: ~3500 PLN
-- Transport krajowy: ~800 PLN
+Teraz wszystko liczy `pricing/import_calculator.py`, a ten moduł tylko rozkłada wynik na
+pozycje, których oczekują szablony Jinja2. Nie ma tu żadnej własnej arytmetyki podatkowej.
+
+Ścieżka kosztów w arkuszu (prywatnie): zakup + opłata aukcyjna + transport z placu
++ załadunek + fracht → odprawa w Niemczech (cło, VAT niemiecki, obsługa) → transport
+DE→PL → akcyza w Polsce. Rejestracji, homologacji ani naprawy arkusz nie liczy, więc nie
+ma ich w kwocie — a nie da się ich dopisać "na oko", bo to właśnie one robiły różnicę.
 """
 from __future__ import annotations
 
-import os
 from typing import Optional
 
-
-def _f(env: str, default: float) -> float:
-    try:
-        return float(os.getenv(env, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
-def _state_to_port_usd(state: Optional[str]) -> int:
-    """Heurystyka: stan USA → koszt transportu lądowego w USD."""
-    if not state:
-        return 700
-    east = {"NY", "NJ", "PA", "MD", "VA", "NC", "SC", "GA", "FL", "MA", "CT", "RI", "ME", "NH", "VT", "DE"}
-    central = {"OH", "MI", "IN", "IL", "WI", "KY", "TN", "AL", "MS", "LA", "MO", "AR", "IA", "MN"}
-    west = {"CA", "OR", "WA", "NV", "AZ", "UT", "ID", "MT", "WY", "CO", "NM"}
-    s = state.upper()
-    if s in east:
-        return 500
-    if s in central:
-        return 750
-    if s in west:
-        return 1100
-    return 800  # default mid
+from pricing.import_calculator import (
+    CLEARANCE_DE_PLN,
+    CUSTOMS_DUTY_RATE,
+    DE_VAT_RATE,
+    PL_VAT_RATE,
+    TRANSPORT_COMPANY_PLN,
+    TRANSPORT_PRIVATE_PLN,
+    calculate_import_costs,
+    client_price_pln,
+    excise_rate_for,
+    state_median_towing,
+    towing_for_location,
+)
 
 
 def calculate_full_cost(
     bid_usd: float,
-    engine_liters: Optional[float] = 2.0,
+    engine_liters: Optional[float] = None,
     location_state: Optional[str] = None,
     repair_estimate_usd: Optional[float] = None,
+    *,
+    location_city: Optional[str] = None,
+    settlement: str = "private",
+    fee_tier: str = "basic",
+    electric: bool = False,
 ) -> dict:
-    """Liczy pełny koszt sprowadzenia auta do PL.
+    """Pełny koszt sprowadzenia auta rozbity na pozycje do szablonu.
 
-    Zwraca dict ze wszystkimi pozycjami w USD i PLN + suma. Można przekazać
-    do template Jinja2 jako jeden obiekt.
+    `grand_total_pln` to cena dla klienta: sprowadzenie plus prowizja. Naprawa stoi
+    OBOK sumy, nie w niej — szacunek AI nie jest kosztem, który ktokolwiek zafakturuje,
+    a wliczony po cichu rozjeżdżałby raport z ofertą.
     """
-    usd_pln = _f("USD_PLN_RATE", 4.05)
     bid = max(0.0, float(bid_usd or 0))
+    excise_rate = excise_rate_for(engine_liters, electric=electric)
+    towing = (
+        towing_for_location(location_state, location_city)
+        if location_city
+        else state_median_towing(location_state)
+    )
+    costs = calculate_import_costs(bid_usd=bid, towing_usd=towing, excise_rate=excise_rate)
 
-    # 1. Koszty USA (USD)
-    auction_fee_usd = round(_f("AUCTION_FEE_BASE_USD", 600) + bid * _f("AUCTION_FEE_PCT", 0.10), 0)
-    transport_us_usd = _state_to_port_usd(location_state)
-    ocean_freight_usd = _f("OCEAN_FREIGHT_USD", 1100)
-    title_handling_usd = _f("TITLE_HANDLING_USD", 250)
+    rate = float(costs["usd_rate"])
+    private = settlement == "private"
+    duty_pln = costs["private_duty_pln"] if private else costs["company_duty_pln"]
+    excise_pln = costs["private_excise_pln"] if private else costs["company_excise_pln"]
+    # Prywatnie VAT płacimy w Niemczech (21%), firmowo w Polsce (23%) od całości.
+    vat_pln = costs["private_vat_de_pln"] if private else (costs["company_net_pln"] * PL_VAT_RATE)
+    vat_pct = round((DE_VAT_RATE if private else PL_VAT_RATE) * 100)
+    customs_base_pln = costs["private_customs_base_pln"] if private else costs["usa_total_pln"]
+    transport_pl_pln = TRANSPORT_PRIVATE_PLN if private else TRANSPORT_COMPANY_PLN
 
-    total_us_usd = bid + auction_fee_usd + transport_us_usd + ocean_freight_usd + title_handling_usd
-
-    # 2. CIF (cło bazą) = bid + freight (uproszczenie, bez auction fee)
-    cif_usd = bid + transport_us_usd + ocean_freight_usd
-    cif_pln = cif_usd * usd_pln
-
-    # 3. Cło 10% (UE, auta osobowe)
-    duty_pct = _f("DUTY_PCT", 0.10)
-    duty_pln = round(cif_pln * duty_pct, 0)
-
-    # 4. Akcyza (3.1% silnik <2L, 18.6% >=2L)
-    if engine_liters is None:
-        engine_liters = 2.0
-    excise_pct = _f("EXCISE_PCT_BIG", 0.186) if engine_liters >= 2.0 else _f("EXCISE_PCT_SMALL", 0.031)
-    excise_base_pln = cif_pln + duty_pln
-    excise_pln = round(excise_base_pln * excise_pct, 0)
-
-    # 5. VAT 23% (na CIF + cło + akcyza)
-    vat_pct = _f("VAT_PCT", 0.23)
-    vat_base_pln = cif_pln + duty_pln + excise_pln
-    vat_pln = round(vat_base_pln * vat_pct, 0)
-
-    # 6. Koszty PL po dotarciu
-    homologation_pln = _f("HOMOLOGATION_PLN", 1500)
-    translation_pln = _f("TRANSLATION_PLN", 800)
-    registration_pln = _f("REGISTRATION_PLN", 1200)
-    transport_pl_pln = _f("TRANSPORT_PL_PLN", 800)
-
-    total_pl_pln = duty_pln + excise_pln + vat_pln + homologation_pln + translation_pln + registration_pln + transport_pl_pln
-
-    # 7. Total
-    repair_pln = round(float(repair_estimate_usd or 0) * usd_pln, 0)
-    grand_total_pln = round(total_us_usd * usd_pln + total_pl_pln + repair_pln, 0)
-    grand_total_usd = round(grand_total_pln / usd_pln, 0)
+    landed_pln = float(costs["private_total_pln" if private else "company_gross_pln"])
+    fee_pln = float(costs["broker_basic_gross_pln" if fee_tier == "basic" else "broker_premium_gross_pln"])
+    total_pln = client_price_pln(costs, settlement=settlement, fee_tier=fee_tier)
+    repair_pln = round(float(repair_estimate_usd or 0) * rate)
 
     return {
         # USA
         "bid_usd": int(bid),
-        "auction_fee_usd": int(auction_fee_usd),
-        "transport_us_usd": int(transport_us_usd),
-        "ocean_freight_usd": int(ocean_freight_usd),
-        "title_handling_usd": int(title_handling_usd),
-        "total_us_usd": int(total_us_usd),
-        "total_us_pln": int(total_us_usd * usd_pln),
-        # CIF
-        "cif_usd": int(cif_usd),
-        "cif_pln": int(cif_pln),
-        # PL taxes & fees
+        "auction_fee_usd": int(costs["auction_fee_usd"]),
+        "towing_usd": int(costs["towing_usd"]),
+        "loading_usd": int(costs["loading_usd"]),
+        "freight_usd": int(costs["freight_usd"]),
+        "additional_usd": int(costs["additional_costs_usd"]),
+        "usa_total_usd": int(costs["usa_total_usd"]),
+        "usa_total_pln": int(costs["usa_total_pln"]),
+        # Odprawa i podatki
+        "customs_base_pln": int(customs_base_pln),
         "duty_pln": int(duty_pln),
-        "duty_pct": int(duty_pct * 100),
-        "excise_pln": int(excise_pln),
-        "excise_pct": round(excise_pct * 100, 1),
+        "duty_pct": int(CUSTOMS_DUTY_RATE * 100),
         "vat_pln": int(vat_pln),
-        "vat_pct": int(vat_pct * 100),
-        "homologation_pln": int(homologation_pln),
-        "translation_pln": int(translation_pln),
-        "registration_pln": int(registration_pln),
+        "vat_pct": vat_pct,
+        "vat_where": "DE" if private else "PL",
+        "clearance_de_pln": int(CLEARANCE_DE_PLN),
         "transport_pl_pln": int(transport_pl_pln),
-        "total_pl_pln": int(total_pl_pln),
-        # Repair (jeśli AI oszacowało)
+        "excise_pln": int(excise_pln),
+        "excise_pct": round(excise_rate * 100, 1),
+        # Suma
+        "landed_pln": int(landed_pln),
+        "broker_fee_pln": int(fee_pln),
+        "fee_tier": fee_tier,
+        "settlement": settlement,
+        "grand_total_pln": int(round(total_pln)),
+        "grand_total_usd": int(round(total_pln / rate)) if rate else 0,
+        # Poza ceną
         "repair_usd": int(float(repair_estimate_usd or 0)),
         "repair_pln": int(repair_pln),
-        # Grand total
-        "grand_total_pln": int(grand_total_pln),
-        "grand_total_usd": int(grand_total_usd),
         # Meta
-        "usd_pln": round(usd_pln, 2),
+        "usd_pln": round(rate, 2),
         "engine_liters_assumed": engine_liters,
     }

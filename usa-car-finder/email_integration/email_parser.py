@@ -93,7 +93,9 @@ Jeśli email nie dotyczy wyszukiwania auta, zwróć: null
 
         try:
             message = self.client.messages.create(
-                model="claude-sonnet-4-6-thinking",
+                # Model z konfiguracji, nie z literału — wpisany na sztywno rozjeżdżał
+                # się z ANTHROPIC_MODEL i ignorował zmianę providera w .env.
+                model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}]
             )

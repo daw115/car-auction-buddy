@@ -3,7 +3,7 @@ import pytest
 from pydantic import ValidationError
 
 from parser.models import CarLot, ClientCriteria, SearchTarget
-from scoring import profile_from_criteria, score_lot
+from scoring import OVER_BUDGET, profile_from_criteria, score_lot
 
 
 def test_lead_with_several_models_becomes_several_search_targets():
@@ -75,17 +75,23 @@ def _lot(state: str, price: float) -> CarLot:
 def test_budget_ceiling_differs_between_states():
     """Towing wchodzi do podstawy celnej, więc ten sam budżet daje inny sufit.
 
-    Lot za 7 800 USD mieści się w 60 tys. zł z Florydy, ale nie z Kalifornii.
+    Lot za 7 200 USD mieści się w 60 tys. zł z Florydy (sufit 7 534), ale nie
+    z Kalifornii (sufit 6 926). Sufity liczone z prowizją — klient płaci ją razem z autem.
     """
     criteria = ClientCriteria(make="Toyota", budget_pln_to=60_000)
     profile = profile_from_criteria(criteria)
 
-    floryda = score_lot(_lot("FL", 7_800), criteria, profile)
-    kalifornia = score_lot(_lot("CA", 7_800), criteria, profile)
+    floryda = score_lot(_lot("FL", 7_200), criteria, profile)
+    kalifornia = score_lot(_lot("CA", 7_200), criteria, profile)
 
-    assert floryda.recommendation != "ODRZUĆ"
-    assert kalifornia.recommendation == "ODRZUĆ"
-    assert "ponad sufit budżetu" in kalifornia.disqualifiers[0]
+    assert not floryda.over_budget
+    assert kalifornia.over_budget
+    assert kalifornia.recommendation == OVER_BUDGET
+    # Przekroczenie budżetu nie jest wadą auta: ocena zostaje policzona, żeby
+    # broker widział, czy warto proponować klientowi dołożenie.
+    assert kalifornia.score > 0
+    assert not kalifornia.disqualifiers
+    assert "ponad budżet" in kalifornia.budget.note()
 
 
 def test_company_purchase_lowers_the_ceiling():
@@ -94,8 +100,8 @@ def test_company_purchase_lowers_the_ceiling():
     firma = ClientCriteria(make="Toyota", budget_pln_to=60_000, settlement="company")
 
     lot = _lot("FL", 7_000)
-    assert score_lot(lot, prywatnie, profile_from_criteria(prywatnie)).recommendation != "ODRZUĆ"
-    assert score_lot(lot, firma, profile_from_criteria(firma)).recommendation == "ODRZUĆ"
+    assert not score_lot(lot, prywatnie, profile_from_criteria(prywatnie)).over_budget
+    assert score_lot(lot, firma, profile_from_criteria(firma)).over_budget
 
 
 def test_no_budget_means_no_ceiling():
@@ -103,3 +109,4 @@ def test_no_budget_means_no_ceiling():
     criteria = ClientCriteria(make="Toyota")
     result = score_lot(_lot("FL", 30_000), criteria, profile_from_criteria(criteria))
     assert result.recommendation != "ODRZUĆ"
+    assert not result.over_budget

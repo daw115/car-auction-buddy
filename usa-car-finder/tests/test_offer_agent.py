@@ -151,12 +151,16 @@ def test_client_sees_at_most_four_cars_broker_sees_all():
     assert "M6" in text_of(offer.broker_html)
 
 
-def test_price_note_says_what_is_and_is_not_included():
+def test_price_note_lists_what_the_price_covers():
     offer = build_offer([analyzed(lot())], use_llm=False)
     body = text_of(offer.client_html)
     assert "odprawa celna" in body and "prowizja" in body
-    # Rejestracji kalkulator nie liczy, więc nie wolno jej wliczać w cenę.
-    assert "Poza nią zostaje rejestracja" in body
+
+
+def test_registration_is_not_mentioned_in_the_price():
+    """Kalkulator jej nie liczy — ani nie obiecujemy, ani nie zagadujemy tematu w cenie."""
+    offer = build_offer([analyzed(lot())], use_llm=False)
+    assert "rejestracj" not in text_of(offer.client_html).lower()
 
 
 def test_price_is_framed_as_todays_bid_not_a_fixed_price():
@@ -300,3 +304,20 @@ def test_budget_is_mentioned_only_when_something_fits_in_it():
 
     assert "pod budżet" in text_of(build_offer([analyzed(lot())], criteria=tanie, use_llm=False).client_html)
     assert "pod budżet" not in text_of(build_offer([analyzed(lot())], criteria=drogie, use_llm=False).client_html)
+
+
+def test_proxy_model_alias_without_a_proxy_url_fails_loudly(monkeypatch):
+    """Klucz i alias modelu z .env należą do proxy — na oficjalnym API dają 404.
+
+    Ścieżka Anthropic jest ratunkowa, więc bez tej kontroli błąd wychodził dopiero
+    wtedy, gdy pierwszy provider już padł.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "")
+    monkeypatch.setattr(offer_agent, "OFFER_MODEL", "claude-sonnet-4-6-thinking")
+
+    with pytest.raises(RuntimeError, match="alias proxy"):
+        offer_agent._check_anthropic_config()
+
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.oneprovider.dev")
+    offer_agent._check_anthropic_config()  # z proxy alias jest poprawny

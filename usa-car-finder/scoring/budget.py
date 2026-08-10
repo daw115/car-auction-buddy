@@ -14,18 +14,18 @@ pomijalny wobec jednego zapytania do giełdy.
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from pricing.import_calculator import calculate_import_costs, state_median_towing
+from pricing.import_calculator import (
+    calculate_import_costs,
+    client_price_pln as _client_price,
+    state_median_towing,
+)
 
 Settlement = Literal["private", "company"]
 
-# Który klucz kalkulatora oznacza "pod klucz" dla danej formy zakupu.
-# UWAGA: broker_basic_gross_pln to PROWIZJA brokera (3 198 PLN przy locie za 10 000),
+# "Pod klucz" znaczy: koszt sprowadzenia PLUS prowizja brokera. Definicja siedzi
+# w pricing/import_calculator.client_price_pln i jest wspólna dla wszystkich kanałów.
+# UWAGA: broker_basic_gross_pln to sama PROWIZJA (3 198 PLN przy locie za 10 000),
 # a nie kwota końcowa — pomylenie tych pól zawyża sufit kilkukrotnie.
-_TOTAL_KEY: dict[str, str] = {
-    "private": "private_total_pln",
-    "company": "company_gross_pln",
-}
-
 _MAX_BID_USD = 200_000.0
 _ITERATIONS = 40
 
@@ -47,21 +47,25 @@ def max_bid_for_budget(
     settlement: Settlement = "private",
     state: Optional[str] = None,
     usd_rate: Optional[float] = None,
+    fee_tier: str = "basic",
 ) -> BudgetCeiling:
     """Najwyższa cena aukcyjna mieszcząca się w budżecie 'pod klucz'.
 
     Sufit zależy od STANU, bo towing wchodzi do podstawy celnej i mnoży się przez cło,
     VAT i akcyzę — różnica Floryda/Kalifornia to około 600 USD sufitu. Dlatego liczymy
     to per lot, a nie raz na wyszukiwanie.
+
+    Prowizja wchodzi do sufitu, bo klient płaci ją razem z autem. Sufit liczony bez niej
+    przepuszczał loty droższe od budżetu o 2 800-4 200 zł.
     """
     towing = state_median_towing(state)
-    key = _TOTAL_KEY[settlement]
     extra = {"usd_rate": usd_rate} if usd_rate else {}
 
     low, high = 0.0, _MAX_BID_USD
     for _ in range(_ITERATIONS):
         mid = (low + high) / 2
-        landed = calculate_import_costs(bid_usd=mid, towing_usd=towing, **extra)[key]
+        costs = calculate_import_costs(bid_usd=mid, towing_usd=towing, **extra)
+        landed = _client_price(costs, settlement=settlement, fee_tier=fee_tier)
         if landed <= budget_pln:
             low = mid
         else:
@@ -82,10 +86,16 @@ def landed_cost_pln(
     settlement: Settlement = "private",
     state: Optional[str] = None,
     usd_rate: Optional[float] = None,
+    excise_rate: Optional[float] = None,
+    fee_tier: str = "basic",
 ) -> float:
-    """Ile klient zapłaci w Polsce za lot kupiony po tej cenie."""
-    extra = {"usd_rate": usd_rate} if usd_rate else {}
+    """Ile klient zapłaci w Polsce za lot kupiony po tej cenie — z prowizją."""
+    extra: dict[str, float] = {}
+    if usd_rate:
+        extra["usd_rate"] = usd_rate
+    if excise_rate is not None:
+        extra["excise_rate"] = excise_rate
     costs = calculate_import_costs(
         bid_usd=bid_usd, towing_usd=state_median_towing(state), **extra
     )
-    return float(costs[_TOTAL_KEY[settlement]])
+    return _client_price(costs, settlement=settlement, fee_tier=fee_tier)

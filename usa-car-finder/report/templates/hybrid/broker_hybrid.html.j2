@@ -229,19 +229,23 @@
       <tbody>
         <tr><td>Bid (current)</td><td class="num">${{ "{:,}".format(cost.bid_usd) }}</td><td class="num">{{ "{:,}".format((cost.bid_usd * cost.usd_pln)|int) }}</td></tr>
         <tr><td>Auction fee</td><td class="num">${{ "{:,}".format(cost.auction_fee_usd) }}</td><td class="num">{{ "{:,}".format((cost.auction_fee_usd * cost.usd_pln)|int) }}</td></tr>
-        <tr><td>Transport USA → port</td><td class="num">${{ "{:,}".format(cost.transport_us_usd) }}</td><td class="num">{{ "{:,}".format((cost.transport_us_usd * cost.usd_pln)|int) }}</td></tr>
-        <tr><td>Ocean freight (Gdynia)</td><td class="num">${{ "{:,}".format(cost.ocean_freight_usd) }}</td><td class="num">{{ "{:,}".format((cost.ocean_freight_usd * cost.usd_pln)|int) }}</td></tr>
-        <tr><td>Title / handling</td><td class="num">${{ "{:,}".format(cost.title_handling_usd) }}</td><td class="num">{{ "{:,}".format((cost.title_handling_usd * cost.usd_pln)|int) }}</td></tr>
-        <tr style="background:#0a0e14"><td><b>CIF (cło baza)</b></td><td class="num"><b>${{ "{:,}".format(cost.cif_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.cif_pln) }}</b></td></tr>
+        <tr><td>Transport z placu</td><td class="num">${{ "{:,}".format(cost.towing_usd) }}</td><td class="num">{{ "{:,}".format((cost.towing_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Załadunek</td><td class="num">${{ "{:,}".format(cost.loading_usd) }}</td><td class="num">{{ "{:,}".format((cost.loading_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Fracht morski</td><td class="num">${{ "{:,}".format(cost.freight_usd) }}</td><td class="num">{{ "{:,}".format((cost.freight_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr><td>Koszty dodatkowe</td><td class="num">${{ "{:,}".format(cost.additional_usd) }}</td><td class="num">{{ "{:,}".format((cost.additional_usd * cost.usd_pln)|int) }}</td></tr>
+        <tr style="background:#0a0e14"><td><b>Razem USA</b></td><td class="num"><b>${{ "{:,}".format(cost.usa_total_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.usa_total_pln) }}</b></td></tr>
+        <tr><td>Podstawa celna ({{ cost.settlement }})</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.customs_base_pln) }}</td></tr>
         <tr><td>Cło {{ cost.duty_pct }}%</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.duty_pln) }}</td></tr>
-        <tr><td>Akcyza {{ cost.excise_pct }}% (silnik {{ cost.engine_liters_assumed }}L)</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.excise_pln) }}</td></tr>
-        <tr><td>VAT {{ cost.vat_pct }}%</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.vat_pln) }}</td></tr>
-        <tr><td>Homologacja + tłumaczenia + rejestracja</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.homologation_pln + cost.translation_pln + cost.registration_pln) }}</td></tr>
-        <tr><td>Transport krajowy</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.transport_pl_pln) }}</td></tr>
+        <tr><td>VAT {{ cost.vat_where }} {{ cost.vat_pct }}%</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.vat_pln) }}</td></tr>
+        <tr><td>Odprawa w Niemczech</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.clearance_de_pln) }}</td></tr>
+        <tr><td>Transport DE → PL</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.transport_pl_pln) }}</td></tr>
+        <tr><td>Akcyza {{ cost.excise_pct }}% {% if cost.engine_liters_assumed %}(silnik {{ cost.engine_liters_assumed }}L){% else %}(pojemność nieznana — wyższa stawka){% endif %}</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.excise_pln) }}</td></tr>
+        <tr style="background:#0a0e14"><td><b>Sprowadzenie</b></td><td class="num">—</td><td class="num"><b>{{ "{:,}".format(cost.landed_pln) }}</b></td></tr>
+        <tr><td>Prowizja ({{ cost.fee_tier }})</td><td class="num">—</td><td class="num">{{ "{:,}".format(cost.broker_fee_pln) }}</td></tr>
+        <tr style="background:#0d3a1f;color:#56d364"><td><b>CENA DLA KLIENTA</b></td><td class="num"><b>${{ "{:,}".format(cost.grand_total_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.grand_total_pln) }}</b></td></tr>
         {% if cost.repair_pln > 0 %}
-        <tr><td>Naprawa (AI estimate)</td><td class="num">${{ "{:,}".format(cost.repair_usd) }}</td><td class="num">{{ "{:,}".format(cost.repair_pln) }}</td></tr>
+        <tr><td>Naprawa (szacunek AI, poza ceną)</td><td class="num">${{ "{:,}".format(cost.repair_usd) }}</td><td class="num">{{ "{:,}".format(cost.repair_pln) }}</td></tr>
         {% endif %}
-        <tr style="background:#0d3a1f;color:#56d364"><td><b>SUMA</b></td><td class="num"><b>${{ "{:,}".format(cost.grand_total_usd) }}</b></td><td class="num"><b>{{ "{:,}".format(cost.grand_total_pln) }}</b></td></tr>
       </tbody>
     </table>
     </div>

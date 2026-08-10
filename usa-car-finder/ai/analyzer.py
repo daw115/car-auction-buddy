@@ -486,6 +486,11 @@ def analyze_lots(
     return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
 
+# Ta sama etykieta co scoring.unified.OVER_BUDGET — trzymana lokalnie, bo analyzer
+# celowo importuje scoring dopiero w czasie wywołania (moduł bywa niedostępny).
+OVER_BUDGET_LABEL = "PONAD BUDŻET"
+
+
 def _attach_unified_scores(lots: List[CarLot], criteria: ClientCriteria) -> None:
     """Liczy deterministyczną ocenę i dokleja ją do lota.
 
@@ -511,6 +516,10 @@ def _attach_unified_scores(lots: List[CarLot], criteria: ClientCriteria) -> None
             "recommendation": result.recommendation,
             "explain": result.explain(),
             "disqualifiers": result.disqualifiers,
+            # Dashboard wyszarza po tej fladze — lot zostaje na liście, ale nie
+            # wchodzi do oferty, dopóki broker sam go nie zaznaczy.
+            "over_budget": result.over_budget,
+            "budget": result.budget.as_dict() if result.budget else None,
             "components": [
                 {"label": c.label, "value": round(c.value, 2), "points": round(c.points, 2),
                  "detail": c.detail}
@@ -762,6 +771,11 @@ def _results_from_analysis_data(
                 for reason in unified["disqualifiers"]:
                     if reason not in analysis.red_flags:
                         analysis.red_flags.append(reason)
+            elif unified.get("over_budget"):
+                analysis.recommendation = OVER_BUDGET_LABEL
+                note = ((unified.get("budget") or {}).get("note")) or "ponad budżet klienta"
+                if note not in analysis.red_flags:
+                    analysis.red_flags.append(note)
         results.append(AnalyzedLot(lot=lot, analysis=analysis))
 
     return _rank_results(results, top_n)
@@ -811,13 +825,15 @@ def _analyze_lots_with_openai(
 
 
 def _rank_results(results: List[AnalyzedLot], top_n: int) -> Tuple[List[AnalyzedLot], List[AnalyzedLot]]:
-    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+    order = {"POLECAM": 0, "RYZYKO": 1, OVER_BUDGET_LABEL: 2, "ODRZUĆ": 3}
     results.sort(key=lambda x: (order.get(x.analysis.recommendation, 99), -x.analysis.score))
 
     for item in results:
         item.is_top_recommendation = False
 
-    top_results = results[:top_n]
+    # Showcase idzie do klienta, więc auta ponad budżet do niego nie wchodzą —
+    # trafiają do oferty tylko przez jawne zaznaczenie przez brokera.
+    top_results = [r for r in results if r.analysis.recommendation != OVER_BUDGET_LABEL][:top_n]
     for lot in top_results:
         lot.is_top_recommendation = True
 
@@ -1015,6 +1031,10 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
                         red_flags.append(reason)
             else:
                 recommendation = unified["recommendation"]
+                if unified.get("over_budget"):
+                    note = ((unified.get("budget") or {}).get("note")) or "ponad budżet klienta"
+                    if note not in red_flags:
+                        red_flags.append(note)
 
         price_note = f"aktualna oferta ${bid_usd:,.0f}".replace(",", " ") if bid_usd else "brak pewnej ceny ofertowej"
         reserve_note = ""

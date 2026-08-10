@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from parser.models import AnalyzedLot, ClientCriteria
+from pricing.import_calculator import engine_liters_from_trim
 from report import llm_cache
 from report.cost_calculator import calculate_full_cost
 from report.html_reports import _build_pipeline_rules
@@ -98,26 +99,21 @@ def _reports_model_label() -> str:
 
 
 def _engine_liters_from_trim(trim: Optional[str], make: Optional[str], model: Optional[str]) -> Optional[float]:
-    """Heurystyka: spróbuj wyciągnąć pojemność silnika z trim/model. Default 2.0L."""
-    if not trim:
-        return 2.0
-    t = trim.lower()
-    # Common patterns: "5.0L V8", "3.5T", "2.0T", "1.6", "TDI"
-    import re
-    m = re.search(r"(\d\.\d)\s*[lt]?", t)
-    if m:
-        try:
-            v = float(m.group(1))
-            if 0.8 <= v <= 8.0:
-                return v
-        except ValueError:
-            pass
-    # Heuristic for known V6/V8/V10/V12
-    if "v8" in t or "m5" in t or "m550" in t or "amg" in t:
+    """Pojemność silnika z trim/model — ta sama heurystyka co w ofercie.
+
+    Wcześniej przy braku danych zwracało 2.0, przez co raport twierdził, że zna
+    pojemność, i liczył akcyzę po stawce dla dużego silnika bez zaznaczenia, że to
+    założenie. Teraz brak danych to None, a stawkę wybiera excise_rate_for().
+    """
+    liters = engine_liters_from_trim(trim, model)
+    if liters is not None:
+        return liters
+    text = (trim or "").lower()
+    if any(token in text for token in ("v8", "m5", "m550", "amg")):
         return 4.4
-    if "v6" in t:
+    if "v6" in text:
         return 3.0
-    return 2.0
+    return None
 
 
 def _build_anthropic_client() -> anthropic.Anthropic:
@@ -676,7 +672,9 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         bid_usd=lot.current_bid_usd or lot.buy_now_price_usd or 0,
         engine_liters=engine_l,
         location_state=lot.location_state,
+        location_city=lot.location_city,
         repair_estimate_usd=ai.estimated_repair_usd,
+        settlement=(criteria.settlement if criteria else "private"),
     )
 
     # 2) Lookup ceny rynkowej PL z Otomoto (cache 7 dni, ~0ms HIT, ~8s MISS)
@@ -763,7 +761,9 @@ def render_broker_hybrid(
         bid_usd=lot.current_bid_usd or lot.buy_now_price_usd or 0,
         engine_liters=engine_l,
         location_state=lot.location_state,
+        location_city=lot.location_city,
         repair_estimate_usd=ai.estimated_repair_usd,
+        settlement=(criteria.settlement if criteria else "private"),
     )
 
     # Lookup ceny rynkowej PL z Otomoto (cache 7 dni)
@@ -872,7 +872,9 @@ def render_pair_hybrid(
         bid_usd=lot.current_bid_usd or lot.buy_now_price_usd or 0,
         engine_liters=engine_l,
         location_state=lot.location_state,
+        location_city=lot.location_city,
         repair_estimate_usd=ai.estimated_repair_usd,
+        settlement=(criteria.settlement if criteria else "private"),
     )
     market_pl = None
     try:

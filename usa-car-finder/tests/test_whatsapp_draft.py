@@ -20,8 +20,23 @@ def test_prices_are_landed_pln_not_auction_usd():
 
     assert "zł" in draft.text
     assert "USD" not in draft.text and "$" not in draft.text
-    # 6 000 USD z Florydy to ~49 tys. zł pod klucz, nie 24 tys. z przeliczenia kursem.
-    assert "49" in draft.text or "48" in draft.text
+    # 6 000 USD z Florydy to ~52 tys. zł pod klucz (49 425 sprowadzenie + 2 804 prowizji),
+    # nie 24 tys. z przeliczenia kursem.
+    assert "52" in draft.text
+
+
+def test_price_includes_the_commission():
+    """Prowizja doliczona po ofercie to dopłata po drodze, której obiecujemy nie robić."""
+    from scoring.budget import landed_cost_pln
+
+    z_prowizja = landed_cost_pln(6000.0, state="FL")
+    assert z_prowizja > 52_000
+    assert f"{z_prowizja:,.0f}".replace(",", " ") in build_draft([lot(price=6000.0)]).text
+
+
+def test_registration_is_not_promised_inside_the_price():
+    """Kalkulator nie liczy rejestracji, więc nie wolno jej obiecywać w kwocie."""
+    assert "rejestracja" not in build_draft([lot()]).text.lower()
 
 
 def test_no_internal_score_leaks_to_the_client():
@@ -153,3 +168,63 @@ def test_endpoint_with_no_affordable_lots_returns_nothing_to_send(monkeypatch):
     monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
     response = TestClient(api_main.app).post("/api/offers/whatsapp", json={"lots": []})
     assert response.json() == {"text": None, "offers": 0, "waMeUrl": None}
+
+
+def test_over_budget_lot_does_not_reach_the_client_by_default():
+    """Auto droższe niż budżet nie ma prawa trafić do wiadomości samo z siebie."""
+    tanie = lot(model="RAV4", price=6_000.0)
+    drogie = lot(model="Highlander", price=30_000.0)
+
+    draft = build_draft([tanie, drogie], client_name="Wojciech", budget_pln=60_000)
+
+    assert draft.offers == 1
+    assert "RAV4" in draft.text
+    assert "Highlander" not in draft.text
+
+
+def test_broker_can_add_an_over_budget_lot_and_it_is_named_as_such():
+    """Gdy broker świadomie dobierze droższe auto, klient widzi to wprost."""
+    draft = build_draft(
+        [lot(model="Highlander", price=30_000.0)],
+        client_name="Wojciech",
+        budget_pln=60_000,
+        allow_over_budget=True,
+    )
+
+    assert draft.offers == 1
+    assert "powyżej budżetu" in draft.text
+    # Nagłówek nie może twierdzić, że oferta mieści się w kwocie, której nie mieści.
+    assert "pod Pana budżet" not in draft.text
+
+
+def test_budget_claim_survives_when_everything_fits():
+    draft = build_draft([lot(price=6_000.0)], client_name="Wojciech", budget_pln=60_000)
+    assert "pod Pana budżet 60 tys. zł" in draft.text
+    assert "powyżej budżetu" not in draft.text
+
+
+def test_only_over_budget_lots_means_nothing_to_send():
+    """Bez zgody brokera i bez ofert w budżecie nie ma wiadomości — nie ma czego wysłać."""
+    assert build_draft([lot(price=30_000.0)], budget_pln=60_000) is None
+
+
+def test_endpoint_passes_the_brokers_over_budget_decision(monkeypatch):
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
+    payload = {
+        "lots": [lot(model="Highlander", price=30_000.0).model_dump(mode="json")],
+        "client": {"name": "Wojciech", "phone": "605083832"},
+        "budgetPln": 60_000,
+    }
+
+    with TestClient(api_main.app) as client:
+        bez_zgody = client.post("/api/offers/whatsapp", json=payload).json()
+        z_zgoda = client.post(
+            "/api/offers/whatsapp", json={**payload, "allowOverBudget": True}
+        ).json()
+
+    assert bez_zgody["text"] is None and bez_zgody["offers"] == 0
+    assert z_zgoda["offers"] == 1
+    assert "powyżej budżetu" in z_zgoda["text"]

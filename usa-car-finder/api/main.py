@@ -1527,6 +1527,8 @@ class WhatsappDraftRequest(BaseModel):
     client: Optional[ClientContext] = None
     budget_pln: Optional[float] = Field(default=None, alias="budgetPln")
     settlement: str = "private"
+    # Broker zaznaczył auto droższe niż budżet i bierze na siebie tę propozycję.
+    allow_over_budget: bool = Field(default=False, alias="allowOverBudget")
 
 
 @app.post("/api/offers/whatsapp")
@@ -1554,6 +1556,7 @@ async def offers_whatsapp_draft(
         client_name=(request.client.name if request.client else None),
         budget_pln=request.budget_pln,
         settlement="company" if request.settlement == "company" else "private",
+        allow_over_budget=request.allow_over_budget,
     )
     if draft is None:
         return {"text": None, "offers": 0, "waMeUrl": None}
@@ -1563,6 +1566,7 @@ async def offers_whatsapp_draft(
         "text": draft.text,
         "offers": draft.offers,
         "waMeUrl": draft.wa_me_url(phone) if phone else None,
+        "skipped": max(0, len(lots) - draft.offers),
     }
 
 

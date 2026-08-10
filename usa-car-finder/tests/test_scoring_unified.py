@@ -2,7 +2,7 @@
 import pytest
 
 from parser.models import CarLot, ClientCriteria
-from scoring import ClientProfile, max_bid_for_budget, rank_lots, score_lot
+from scoring import OVER_BUDGET, ClientProfile, max_bid_for_budget, rank_lots, score_lot
 from scoring.budget import landed_cost_pln
 
 CRITERIA = ClientCriteria(make="Toyota", sources=["manheim"])
@@ -117,12 +117,44 @@ def test_budget_ceiling_uses_landed_cost_not_naive_conversion():
     assert firma.max_bid_usd < ceiling.max_bid_usd
 
 
-def test_lot_above_budget_is_rejected_with_a_readable_reason():
+def test_lot_above_budget_is_flagged_but_keeps_its_score():
+    """Ponad budżet to nie wyrok o aucie — to informacja o cenie.
+
+    Auto zostaje na liście z policzoną oceną i czytelnym powodem, żeby broker
+    mógł je świadomie zaproponować, zamiast dowiadywać się, że coś zniknęło.
+    """
     profile = ClientProfile(budget=max_bid_for_budget(60_000, state="FL"))
     result = score_lot(manheim_lot(current_bid_usd=30_000), CRITERIA, profile)
 
+    assert result.over_budget
+    assert result.recommendation == OVER_BUDGET
+    assert not result.disqualifiers
+    assert result.score > 0
+    assert "ponad" in result.budget.note()
+
+
+def test_flood_still_rejects_regardless_of_budget():
+    """Twardy dyskwalifikator zostaje twardy — nie zamienił się w flagę."""
+    lot = manheim_lot(current_bid_usd=3_000, damage_primary="Flood/water damage")
+    result = score_lot(lot, CRITERIA, ClientProfile(budget=max_bid_for_budget(60_000, state="FL")))
+
     assert result.recommendation == "ODRZUĆ"
-    assert "ponad sufit budżetu" in result.disqualifiers[0]
+    assert result.score == 0.0
+    assert "zalanie lub pożar" in result.disqualifiers
+
+
+def test_over_budget_lots_stay_out_of_the_offer_unless_asked_for():
+    """rank_lots buduje ofertę dla klienta, więc auta ponad budżet do niej nie wchodzą."""
+    profile = ClientProfile(budget=max_bid_for_budget(60_000, state="FL"))
+    tanie = manheim_lot(lot_id="tanie", current_bid_usd=6_000)
+    drogie = manheim_lot(lot_id="drogie", current_bid_usd=30_000)
+
+    domyslnie = rank_lots([tanie, drogie], CRITERIA, profile)
+    assert [lot.lot_id for lot, _ in domyslnie] == ["tanie"]
+
+    z_dopuszczeniem = rank_lots([tanie, drogie], CRITERIA, profile, include_over_budget=True)
+    # Ponad budżet ląduje na końcu, za wszystkim, co się mieści.
+    assert [lot.lot_id for lot, _ in z_dopuszczeniem] == ["tanie", "drogie"]
 
 
 def test_eastern_states_beat_western_at_equal_everything_else():

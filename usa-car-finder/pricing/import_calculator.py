@@ -4,6 +4,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
+# Akcyza: 3,1% do 2000 cm³, 18,6% powyżej, 0% dla elektryków. Silnik "2.0" ma w praktyce
+# 1984-1998 cm³, więc mieści się w niższej stawce — próg stawiamy POWYŻEJ 2,0 l.
+EXCISE_SMALL = 0.031
+EXCISE_LARGE = 0.186
+EXCISE_EV = 0.0
+
+_ENGINE_LITERS_RE = re.compile(r"(\d[.,]\d)\s*[lt]?\b", re.IGNORECASE)
+
 
 DEFAULT_ADDITIONAL_COSTS_USD = 300
 DEFAULT_LOADING_USD = 560
@@ -30,6 +38,69 @@ EMPLOYEE_BASIC_SHARE = 0.4
 EMPLOYEE_PREMIUM_SHARE = 0.3
 EMPLOYEE_TOPUP_SHARE = 0.2
 EMPLOYEE_FIXED_PLN = 150
+
+
+# Która pozycja kalkulatora jest kosztem sprowadzenia dla danej formy zakupu.
+SETTLEMENT_TOTAL_KEY: dict[str, str] = {
+    "private": "private_total_pln",
+    "company": "company_gross_pln",
+}
+
+# Prowizja brokera brutto w dwóch wariantach obsługi.
+BROKER_FEE_KEY: dict[str, str] = {
+    "basic": "broker_basic_gross_pln",
+    "premium": "broker_premium_gross_pln",
+}
+
+
+def engine_liters_from_trim(*sources: Optional[str]) -> Optional[float]:
+    """Pojemność silnika z wersji wyposażenia ('3.0 TDI', '2.0T'). None = nie wiemy."""
+    for source in sources:
+        if not source:
+            continue
+        match = _ENGINE_LITERS_RE.search(source)
+        if not match:
+            continue
+        try:
+            value = float(match.group(1).replace(",", "."))
+        except ValueError:
+            continue
+        if 0.8 <= value <= 8.5:
+            return value
+    return None
+
+
+def excise_rate_for(engine_liters: Optional[float], *, electric: bool = False) -> float:
+    """Stawka akcyzy dla auta o tej pojemności.
+
+    Przy nieznanej pojemności bierzemy stawkę wyższą. W aukcjach z USA silnik poniżej
+    2,0 l to wyjątek, a pomyłka w drugą stronę zaniża cenę klienta o ~5 000 zł przy
+    locie za 10 000 USD — czyli o kwotę, którą ktoś musiałby dopłacić po fakcie.
+    """
+    if electric:
+        return EXCISE_EV
+    if engine_liters is not None and engine_liters <= 2.0:
+        return EXCISE_SMALL
+    return EXCISE_LARGE
+
+
+def client_price_pln(
+    costs: dict[str, float],
+    *,
+    settlement: str = "private",
+    fee_tier: str = "basic",
+) -> float:
+    """Kwota, którą zapłaci klient: sprowadzenie plus nasza prowizja.
+
+    Jedyna definicja ceny końcowej w całym systemie. Liczą z niej: sufit budżetu
+    (scoring/budget.py), wiadomość WhatsApp, mail ofertowy i raport per lot — żeby
+    klient nigdy nie zobaczył dwóch różnych kwot za to samo auto.
+
+    private_total_pln / company_gross_pln to KOSZT SPROWADZENIA, nie cena sprzedaży.
+    Pokazanie go jako "pod klucz" zaniża ofertę o wysokość prowizji, czyli o 2 800-4 200 zł
+    w typowym zakresie cen.
+    """
+    return float(costs[SETTLEMENT_TOTAL_KEY[settlement]]) + float(costs[BROKER_FEE_KEY[fee_tier]])
 
 
 def _static_calculator_data_path() -> Path:

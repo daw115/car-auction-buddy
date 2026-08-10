@@ -57,6 +57,8 @@ LABELS: dict[str, str] = {
 
 # Progi rekomendacji. POLECAM celowo wysoko — broker ma dostać 3-4 pozycje, nie listę.
 RECOMMEND_THRESHOLD = 7.5
+# Osobna rekomendacja zamiast ODRZUĆ: auto jest dobre, tylko dziś za drogie.
+OVER_BUDGET = "PONAD BUDŻET"
 RISK_THRESHOLD = 5.0
 
 _FLOOD_FIRE = re.compile(r"flood|water damage|fire|burn", re.IGNORECASE)
@@ -95,6 +97,55 @@ class Component:
         return self.value * self.weight * 10.0
 
 
+@dataclass(frozen=True)
+class BudgetVerdict:
+    """Ile to auto kosztuje pod klucz i czy mieści się w budżecie klienta.
+
+    Przekroczenie budżetu to NIE jest wada auta. Auto ponad budżet może być
+    najlepsze w stawce, tylko na dziś za drogie — broker musi widzieć jedno
+    i drugie, żeby móc świadomie zaproponować dołożenie.
+    """
+
+    price_usd: float
+    ceiling_usd: float
+    landed_pln: Optional[float] = None
+    budget_pln: Optional[float] = None
+
+    @property
+    def over(self) -> bool:
+        return self.price_usd > self.ceiling_usd
+
+    @property
+    def gap_pln(self) -> Optional[float]:
+        """O ile złotych pod klucz auto przekracza budżet."""
+        if self.landed_pln is None or self.budget_pln is None:
+            return None
+        return round(self.landed_pln - self.budget_pln, 2)
+
+    def note(self) -> str:
+        if not self.over:
+            return ""
+        gap = self.gap_pln
+        if gap and gap > 0:
+            return f"ponad budżet o {gap:,.0f} zł".replace(",", "\u00a0")
+        return (
+            f"cena {self.price_usd:,.0f} USD ponad sufit {self.ceiling_usd:,.0f} USD".replace(
+                ",", "\u00a0"
+            )
+        )
+
+    def as_dict(self) -> dict:
+        return {
+            "over": self.over,
+            "price_usd": round(self.price_usd, 2),
+            "ceiling_usd": round(self.ceiling_usd, 2),
+            "landed_pln": self.landed_pln,
+            "budget_pln": self.budget_pln,
+            "gap_pln": self.gap_pln,
+            "note": self.note(),
+        }
+
+
 @dataclass
 class LotScore:
     score: float
@@ -102,13 +153,21 @@ class LotScore:
     components: list[Component] = field(default_factory=list)
     disqualifiers: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    budget: Optional[BudgetVerdict] = None
+
+    @property
+    def over_budget(self) -> bool:
+        return bool(self.budget and self.budget.over)
 
     def explain(self) -> str:
         """Jednolinijkowe rozbicie — broker ma widzieć DLACZEGO, nie samą liczbę."""
         if self.disqualifiers:
             return "ODRZUĆ: " + "; ".join(self.disqualifiers)
         parts = [f"{c.label} {c.value:.2f}×{c.weight:.0%}={c.points:.1f}" for c in self.components]
-        return f"{self.score:.1f}/10 — " + ", ".join(parts)
+        body = f"{self.score:.1f}/10 — " + ", ".join(parts)
+        if self.over_budget:
+            return f"{OVER_BUDGET} ({self.budget.note()}) — {body}"
+        return body
 
 
 def _ramp(x: float, points: list[tuple[float, float]]) -> float:
@@ -216,14 +275,41 @@ def disqualify(lot: CarLot, profile: ClientProfile) -> list[str]:
     if profile.risk == "none" and listing.get("redLight") is True:
         reasons.append("czerwone światło (sprzedaż as-is)")
 
+    return reasons
+
+
+def budget_verdict(lot: CarLot, profile: ClientProfile) -> Optional[BudgetVerdict]:
+    """Relacja ceny tego lota do budżetu klienta — bez wyroku o jakości auta.
+
+    Świadomie NIE jest dyskwalifikatorem. Auto ponad budżet zostaje w wynikach
+    z policzoną oceną, tylko wyraźnie oznaczone: broker sam decyduje, czy
+    zaproponować je klientowi, zamiast dowiadywać się, że coś zniknęło z listy.
+    """
     price = _lot_price(lot)
     ceiling = _ceiling_for(lot, profile)
-    if ceiling and price and price > ceiling.max_bid_usd:
-        reasons.append(
-            f"cena {price:,.0f} USD ponad sufit budżetu {ceiling.max_bid_usd:,.0f} USD"
-        )
+    if not price or not ceiling:
+        return None
 
-    return reasons
+    landed: Optional[float] = None
+    if ceiling.budget_pln:
+        try:
+            from scoring.budget import landed_cost_pln
+
+            landed = round(
+                landed_cost_pln(
+                    price, settlement=profile.settlement, state=lot.location_state
+                ),
+                2,
+            )
+        except Exception:  # kalkulator importu jest opcjonalny w testach jednostkowych
+            landed = None
+
+    return BudgetVerdict(
+        price_usd=price,
+        ceiling_usd=ceiling.max_bid_usd,
+        landed_pln=landed,
+        budget_pln=ceiling.budget_pln,
+    )
 
 
 # ------------------------------------------------------------------- składowe
@@ -440,9 +526,13 @@ def score_lot(
     """Ocena 0-10 z rozbiciem na składowe."""
     profile = profile or ClientProfile()
 
+    verdict = budget_verdict(lot, profile)
+
     reasons = disqualify(lot, profile)
     if reasons:
-        return LotScore(score=0.0, recommendation="ODRZUĆ", disqualifiers=reasons)
+        return LotScore(
+            score=0.0, recommendation="ODRZUĆ", disqualifiers=reasons, budget=verdict
+        )
 
     available: list[tuple[str, float, str]] = []
     skipped: list[str] = []
@@ -460,6 +550,7 @@ def score_lot(
             recommendation="ODRZUĆ",
             disqualifiers=["brak jakichkolwiek danych do oceny"],
             skipped=skipped,
+            budget=verdict,
         )
 
     # Renormalizacja: waga składowych bez danych rozkłada się na dostępne.
@@ -483,11 +574,17 @@ def score_lot(
     else:
         recommendation = "ODRZUĆ"
 
+    # Budżet nadpisuje rekomendację, ale NIE ocenę. Ocena dalej mówi, ile to auto
+    # jest warte; rekomendacja mówi, że dziś nie mieści się w kwocie klienta.
+    if verdict and verdict.over:
+        recommendation = OVER_BUDGET
+
     return LotScore(
         score=score,
         recommendation=recommendation,
         components=components,
         skipped=skipped,
+        budget=verdict,
     )
 
 
@@ -498,13 +595,21 @@ def rank_lots(
     *,
     limit: int = 4,
     min_score: float = RISK_THRESHOLD,
+    include_over_budget: bool = False,
 ) -> list[tuple[CarLot, LotScore]]:
     """Najlepsze oferty dla klienta, posortowane malejąco.
 
     Domyślnie 4 pozycje i próg jakości — lepiej pokazać trzy dobre niż cztery z
     zapchajdziurą. Loty poniżej progu nie trafiają do oferty nawet gdy brakuje lepszych.
+
+    Loty ponad budżet są domyślnie pomijane, ale dopuszczalne jawną decyzją
+    (include_over_budget) — wtedy lądują na końcu, za wszystkim, co się mieści.
     """
     scored = [(lot, score_lot(lot, criteria, profile)) for lot in lots]
-    qualified = [item for item in scored if item[1].score >= min_score]
-    qualified.sort(key=lambda item: item[1].score, reverse=True)
+    qualified = [
+        item
+        for item in scored
+        if item[1].score >= min_score and (include_over_budget or not item[1].over_budget)
+    ]
+    qualified.sort(key=lambda item: (item[1].over_budget, -item[1].score))
     return qualified[:limit]

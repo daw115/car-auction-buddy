@@ -48,7 +48,17 @@ from pathlib import Path
 from typing import Any, Iterable, Literal, Optional
 
 from parser.models import AnalyzedLot, CarLot, ClientCriteria
-from pricing.import_calculator import calculate_lot_import_costs
+from pricing.import_calculator import (
+    BROKER_FEE_KEY,
+    EXCISE_EV,
+    EXCISE_LARGE,
+    EXCISE_SMALL,
+    SETTLEMENT_TOTAL_KEY,
+    calculate_lot_import_costs,
+    client_price_pln,
+    engine_liters_from_trim,
+    excise_rate_for,
+)
 
 AGENT_PROMPT_PATH = Path(__file__).parent.parent.parent / "agent-oferta-auto-usa.md"
 
@@ -67,15 +77,6 @@ DEFAULT_FEE_TIER: FeeTier = "basic"
 # Cenę zaokrąglamy W GÓRĘ. Kwota niższa od rzeczywistej to reklamacja przy odbiorze,
 # kwota wyższa to co najwyżej rabat przy podsumowaniu.
 PRICE_ROUNDING_PLN = 500
-
-# Akcyza: 3,1% do 2000 cm³, 18,6% powyżej. Gdy nie znamy pojemności, zakładamy większą
-# stawkę — w amerykańskich aukcjach silnik poniżej 2,0 l to wyjątek, a pomyłka w drugą
-# stronę zaniża cenę klienta o ~5 000 zł przy locie za 10 000 USD.
-EXCISE_SMALL = 0.031
-EXCISE_LARGE = 0.186
-EXCISE_EV = 0.0
-
-_ENGINE_LITERS = re.compile(r"(\d[.,]\d)\s*[lt]?\b", re.IGNORECASE)
 
 # ───────────────────────────────────────────────── czego w ofercie być nie może
 
@@ -279,33 +280,13 @@ def _car_headline(lot: CarLot) -> str:
 
 
 def _engine_liters(lot: CarLot) -> Optional[float]:
-    """Pojemność z wersji wyposażenia ('3.0 TDI', '2.0T'). None = nie wiemy."""
-    for source in (lot.trim, lot.model):
-        if not source:
-            continue
-        match = _ENGINE_LITERS.search(source)
-        if match:
-            try:
-                value = float(match.group(1).replace(",", "."))
-            except ValueError:
-                continue
-            if 0.8 <= value <= 8.5:
-                return value
-    return None
+    return engine_liters_from_trim(lot.trim, lot.model)
 
 
 def _excise_rate(lot: CarLot, criteria: Optional[ClientCriteria]) -> float:
-    """Stawka akcyzy dla tego auta.
-
-    Przy braku danych o pojemności bierzemy stawkę wyższą — patrz komentarz przy
-    EXCISE_LARGE. Zaniżona akcyza to zaniżona cena w ofercie, czyli dopłata po fakcie.
-    """
-    if criteria and (criteria.fuel_type or "").lower() == "electric":
-        return EXCISE_EV
-    liters = _engine_liters(lot)
-    if liters is not None and liters <= 2.0:
-        return EXCISE_SMALL
-    return EXCISE_LARGE
+    """Stawka akcyzy dla tego auta — reguła wspólna z raportami per lot."""
+    electric = bool(criteria and (criteria.fuel_type or "").lower() == "electric")
+    return excise_rate_for(_engine_liters(lot), electric=electric)
 
 
 # ─────────────────────────────────────────────────────────────── budowa pozycji
@@ -324,12 +305,7 @@ def _unwrap(item: Any) -> tuple[Optional[CarLot], Optional[Any]]:
 
 
 def _fee_pln(costs: dict[str, float], tier: FeeTier) -> float:
-    key = "broker_premium_gross_pln" if tier == "premium" else "broker_basic_gross_pln"
-    return float(costs.get(key, 0.0))
-
-
-def _total_key(settlement: Settlement) -> str:
-    return "company_gross_pln" if settlement == "company" else "private_total_pln"
+    return float(costs[BROKER_FEE_KEY[tier]])
 
 
 def build_car(
@@ -354,18 +330,15 @@ def build_car(
     if not costs:
         return None
 
-    landed = float(costs[_total_key(settlement)])
-    fee = _fee_pln(costs, fee_tier)
+    landed = float(costs[SETTLEMENT_TOTAL_KEY[settlement]])
     return OfferCar(
         lot=lot,
         analysis=analysis,
         costs=costs,
         landed_pln=landed,
-        fee_pln=fee,
-        # Cena dla klienta = sprowadzenie + nasza prowizja. Sam private_total_pln to
-        # koszt sprowadzenia, nie cena sprzedaży — pokazanie go jako "pod klucz"
-        # zaniża ofertę o wysokość prowizji (2 800-4 200 zł w typowym zakresie).
-        client_price_pln=landed + fee,
+        fee_pln=_fee_pln(costs, fee_tier),
+        # Jedna definicja ceny końcowej dla całego systemu — patrz import_calculator.
+        client_price_pln=client_price_pln(costs, settlement=settlement, fee_tier=fee_tier),
         excise_rate=excise,
         settlement=settlement,
         fee_tier=fee_tier,
@@ -527,20 +500,44 @@ def _fallback_prose(cars: list[OfferCar], client_name: Optional[str], budget_pln
 
 # ───────────────────────────────────────────────────────────── dostawcy modelu
 
-# Poprzedni default ("claude-sonnet-4-6-thinking") nie jest identyfikatorem modelu w API
-# Anthropic — przy pustym ANTHROPIC_BASE_URL takie wywołanie kończy się błędem 404, czyli
-# awarią ścieżki, która ma być ratunkową. Domyślnie idziemy więc za ANTHROPIC_MODEL z .env.
+# Model bierzemy z konfiguracji, nie z literału w kodzie. Poprzedni default
+# ("claude-sonnet-4-6-thinking") to alias proxy oneprovider.dev, a nie identyfikator
+# z API Anthropica — wpisany na sztywno rozjeżdżał się z ANTHROPIC_MODEL z .env.
 OFFER_MODEL = (
     os.getenv("ANTHROPIC_OFFER_MODEL")
     or os.getenv("ANTHROPIC_MODEL")
     or "claude-sonnet-4-5-20250929"
 )
+
+# Identyfikatory publicznego API Anthropica mają postać "claude-<rodzina>-<wersja>[-data]".
+# Aliasy proxy (np. "claude-sonnet-4-6-thinking") wyglądają podobnie, ale na oficjalnym
+# endpointcie zwracają 404 — a że to ścieżka ratunkowa, błąd wychodził dopiero wtedy,
+# gdy pierwszy provider już padł.
+_PROXY_ONLY_MODEL = re.compile(r"-thinking$|-4-6", re.IGNORECASE)
 _MAX_TOKENS = 1200
+
+
+def _check_anthropic_config() -> None:
+    """Sprzeczną konfigurację zgłaszamy od razu, zamiast czekać na 404 z API.
+
+    Klucz i model w .env należą do proxy `api.oneprovider.dev`. Przy pustym
+    ANTHROPIC_BASE_URL SDK strzela na oficjalne api.anthropic.com, gdzie ani klucz,
+    ani alias modelu nie działają — patrz AUDYT_SESJA_2026-07-19.md, punkt 6.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise RuntimeError("Brak ANTHROPIC_API_KEY")
+    if not os.getenv("ANTHROPIC_BASE_URL") and _PROXY_ONLY_MODEL.search(OFFER_MODEL):
+        raise RuntimeError(
+            f"Model '{OFFER_MODEL}' to alias proxy, a ANTHROPIC_BASE_URL jest puste — "
+            "wywołanie poszłoby na oficjalne API i zwróciło 404. Ustaw ANTHROPIC_BASE_URL "
+            "na proxy albo ANTHROPIC_MODEL na identyfikator z API Anthropica."
+        )
 
 
 def _call_anthropic_text(system: str, user_prompt: str) -> str:
     from anthropic import Anthropic
 
+    _check_anthropic_config()
     client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
         model=OFFER_MODEL,
@@ -725,7 +722,7 @@ def _render_client_email(
       <div style="background:#f8fafc;border:1px solid #e6e8ee;border-radius:10px;padding:14px;
                   color:#344054;font-size:13px;line-height:1.6;">
         W podanej cenie: zakup auta, opłaty aukcyjne, transport do Polski, odprawa celna,
-        akcyza i moja prowizja. Poza nią zostaje rejestracja w Polsce.<br>
+        akcyza i moja prowizja.<br>
         Ceny są wyliczone dla dzisiejszej stawki na aukcji — licytacja może pójść wyżej
         i wtedy podaję nową kwotę przed zakupem.
       </div>"""
