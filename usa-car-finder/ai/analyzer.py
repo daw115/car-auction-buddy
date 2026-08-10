@@ -69,11 +69,21 @@ SYSTEM_PROMPT = """Jesteś ekspertem od importu aut z USA do Polski.
 Analizujesz dane z aukcji Copart i IAAI dla klienta-brokera importowego.
 
 KRYTYCZNA ZASADA SCORINGU:
-Score (0.0-10.0) MUSI BYC NIEZALEZNY OD KOSZTU NAPRAWY.
-Aukcyjne estymaty kosztow napraw sa NIEREALNE. NIE szacuj kosztu naprawy
-i NIE uzywaj go do score. Kosztami zajmuje sie oddzielny modul kalkulacji.
+Score jest POLICZONY POZA TOBA i przychodzi w polu `unified_score`. NIE WYLICZAJ
+go samodzielnie i nie zmieniaj — pole `score` w Twojej odpowiedzi ma powtarzac
+`unified_score.score`. Jesli ich nie zgadzasz, i tak zostanie nadpisane.
 
-Score liczysz WYLACZNIE na podstawie:
+`unified_score.components` zawiera rozbicie na skladowe (cena vs rynek, stan,
+tytul, przebieg, logistyka, wiarygodnosc, dopasowanie) razem z uzasadnieniem
+kazdej. UZYJ tego rozbicia w opisie: klient ma wiedziec, KTORY czynnik zadecydowal.
+`unified_score.disqualifiers` (gdy niepuste) oznacza lot odrzucony twardo —
+wtedy recommendation musi byc ODRZUC, a powody trafiaja do red_flags.
+
+Score jest NIEZALEZNY OD KOSZTU NAPRAWY. Aukcyjne estymaty napraw sa NIEREALNE.
+NIE szacuj kosztu naprawy. Kosztami zajmuje sie oddzielny modul kalkulacji.
+
+Ponizsze czynniki sa juz uwzglednione w `unified_score` — sluza Ci do OPISU,
+nie do liczenia:
 - typ uszkodzenia (Flood/Fire = ODRZUC; airbags i frame = duze ryzyko)
 - typ tytulu (Clean > Salvage > Rebuilt > Parts Only)
 - przebieg w stosunku do roku
@@ -361,6 +371,8 @@ def analyze_lots(
     except Exception as exc:
         print(f"[AI/Frame] Vision check failed ({exc}) - kontynuuję bez")
 
+    _attach_unified_scores(lots, criteria)
+
     ai_mode = _resolve_ai_provider("ai_analysis_mode", "AI_ANALYSIS_MODE", "auto")
     openai_key = os.getenv("OPENAI_API_KEY")
     has_openai_key = _has_usable_openai_key(openai_key)
@@ -474,6 +486,38 @@ def analyze_lots(
     return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
 
+def _attach_unified_scores(lots: List[CarLot], criteria: ClientCriteria) -> None:
+    """Liczy deterministyczną ocenę i dokleja ją do lota.
+
+    Ocena przestaje być zadaniem modelu. LLM dostaje ją gotową razem z rozbiciem na
+    składowe i pisze uzasadnienie — dzięki temu wynik da się odtworzyć i przetestować,
+    a narracja nie rozjeżdża się z liczbą.
+    """
+    try:
+        from scoring import score_lot
+    except Exception as exc:
+        logger.warning("[analyzer] scoring niedostępny, zostaje ocena z modelu: %s", exc)
+        return
+
+    for lot in lots:
+        try:
+            result = score_lot(lot, criteria)
+        except Exception:
+            logger.debug("[analyzer] nie policzyłem oceny dla %s", lot.lot_id, exc_info=True)
+            continue
+        lot.raw_data["unified_score"] = {
+            "score": result.score,
+            "recommendation": result.recommendation,
+            "explain": result.explain(),
+            "disqualifiers": result.disqualifiers,
+            "components": [
+                {"label": c.label, "value": round(c.value, 2), "points": round(c.points, 2),
+                 "detail": c.detail}
+                for c in result.components
+            ],
+        }
+
+
 def _has_usable_openai_key(api_key: Optional[str]) -> bool:
     return bool(api_key and api_key.startswith("sk-"))
 
@@ -541,6 +585,8 @@ def _lot_payloads(lots: List[CarLot]) -> list[dict]:
             "bidfax_history_url": lot.raw_data.get("bidfax_history_url"),
             "bidfax_sold_vin": lot.raw_data.get("bidfax_sold_vin"),
             "frame_damage_check": _frame_check_payload(lot),
+            # Ocena policzona deterministycznie — model jej NIE przelicza.
+            "unified_score": lot.raw_data.get("unified_score"),
         }
         for lot in lots
     ]
@@ -702,7 +748,20 @@ def _results_from_analysis_data(
         except Exception as exc:
             logger.warning("[analyzer] pominięto lot %s — nieprawidłowe dane z odpowiedzi AI: %s", lot_id, exc)
             continue
-        results.append(AnalyzedLot(lot=lots_by_id[lot_id], analysis=analysis))
+
+        lot = lots_by_id[lot_id]
+        unified = (lot.raw_data or {}).get("unified_score")
+        if unified:
+            # Deterministyczna ocena wygrywa z tym, co policzył model. Model bywa
+            # niekonsekwentny między lotami tej samej jakości, a my potrzebujemy
+            # rankingu, który da się odtworzyć i obronić przed klientem.
+            analysis.score = float(unified["score"])
+            if unified["disqualifiers"]:
+                analysis.recommendation = "ODRZUĆ"
+                for reason in unified["disqualifiers"]:
+                    if reason not in analysis.red_flags:
+                        analysis.red_flags.append(reason)
+        results.append(AnalyzedLot(lot=lot, analysis=analysis))
 
     return _rank_results(results, top_n)
 
