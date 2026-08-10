@@ -1,36 +1,557 @@
 """
-Generator ofert sprzedażowych używając agenta @agent-oferta-auto-usa.md
-Generuje 2 wersje:
-  - Pełna (1200-1500 słów) — dla sprzedającego na Telegram
-  - Skrócona (200 słów) — dla klienta na email
+Oferta dla klienta: liczby liczy Python, słowa pisze model.
+
+Poprzednia wersja dawała modelowi cały plik agenta, komplet danych z aukcji i polecenie
+"wygeneruj HTML, ceny przelicz USD × 4,0". Model liczył więc cenę końcową sam — i mylił
+się o kilkadziesiąt procent, bo kurs to nie kalkulacja importu. Lot za 10 000 USD wychodził
+w mailu jako 40 000 zł, podczas gdy klient płaci za niego ~78 000 zł. To nie jest literówka
+w prompcie, tylko zła architektura: dokument, który jest de facto ofertą handlową, nie może
+mieć liczb pochodzących z generowania tekstu.
+
+Podział odpowiedzialności jest więc twardy:
+
+  Python  — wszystko, co da się policzyć lub przepisać: cena pod klucz, przebieg, tłumaczenie
+            żargonu aukcyjnego, prowizja, terminy, HTML. Każda liczba w ofercie pochodzi
+            z pricing/import_calculator.py.
+  Model   — wyłącznie proza: jedno zdanie wstępu, jedno zdanie "dlaczego to auto", zdanie
+            zamykające, notatka dla brokera. Proza z cyframi jest odrzucana (_clean_prose),
+            bo cyfra od modelu to liczba, której nikt nie policzył.
+
+Dzięki temu awaria modelu nie blokuje pipeline'u: gdy LLM padnie, oferta i tak powstaje,
+tylko bez zdań "dlaczego". Poprzednia wersja rzucała wyjątkiem po sześciu krokach pipeline'u
+(scrape + analiza + ranking) i klient nie dostawał nic.
+
+Założenia biznesowe, na których stoi treść — opisane szerzej w agent-oferta-auto-usa.md:
+
+  * Jesteśmy BROKEREM, nie komisem. Nie mamy auta na placu, nie naprawiamy go i nie dajemy
+    gwarancji na naprawę. Zarabiamy prowizję. Oferta nie może obiecywać niczego z modelu
+    "kupiłem, naprawiłem, sprzedaję".
+  * Klient myśli w złotówkach pod klucz. Cena aukcyjna w USD nic mu nie mówi (ta sama
+    zasada co w report/whatsapp.py).
+  * Cena z aukcji to STAWKA, nie cena. Aukcja może pójść wyżej, więc mówimy "przy tej
+    stawce", a nie "cena tego auta".
+  * Klient widzi 3-4 auta. Więcej paraliżuje wybór (main_automation.CLIENT_OFFERS_COUNT).
+  * Wewnętrzna ocena 0-10 nigdy nie opuszcza firmy.
 """
+from __future__ import annotations
+
+import html as html_lib
 import json
+import math
 import os
 import re
 import subprocess
-import urllib.error
 import urllib.request
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
-from anthropic import Anthropic
-from parser.models import AnalyzedLot
+from typing import Any, Iterable, Literal, Optional
+
+from parser.models import AnalyzedLot, CarLot, ClientCriteria
+from pricing.import_calculator import calculate_lot_import_costs
 
 AGENT_PROMPT_PATH = Path(__file__).parent.parent.parent / "agent-oferta-auto-usa.md"
-OFFER_MODEL = os.getenv("ANTHROPIC_OFFER_MODEL", "claude-sonnet-4-6-thinking")
+
+Settlement = Literal["private", "company"]
+FeeTier = Literal["basic", "premium"]
+
+# ─────────────────────────────────────────────────────────────── polityka oferty
+
+# Tyle aut widzi klient. Reszta idzie tylko do briefu brokera.
+MAX_CLIENT_CARS = 4
+
+# Prowizja doliczana do ceny pokazywanej klientowi. Domyślnie basic — premium to
+# świadoma decyzja handlowa, a nie wartość, którą ma zgadywać generator.
+DEFAULT_FEE_TIER: FeeTier = "basic"
+
+# Cenę zaokrąglamy W GÓRĘ. Kwota niższa od rzeczywistej to reklamacja przy odbiorze,
+# kwota wyższa to co najwyżej rabat przy podsumowaniu.
+PRICE_ROUNDING_PLN = 500
+
+# Akcyza: 3,1% do 2000 cm³, 18,6% powyżej. Gdy nie znamy pojemności, zakładamy większą
+# stawkę — w amerykańskich aukcjach silnik poniżej 2,0 l to wyjątek, a pomyłka w drugą
+# stronę zaniża cenę klienta o ~5 000 zł przy locie za 10 000 USD.
+EXCISE_SMALL = 0.031
+EXCISE_LARGE = 0.186
+EXCISE_EV = 0.0
+
+_ENGINE_LITERS = re.compile(r"(\d[.,]\d)\s*[lt]?\b", re.IGNORECASE)
+
+# ───────────────────────────────────────────────── czego w ofercie być nie może
+
+# Zakazane zwroty (z v1 agenta) + żargon, którego klient nie zna (z report/whatsapp.py
+# i hybrid_reports.py). Sprawdzamy po normalizacji do lowercase, na rdzeniach — "okazji
+# życia" ma wpaść tak samo jak "okazja życia".
+BANNED_FRAGMENTS = (
+    "okazj",           # "okazja życia", "niepowtarzalna okazja"
+    "must have",
+    "rewelac",
+    "jak nowe",
+    "stan idealny",
+    "nie do odrzucenia",
+    "czystym sumieniem",
+    "ostatnia sztuka",
+    "tylko dziś",
+    "tylko dzis",
+    "gwarancj",        # broker nie daje gwarancji na auto z aukcji
+    "zysk",            # nie obiecujemy zarobku na aucie
+    "pewna inwestycj",
+    "bezwypadkow",     # auto z Copart/IAAI z definicji nie jest bezwypadkowe
+)
+
+JARGON_FRAGMENTS = (
+    "score",
+    "/10",
+    "salvage",
+    "rebuilt",
+    "clean title",
+    "run & drive",
+    "run and drive",
+    "prefiltr",
+    "lot #",
+    "copart",
+    "iaai",
+    "manheim",
+)
+
+_EMOJI = re.compile(
+    "[\U0001F000-\U0001FAFF☀-➿⬀-⯿️]",
+    flags=re.UNICODE,
+)
+_DIGIT = re.compile(r"\d")
+_TAGS = re.compile(r"<[^>]+>")
+_WS = re.compile(r"\s+")
+
+# ───────────────────────────────────────────────────── tłumaczenie żargonu na PL
+
+# Kolejność ma znaczenie: "front end" musi trafić przed samym "front".
+_DAMAGE_PL: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"normal wear", re.I), "normalne zużycie"),
+    (re.compile(r"minor dent|dent/scratch|scratch", re.I), "drobne wgniecenia i rysy"),
+    (re.compile(r"hail", re.I), "grad"),
+    (re.compile(r"vandalism", re.I), "wandalizm"),
+    (re.compile(r"theft", re.I), "ślady kradzieży"),
+    (re.compile(r"front", re.I), "uszkodzony przód"),
+    (re.compile(r"rear", re.I), "uszkodzony tył"),
+    (re.compile(r"side", re.I), "uszkodzony bok"),
+    (re.compile(r"undercarriage", re.I), "uszkodzone podwozie"),
+    (re.compile(r"rollover|all over", re.I), "dachowanie"),
+    (re.compile(r"mechanical|engine|transmission", re.I), "usterka mechaniczna"),
+    (re.compile(r"water|flood", re.I), "auto zalane"),
+    (re.compile(r"burn|fire", re.I), "ślady pożaru"),
+    (re.compile(r"suspension", re.I), "uszkodzone zawieszenie"),
+    (re.compile(r"biohazard", re.I), "skażenie wnętrza"),
+)
+
+_TITLE_PL: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"parts", re.I), "dokumenty tylko na części"),
+    (re.compile(r"rebuilt", re.I), "auto po naprawie, dopuszczone do ruchu w USA"),
+    (re.compile(r"salvage", re.I), "dokumenty auta powypadkowego"),
+    (re.compile(r"clean", re.I), "dokumenty bez wpisu o szkodzie"),
+)
 
 
-def _call_anthropic_text(system: str, user_prompt: str, max_tokens: int = 8000) -> str:
+# ══════════════════════════════════════════════════════════════════════ fakty
+
+
+@dataclass(frozen=True)
+class OfferCar:
+    """Jedno auto w ofercie — komplet danych już policzonych i przetłumaczonych.
+
+    Wszystko, co trafia do klienta, jest tutaj. Renderer nie liczy, model nie liczy.
+    """
+
+    lot: CarLot
+    analysis: Optional[Any]          # AIAnalysis, gdy lot przeszedł przez analyze_lots
+    costs: dict[str, float]          # pełny wynik calculate_lot_import_costs
+    landed_pln: float                # sprowadzenie bez prowizji
+    fee_pln: float                   # prowizja brokera (brutto)
+    client_price_pln: float          # to, co klient realnie zapłaci
+    excise_rate: float
+    settlement: Settlement
+    fee_tier: FeeTier
+    report_url: Optional[str] = None
+    why: Optional[str] = None        # jedno zdanie od modelu, może zostać puste
+
+    @property
+    def name(self) -> str:
+        parts = [str(self.lot.year or ""), self.lot.make or "", self.lot.model or ""]
+        return " ".join(part for part in parts if part).strip() or "Auto z aukcji"
+
+    @property
+    def price_label(self) -> str:
+        return _price_label(self.client_price_pln)
+
+    @property
+    def mileage_label(self) -> str:
+        return _mileage_label(self.lot.odometer_mi)
+
+    @property
+    def damage_label(self) -> str:
+        return _damage_pl(self.lot)
+
+    @property
+    def title_label(self) -> Optional[str]:
+        return _title_pl(self.lot.title_type)
+
+    @property
+    def photo(self) -> Optional[str]:
+        return self.lot.images[0] if self.lot.images else None
+
+
+@dataclass(frozen=True)
+class Offer:
+    """Wynik pracy agenta: dwa dokumenty i ślad tego, jak powstały."""
+
+    client_html: str
+    broker_html: str
+    cars: list[OfferCar]
+    prose_source: Literal["llm", "deterministic"]
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def has_offers(self) -> bool:
+        return bool(self.cars)
+
+
+# ─────────────────────────────────────────────────────────────────── formatowanie
+
+
+def _round_up(value: float, step: int = PRICE_ROUNDING_PLN) -> int:
+    return int(math.ceil(value / step) * step)
+
+
+def _pln(value: float) -> str:
+    """Złotówki ze spacją jako separatorem tysięcy (twarda spacja, żeby nie łamać linii)."""
+    return f"{round(value):,.0f}".replace(",", " ") + " zł"
+
+
+def _usd(value: Optional[float]) -> str:
+    if not value:
+        return "brak danych"
+    return "$" + f"{round(value):,.0f}".replace(",", " ")
+
+
+def _price_label(value: float) -> str:
+    """Cena dla klienta — zaokrąglona w górę i opisana jako szacunek."""
+    return "ok. " + _pln(_round_up(value))
+
+
+def _mileage_label(odometer_mi: Optional[int]) -> str:
+    """Klient liczy w kilometrach; mile zostawiamy w nawiasie, bo są w dokumentach."""
+    if not odometer_mi:
+        return "przebieg do potwierdzenia"
+    km = round(odometer_mi * 1.60934 / 1000)
+    return f"{km} tys. km ({odometer_mi / 1000:.0f} tys. mil)"
+
+
+def _damage_pl(lot: CarLot) -> str:
+    """Uszkodzenia po polsku, spokojnie i wprost. Nieznany opis = 'do potwierdzenia'."""
+    labels: list[str] = []
+    for raw in (lot.damage_primary, lot.damage_secondary):
+        if not raw:
+            continue
+        for pattern, label in _DAMAGE_PL:
+            if pattern.search(raw):
+                if label not in labels:
+                    labels.append(label)
+                break
+    if not labels:
+        return "zakres uszkodzeń do potwierdzenia"
+    return ", ".join(labels)
+
+
+def _title_pl(title_type: Optional[str]) -> Optional[str]:
+    if not title_type:
+        return None
+    for pattern, label in _TITLE_PL:
+        if pattern.search(title_type):
+            return label
+    return None
+
+
+def _car_headline(lot: CarLot) -> str:
+    parts = [str(lot.year or ""), lot.make or "", lot.model or ""]
+    return " ".join(part for part in parts if part).strip() or "Auto z aukcji"
+
+
+# ─────────────────────────────────────────────────────────────────────── akcyza
+
+
+def _engine_liters(lot: CarLot) -> Optional[float]:
+    """Pojemność z wersji wyposażenia ('3.0 TDI', '2.0T'). None = nie wiemy."""
+    for source in (lot.trim, lot.model):
+        if not source:
+            continue
+        match = _ENGINE_LITERS.search(source)
+        if match:
+            try:
+                value = float(match.group(1).replace(",", "."))
+            except ValueError:
+                continue
+            if 0.8 <= value <= 8.5:
+                return value
+    return None
+
+
+def _excise_rate(lot: CarLot, criteria: Optional[ClientCriteria]) -> float:
+    """Stawka akcyzy dla tego auta.
+
+    Przy braku danych o pojemności bierzemy stawkę wyższą — patrz komentarz przy
+    EXCISE_LARGE. Zaniżona akcyza to zaniżona cena w ofercie, czyli dopłata po fakcie.
+    """
+    if criteria and (criteria.fuel_type or "").lower() == "electric":
+        return EXCISE_EV
+    liters = _engine_liters(lot)
+    if liters is not None and liters <= 2.0:
+        return EXCISE_SMALL
+    return EXCISE_LARGE
+
+
+# ─────────────────────────────────────────────────────────────── budowa pozycji
+
+
+def _unwrap(item: Any) -> tuple[Optional[CarLot], Optional[Any]]:
+    """Przyjmujemy AnalyzedLot (pipeline) albo goły CarLot (dashboard, testy)."""
+    if isinstance(item, AnalyzedLot):
+        return item.lot, item.analysis
+    if isinstance(item, CarLot):
+        return item, None
+    lot = getattr(item, "lot", None)
+    if isinstance(lot, CarLot):
+        return lot, getattr(item, "analysis", None)
+    return None, None
+
+
+def _fee_pln(costs: dict[str, float], tier: FeeTier) -> float:
+    key = "broker_premium_gross_pln" if tier == "premium" else "broker_basic_gross_pln"
+    return float(costs.get(key, 0.0))
+
+
+def _total_key(settlement: Settlement) -> str:
+    return "company_gross_pln" if settlement == "company" else "private_total_pln"
+
+
+def build_car(
+    item: Any,
+    *,
+    settlement: Settlement = "private",
+    fee_tier: FeeTier = DEFAULT_FEE_TIER,
+    criteria: Optional[ClientCriteria] = None,
+    report_url: Optional[str] = None,
+) -> Optional[OfferCar]:
+    """Pozycja oferty albo None, gdy lota nie da się wycenić.
+
+    Bez ceny aukcyjnej nie ma ceny pod klucz, a auto bez ceny w ofercie to zaproszenie
+    do rozmowy o tym, czego nie wiemy — lepiej je pominąć.
+    """
+    lot, analysis = _unwrap(item)
+    if lot is None:
+        return None
+
+    excise = _excise_rate(lot, criteria)
+    costs = calculate_lot_import_costs(lot, excise_rate=excise)
+    if not costs:
+        return None
+
+    landed = float(costs[_total_key(settlement)])
+    fee = _fee_pln(costs, fee_tier)
+    return OfferCar(
+        lot=lot,
+        analysis=analysis,
+        costs=costs,
+        landed_pln=landed,
+        fee_pln=fee,
+        # Cena dla klienta = sprowadzenie + nasza prowizja. Sam private_total_pln to
+        # koszt sprowadzenia, nie cena sprzedaży — pokazanie go jako "pod klucz"
+        # zaniża ofertę o wysokość prowizji (2 800-4 200 zł w typowym zakresie).
+        client_price_pln=landed + fee,
+        excise_rate=excise,
+        settlement=settlement,
+        fee_tier=fee_tier,
+        report_url=report_url,
+    )
+
+
+# ══════════════════════════════════════════════════════════════ proza od modelu
+
+
+def _load_agent_prompt() -> str:
+    if not AGENT_PROMPT_PATH.exists():
+        raise FileNotFoundError(f"Brak pliku agenta: {AGENT_PROMPT_PATH}")
+    return AGENT_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _facts_for_model(cars: list[OfferCar], client_name: Optional[str], query: str) -> str:
+    """Minimalny obraz świata dla modelu.
+
+    Świadomie NIE podajemy tu ocen, cen w USD ani identyfikatorów lotów — model nie
+    powinien mieć czym się pomylić ani co przepisać do treści dla klienta.
+    """
+    payload = {
+        "klient": client_name or None,
+        "czego_szukal": query or None,
+        "auta": [
+            {
+                "id": car.lot.lot_id,
+                "auto": car.name,
+                "przebieg": car.mileage_label,
+                "stan": car.damage_label,
+                "dokumenty": car.title_label,
+                "cena_pod_klucz": car.price_label,
+                "lokalizacja": car.lot.location_state,
+                "uwagi_analizy": (car.analysis.red_flags or [])[:3] if car.analysis else [],
+            }
+            for car in cars
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=1)
+
+
+_PROSE_TASK = """Napisz prozę do oferty. Zwróć WYŁĄCZNIE JSON, bez markdown:
+
+{{
+  "intro": "jedno zdanie otwarcia, max 180 znaków",
+  "cars": [{{"id": "<id auta>", "why": "jedno zdanie, dlaczego akurat to auto, max 130 znaków"}}],
+  "closing": "jedno zdanie zamykające, ZAKOŃCZ PYTANIEM, max 150 znaków",
+  "broker_note": "3-5 zdań dla brokera: na co uważać przy tych autach, max 600 znaków"
+}}
+
+TWARDE ZASADY (złamanie = fragment leci do kosza i zostaje wersja bez niego):
+- ŻADNYCH CYFR w polach intro, why, closing. Wszystkie liczby wstawia system.
+- Żadnego żargonu: bez "salvage", "rebuilt", "lot", "score", bez nazw giełd.
+- Bez wykrzykników, bez emoji, bez wielkich liter dla podkreślenia.
+- Bez obietnic gwarancji, naprawy i zysku — jesteśmy pośrednikiem, nie komisem.
+- Uszkodzenia nazywaj spokojnie i wprost, nie strasz i nie ukrywaj.
+- Zdania krótkie, do 15 słów. Ton doradcy, nie sprzedawcy.
+
+DANE:
+{facts}"""
+
+
+def _clean_prose(text: Any, limit: int, *, allow_digits: bool = False) -> Optional[str]:
+    """Zdanie od modelu albo None, gdy łamie zasady.
+
+    Odrzucamy zamiast poprawiać: fragment z cyfrą to liczba, której nikt nie policzył,
+    a zdanie z zakazanym zwrotem lepiej wyciąć niż przepisać w locie.
+    """
+    if not isinstance(text, str):
+        return None
+    cleaned = _WS.sub(" ", _TAGS.sub(" ", text)).strip().strip('"')
+    if not cleaned or len(cleaned) > limit * 2:
+        return None
+    if not allow_digits and _DIGIT.search(cleaned):
+        return None
+    if _EMOJI.search(cleaned) or "!" in cleaned:
+        return None
+    lowered = cleaned.lower()
+    if any(bad in lowered for bad in BANNED_FRAGMENTS):
+        return None
+    if any(bad in lowered for bad in JARGON_FRAGMENTS):
+        return None
+    if len(cleaned) > limit:
+        cut = cleaned[:limit].rsplit(" ", 1)[0]
+        cleaned = cut.rstrip(" ,;–-") + "."
+    return cleaned
+
+
+def _parse_json_loose(raw: str) -> dict:
+    """JSON z odpowiedzi modelu, nawet gdy owinie go w ```json albo doda komentarz."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1] if "```" in text[3:] else text[3:]
+        text = text.split("\n", 1)[1] if text.lower().startswith("json") else text
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("brak obiektu JSON w odpowiedzi")
+    return json.loads(text[start:end + 1])
+
+
+def _validated_prose(raw: dict, cars: list[OfferCar]) -> tuple[dict, list[str]]:
+    """Proza przepuszczona przez walidację; odrzucone pola wracają jako ostrzeżenia."""
+    warnings: list[str] = []
+    result: dict[str, Any] = {"intro": None, "closing": None, "broker_note": None, "why": {}}
+
+    for key, limit in (("intro", 180), ("closing", 150)):
+        value = _clean_prose(raw.get(key), limit)
+        if value is None and raw.get(key):
+            warnings.append(f"odrzucono pole '{key}' (cyfry, żargon lub zakazany zwrot)")
+        result[key] = value
+
+    # Notatka brokerska trafia tylko do nas, więc cyfry są w niej dozwolone.
+    note = _clean_prose(raw.get("broker_note"), 600, allow_digits=True)
+    result["broker_note"] = note
+
+    by_id = {car.lot.lot_id: car for car in cars}
+    for entry in raw.get("cars") or []:
+        if not isinstance(entry, dict):
+            continue
+        lot_id = str(entry.get("id") or "")
+        if lot_id not in by_id:
+            continue
+        why = _clean_prose(entry.get("why"), 130)
+        if why is None and entry.get("why"):
+            warnings.append(f"odrzucono opis auta {lot_id}")
+        if why:
+            result["why"][lot_id] = why
+
+    return result, warnings
+
+
+def _fallback_prose(cars: list[OfferCar], client_name: Optional[str], budget_pln: Optional[float]) -> dict:
+    """Oferta bez modelu — krótsza, ale poprawna i wysyłalna.
+
+    Treść celowo zbieżna z report/whatsapp.py: klient może dostać oba kanały i nie
+    powinien zobaczyć dwóch różnych wersji tej samej propozycji.
+    """
+    count = len(cars)
+    if not count:
+        return {
+            "intro": "Na ten moment nie mam auta, które mógłbym uczciwie polecić.",
+            "closing": "Szukam dalej — poszerzyć kryteria czy poczekać na kolejne aukcje?",
+            "broker_note": None,
+            "why": {},
+        }
+    noun = "auto" if count == 1 else ("auta" if count < 5 else "aut")
+    # Budżet wspominamy tylko wtedy, gdy cokolwiek się w nim mieści. "Mam 4 auta pod
+    # budżet 60 tys." przy cenach od 62 tys. czyta się jak niedosłuchanie klienta.
+    fits_budget = budget_pln and any(car.client_price_pln <= budget_pln for car in cars)
+    budget_note = f" pod budżet {round(budget_pln / 1000)} tys. zł" if fits_budget else ""
+    return {
+        "intro": f"Mam {count} {noun}{budget_note} — poniżej ceny pod klucz w Polsce.",
+        "closing": "Podesłać pełną kalkulację dla któregoś z nich?",
+        "broker_note": None,
+        "why": {},
+    }
+
+
+# ───────────────────────────────────────────────────────────── dostawcy modelu
+
+# Poprzedni default ("claude-sonnet-4-6-thinking") nie jest identyfikatorem modelu w API
+# Anthropic — przy pustym ANTHROPIC_BASE_URL takie wywołanie kończy się błędem 404, czyli
+# awarią ścieżki, która ma być ratunkową. Domyślnie idziemy więc za ANTHROPIC_MODEL z .env.
+OFFER_MODEL = (
+    os.getenv("ANTHROPIC_OFFER_MODEL")
+    or os.getenv("ANTHROPIC_MODEL")
+    or "claude-sonnet-4-5-20250929"
+)
+_MAX_TOKENS = 1200
+
+
+def _call_anthropic_text(system: str, user_prompt: str) -> str:
+    from anthropic import Anthropic
+
     client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
         model=OFFER_MODEL,
-        max_tokens=max_tokens,
+        max_tokens=_MAX_TOKENS,
         system=system,
         messages=[{"role": "user", "content": user_prompt}],
     )
     return response.content[0].text
 
 
-def _call_gemini_text(system: str, user_prompt: str, max_tokens: int = 8000) -> str:
+def _call_gemini_text(system: str, user_prompt: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("Brak GEMINI_API_KEY")
@@ -41,8 +562,9 @@ def _call_gemini_text(system: str, user_prompt: str, max_tokens: int = 8000) -> 
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": {
-            "maxOutputTokens": max_tokens,
+            "maxOutputTokens": _MAX_TOKENS,
             "temperature": 0.7,
+            "responseMimeType": "application/json",
             "thinkingConfig": {"thinkingBudget": int(os.getenv("GEMINI_THINKING_BUDGET", "0"))},
         },
     }
@@ -58,27 +580,40 @@ def _call_gemini_text(system: str, user_prompt: str, max_tokens: int = 8000) -> 
     if not candidates:
         raise RuntimeError("Gemini brak candidates")
     parts = (candidates[0].get("content") or {}).get("parts") or []
-    text = "".join(p.get("text", "") for p in parts if p.get("text"))
+    text = "".join(part.get("text", "") for part in parts if part.get("text"))
     if not text:
         raise RuntimeError(f"Gemini empty (finish={candidates[0].get('finishReason')})")
     return text
 
 
-def _call_kiro_text(system: str, user_prompt: str, max_tokens: int = 8000) -> str:
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+
+
+def _resolve_kiro_model() -> str:
+    try:
+        from api.settings_db import get_ai_model_override
+
+        override = get_ai_model_override("kiro")
+        if override:
+            return override
+    except Exception:
+        pass
+    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
+
+
+def _call_kiro_text(system: str, user_prompt: str) -> str:
     api_key = os.getenv("KIRO_API_KEY")
     if not api_key:
         raise RuntimeError("Brak KIRO_API_KEY")
     cli_path = os.getenv("KIRO_CLI_PATH", os.path.expanduser("~/.local/bin/kiro-cli"))
-    effort = os.getenv("KIRO_EFFORT", "low")
     timeout = int(os.getenv("KIRO_TIMEOUT_SECONDS", "180"))
-    model = _resolve_kiro_model()
-    prompt = f"{system}\n\n{user_prompt}"
-    env = {**os.environ, "KIRO_API_KEY": api_key}
     try:
         result = subprocess.run(
             [cli_path, "chat", "--no-interactive", "--trust-tools=", "-w", "never",
-             "--effort", effort, "--model", model, prompt],
-            capture_output=True, text=True, timeout=timeout, env=env,
+             "--effort", os.getenv("KIRO_EFFORT", "low"),
+             "--model", _resolve_kiro_model(), f"{system}\n\n{user_prompt}"],
+            capture_output=True, text=True, timeout=timeout,
+            env={**os.environ, "KIRO_API_KEY": api_key},
         )
     except FileNotFoundError as exc:
         raise RuntimeError(f"kiro-cli nie znaleziony ({cli_path}): {exc}") from exc
@@ -86,33 +621,24 @@ def _call_kiro_text(system: str, user_prompt: str, max_tokens: int = 8000) -> st
         raise RuntimeError(f"Kiro CLI timeout po {timeout}s") from exc
     if result.returncode != 0:
         raise RuntimeError(f"Kiro CLI exit {result.returncode}: {result.stderr[:300]}")
-    text = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    text = _ANSI.sub("", result.stdout).strip()
     if not text:
         raise RuntimeError(f"Kiro CLI pusta odpowiedź (stderr: {result.stderr[:300]})")
     return text
 
 
-def _call_claude_code_text(system: str, user_prompt: str, max_tokens: int = 8000) -> str:
-    """Claude Code w trybie headless, uwierzytelnienie sesją zalogowanego
-    użytkownika (bez klucza API).
-
-    Osobna zmienna modelu niż reszta zadań: oferta to jedno wywołanie na
-    wyszukiwanie, a jednocześnie jedyny tekst, który czyta klient — stać nas
-    tu na mocniejszy model niż przy analizie kilkunastu lotów.
-    """
+def _call_claude_code_text(system: str, user_prompt: str) -> str:
+    """Claude Code headless — uwierzytelnienie sesją zalogowanego użytkownika, bez klucza."""
     cli_path = os.getenv("CLAUDE_CLI_PATH", os.path.expanduser("~/.local/bin/claude"))
     model = os.getenv("CLAUDE_CODE_OFFER_MODEL") or os.getenv("CLAUDE_CODE_MODEL", "opus")
     timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300"))
     workdir = os.getenv("CLAUDE_CODE_WORKDIR", os.path.expanduser("~/.usacar-claude-cwd"))
     os.makedirs(workdir, exist_ok=True)
-
     try:
         result = subprocess.run(
-            [
-                cli_path, "-p", "--model", model,
-                "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob",
-                "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
-            ],
+            [cli_path, "-p", "--model", model,
+             "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob",
+             "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit"],
             input=f"{system}\n\n{user_prompt}",
             capture_output=True, text=True, timeout=timeout, cwd=workdir,
             # Obecny ANTHROPIC_API_KEY przesłoniłby zalogowaną subskrypcję.
@@ -128,7 +654,7 @@ def _call_claude_code_text(system: str, user_prompt: str, max_tokens: int = 8000
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Claude Code timeout po {timeout}s") from exc
 
-    text = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", result.stdout).strip()
+    text = _ANSI.sub("", result.stdout).strip()
     if "Not logged in" in text or "Please run /login" in text:
         raise RuntimeError(
             "Claude Code niezalogowany — uruchom `claude /login` na serwerze "
@@ -141,7 +667,7 @@ def _call_claude_code_text(system: str, user_prompt: str, max_tokens: int = 8000
     return text
 
 
-_OFFER_AGENT_CALLERS = {
+_CALLERS = {
     "gemini": _call_gemini_text,
     "kiro": _call_kiro_text,
     "anthropic": _call_anthropic_text,
@@ -149,22 +675,11 @@ _OFFER_AGENT_CALLERS = {
 }
 
 
-def _resolve_kiro_model() -> str:
-    """Model Kiro: nadpisanie z dashboardu ma pierwszeństwo przed .env KIRO_MODEL."""
-    try:
-        from api.settings_db import get_ai_model_override
-        override = get_ai_model_override("kiro")
-        if override:
-            return override
-    except Exception:
-        pass
-    return os.getenv("KIRO_MODEL", "claude-haiku-4.5")
-
-
 def _resolve_offer_provider() -> str:
     """Nadpisanie z dashboardu (settings_db) ma pierwszeństwo przed .env."""
     try:
         from api.settings_db import get_ai_provider_override
+
         override = get_ai_provider_override("offer_agent_ai_provider")
         if override:
             return override.lower()
@@ -173,11 +688,9 @@ def _resolve_offer_provider() -> str:
     return (os.getenv("OFFER_AGENT_AI_PROVIDER", "gemini") or "gemini").lower()
 
 
-def _call_offer_agent_llm(system: str, user_prompt: str) -> str:
-    """Provider dispatch (OFFER_AGENT_AI_PROVIDER, default 'gemini'), z fallbackiem
-    do Anthropic gdy skonfigurowany provider zawiedzie i jest klucz."""
+def _call_llm(system: str, user_prompt: str) -> str:
     provider = _resolve_offer_provider()
-    caller = _OFFER_AGENT_CALLERS.get(provider, _call_gemini_text)
+    caller = _CALLERS.get(provider, _call_gemini_text)
     try:
         return caller(system, user_prompt)
     except Exception as exc:
@@ -189,209 +702,334 @@ def _call_offer_agent_llm(system: str, user_prompt: str) -> str:
         raise
 
 
-def _load_agent_prompt() -> str:
-    """Ładuje prompt agenta z pliku markdown."""
-    if not AGENT_PROMPT_PATH.exists():
-        raise FileNotFoundError(f"Brak pliku agenta: {AGENT_PROMPT_PATH}")
-    return AGENT_PROMPT_PATH.read_text(encoding="utf-8")
+# ══════════════════════════════════════════════════════════════════════ render
+
+_E = html_lib.escape
 
 
-def _format_lot_data(lot: AnalyzedLot) -> str:
-    """Formatuje dane lota do struktury oczekiwanej przez agenta."""
-    l = lot.lot
-    ai = lot.analysis
+def _render_client_email(
+    cars: list[OfferCar],
+    prose: dict,
+    *,
+    client_name: Optional[str],
+    contact_line: str,
+) -> str:
+    """Mail dla klienta. Inline CSS i tabele — to jedyne, co przeżywa Gmaila i Outlooka."""
+    greeting = "Dzień dobry" if not client_name else f"Dzień dobry, {_E(client_name.strip().split()[0])}"
+    intro = prose.get("intro") or "Poniżej auta, które wybrałem pod Pana kryteria."
+    closing = prose.get("closing") or "Chce Pan, żebym podesłał pełną kalkulację?"
 
-    return f"""
-=== AUKCJA ===
-Platforma: {l.source.upper()}
-Lot #: {l.lot_id}
-Marka/Model/Rok: {l.year or '?'} {l.make or ''} {l.model or ''} {l.trim or ''}
-VIN: {l.full_vin or l.vin or 'brak'}
-Przebieg: {l.odometer_mi or '?'} mil ({l.odometer_km or '?'} km)
-Lokalizacja: {l.location_city or ''}, {l.location_state or ''}
-Title: {l.title_type or 'brak danych'}
-Damage Primary: {l.damage_primary or 'brak danych'}
-Damage Secondary: {l.damage_secondary or 'brak'}
-Run & Drive: {'Yes' if l.keys else 'brak danych'}
-Cena aktualna: ${l.current_bid_usd or 0:,.0f}
-Koniec aukcji: {l.auction_date or 'brak danych'}
+    # Bez aut zostaje sama rama listu. Pusta lista z nagłówkiem "w cenie zawiera się..."
+    # brzmiałaby jak oferta, której nie ma.
+    price_note = "" if not cars else """
+      <div style="background:#f8fafc;border:1px solid #e6e8ee;border-radius:10px;padding:14px;
+                  color:#344054;font-size:13px;line-height:1.6;">
+        W podanej cenie: zakup auta, opłaty aukcyjne, transport do Polski, odprawa celna,
+        akcyza i moja prowizja. Poza nią zostaje rejestracja w Polsce.<br>
+        Ceny są wyliczone dla dzisiejszej stawki na aukcji — licytacja może pójść wyżej
+        i wtedy podaję nową kwotę przed zakupem.
+      </div>"""
 
-=== ANALIZA AI ===
-Score: {ai.score:.1f}/10
-Rekomendacja: {ai.recommendation}
-Szacowany koszt naprawy: ${ai.estimated_repair_usd or 0:,}
-Szacowany koszt całkowity: ${ai.estimated_total_cost_usd or 0:,}
-Opis dla klienta: {ai.client_description_pl or 'brak'}
-Red flags: {', '.join(ai.red_flags) if ai.red_flags else 'brak'}
-Notatki AI: {ai.ai_notes or 'brak'}
+    blocks: list[str] = []
+    for car in cars:
+        photo = ""
+        if car.photo:
+            photo = (
+                f'<img src="{_E(car.photo)}" alt="{_E(car.name)}" width="560" '
+                'style="display:block;width:100%;max-width:560px;height:auto;'
+                'border-radius:10px;margin:0 0 12px 0;border:1px solid #e6e8ee;">'
+            )
+        facts = [car.mileage_label, car.damage_label]
+        if car.title_label:
+            facts.append(car.title_label)
+        why = f'<p style="margin:10px 0 0 0;color:#344054;font-size:15px;line-height:1.5;">{_E(car.why)}</p>' if car.why else ""
+        link = ""
+        if car.report_url:
+            link = (
+                f'<p style="margin:12px 0 0 0;"><a href="{_E(car.report_url)}" '
+                'style="color:#163b66;font-weight:700;text-decoration:underline;font-size:14px;">'
+                'Szczegóły tego auta</a></p>'
+            )
+        blocks.append(f"""
+      <tr><td style="padding:0 28px 20px 28px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+               style="border:1px solid #d9e2ec;border-radius:12px;background:#ffffff;">
+          <tr><td style="padding:18px 20px;">
+            {photo}
+            <h2 style="font-size:20px;line-height:1.25;margin:0 0 6px 0;color:#111827;">{_E(car.name)}</h2>
+            <div style="font-size:14px;color:#667085;line-height:1.6;">{_E(" · ".join(facts))}</div>
+            <div style="margin-top:12px;font-size:20px;font-weight:800;color:#163b66;">{_E(car.price_label)}</div>
+            <div style="font-size:12px;color:#667085;margin-top:2px;">cena pod klucz w Polsce</div>
+            {why}
+            {link}
+          </td></tr>
+        </table>
+      </td></tr>""")
 
-=== KLIENT ===
-[Brak szczegółowych danych o kliencie — użyj trybu POPULARNY]
-
-=== DODATKOWE ===
-Link do aukcji: {l.url}
-Zdjęcia: {len(l.images)} dostępnych
+    return f"""<!doctype html>
+<html lang="pl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auta z USA — propozycje</title></head>
+<body style="margin:0;padding:0;background:#eef2f7;color:#111827;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef2f7;padding:24px 0;">
+<tr><td align="center">
+  <table role="presentation" width="640" cellspacing="0" cellpadding="0"
+         style="width:640px;max-width:100%;background:#ffffff;border-radius:14px;overflow:hidden;">
+    <tr><td style="background:#163b66;color:#ffffff;padding:26px 28px;">
+      <p style="font-size:17px;line-height:1.5;margin:0 0 8px 0;">{greeting},</p>
+      <p style="font-size:15px;line-height:1.6;margin:0;color:#dbeafe;">{_E(intro)}</p>
+    </td></tr>
+{"".join(blocks)}
+    <tr><td style="padding:4px 28px 24px 28px;">{price_note}
+      <p style="margin:18px 0 0 0;font-size:15px;line-height:1.6;color:#111827;">{_E(closing)}</p>
+      <p style="margin:14px 0 0 0;font-size:14px;line-height:1.6;color:#667085;">{_E(contact_line)}</p>
+    </td></tr>
+  </table>
+</td></tr></table>
+</body></html>
 """
 
 
-def _strip_html_payload(text: str) -> str:
-    """Usuwa markdown fences, jeśli model owinie HTML w blok kodu."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines:
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    return text
+def _verify_checklist(car: OfferCar) -> list[str]:
+    """Czego brakuje, żeby ta pozycja była w pełni sprawdzona. Liczone, nie zgadywane."""
+    todo: list[str] = []
+    if not car.lot.full_vin:
+        todo.append("brak pełnego VIN — bez niego nie ma historii pojazdu")
+    if car.lot.keys is None:
+        todo.append("nie wiadomo, czy są kluczyki")
+    elif car.lot.keys is False:
+        todo.append("brak kluczyków")
+    if car.lot.airbags_deployed:
+        todo.append("poduszki zadziałały — koszt naprawy do doliczenia")
+    if len(car.lot.images) < 5:
+        todo.append(f"tylko {len(car.lot.images)} zdjęć — za mało na ocenę stanu")
+    if _engine_liters(car.lot) is None:
+        todo.append("pojemność silnika nieznana — akcyzę policzono po wyższej stawce")
+    if not car.lot.auction_date:
+        todo.append("brak daty zakończenia aukcji")
+    if car.analysis and car.analysis.red_flags:
+        todo.extend(car.analysis.red_flags)
+    return todo
 
 
-def _fallback_short_html(
-    top_lots: List[AnalyzedLot],
-    client_name: str,
+def _render_broker_brief(
+    cars: list[OfferCar],
+    extra_cars: list[OfferCar],
+    prose: dict,
+    *,
+    client_name: Optional[str],
     search_query: str,
+    warnings: list[str],
+    prose_source: str,
 ) -> str:
-    """Lokalna skrócona oferta, gdy odpowiedź modelu nie zawiera sekcji SHORT."""
-    items = []
-    for item in top_lots[:3]:
-        lot = item.lot
-        ai = item.analysis
-        items.append(
-            "<li>"
-            f"<strong>{lot.year or '?'} {lot.make or ''} {lot.model or ''}</strong> "
-            f"({lot.location_state or 'USA'}) - score {ai.score:.1f}/10, "
-            f"szacowany koszt całkowity ${ai.estimated_total_cost_usd or 0:,}"
-            "</li>"
+    """Brief dla brokera — wszystko, czego nie ma w mailu, w tym pełna kalkulacja."""
+
+    def row(car: OfferCar, client_facing: bool) -> str:
+        costs = car.costs
+        why = car.why or "—"
+        checklist = "".join(f"<li>{_E(item)}</li>" for item in _verify_checklist(car)) or "<li>—</li>"
+        score = f"{car.analysis.score:.1f}/10 {car.analysis.recommendation}" if car.analysis else "—"
+        return f"""
+    <tr><td style="padding:16px;border:1px solid #d9e2ec;border-radius:10px;background:#fff;">
+      <div style="font-size:17px;font-weight:700;color:#111827;">{_E(car.name)}
+        <span style="font-size:12px;color:#667085;font-weight:400;">
+          · {_E((car.lot.source or "").upper())} {_E(car.lot.lot_id)} · {_E(car.lot.location_city or "")} {_E(car.lot.location_state or "")}
+          · ocena {_E(score)} · {"W MAILU" if client_facing else "poza mailem"}
+        </span>
+      </div>
+      <table cellspacing="0" cellpadding="4" style="font-size:13px;color:#344054;margin-top:8px;border-collapse:collapse;">
+        <tr><td>Stawka aukcyjna</td><td align="right"><b>{_E(_usd(car.lot.current_bid_usd or car.lot.buy_now_price_usd))}</b></td>
+            <td style="padding-left:18px;">Opłata aukcyjna (8%)</td><td align="right">{_E(_usd(costs.get("auction_fee_usd")))}</td></tr>
+        <tr><td>Transport z placu</td><td align="right">{_E(_usd(costs.get("towing_usd")))}</td>
+            <td style="padding-left:18px;">Załadunek + fracht</td><td align="right">{_E(_usd((costs.get("loading_usd") or 0) + (costs.get("freight_usd") or 0)))}</td></tr>
+        <tr><td>Akcyza (stawka)</td><td align="right">{car.excise_rate * 100:.1f}%</td>
+            <td style="padding-left:18px;">Silnik (heurystyka)</td><td align="right">{_E(str(_engine_liters(car.lot) or "nieznany"))}</td></tr>
+        <tr><td>Sprowadzenie ({_E(car.settlement)})</td><td align="right"><b>{_E(_pln(car.landed_pln))}</b></td>
+            <td style="padding-left:18px;">Prowizja ({_E(car.fee_tier)})</td><td align="right"><b>{_E(_pln(car.fee_pln))}</b></td></tr>
+        <tr style="background:#f0f6ff;"><td><b>Cena w ofercie</b></td><td align="right"><b>{_E(car.price_label)}</b></td>
+            <td style="padding-left:18px;">Drugi wariant rozliczenia</td>
+            <td align="right">{_E(_pln((costs["company_gross_pln"] if car.settlement == "private" else costs["private_total_pln"]) + car.fee_pln))}</td></tr>
+      </table>
+      <div style="font-size:13px;color:#344054;margin-top:10px;">
+        <b>Zdanie w mailu:</b> {_E(why)}<br>
+        <b>Uszkodzenia (oryginał):</b> {_E(car.lot.damage_primary or "—")} / {_E(car.lot.damage_secondary or "—")}
+        &nbsp;·&nbsp; <b>Tytuł:</b> {_E(car.lot.title_type or "—")}
+        &nbsp;·&nbsp; <b>VIN:</b> {_E(car.lot.full_vin or car.lot.vin or "—")}
+        &nbsp;·&nbsp; <b>Koniec aukcji:</b> {_E(car.lot.auction_date or "—")}
+      </div>
+      <div style="font-size:13px;color:#7a4f00;background:#fff8e6;border:1px solid #f4d27a;
+                  border-radius:8px;padding:10px 12px;margin-top:10px;">
+        <b>Do potwierdzenia przed licytacją:</b><ul style="margin:6px 0 0 18px;padding:0;">{checklist}</ul>
+      </div>
+      <div style="margin-top:10px;"><a href="{_E(car.lot.url)}" style="font-size:13px;color:#163b66;">Otwórz aukcję</a></div>
+    </td></tr>
+    <tr><td style="height:12px;"></td></tr>"""
+
+    note = prose.get("broker_note")
+    warn_html = ""
+    if warnings:
+        warn_html = (
+            '<div style="background:#fff1f0;border:1px solid #f5b5b0;border-radius:8px;padding:12px;'
+            'color:#7a1c14;font-size:13px;margin-bottom:16px;"><b>Walidacja treści:</b><ul style="margin:6px 0 0 18px;">'
+            + "".join(f"<li>{_E(w)}</li>" for w in warnings)
+            + "</ul></div>"
         )
 
-    return f"""
-<html>
-<body>
-  <p>Dzień dobry {client_name},</p>
-  <p>Przygotowaliśmy krótką listę najlepszych propozycji dla zapytania: <strong>{search_query or 'auto z USA'}</strong>.</p>
-  <ul>
-    {''.join(items)}
-  </ul>
-  <p>Pełna oferta zawiera szczegółową analizę kosztów, uszkodzeń i ryzyk dla każdego auta.</p>
-</body>
-</html>
-""".strip()
+    return f"""<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><title>Brief ofertowy</title></head>
+<body style="margin:0;padding:24px;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+<div style="max-width:900px;margin:0 auto;">
+  <h1 style="font-size:22px;margin:0 0 4px 0;">Brief ofertowy — {_E(client_name or "klient")}</h1>
+  <p style="font-size:13px;color:#667085;margin:0 0 16px 0;">
+    Zapytanie: {_E(search_query or "brak opisu")} · wygenerowano {datetime.now().strftime("%d.%m.%Y %H:%M")}
+    · proza: {_E(prose_source)} · w mailu {len(cars)} z {len(cars) + len(extra_cars)} aut
+  </p>
+  {warn_html}
+  <div style="background:#fff;border:1px solid #d9e2ec;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:#344054;">
+    <b>Notatka:</b> {_E(note) if note else "—"}
+  </div>
+  <table cellspacing="0" cellpadding="0" width="100%">
+    {"".join(row(car, True) for car in cars)}
+    {"".join(row(car, False) for car in extra_cars)}
+  </table>
+  <p style="font-size:12px;color:#667085;margin-top:18px;line-height:1.6;">
+    Ceny liczone przez pricing/import_calculator.py przy kursie
+    {_E(str(cars[0].costs["usd_rate"] if cars else "—"))} USD/PLN. Cena w ofercie zawiera prowizję,
+    nie zawiera rejestracji w Polsce ani ewentualnej naprawy. Kwoty w mailu są zaokrąglone
+    w górę do {PRICE_ROUNDING_PLN} zł.
+  </p>
+</div></body></html>
+"""
+
+
+# ═════════════════════════════════════════════════════════════════════════ API
+
+
+def build_offer(
+    items: Iterable[Any],
+    *,
+    client_name: Optional[str] = None,
+    criteria: Optional[ClientCriteria] = None,
+    search_query: str = "",
+    settlement: Optional[Settlement] = None,
+    fee_tier: FeeTier = DEFAULT_FEE_TIER,
+    report_urls: Optional[dict[str, str]] = None,
+    contact_line: str = "Odpowiedź na tego maila trafia prosto do mnie.",
+    use_llm: bool = True,
+) -> Offer:
+    """Buduje ofertę: mail dla klienta + brief dla brokera.
+
+    Nie rzuca wyjątkiem przy awarii modelu — oferta bez zdań "dlaczego" jest lepsza niż
+    brak oferty po pełnym cyklu scrape'u i analizy.
+    """
+    resolved_settlement: Settlement = settlement or (
+        criteria.settlement if criteria and criteria.settlement in ("private", "company") else "private"
+    )  # type: ignore[assignment]
+    urls = report_urls or {}
+
+    cars: list[OfferCar] = []
+    for item in items:
+        lot, _ = _unwrap(item)
+        car = build_car(
+            item,
+            settlement=resolved_settlement,
+            fee_tier=fee_tier,
+            criteria=criteria,
+            report_url=urls.get(lot.lot_id) if lot else None,
+        )
+        if car:
+            cars.append(car)
+
+    client_cars, extra_cars = cars[:MAX_CLIENT_CARS], cars[MAX_CLIENT_CARS:]
+    budget_pln = criteria.budget_pln() if criteria else None
+
+    prose = _fallback_prose(client_cars, client_name, budget_pln)
+    prose_source: Literal["llm", "deterministic"] = "deterministic"
+    warnings: list[str] = []
+    if not client_cars:
+        warnings.append("żadnego lota nie dało się wycenić — tego maila nie ma po co wysyłać")
+
+    if client_cars and use_llm:
+        try:
+            raw = _call_llm(
+                _load_agent_prompt(),
+                _PROSE_TASK.format(facts=_facts_for_model(client_cars, client_name, search_query)),
+            )
+            validated, warnings = _validated_prose(_parse_json_loose(raw), client_cars)
+            # Puste pole zostaje na wersji deterministycznej — nie zostawiamy dziury.
+            prose = {
+                "intro": validated["intro"] or prose["intro"],
+                "closing": validated["closing"] or prose["closing"],
+                "broker_note": validated["broker_note"],
+                "why": validated["why"],
+            }
+            prose_source = "llm"
+        except Exception as exc:
+            warnings.append(f"model nieosiągalny ({type(exc).__name__}: {exc}) — proza deterministyczna")
+            print(f"[OfferAgent] proza deterministyczna: {exc}")
+
+    why_by_id = prose.get("why") or {}
+    client_cars = [replace(car, why=why_by_id.get(car.lot.lot_id)) for car in client_cars]
+
+    client_html = _render_client_email(
+        client_cars, prose, client_name=client_name, contact_line=contact_line
+    )
+    broker_html = _render_broker_brief(
+        client_cars, extra_cars, prose,
+        client_name=client_name, search_query=search_query,
+        warnings=warnings, prose_source=prose_source,
+    )
+
+    leaked = _leaks(client_html)
+    if leaked:
+        # Ostatnia bramka: cokolwiek przeciekło do maila, broker musi to zobaczyć
+        # PRZED zatwierdzeniem, a nie klient po wysyłce.
+        warnings.append("UWAGA: w mailu wykryto zakazane sformułowania: " + ", ".join(leaked))
+        broker_html = _render_broker_brief(
+            client_cars, extra_cars, prose,
+            client_name=client_name, search_query=search_query,
+            warnings=warnings, prose_source=prose_source,
+        )
+
+    return Offer(
+        client_html=client_html,
+        broker_html=broker_html,
+        cars=client_cars + extra_cars,
+        prose_source=prose_source,
+        warnings=warnings,
+    )
+
+
+def _leaks(client_html: str) -> list[str]:
+    """Zakazane zwroty i żargon w gotowym mailu — również te spoza prozy modelu."""
+    text = _WS.sub(" ", _TAGS.sub(" ", client_html)).lower()
+    return [bad for bad in (*BANNED_FRAGMENTS, *JARGON_FRAGMENTS) if bad in text]
 
 
 def generate_offers_with_agent(
-    top_lots: List[AnalyzedLot],
-    remaining_lots: List[AnalyzedLot],
+    top_lots: list[AnalyzedLot],
+    remaining_lots: list[AnalyzedLot],
     client_name: str = "Kliencie",
     search_query: str = "",
-) -> Tuple[str, str]:
+    *,
+    criteria: Optional[ClientCriteria] = None,
+) -> tuple[str, str]:
+    """Zgodność z main_automation.py: (brief dla brokera, mail dla klienta).
+
+    Kolejność zwracanych dokumentów jest jak w poprzedniej wersji ("pełna, skrócona"),
+    ale znaczenie się zmieniło: pierwszy dokument to brief wewnętrzny, nie druga wersja
+    oferty. Sprzedający dostaje go na Telegramie i to on zatwierdza wysyłkę.
     """
-    Generuje 2 wersje oferty używając agenta:
-      - Pełna (HTML, 1200-1500 słów) — dla sprzedającego
-      - Skrócona (HTML, 200 słów) — dla klienta
-
-    Returns:
-        (full_html, short_html)
-    """
-    agent_system = _load_agent_prompt()
-
-    # Przygotuj dane wszystkich lotów
-    lots_data = "\n\n".join([
-        f"=== LOT #{i+1} (TOP REKOMENDACJA) ===\n{_format_lot_data(lot)}"
-        for i, lot in enumerate(top_lots)
-    ])
-
-    if remaining_lots:
-        lots_data += "\n\n" + "\n\n".join([
-            f"=== LOT #{i+len(top_lots)+1} (DODATKOWA PROPOZYCJA) ===\n{_format_lot_data(lot)}"
-            for i, lot in enumerate(remaining_lots)
-        ])
-
-    # Prompt dla agenta
-    top_count = len(top_lots)
-    remaining_count = len(remaining_lots)
-
-    user_prompt = f"""Przygotuj profesjonalną ofertę sprzedaży dla klienta: {client_name}
-
-Zapytanie klienta: {search_query}
-
-DANE LOTÓW:
-{lots_data}
-
-ZADANIE:
-1. Wygeneruj PEŁNĄ ofertę (tryb POPULARNY, 1200-1500 słów, format HTML)
-   - Wszystkie 7 sekcji zgodnie z instrukcją agenta
-   - TOP {top_count} rekomendacji szczegółowo
-   - {remaining_count} dodatkowych propozycji kompaktowo
-
-2. Wygeneruj SKRÓCONĄ wersję — TO JEST OFERTA, KTÓRĄ CZYTA KLIENT (format HTML)
-
-   Ma być PROSTA, KRÓTKA i ZACHĘCAJĄCA. Twarde zasady:
-   - MAKSIMUM 150 słów. Krócej znaczy lepiej.
-   - Zdania krótkie, do 15 słów. Jedno zdanie = jedna myśl.
-   - Język potoczny, nie branżowy. Klient nie wie, co to "lot", "salvage title",
-     "score" ani "prefiltr" — pisz "auto", "auto powypadkowe", "ocena".
-   - Struktura: jedno zdanie otwarcia → 3 auta, każde w jednej linii
-     (rok, marka, model, przebieg, cena w PLN "pod klucz") → jedno zdanie
-     zachęty z konkretnym następnym krokiem.
-   - Ton: życzliwy i konkretny, jak dobry doradca. Bez wykrzykników, bez
-     "niepowtarzalna okazja", bez presji czasu.
-   - Uszkodzenia: nie ukrywaj, ale nie strasz. Jedno spokojne słowo wystarczy
-     ("po stłuczce przodu", "do drobnej naprawy"). Szczegóły są w pełnej ofercie.
-   - Żadnych tabel, żadnych list zagnieżdżonych, żadnego żargonu.
-
-WAŻNE:
-- Używaj HTML (nie markdown)
-- Wszystkie ceny w PLN (przelicz USD * 4.0)
-- Bądź uczciwy wobec uszkodzeń — zachęcający nie znaczy naciągający
-- Pełna oferta (punkt 1) zostaje szczegółowa i techniczna — jest dla sprzedającego,
-  nie dla klienta. Nie skracaj jej.
-- Dodaj sekcję NOTATKI STRATEGICZNE na końcu pełnej oferty
-
-Odpowiedz w formacie:
-=== PEŁNA OFERTA ===
-[HTML]
-
-=== SKRÓCONA OFERTA ===
-[HTML]
-
-=== NOTATKI STRATEGICZNE ===
-[tekst dla sprzedającego]
-"""
-
-    provider = _resolve_offer_provider()
-    print(f"[OfferAgent] Generuję oferty przez {provider}...")
-
-    content = _call_offer_agent_llm(agent_system, user_prompt)
-
-    # Parsuj odpowiedź
-    try:
-        parts = content.split("=== PEŁNA OFERTA ===")
-        if len(parts) < 2:
-            raise ValueError("Brak sekcji PEŁNA OFERTA")
-
-        rest = parts[1].split("=== SKRÓCONA OFERTA ===")
-        if len(rest) < 2:
-            full_html = _strip_html_payload(parts[1])
-            short_html = _fallback_short_html(top_lots, client_name, search_query)
-            print("[OfferAgent] ⚠ Brak sekcji SKRÓCONA OFERTA — używam lokalnego fallbacku")
-            print(f"[OfferAgent] ✅ Pełna: {len(full_html)} znaków | Skrócona fallback: {len(short_html)} znaków")
-            return full_html, short_html
-
-        full_html = _strip_html_payload(rest[0])
-
-        short_rest = rest[1].split("=== NOTATKI STRATEGICZNE ===")
-        short_html = _strip_html_payload(short_rest[0])
-
-        notes = short_rest[1].strip() if len(short_rest) > 1 else ""
-
-        print(f"[OfferAgent] ✅ Pełna: {len(full_html)} znaków | Skrócona: {len(short_html)} znaków")
-        if notes:
-            print(f"[OfferAgent] Notatki strategiczne:\n{notes[:200]}...")
-
-        return full_html, short_html
-
-    except Exception as e:
-        print(f"[OfferAgent] ❌ Błąd parsowania: {e}")
-        print(f"[OfferAgent] Surowa odpowiedź:\n{content[:500]}...")
-        raise
+    # "Kliencie" to placeholder z parsera maila, nie imię — lepiej bez zwrotu po imieniu.
+    name = None if client_name in ("", "Kliencie") else client_name
+    offer = build_offer(
+        [*top_lots, *remaining_lots],
+        client_name=name,
+        criteria=criteria,
+        search_query=search_query,
+    )
+    print(
+        f"[OfferAgent] {len(offer.cars)} aut, w mailu {min(len(offer.cars), MAX_CLIENT_CARS)}, "
+        f"proza: {offer.prose_source}, ostrzeżeń: {len(offer.warnings)}"
+    )
+    return offer.broker_html, offer.client_html

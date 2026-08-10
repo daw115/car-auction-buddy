@@ -83,3 +83,25 @@ def test_company_settlement_gives_higher_landed_price():
     prywatnie = build_draft([lot(price=6000.0)], settlement="private")
     firma = build_draft([lot(price=6000.0)], settlement="company")
     assert prywatnie.text != firma.text
+
+
+def test_offer_notes_carry_the_real_message_not_a_placeholder():
+    """Oferta niesie treść gotową do wysłania, nie zaślepkę z wewnętrzną oceną."""
+    from report.html_reports import _whatsapp_line
+
+    text = _whatsapp_line(lot(price=6000.0))
+
+    assert "zł" in text
+    assert "/10" not in text and "score" not in text.lower()
+    assert text.rstrip().endswith("?")
+
+
+def test_offer_notes_fall_back_when_price_is_unknown():
+    """Lot bez ceny nie może wywalić generowania oferty."""
+    from report.html_reports import _whatsapp_line
+
+    bez_ceny = CarLot(source="manheim", lot_id="1", url="u", year=2019, make="Toyota", model="RAV4")
+    text = _whatsapp_line(bez_ceny)
+
+    assert "Toyota RAV4" in text
+    assert text.rstrip().endswith("?")

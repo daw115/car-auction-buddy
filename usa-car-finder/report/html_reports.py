@@ -324,6 +324,17 @@ def _build_checklist(item: AnalyzedLot) -> list[dict]:
     return items
 
 
+def _whatsapp_line(lot) -> str:
+    """Jedno auto w formie, w jakiej broker wyśle je klientowi."""
+    from report.whatsapp import build_draft
+
+    draft = build_draft([lot])
+    if not draft:
+        name = f"{lot.year or ''} {lot.make or ''} {lot.model or ''}".strip()
+        return f"{name} z aukcji USA — mam pełną kalkulację pod klucz. Podesłać?"
+    return draft.text
+
+
 def _build_notes(item: AnalyzedLot) -> dict:
     lot = item.lot
     ai = item.analysis
@@ -337,9 +348,9 @@ def _build_notes(item: AnalyzedLot) -> dict:
         "headline_c": f"Konkretna kalkulacja kosztów zamiast domysłów — {name}",
         "communication_risks": "Klient może obawiać się ukrytych kosztów i formalności — zaadresuj to w pierwszej wiadomości",
         "followup_48h": f"Aukcja {lot.auction_date or 'wkrótce'} — potrzebuję potwierdzenia limitu bidu do 24h przed końcem",
-        # Bez wewnętrznego score — to nasza metryka robocza, a klientowi brzmi jak
-        # ocena wystawiona przez maszynę. Pełna wiadomość: report/whatsapp.py.
-        "short_whatsapp": f"{name} z aukcji USA — mam pełną kalkulację pod klucz. Podesłać?",
+        # Gotowa treść z report/whatsapp.py: cena pod klucz w złotówkach, bez
+        # wewnętrznej oceny. Broker akceptuje i wysyła — nic nie idzie automatem.
+        "short_whatsapp": _whatsapp_line(lot),
         "damaging_admission": "To auto ma uszkodzenia karoserii — piszę o tym otwarcie, bo ukrywanie tego nie ma sensu",
     }
 

@@ -130,32 +130,34 @@ class AutomationOrchestrator:
             print(f"  ✅ TOP {len(top_lots)} wybranych | {len(remaining_lots)} dodatkowych")
 
             # ── 4. GENEROWANIE OFERTY HTML (AGENT) ────────────────────────
-            print("\n[4/6] Generowanie oferty przez agenta (pełna + skrócona)...")
-            full_html, short_html = generate_offers_with_agent(
+            print("\n[4/6] Generowanie oferty przez agenta (brief brokera + mail klienta)...")
+            # Kryteria niosą budżet, formę rozliczenia i rodzaj paliwa — bez nich agent
+            # liczyłby cenę pod klucz na domyślnych założeniach zamiast na tych klienta.
+            broker_html, client_html = generate_offers_with_agent(
                 top_lots=top_lots,
                 remaining_lots=remaining_lots,
                 client_name=client_name,
                 search_query=search_query,
+                criteria=criteria,
             )
 
-            # Zapisz obie wersje
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             reports_dir = Path(os.getenv("REPORTS_DIR", "./data/reports"))
             reports_dir.mkdir(parents=True, exist_ok=True)
 
-            full_html_path = reports_dir / f"oferta_pelna_{timestamp}.html"
-            short_html_path = reports_dir / f"oferta_krotka_{timestamp}.html"
+            broker_html_path = reports_dir / f"brief_broker_{timestamp}.html"
+            client_html_path = reports_dir / f"oferta_klient_{timestamp}.html"
 
-            full_html_path.write_text(full_html, encoding="utf-8")
-            short_html_path.write_text(short_html, encoding="utf-8")
+            broker_html_path.write_text(broker_html, encoding="utf-8")
+            client_html_path.write_text(client_html, encoding="utf-8")
 
-            print(f"  ✅ Pełna oferta: {full_html_path}")
-            print(f"  ✅ Skrócona oferta: {short_html_path}")
+            print(f"  ✅ Brief brokera: {broker_html_path}")
+            print(f"  ✅ Mail klienta:  {client_html_path}")
 
             # ── 5. TELEGRAM → CZEKAJ NA /approve ─────────────────
-            print("\n[5/6] Wysyłam PEŁNĄ ofertę na Telegram i czekam na zatwierdzenie...")
+            print("\n[5/6] Wysyłam brief na Telegram i czekam na zatwierdzenie...")
             await self.telegram_bot.send_offer_for_approval(
-                html_path=str(full_html_path),
+                html_path=str(broker_html_path),
                 top_count=len(top_lots),
                 total_count=len(top_lots) + len(remaining_lots),
                 search_query=search_query,
@@ -167,15 +169,17 @@ class AutomationOrchestrator:
 
             # ── 6. EMAIL DO KLIENTA (SKRÓCONA + PEŁNA OFERTA) ───────────────────────
             if approval == "approve":
-                print("\n[6/6] ✅ Zatwierdzono — wysyłam klientowi krótki email + pełną ofertę marketingową...")
+                print("\n[6/6] ✅ Zatwierdzono — wysyłam klientowi mail z ofertą...")
 
-                subject = f"🚗 Oferta aut z USA — {criteria.make} {criteria.model or ''} | {datetime.now().strftime('%d.%m.%Y')}"
+                subject = f"Auta z USA — {criteria.make} {criteria.model or ''} | {datetime.now().strftime('%d.%m.%Y')}"
 
+                # Bez załączników. Brief brokera niesie ceny w USD, prowizję i podział
+                # wynagrodzenia — to dokument wewnętrzny, który nigdy nie może wyjść
+                # do klienta (poprzednia wersja dokładała go do maila jako "pełną ofertę").
                 self.gmail_client.send_email(
                     to=client_email,
                     subject=subject,
-                    body=short_html,  # <-- SKRÓCONA wersja dla klienta
-                    attachments=[str(full_html_path)],  # <-- pełna oferta marketingowa jako załącznik HTML
+                    body=client_html,
                     html=True,
                 )
 

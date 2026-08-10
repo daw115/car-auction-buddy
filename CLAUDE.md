@@ -67,7 +67,7 @@ ClientCriteria → AutomatedScraper (Playwright) → HTML cache + parsed CarLot[
 
 - **Pricing (`pricing/import_calculator.py`)** — landed-cost calculation for PL import (transport, customs, VAT, akcyza, homologacja). The assumptions are documented in `KALKULATOR_ZALOZENIA.md` — keep that file in sync when changing rates.
 
-- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` and `offer_html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (TOP-5 + 5-extras agent used by the automation pipeline), `client_artifacts.py` (writes `ai_input` / `ai_prompt` / `analysis_json` / `client_report` files into `data/client_searches/` and exposes them via `/artifacts/{filename}`). Mail HTML structure must follow `przyklady_maili_README.md`.
+- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` and `offer_html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief for the automation pipeline — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `ai_input` / `ai_prompt` / `analysis_json` / `client_report` files into `data/client_searches/` and exposes them via `/artifacts/{filename}`). Mail HTML structure must follow `przyklady_maili_README.md`.
 
 ## Configuration knobs that change behavior significantly
 
