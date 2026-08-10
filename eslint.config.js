@@ -33,7 +33,11 @@ export default tseslint.config(
       "src/lib/**/*.{ts,tsx}",
       "src/routes/**/*.{ts,tsx}",
     ],
-    ignores: ["src/routes/api/**"],
+    // Trasy czysto serwerowe (tylko `server.handlers`) importują moduły *.server
+    // z definicji — nic z nich nie trafia do bundla klienta. `/artifacts/*` musi
+    // stać poza `api/`, bo backend skleja te odnośniki jako /artifacts/... i mają
+    // je zapisane istniejące rekordy.
+    ignores: ["src/routes/api/**", "src/routes/artifacts.$filename.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

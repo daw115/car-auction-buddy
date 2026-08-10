@@ -26,6 +26,7 @@ import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.d
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as ArtifactsFilenameRouteImport } from './routes/artifacts.$filename'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -123,6 +124,11 @@ const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   path: '/$clientId',
   getParentRoute: () => ClientsRoute,
 } as any)
+const ArtifactsFilenameRoute = ArtifactsFilenameRouteImport.update({
+  id: '/artifacts/$filename',
+  path: '/artifacts/$filename',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiVersionRoute = ApiVersionRouteImport.update({
   id: '/api/version',
   path: '/api/version',
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
+  '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
@@ -227,6 +234,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
+  '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
@@ -258,6 +266,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
+  '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
   '/settings/ai': typeof SettingsAiRoute
@@ -290,6 +299,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/records'
     | '/api/version'
+    | '/artifacts/$filename'
     | '/clients/$clientId'
     | '/dev/logs'
     | '/settings/ai'
@@ -319,6 +329,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/records'
     | '/api/version'
+    | '/artifacts/$filename'
     | '/clients/$clientId'
     | '/dev/logs'
     | '/settings/ai'
@@ -349,6 +360,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/records'
     | '/api/version'
+    | '/artifacts/$filename'
     | '/clients/$clientId'
     | '/dev/logs'
     | '/settings/ai'
@@ -380,6 +392,7 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiRecordsRoute: typeof ApiRecordsRoute
   ApiVersionRoute: typeof ApiVersionRoute
+  ArtifactsFilenameRoute: typeof ArtifactsFilenameRoute
   DevLogsRoute: typeof DevLogsRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
@@ -508,6 +521,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/clients/$clientId'
       preLoaderRoute: typeof ClientsClientIdRouteImport
       parentRoute: typeof ClientsRoute
+    }
+    '/artifacts/$filename': {
+      id: '/artifacts/$filename'
+      path: '/artifacts/$filename'
+      fullPath: '/artifacts/$filename'
+      preLoaderRoute: typeof ArtifactsFilenameRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/version': {
       id: '/api/version'
@@ -648,6 +668,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiRecordsRoute: ApiRecordsRoute,
   ApiVersionRoute: ApiVersionRoute,
+  ArtifactsFilenameRoute: ArtifactsFilenameRoute,
   DevLogsRoute: DevLogsRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
