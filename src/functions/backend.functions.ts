@@ -331,6 +331,24 @@ const criteriaShape = z.object({
   excluded_damage_types: z.array(z.string().max(40)).max(40).optional(),
   max_results: z.number().int().min(1).max(15).optional(),
   sources: z.array(auctionSourceSchema).min(1).max(3).optional(),
+  // Klient rzadko podaje jeden model — z rozmów przychodzi np. "karoq kodiaq,
+  // vw tiguan". Każdy cel przeszukujemy osobno, ale ranking jest wspólny.
+  targets: z
+    .array(
+      z.object({
+        make: z.string().min(1).max(80),
+        model: z.string().max(80).optional().nullable(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  // Segment z rozmowy ("suv") — kontekst dla agenta, nie filtr wyszukiwania.
+  segment: z.string().max(40).optional().nullable(),
+  // Budżet "pod klucz" w Polsce. Sufit ceny aukcyjnej liczy backend, bo zależy
+  // od stanu USA i formy zakupu — przeliczanie kursem dawało wynik 2x za wysoki.
+  budget_pln_from: z.number().min(0).max(5_000_000).optional().nullable(),
+  budget_pln_to: z.number().min(0).max(5_000_000).optional().nullable(),
+  settlement: z.enum(["private", "company"]).optional(),
 });
 
 const searchExtras = {

@@ -33,6 +33,11 @@ export type CarLot = {
   enriched_by_extension?: boolean;
 };
 
+export type SearchTarget = {
+  make: string;
+  model?: string | null;
+};
+
 export type ClientCriteria = {
   make: string;
   model?: string | null;
@@ -44,6 +49,18 @@ export type ClientCriteria = {
   excluded_damage_types?: string[];
   max_results?: number;
   sources?: AuctionSource[];
+  /** Dodatkowe pary marka+model. Klient rzadko podaje jeden model — w notatkach
+   *  z rozmów pada "karoq kodiaq, vw tiguan". */
+  targets?: SearchTarget[];
+  /** Segment z pierwszej rozmowy ("suv"). Kontekst dla agenta, nie filtr: samo
+   *  nadwozie niczego nie zawęzi w wyszukiwaniu pełnotekstowym Copart/IAAI. */
+  segment?: string | null;
+  /** Budżet "pod klucz" w Polsce, tak jak podaje go klient ("50/60 tys").
+   *  Sufit ceny aukcyjnej liczy backend — zależy od stanu USA i formy zakupu. */
+  budget_pln_from?: number | null;
+  budget_pln_to?: number | null;
+  /** Forma zakupu przesuwa sufit o ~1400 USD przy 50 tys. zł. */
+  settlement?: "private" | "company";
 };
 
 export type AIAnalysis = {

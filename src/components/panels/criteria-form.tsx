@@ -87,14 +87,53 @@ export function CriteriaForm({
             }
           />
         </Field>
-        <Field label="Budżet USD">
+        <Field label="Budżet pod klucz od (zł)">
           <Input
             type="number"
-            placeholder="(opcjonalne)"
-            value={criteria.budget_usd ?? ""}
+            placeholder="np. 50000"
+            value={criteria.budget_pln_from ?? ""}
             onChange={(e) =>
-              setCriteria({ ...criteria, budget_usd: e.target.value ? +e.target.value : null })
+              setCriteria({
+                ...criteria,
+                budget_pln_from: e.target.value ? +e.target.value : null,
+              })
             }
+          />
+        </Field>
+        <Field label="Budżet pod klucz do (zł)">
+          <Input
+            type="number"
+            placeholder="np. 60000"
+            value={criteria.budget_pln_to ?? ""}
+            onChange={(e) =>
+              setCriteria({
+                ...criteria,
+                budget_pln_to: e.target.value ? +e.target.value : null,
+              })
+            }
+          />
+        </Field>
+        <Field label="Forma zakupu">
+          <Select
+            value={criteria.settlement ?? "private"}
+            onValueChange={(v) =>
+              setCriteria({ ...criteria, settlement: v as "private" | "company" })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="private">Osoba prywatna</SelectItem>
+              <SelectItem value="company">Firma (VAT)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Segment (z rozmowy)">
+          <Input
+            placeholder="np. suv"
+            value={criteria.segment ?? ""}
+            onChange={(e) => setCriteria({ ...criteria, segment: e.target.value || null })}
           />
         </Field>
         <Field label="Max przebieg (mil)">
@@ -211,6 +250,11 @@ export function CriteriaForm({
             );
           })}
         </div>
+        <p className="col-span-full text-[11px] text-muted-foreground">
+          Budżet podajemy tak, jak mówi go klient: kwota pod klucz w Polsce. Sufit ceny aukcyjnej
+          wylicza backend — zależy od stanu USA (transport wchodzi do podstawy celnej) i od formy
+          zakupu. 60 tys. zł to ok. 8 100 USD z Florydy.
+        </p>
         {selectedSources.length === 0 && (
           <p className="text-xs text-destructive" role="alert">
             Wybierz co najmniej jedno źródło aukcji.
