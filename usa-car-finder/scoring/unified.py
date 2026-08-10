@@ -17,9 +17,13 @@ Dwie zasady, na których stoi porównywalność między giełdami:
    To samo dotyczy kryteriów klienta: lead "suv, 50-60 tys" nie poda rocznika i nie może
    przez to tracić punktów.
 
-2. DYSKWALIFIKATORY STOJĄ PONAD WAGAMI. Zalanie, pożar, potwierdzona belka czy cena ponad
-   budżet nie obniżają punktacji — przekreślają lot. Inaczej dobra cena potrafiłaby
-   przegłosować szkodę, której broker nigdy nie zaakceptuje.
+2. DYSKWALIFIKATORY STOJĄ PONAD WAGAMI. Zalanie, pożar czy potwierdzona belka nie
+   obniżają punktacji — przekreślają lot. Inaczej dobra cena potrafiłaby przegłosować
+   szkodę, której broker nigdy nie zaakceptuje.
+   Budżet dyskwalifikatorem NIE jest: cena ponad sufit daje osobny werdykt
+   (BudgetVerdict, rekomendacja PONAD BUDŻET) i nie rusza oceny. "Za drogie" to nie
+   to samo co "bez wartości" — auto ponad budżet bywa najlepsze w stawce, a decyzję
+   o jego zaproponowaniu podejmuje broker, nie filtr.
 """
 from __future__ import annotations
 

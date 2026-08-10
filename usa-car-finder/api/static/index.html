@@ -678,6 +678,8 @@
   .badge.POLECAM { background: var(--good-bg); color: var(--good); }
   .badge.RYZYKO { background: var(--warn-bg); color: var(--warn); }
   .badge.ODRZUĆ { background: var(--bad-bg); color: var(--bad); }
+  /* Ponad budżet to nie odrzucenie — auto ma realną ocenę, tylko cena nie pasuje. */
+  .badge.PONAD-BUDŻET { background: #fdf3e3; color: #8a5a13; }
   .badge.top-label { background: #edf7f1; color: var(--good); border: 1px solid #bddbc9; }
 
   .meta-grid {
@@ -1589,11 +1591,13 @@ function renderSummary() {
   const recommended = lots.filter((item) => item.analysis.recommendation === "POLECAM").length;
   const risk = lots.filter((item) => item.analysis.recommendation === "RYZYKO").length;
   const rejected = lots.filter((item) => item.analysis.recommendation === "ODRZUĆ").length;
+  const overBudget = lots.filter((item) => item.analysis.recommendation === "PONAD BUDŻET").length;
   const included = includedLots().length;
 
   return [
     summaryItem(lots.length, "Przeanalizowane loty"),
     summaryItem(recommended, "POLECAM"),
+    summaryItem(overBudget, "Ponad budżet"),
     summaryItem(risk + rejected, "Ryzyko / odrzucone"),
     summaryItem(included, "W raporcie"),
   ].join("");
@@ -1630,7 +1634,7 @@ function renderLotCard(item, isTop) {
           </div>
           <div class="score-block">
             <span class="score">${formatScore(ai.score)}</span>
-            <span class="badge ${escapeAttr(ai.recommendation)}" id="badge-${escapeAttr(lotId)}">${escapeHtml(ai.recommendation)}</span>
+            <span class="badge ${escapeAttr(recommendationClass(ai.recommendation))}" id="badge-${escapeAttr(lotId)}">${escapeHtml(ai.recommendation)}</span>
           </div>
         </div>
 
@@ -1662,6 +1666,7 @@ function renderLotCard(item, isTop) {
             <select class="recommend-select" data-action="recommendation" data-lot-id="${escapeAttr(lotId)}">
               ${recommendationOption("POLECAM", ai.recommendation)}
               ${recommendationOption("RYZYKO", ai.recommendation)}
+              ${recommendationOption("PONAD BUDŻET", ai.recommendation)}
               ${recommendationOption("ODRZUĆ", ai.recommendation)}
             </select>
             <button class="btn ${included ? "btn-danger" : "btn-secondary"} btn-small" type="button" data-action="toggle" data-lot-id="${escapeAttr(lotId)}">
@@ -1678,6 +1683,12 @@ function renderLotCard(item, isTop) {
 
 function metaItem(label, value) {
   return `<div class="meta-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value ?? "—"))}</strong></div>`;
+}
+
+// Rekomendacja jako nazwa klasy CSS: "PONAD BUDŻET" ma spację, więc żywcem
+// rozpadało się na dwie klasy i plakietka zostawała bez koloru.
+function recommendationClass(value) {
+  return String(value || "").replace(/\s+/g, "-");
 }
 
 function recommendationOption(value, current) {

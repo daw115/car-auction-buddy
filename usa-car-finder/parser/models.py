@@ -202,7 +202,7 @@ class ClientCriteria(BaseModel):
 class AIAnalysis(BaseModel):
     lot_id: str
     score: float = Field(ge=0, le=10)
-    recommendation: str              # "POLECAM" | "RYZYKO" | "ODRZUĆ"
+    recommendation: str              # "POLECAM" | "RYZYKO" | "PONAD BUDŻET" | "ODRZUĆ"
     red_flags: list[str] = Field(default_factory=list)
     estimated_repair_usd: Optional[int] = None
     estimated_total_cost_usd: Optional[int] = None

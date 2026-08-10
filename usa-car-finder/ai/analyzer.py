@@ -10,6 +10,7 @@ import urllib.request
 import anthropic
 from pathlib import Path
 from typing import Optional, Tuple, List
+from ai import claude_code
 from parser.models import CarLot, ClientCriteria, AIAnalysis, AnalyzedLot
 from dotenv import load_dotenv
 
@@ -78,6 +79,12 @@ tytul, przebieg, logistyka, wiarygodnosc, dopasowanie) razem z uzasadnieniem
 kazdej. UZYJ tego rozbicia w opisie: klient ma wiedziec, KTORY czynnik zadecydowal.
 `unified_score.disqualifiers` (gdy niepuste) oznacza lot odrzucony twardo —
 wtedy recommendation musi byc ODRZUC, a powody trafiaja do red_flags.
+
+`unified_score.over_budget` = true oznacza cos zupelnie innego: auto jest DOBRE,
+tylko drozsze niz budzet klienta. Ocena zostaje wysoka, a recommendation ma byc
+"PONAD BUDZET". Rozbicie kwotowe jest w `unified_score.budget` (cena pod klucz,
+budzet klienta, roznica, gotowa nota). Napisz w client_description_pl, o ile auto
+przekracza kwote i co daje w zamian — nie udawaj, ze sie miesci.
 
 Score jest NIEZALEZNY OD KOSZTU NAPRAWY. Aukcyjne estymaty napraw sa NIEREALNE.
 NIE szacuj kosztu naprawy. Kosztami zajmuje sie oddzielny modul kalkulacji.
@@ -621,7 +628,7 @@ Zwróć WYŁĄCZNIE poprawny JSON object w formacie:
     {{
       "lot_id": "string",
       "score": 0.0,
-      "recommendation": "POLECAM|RYZYKO|ODRZUĆ",
+      "recommendation": "POLECAM|RYZYKO|PONAD BUDŻET|ODRZUĆ",
       "red_flags": ["string"],
       "estimated_repair_usd": 0,
       "estimated_total_cost_usd": 0,
@@ -840,7 +847,11 @@ def _rank_results(results: List[AnalyzedLot], top_n: int) -> Tuple[List[Analyzed
     polecam = sum(1 for r in results if r.analysis.recommendation == "POLECAM")
     ryzyko = sum(1 for r in results if r.analysis.recommendation == "RYZYKO")
     odrzuc = sum(1 for r in results if r.analysis.recommendation == "ODRZUĆ")
-    print(f"[AI] Wyniki: POLECAM={polecam} | RYZYKO={ryzyko} | ODRZUĆ={odrzuc}")
+    ponad = sum(1 for r in results if r.analysis.recommendation == OVER_BUDGET_LABEL)
+    print(
+        f"[AI] Wyniki: POLECAM={polecam} | RYZYKO={ryzyko} | "
+        f"PONAD BUDŻET={ponad} | ODRZUĆ={odrzuc}"
+    )
     print(f"[AI] TOP {top_n}: {[f'{r.lot.lot_id} (score={r.analysis.score:.1f})' for r in top_results]}")
 
     return top_results, results
@@ -1288,125 +1299,30 @@ def _call_kiro(model: str, system: str, user_prompt: str, max_tokens: int = 8192
     raise last_exc
 
 
-_CLAUDE_CODE_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+# Czyszczenie środowiska podprocesu i obsługa wygasłej sesji siedzą w ai/claude_code.py —
+# tutaj zostaje tylko obcięcie bloku ```json z odpowiedzi.
 _CLAUDE_CODE_FENCE_RE = re.compile(r"^\s*```[a-zA-Z]*\s*|\s*```\s*$")
-
-# Claude Code przy obecnym ANTHROPIC_API_KEY uznaje go za nadrzedny wobec
-# zalogowanej subskrypcji i konczy sie bledem:
-#   "ANTHROPIC_API_KEY or another auth source is set and takes precedence
-#    over your claude.ai login"
-# Backend ma ten klucz w .env (do bezposrednich wywolan Anthropic API), wiec
-# podproces musi go dostac wyczyszczonego — inaczej Claude Code probuje uzyc
-# cudzego, martwego klucza zamiast sesji uzytkownika.
-_CLAUDE_CODE_STRIPPED_ENV = (
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_MODEL",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-)
-
-
-def _claude_code_env() -> dict:
-    """Srodowisko dla podprocesu Claude Code — bez zmiennych, ktore przestawiaja
-    go na uwierzytelnienie kluczem API lub na innego dostawce."""
-    return {k: v for k, v in os.environ.items() if k not in _CLAUDE_CODE_STRIPPED_ENV}
 
 
 def _call_claude_code(model: str, system: str, user_prompt: str, max_tokens: int = 8192) -> str:
-    """Wywołuje Claude Code w trybie headless (`claude -p`) — jeden proces
-    subprocess na wywołanie, uwierzytelnienie z subskrypcji zalogowanego
-    użytkownika (OAuth), bez ANTHROPIC_API_KEY.
+    """Analiza lotów przez Claude Code (subskrypcja zalogowanego użytkownika).
 
-    Świadome decyzje:
-    - prompt idzie przez stdin, nie argv — prompty analizy potrafią mieć
-      dziesiątki kilobajtów i jako argument przekroczyłyby ARG_MAX;
-    - BEZ flagi --bare: wyłącza ona odczyt OAuth i keychaina, czyli dokładnie
-      to uwierzytelnienie, z którego tu korzystamy (zostaje sam ANTHROPIC_API_KEY);
-    - cwd ustawiony na pusty katalog, bo bez --bare Claude Code sam doczytuje
-      CLAUDE.md z drzewa projektu i zanieczyściłby prompt analizy;
-    - narzędzia wyłączone — to zadanie czysto tekstowe, a każde uruchomienie
-      narzędzia to dodatkowa tura i ryzyko, że odpowiedź nie będzie JSON-em.
+    Prompt systemowy analizy jest stały, więc idzie osobną flagą i wpada do cache'u —
+    przy chunkowaniu po kilkanaście lotów płacimy za niego raz, a nie przy każdym chunku
+    (szczegóły pomiarów w ai/claude_code.py).
+
+    Odpowiedź to JSON owinięty czasem w ```json — obcinamy do pierwszego { lub [,
+    bo wołający parsuje ją sam (_parse_analysis_json).
     """
-    cli_path = os.getenv("CLAUDE_CLI_PATH", os.path.expanduser("~/.local/bin/claude"))
-    timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300"))
-    max_retries = int(os.getenv("CLAUDE_CODE_MAX_RETRIES", "3"))
-
-    workdir = os.getenv("CLAUDE_CODE_WORKDIR", os.path.expanduser("~/.usacar-claude-cwd"))
-    try:
-        os.makedirs(workdir, exist_ok=True)
-    except OSError as exc:
-        raise RuntimeError(f"Nie mogę utworzyć katalogu roboczego Claude Code ({workdir}): {exc}") from exc
-
-    prompt = f"{system}\n\n{user_prompt}"
-    cmd = [
-        cli_path, "-p",
-        "--model", model,
-        "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep",
-        "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
-    ]
-    env = _claude_code_env()
-
-    last_exc: Exception = RuntimeError("Claude Code: brak odpowiedzi")
-    for attempt in range(max_retries):
-        try:
-            result = subprocess.run(
-                cmd,
-                input=prompt,
-                capture_output=True, text=True, timeout=timeout, cwd=workdir, env=env,
-            )
-        except FileNotFoundError as exc:
-            raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc
-        except subprocess.TimeoutExpired as exc:
-            last_exc = RuntimeError(f"Claude Code timeout po {timeout}s")
-            if attempt < max_retries - 1:
-                wait = min(2 ** attempt * 2, 30)
-                print(f"[AI] Claude Code timeout, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
-                time.sleep(wait)
-                continue
-            raise last_exc from exc
-
-        text = _CLAUDE_CODE_ANSI_RE.sub("", result.stdout).strip()
-
-        # Wygasła sesja kończy się kodem 0 i komunikatem na stdout, nie błędem —
-        # bez tego sprawdzenia poszłoby to dalej jako "pusta odpowiedź" i nikt
-        # by nie wiedział, że wystarczy `claude /login`.
-        if "Not logged in" in text or "Please run /login" in text:
-            raise RuntimeError(
-                "Claude Code niezalogowany — uruchom `claude /login` na serwerze "
-                "jako użytkownik usługi (sesja subskrypcji wygasła)"
-            )
-
-        if result.returncode != 0:
-            sanitized = _sanitize_error_text((result.stderr or text)[:500])
-            last_exc = RuntimeError(f"Claude Code exit {result.returncode}: {sanitized}")
-            if attempt < max_retries - 1:
-                wait = min(2 ** attempt * 2, 30)
-                print(f"[AI] Claude Code błąd (exit {result.returncode}), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
-                time.sleep(wait)
-                continue
-            raise last_exc
-
-        if not text:
-            last_exc = RuntimeError(f"Claude Code pusta odpowiedź (stderr: {result.stderr[:300]})")
-            if attempt < max_retries - 1:
-                time.sleep(3)
-                continue
-            raise last_exc
-
-        # Claude Code owija JSON w blok ```json — tniemy fence, a potem do
-        # pierwszego { lub [, tak samo jak przy kiro-cli.
-        text = _CLAUDE_CODE_FENCE_RE.sub("", text).strip()
-        json_start = min(
-            (i for i in (text.find("{"), text.find("[")) if i >= 0),
-            default=-1,
-        )
-        if json_start > 0:
-            text = text[json_start:]
-        return text
-
-    raise last_exc
+    text = claude_code.call(
+        system, user_prompt,
+        model=model,
+        timeout=int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300")),
+        label="analiza",
+    )
+    text = _CLAUDE_CODE_FENCE_RE.sub("", text).strip()
+    json_start = min((i for i in (text.find("{"), text.find("[")) if i >= 0), default=-1)
+    return text[json_start:] if json_start > 0 else text
 
 
 def _analyze_lots_with_kiro(

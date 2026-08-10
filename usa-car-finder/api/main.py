@@ -806,7 +806,9 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                             except Exception:
                                 logger.exception("Failed to read broker HTML %s", fp)
                         if broker_htmls:
-                            order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+                            # PONAD BUDŻET przed ODRZUĆ: to auta z realną oceną,
+                            # tylko za drogie — broker ma je widzieć przed złomem.
+                            order = {"POLECAM": 0, "RYZYKO": 1, "PONAD BUDŻET": 2, "ODRZUĆ": 3}
                             broker_htmls.sort(key=lambda x: (order.get(x[2].get("recommendation", ""), 99), -(x[2].get("score") or 0)))
                             n_selected = len(broker_htmls)
                             # PIERWSZA zakładka (strona główna): audyt WSZYSTKICH
@@ -3772,13 +3774,13 @@ _AI_PROVIDER_TASKS: dict[str, dict] = {
         "label": "Analiza i scoring lotów",
         "env_var": "AI_ANALYSIS_MODE",
         "options": ["auto", "openai", "anthropic", "gemini", "kiro", "claude-code", "local"],
-        "default": "auto",
+        "default": "claude-code",
     },
     "llm_reports_provider": {
         "label": "Raporty (klient/broker) + parsowanie wiadomości klienta + legacy LLM raport",
         "env_var": "LLM_REPORTS_PROVIDER",
         "options": ["gemini", "anthropic", "kiro", "claude-code"],
-        "default": "gemini",
+        "default": "claude-code",
     },
     "model_normalization_ai_provider": {
         "label": "Normalizacja nazw modeli",
@@ -3797,7 +3799,7 @@ _AI_PROVIDER_TASKS: dict[str, dict] = {
         "label": "Agent ofert (automatyzacja mailowa)",
         "env_var": "OFFER_AGENT_AI_PROVIDER",
         "options": ["gemini", "anthropic", "kiro", "claude-code"],
-        "default": "gemini",
+        "default": "claude-code",
     },
 }
 
@@ -3899,7 +3901,14 @@ _STATIC_MODEL_LISTS: dict[str, list[dict]] = {
         {"model_name": "gemini-2.5-pro", "description": "Wyższa jakość, wolniejszy i droższy"},
     ],
     "anthropic": [
-        {"model_name": "claude-sonnet-4-6", "description": "Aktualnie skonfigurowany model (przez proxy oneprovider.dev)"},
+        {"model_name": "claude-sonnet-4-6", "description": "Alias proxy oneprovider.dev — działa tylko z ANTHROPIC_BASE_URL"},
+    ],
+    # Claude Code bierze aliasy CLI, nie identyfikatory z API — model rozstrzyga
+    # zalogowana subskrypcja, nie klucz.
+    "claude-code": [
+        {"model_name": "sonnet", "description": "Domyślny — analiza lotów i oferta dla klienta"},
+        {"model_name": "haiku", "description": "Najszybszy i najtańszy — raporty per lot, parsowanie"},
+        {"model_name": "opus", "description": "Najwyższa jakość, wolniejszy — gdy oferta ma być dopieszczona"},
     ],
 }
 
@@ -3907,6 +3916,7 @@ _MODEL_ENV_VAR_BY_PROVIDER = {
     "kiro": ("KIRO_MODEL", "claude-haiku-4.5"),
     "gemini": ("GEMINI_MODEL", "gemini-2.5-flash"),
     "anthropic": ("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+    "claude-code": ("CLAUDE_CODE_MODEL", "sonnet"),
 }
 
 

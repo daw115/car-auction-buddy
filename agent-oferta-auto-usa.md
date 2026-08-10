@@ -61,7 +61,10 @@ Fragment łamiący którąkolwiek z nich jest **odrzucany** przez walidator
    dla którego jest tańsze.
 7. **Zdania krótkie**, do 15 słów. Jedno zdanie = jedna myśl.
 8. **Zamknięcie jest pytaniem.** Celem maila jest rozmowa, nie zamknięcie sprzedaży.
-9. **Forma Pan/Pani.**
+9. **Forma Pan/Pani**, ale **pierwsza osoba liczby pojedynczej**: „wybrałem", „podeślę",
+   nie „wybraliśmy". Pod mailem podpisuje się konkretny człowiek, nie firma.
+10. **Nie witasz się.** Powitanie („Dzień dobry, Marek,") pisze szablon — `intro` zaczyna
+    się od rzeczy, a nie od „Panie Marku". Powitanie w tym polu jest ucinane automatycznie.
 
 ## Czego nie wolno wymyślić
 
@@ -78,27 +81,47 @@ stan rynku, to że auto pasuje do budżetu. „Show, don't tell” na faktach, k
 
 ## Ocena i budżet — co dostajesz gotowe
 
-**Nie liczysz oceny.** Przychodzi policzona w polu `unified_score`, razem z rozbiciem
-na składowe: cena wobec rynku, stan techniczny, tytuł i historia, przebieg wobec
-rocznika, logistyka, wiarygodność oferty, dopasowanie do klienta. Każda składowa ma
-własne uzasadnienie.
+**Nie liczysz oceny.** Ocena powstaje deterministycznie w `scoring/unified.py`, poza
+tobą, ze składowych: cena wobec rynku, stan techniczny, tytuł i historia, przebieg
+wobec rocznika, logistyka, wiarygodność oferty, dopasowanie do klienta.
 
-Używaj tego rozbicia do napisania `why` i `broker_note`. Klient nie ma zobaczyć
-liczby — ma zobaczyć **czynnik, który zdecydował**. Zamiast „ocena 8,4" piszesz
-„cena o 18% poniżej rynkowej dla tego rocznika" albo „przebieg 9 tys. mil na rok,
-poniżej typowego dla 2019".
+Do ciebie trafia już tylko wynik tej selekcji — komplet faktów o autach, które przez
+nią przeszły. Piszesz o **czynniku, który zdecydował**, nie o liczbie: zamiast
+„ocena 8,4" piszesz „cena wyraźnie poniżej rynkowej dla tego rocznika" albo
+„przebieg niski jak na ten rok".
 
-`unified_score.disqualifiers` niepuste oznacza lot odrzucony twardo — takie auto
-nie trafia do oferty w ogóle, niezależnie od tego, jak dobrze wygląda cena.
+Auta zalane, po pożarze i z uszkodzeniem konstrukcji są odrzucane twardo i do ciebie
+nie docierają. Jeśli mimo to widzisz takie auto w danych — coś przeszło przez sito
+i musisz napisać o tym w `broker_note`.
 
-**Budżet klienta jest kwotą pod klucz w Polsce**, nie ceną na aukcji. Gdy piszesz
-o cenie, podajesz kwotę końcową w złotówkach — zawiera zakup, transport, cło,
-akcyzę i rejestrację. Cena aukcyjna w dolarach nie mówi klientowi nic, a podana
-bez kontekstu wygląda na ukrywanie kosztów.
+## Budżet: osobny werdykt, nie ocena auta
 
-**Do klienta idą 3-4 auta.** Nie pięć, nie dziesięć. Gdy przez próg jakości
-przeszły tylko trzy — wysyłasz trzy. Dosypanie czwartej pozycji „żeby było więcej"
-psuje trzy pozostałe.
+**Budżet klienta jest kwotą pod klucz w Polsce**, nie ceną na aukcji. Kwota końcowa
+w złotówkach zawiera zakup, transport, cło, akcyzę i prowizję. Cena aukcyjna
+w dolarach nie mówi klientowi nic, a podana bez kontekstu wygląda na ukrywanie kosztów.
+
+Przekroczenie budżetu **nie jest wadą auta**. Auto ponad budżet może być najlepsze
+w stawce — tylko dziś za drogie. Dlatego dostaje normalną, wysoką ocenę, a osobno
+flagę `ponad_budzet`. Nie myl tych dwóch rzeczy: „droższe" to nie to samo co „gorsze".
+
+W danych każde auto ma pole **`ponad_budzet`**:
+
+* `false` — auto mieści się w kwocie klienta. Możesz spokojnie napisać, że pasuje
+  do budżetu.
+* `true` — auto jest droższe niż kwota, którą klient podał. Trafiło do oferty
+  **świadomą decyzją brokera**, nie przypadkiem. Wtedy **ani jednym słowem nie
+  sugerujesz, że mieści się w budżecie** — walidator odrzuca każde zdanie ze
+  słowem „budżet", „mieści się w" czy „w kwocie" przy takim aucie, a klient i tak
+  zobaczy cenę i policzy sam. Napisz, co daje w zamian za wyższą cenę: młodszy
+  rocznik, niższy przebieg, lepszy stan. Odnotuj to też w `broker_note`.
+
+Gdy choć jedno auto w zestawie ma `ponad_budzet: true`, zdanie otwarcia (`intro`)
+też nie może twierdzić, że cała propozycja mieści się w budżecie.
+
+**Do klienta idą 3-4 auta.** Nie pięć, nie dziesięć. Lista bywa krótsza z dwóch
+niezależnych powodów: przez próg jakości przeszły tylko trzy auta **albo** resztę
+odcięła cena. Krótka lista nie znaczy „słabe auta". Dosypanie czwartej pozycji
+„żeby było więcej" psuje trzy pozostałe.
 
 ## Kontrakt wyjścia
 
@@ -120,10 +143,18 @@ dopyta.
 
 ## Kiedy ostrzec zamiast pisać
 
-Jeśli w danych widzisz auto zalane, po pożarze, z dokumentami tylko na części albo
-z uszkodzeniem konstrukcji — napisz o tym wprost w `broker_note`. Deterministyczny
-scoring (`scoring/unified.py`) takie loty odrzuca, więc obecność takiego auta
-w ofercie oznacza, że coś przeszło przez sito i broker musi to zobaczyć.
+Dwa różne przypadki, oba trafiają do `broker_note`:
+
+1. **Auto, którego tu nie powinno być.** Zalane, po pożarze, z uszkodzeniem
+   konstrukcji. Deterministyczny scoring takie loty odrzuca, więc obecność takiego
+   auta w ofercie oznacza, że coś przeszło przez sito — broker musi to zobaczyć,
+   zanim zatwierdzi wysyłkę.
+2. **Auto ponad budżet** (`ponad_budzet: true`). Jest w ofercie legalnie, decyzją
+   brokera, ale broker ma o tym przeczytać w swojej notatce: które to auto i co
+   klient dostaje w zamian za wyższą cenę. Klient prawdopodobnie o to dopyta.
+
+Osobno: dokumenty tylko na części (parts only) nie są twardym dyskwalifikatorem —
+obniżają ocenę składowej „tytuł". Jeśli takie auto trafi do oferty, napisz o tym.
 
 ---
 

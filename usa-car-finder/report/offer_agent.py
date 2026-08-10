@@ -47,7 +47,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional
 
+from ai import claude_code
 from parser.models import AnalyzedLot, CarLot, ClientCriteria
+from scoring.unified import OVER_BUDGET
 from pricing.import_calculator import (
     BROKER_FEE_KEY,
     EXCISE_EV,
@@ -123,6 +125,15 @@ _DIGIT = re.compile(r"\d")
 _TAGS = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 
+# Powitanie pisze szablon ("Dzień dobry, Marek,"), więc model nie ma się witać drugi raz.
+# Pomimo instrukcji w prompcie potrafi zacząć od "Panie Marku" i wychodzi z tego
+# "Dzień dobry, Marek, Panie Marku, znaleźliśmy..." — ucinamy to deterministycznie.
+_GREETING = re.compile(
+    r"^\s*(dzień dobry|dzien dobry|witam serdecznie|witam|szanowny panie|szanowna pani|panie|pani)\b[\s,!.–-]*",
+    re.IGNORECASE,
+)
+_VOCATIVE = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+[\s,!.–-]+")
+
 # ───────────────────────────────────────────────────── tłumaczenie żargonu na PL
 
 # Kolejność ma znaczenie: "front end" musi trafić przed samym "front".
@@ -173,6 +184,7 @@ class OfferCar:
     fee_tier: FeeTier
     report_url: Optional[str] = None
     why: Optional[str] = None        # jedno zdanie od modelu, może zostać puste
+    over_budget: bool = False        # cena pod klucz wyższa niż budżet klienta
 
     @property
     def name(self) -> str:
@@ -308,6 +320,26 @@ def _fee_pln(costs: dict[str, float], tier: FeeTier) -> float:
     return float(costs[BROKER_FEE_KEY[tier]])
 
 
+# Etykieta importowana, nie przepisana: kopia rozjechałaby się po cichu przy zmianie
+# w scoringu, a rozpoznanie "ponad budżet" po prostu przestałoby działać — bez błędu,
+# za to z ofertą twierdzącą, że auto mieści się w kwocie klienta.
+OVER_BUDGET_LABEL = OVER_BUDGET
+
+
+def is_over_budget(item: Any) -> bool:
+    """Czy ten lot przekracza budżet klienta — wg werdyktu ze scoringu.
+
+    Czytamy z dwóch miejsc, bo w zależności od ścieżki dostajemy albo sam lot,
+    albo AnalyzedLot: unified_score jedzie w raw_data lota, a rekomendacja
+    w analizie. Wystarczy jedno.
+    """
+    lot, analysis = _unwrap(item)
+    if analysis is not None and getattr(analysis, "recommendation", "") == OVER_BUDGET_LABEL:
+        return True
+    unified = ((lot.raw_data if lot else None) or {}).get("unified_score")
+    return bool(isinstance(unified, dict) and unified.get("over_budget"))
+
+
 def build_car(
     item: Any,
     *,
@@ -343,6 +375,7 @@ def build_car(
         settlement=settlement,
         fee_tier=fee_tier,
         report_url=report_url,
+        over_budget=is_over_budget(item),
     )
 
 
@@ -372,6 +405,7 @@ def _facts_for_model(cars: list[OfferCar], client_name: Optional[str], query: st
                 "stan": car.damage_label,
                 "dokumenty": car.title_label,
                 "cena_pod_klucz": car.price_label,
+                "ponad_budzet": car.over_budget,
                 "lokalizacja": car.lot.location_state,
                 "uwagi_analizy": (car.analysis.red_flags or [])[:3] if car.analysis else [],
             }
@@ -402,7 +436,25 @@ DANE:
 {facts}"""
 
 
-def _clean_prose(text: Any, limit: int, *, allow_digits: bool = False) -> Optional[str]:
+# Zdania, których nie wolno napisać o aucie droższym niż budżet klienta. Nie mają
+# cyfr ani żargonu, więc przechodziły przez pozostałe bramki bez zająknięcia.
+BUDGET_CLAIM_FRAGMENTS = (
+    "budżet",
+    "budzet",
+    "mieści się w",
+    "miesci sie w",
+    "w kwocie",
+    "na kieszeń",
+)
+
+
+def _clean_prose(
+    text: Any,
+    limit: int,
+    *,
+    allow_digits: bool = False,
+    banned_extra: tuple[str, ...] = (),
+) -> Optional[str]:
     """Zdanie od modelu albo None, gdy łamie zasady.
 
     Odrzucamy zamiast poprawiać: fragment z cyfrą to liczba, której nikt nie policzył,
@@ -422,10 +474,27 @@ def _clean_prose(text: Any, limit: int, *, allow_digits: bool = False) -> Option
         return None
     if any(bad in lowered for bad in JARGON_FRAGMENTS):
         return None
+    if any(bad in lowered for bad in banned_extra):
+        return None
     if len(cleaned) > limit:
         cut = cleaned[:limit].rsplit(" ", 1)[0]
         cleaned = cut.rstrip(" ,;–-") + "."
     return cleaned
+
+
+def _strip_greeting(text: str) -> str:
+    """Zdanie bez powitania, z wielkiej litery. Puste, gdy zostało samo powitanie."""
+    for _ in range(2):  # "Dzień dobry, Panie Marku, ..." to dwa powitania pod rząd
+        match = _GREETING.match(text)
+        if not match:
+            break
+        rest = text[match.end():]
+        # Imię w wołaczu ucinamy TYLKO po "Panie"/"Pani" — po "Dzień dobry" następne
+        # słowo jest już treścią i skasowanie go zjadałoby początek zdania.
+        if match.group(1).lower() in ("panie", "pani"):
+            rest = _VOCATIVE.sub("", rest, count=1)
+        text = rest.strip()
+    return text[:1].upper() + text[1:] if text else ""
 
 
 def _parse_json_loose(raw: str) -> dict:
@@ -444,9 +513,13 @@ def _validated_prose(raw: dict, cars: list[OfferCar]) -> tuple[dict, list[str]]:
     """Proza przepuszczona przez walidację; odrzucone pola wracają jako ostrzeżenia."""
     warnings: list[str] = []
     result: dict[str, Any] = {"intro": None, "closing": None, "broker_note": None, "why": {}}
+    intro_banned = BUDGET_CLAIM_FRAGMENTS if any(car.over_budget for car in cars) else ()
 
     for key, limit in (("intro", 180), ("closing", 150)):
-        value = _clean_prose(raw.get(key), limit)
+        candidate = raw.get(key)
+        if key == "intro" and isinstance(candidate, str):
+            candidate = _strip_greeting(candidate)
+        value = _clean_prose(candidate, limit, banned_extra=intro_banned)
         if value is None and raw.get(key):
             warnings.append(f"odrzucono pole '{key}' (cyfry, żargon lub zakazany zwrot)")
         result[key] = value
@@ -462,7 +535,8 @@ def _validated_prose(raw: dict, cars: list[OfferCar]) -> tuple[dict, list[str]]:
         lot_id = str(entry.get("id") or "")
         if lot_id not in by_id:
             continue
-        why = _clean_prose(entry.get("why"), 130)
+        banned_extra = BUDGET_CLAIM_FRAGMENTS if by_id[lot_id].over_budget else ()
+        why = _clean_prose(entry.get("why"), 130, banned_extra=banned_extra)
         if why is None and entry.get("why"):
             warnings.append(f"odrzucono opis auta {lot_id}")
         if why:
@@ -485,13 +559,18 @@ def _fallback_prose(cars: list[OfferCar], client_name: Optional[str], budget_pln
             "broker_note": None,
             "why": {},
         }
+    # Liczebnik słownie — ten sam zakaz cyfr, który nakładamy na model, obowiązuje
+    # naszą własną wersję. "Mam 1 auto" czyta się jak wiadomość z systemu.
+    count_word = {1: "jedno", 2: "dwa", 3: "trzy", 4: "cztery"}.get(count, str(count))
     noun = "auto" if count == 1 else ("auta" if count < 5 else "aut")
     # Budżet wspominamy tylko wtedy, gdy cokolwiek się w nim mieści. "Mam 4 auta pod
     # budżet 60 tys." przy cenach od 62 tys. czyta się jak niedosłuchanie klienta.
-    fits_budget = budget_pln and any(car.client_price_pln <= budget_pln for car in cars)
+    # all(), nie any(): przy jednym aucie w budżecie i trzech ponad, "mam cztery auta
+    # pod budżet" jest po prostu nieprawdą.
+    fits_budget = budget_pln and all(car.client_price_pln <= budget_pln for car in cars)
     budget_note = f" pod budżet {round(budget_pln / 1000)} tys. zł" if fits_budget else ""
     return {
-        "intro": f"Mam {count} {noun}{budget_note} — poniżej ceny pod klucz w Polsce.",
+        "intro": f"Mam {count_word} {noun}{budget_note} — poniżej ceny pod klucz w Polsce.",
         "closing": "Podesłać pełną kalkulację dla któregoś z nich?",
         "broker_note": None,
         "why": {},
@@ -625,43 +704,17 @@ def _call_kiro_text(system: str, user_prompt: str) -> str:
 
 
 def _call_claude_code_text(system: str, user_prompt: str) -> str:
-    """Claude Code headless — uwierzytelnienie sesją zalogowanego użytkownika, bez klucza."""
-    cli_path = os.getenv("CLAUDE_CLI_PATH", os.path.expanduser("~/.local/bin/claude"))
-    model = os.getenv("CLAUDE_CODE_OFFER_MODEL") or os.getenv("CLAUDE_CODE_MODEL", "opus")
-    timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300"))
-    workdir = os.getenv("CLAUDE_CODE_WORKDIR", os.path.expanduser("~/.usacar-claude-cwd"))
-    os.makedirs(workdir, exist_ok=True)
-    try:
-        result = subprocess.run(
-            [cli_path, "-p", "--model", model,
-             "--disallowedTools", "Bash", "Read", "Write", "Edit", "Glob",
-             "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit"],
-            input=f"{system}\n\n{user_prompt}",
-            capture_output=True, text=True, timeout=timeout, cwd=workdir,
-            # Obecny ANTHROPIC_API_KEY przesłoniłby zalogowaną subskrypcję.
-            env={
-                k: v for k, v in os.environ.items()
-                if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
-                             "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
-                             "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")
-            },
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"claude nie znaleziony ({cli_path}): {exc}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Claude Code timeout po {timeout}s") from exc
+    """Claude Code headless — uwierzytelnienie sesją zalogowanego użytkownika, bez klucza.
 
-    text = _ANSI.sub("", result.stdout).strip()
-    if "Not logged in" in text or "Please run /login" in text:
-        raise RuntimeError(
-            "Claude Code niezalogowany — uruchom `claude /login` na serwerze "
-            "jako użytkownik usługi (sesja subskrypcji wygasła)"
-        )
-    if result.returncode != 0:
-        raise RuntimeError(f"Claude Code exit {result.returncode}: {(result.stderr or text)[:300]}")
-    if not text:
-        raise RuntimeError(f"Claude Code pusta odpowiedź (stderr: {result.stderr[:300]})")
-    return text
+    Prompt agenta idzie osobno jako systemowy, bo jest stały co do bajtu: dzięki temu
+    trafia w cache promptów i kolejne oferty kosztują ułamek pierwszej (ai/claude_code.py).
+    Oferta to jedyny tekst, który czyta klient, więc nie schodzimy tu na niski effort.
+    """
+    return claude_code.call(
+        system, user_prompt,
+        model_env="CLAUDE_CODE_OFFER_MODEL",
+        label="oferta",
+    )
 
 
 _CALLERS = {
@@ -756,7 +809,8 @@ def _render_client_email(
             <h2 style="font-size:20px;line-height:1.25;margin:0 0 6px 0;color:#111827;">{_E(car.name)}</h2>
             <div style="font-size:14px;color:#667085;line-height:1.6;">{_E(" · ".join(facts))}</div>
             <div style="margin-top:12px;font-size:20px;font-weight:800;color:#163b66;">{_E(car.price_label)}</div>
-            <div style="font-size:12px;color:#667085;margin-top:2px;">cena pod klucz w Polsce</div>
+            <div style="font-size:12px;color:#667085;margin-top:2px;">cena pod klucz w Polsce{
+                " — powyżej podanego budżetu" if car.over_budget else ""}</div>
             {why}
             {link}
           </td></tr>
@@ -913,11 +967,18 @@ def build_offer(
     report_urls: Optional[dict[str, str]] = None,
     contact_line: str = "Odpowiedź na tego maila trafia prosto do mnie.",
     use_llm: bool = True,
+    allow_over_budget: bool = False,
 ) -> Offer:
     """Buduje ofertę: mail dla klienta + brief dla brokera.
 
     Nie rzuca wyjątkiem przy awarii modelu — oferta bez zdań "dlaczego" jest lepsza niż
     brak oferty po pełnym cyklu scrape'u i analizy.
+
+    Auta ponad budżet klienta nie wchodzą do maila same z siebie. Od kiedy scoring
+    przestał je zerować, mają normalne wysokie oceny i stoją wysoko w rankingu — bez
+    tego filtra wypełniałyby wolne miejsca w czwórce dla klienta. Wchodzą tylko jawną
+    decyzją (allow_over_budget), zawsze na końcu listy i zawsze oznaczone w treści.
+    Brief brokera widzi je zawsze.
     """
     resolved_settlement: Settlement = settlement or (
         criteria.settlement if criteria and criteria.settlement in ("private", "company") else "private"
@@ -937,7 +998,14 @@ def build_offer(
         if car:
             cars.append(car)
 
-    client_cars, extra_cars = cars[:MAX_CLIENT_CARS], cars[MAX_CLIENT_CARS:]
+    affordable = [car for car in cars if not car.over_budget]
+    over = [car for car in cars if car.over_budget]
+    if allow_over_budget:
+        client_cars = (affordable + over)[:MAX_CLIENT_CARS]
+    else:
+        client_cars = affordable[:MAX_CLIENT_CARS]
+    chosen = {id(car) for car in client_cars}
+    extra_cars = [car for car in cars if id(car) not in chosen]
     budget_pln = criteria.budget_pln() if criteria else None
 
     prose = _fallback_prose(client_cars, client_name, budget_pln)
@@ -945,6 +1013,13 @@ def build_offer(
     warnings: list[str] = []
     if not client_cars:
         warnings.append("żadnego lota nie dało się wycenić — tego maila nie ma po co wysyłać")
+    if over and not allow_over_budget:
+        warnings.append(
+            f"{len(over)} aut pominięto — cena pod klucz ponad budżet klienta "
+            "(są w sekcji poniżej, do świadomego dobrania)"
+        )
+    if any(car.over_budget for car in client_cars):
+        warnings.append("UWAGA: w mailu jest auto ponad budżet klienta — opisane jako droższe")
 
     if client_cars and use_llm:
         try:
@@ -1025,8 +1100,11 @@ def generate_offers_with_agent(
         criteria=criteria,
         search_query=search_query,
     )
+    # Liczba w mailu to nie min(wszystkie, 4): budżet mógł uciąć pozycje, a log ma
+    # mówić, ile klient realnie dostanie.
+    in_mail = sum(1 for car in offer.cars if not car.over_budget)
     print(
-        f"[OfferAgent] {len(offer.cars)} aut, w mailu {min(len(offer.cars), MAX_CLIENT_CARS)}, "
+        f"[OfferAgent] {len(offer.cars)} aut, w mailu {min(in_mail, MAX_CLIENT_CARS)}, "
         f"proza: {offer.prose_source}, ostrzeżeń: {len(offer.warnings)}"
     )
     return offer.broker_html, offer.client_html

@@ -321,3 +321,130 @@ def test_proxy_model_alias_without_a_proxy_url_fails_loudly(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.oneprovider.dev")
     offer_agent._check_anthropic_config()  # z proxy alias jest poprawny
+
+
+@pytest.mark.parametrize(
+    "intro, oczekiwane",
+    [
+        ("Panie Marku, znalazłem auto w Pana budżecie.", "Znalazłem auto w Pana budżecie."),
+        ("Dzień dobry, mam dla Pana dwa auta.", "Mam dla Pana dwa auta."),
+        ("Witam! Wybrałem auta pod Pana kryteria.", "Wybrałem auta pod Pana kryteria."),
+        ("Wybrałem auta pod Pana kryteria.", "Wybrałem auta pod Pana kryteria."),
+    ],
+)
+def test_second_greeting_is_cut_out(intro, oczekiwane):
+    """Szablon wita się sam — "Dzień dobry, Marek, Panie Marku, ..." wyszło z realnego wywołania."""
+    prose, _ = offer_agent._validated_prose({"intro": intro}, [])
+    assert prose["intro"] == oczekiwane
+
+
+def test_greeting_only_intro_falls_back_to_the_deterministic_one():
+    prose, _ = offer_agent._validated_prose({"intro": "Dzień dobry!"}, [])
+    assert prose["intro"] is None
+
+
+def test_stripping_a_greeting_does_not_eat_the_first_real_word():
+    """Regresja: wycinanie wołacza po 'Dzień dobry' zjadało pierwsze słowo treści."""
+    assert offer_agent._strip_greeting("Dzień dobry, Mam dla Pana dwa auta.") == "Mam dla Pana dwa auta."
+    assert offer_agent._strip_greeting("Witam! Wybrałem auta.") == "Wybrałem auta."
+    assert offer_agent._strip_greeting("Dzień dobry, Panie Marku, mam dwa auta.") == "Mam dwa auta."
+
+
+def test_our_own_intro_obeys_the_no_digits_rule():
+    """Zakaz cyfr obowiązuje też wersję deterministyczną — "Mam 1 auto" brzmi jak log."""
+    offer = build_offer([analyzed(lot(lot_id=f"L{i}", model=f"M{i}")) for i in range(3)], use_llm=False)
+    intro = text_of(offer.client_html).split("2019")[0]
+    assert "trzy auta" in intro
+    assert not re.search(r"Mam \d", intro)
+
+
+# ────────────────────────────────────────────── budżet: auta ponad kwotę klienta
+
+
+def over_budget(car: CarLot) -> AnalyzedLot:
+    """Lot z werdyktem scoringu: dobra ocena, cena ponad budżet klienta."""
+    item = analyzed(car, score=8.9)
+    item.analysis.recommendation = "PONAD BUDŻET"
+    item.is_top_recommendation = False
+    car.raw_data = dict(car.raw_data or {})
+    car.raw_data["unified_score"] = {
+        "score": 8.9,
+        "recommendation": "PONAD BUDŻET",
+        "over_budget": True,
+        "disqualifiers": [],
+        "budget": {"over": True, "gap_pln": 92_588, "note": "ponad budżet o 92 588 zł"},
+    }
+    return item
+
+
+def test_over_budget_car_never_fills_a_slot_in_the_client_email():
+    """Regresja: od kiedy scoring nie zeruje takich lotów, stoją wysoko w rankingu.
+
+    Bez filtra wypełniałyby wolne miejsca w czwórce dla klienta — z ceną pod klucz
+    i bez słowa o tym, że przekraczają kwotę, którą klient podał.
+    """
+    tanie = analyzed(lot(lot_id="TANI", price=6_000.0))
+    drogie = over_budget(lot(lot_id="DROGI", price=30_000.0, model="Highlander"))
+
+    offer = build_offer([tanie, drogie], use_llm=False)
+    tresc = text_of(offer.client_html)
+
+    assert "RAV4" in tresc
+    assert "Highlander" not in tresc
+    assert any("ponad budżet" in w for w in offer.warnings)
+
+
+def test_broker_still_sees_the_over_budget_car():
+    """Broker ma je zobaczyć — to on decyduje, czy zaproponować dołożenie."""
+    offer = build_offer(
+        [analyzed(lot(lot_id="TANI", price=6_000.0)),
+         over_budget(lot(lot_id="DROGI", price=30_000.0, model="Highlander"))],
+        use_llm=False,
+    )
+    assert "Highlander" in text_of(offer.broker_html)
+
+
+def test_broker_can_let_an_over_budget_car_through_and_it_is_named_as_such():
+    offer = build_offer(
+        [over_budget(lot(lot_id="DROGI", price=30_000.0, model="Highlander"))],
+        use_llm=False,
+        allow_over_budget=True,
+    )
+    tresc = text_of(offer.client_html)
+
+    assert "Highlander" in tresc
+    assert "powyżej podanego budżetu" in tresc
+    assert any("UWAGA" in w for w in offer.warnings)
+
+
+def test_intro_does_not_promise_the_budget_when_a_car_exceeds_it():
+    """Deterministyczna proza też nie może twierdzić, że wszystko się mieści."""
+    criteria = ClientCriteria(make="Toyota", budget_pln_to=60_000)
+    offer = build_offer(
+        [analyzed(lot(lot_id="TANI", price=6_000.0)),
+         over_budget(lot(lot_id="DROGI", price=30_000.0, model="Highlander"))],
+        criteria=criteria,
+        use_llm=False,
+        allow_over_budget=True,
+    )
+    assert "budżet" not in text_of(offer.client_html).lower().split("cena pod klucz")[0]
+
+
+def test_model_sentence_claiming_budget_fit_is_rejected_for_an_over_budget_car():
+    """Zdanie bez cyfr i bez żargonu przechodziło wszystkie dotychczasowe bramki."""
+    car = build_car(over_budget(lot(lot_id="DROGI", price=30_000.0)))
+    assert car.over_budget
+
+    validated, warnings = offer_agent._validated_prose(
+        {"cars": [{"id": "DROGI", "why": "To auto mieści się w Pana budżecie."}]}, [car]
+    )
+    assert "DROGI" not in validated["why"]
+    assert any("DROGI" in w for w in warnings)
+
+
+def test_over_budget_label_comes_from_scoring_not_a_copy():
+    """Przepisana etykieta rozjechałaby się po cichu — oferta przestałaby rozpoznawać
+    auta ponad budżet i twierdziłaby, że mieszczą się w kwocie klienta."""
+    from scoring import OVER_BUDGET
+
+    assert offer_agent.OVER_BUDGET_LABEL is OVER_BUDGET
