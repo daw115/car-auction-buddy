@@ -5,6 +5,7 @@ from scoring.unified import (
     ClientProfile,
     Component,
     LotScore,
+    profile_from_criteria,
     rank_lots,
     score_lot,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "LotScore",
     "landed_cost_pln",
     "max_bid_for_budget",
+    "profile_from_criteria",
     "rank_lots",
     "score_lot",
 ]

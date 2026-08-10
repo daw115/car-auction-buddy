@@ -494,14 +494,15 @@ def _attach_unified_scores(lots: List[CarLot], criteria: ClientCriteria) -> None
     a narracja nie rozjeżdża się z liczbą.
     """
     try:
-        from scoring import score_lot
+        from scoring import profile_from_criteria, score_lot
     except Exception as exc:
         logger.warning("[analyzer] scoring niedostępny, zostaje ocena z modelu: %s", exc)
         return
 
+    profile = profile_from_criteria(criteria)
     for lot in lots:
         try:
-            result = score_lot(lot, criteria)
+            result = score_lot(lot, criteria, profile)
         except Exception:
             logger.debug("[analyzer] nie policzyłem oceny dla %s", lot.lot_id, exc_info=True)
             continue

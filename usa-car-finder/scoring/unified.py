@@ -73,7 +73,12 @@ class ClientProfile:
 
     risk: RiskAppetite = "light"
     require_clean_title: bool = False
+    # Sufit podany wprost — używany, gdy znamy go z góry.
     budget: Optional[BudgetCeiling] = None
+    # Budżet "pod klucz" w PLN. Sufit z niego liczymy PER LOT, bo zależy od stanu USA:
+    # towing wchodzi do podstawy celnej i mnoży się przez cło, VAT i akcyzę.
+    budget_pln: Optional[float] = None
+    settlement: str = "private"
 
 
 @dataclass
@@ -137,6 +142,26 @@ def _as_float(value: Any) -> Optional[float]:
     return result if result > 0 else None
 
 
+def _ceiling_for(lot: CarLot, profile: "ClientProfile") -> Optional[BudgetCeiling]:
+    """Sufit ceny aukcyjnej dla tego konkretnego lota."""
+    if profile.budget:
+        return profile.budget
+    if not profile.budget_pln:
+        return None
+    from scoring.budget import max_bid_for_budget
+
+    return max_bid_for_budget(
+        profile.budget_pln, settlement=profile.settlement, state=lot.location_state
+    )
+
+
+def profile_from_criteria(criteria: ClientCriteria, **over) -> "ClientProfile":
+    """Profil klienta z kryteriów — budżet i forma zakupu wprost od niego."""
+    values = {"budget_pln": criteria.budget_pln(), "settlement": criteria.settlement}
+    values.update(over)
+    return ClientProfile(**values)
+
+
 def _lot_price(lot: CarLot) -> Optional[float]:
     """Cena, po której realnie da się kupić — bid gdy trwa licytacja, inaczej buy now."""
     return lot.current_bid_usd or lot.buy_now_price_usd
@@ -192,9 +217,10 @@ def disqualify(lot: CarLot, profile: ClientProfile) -> list[str]:
         reasons.append("czerwone światło (sprzedaż as-is)")
 
     price = _lot_price(lot)
-    if profile.budget and price and price > profile.budget.max_bid_usd:
+    ceiling = _ceiling_for(lot, profile)
+    if ceiling and price and price > ceiling.max_bid_usd:
         reasons.append(
-            f"cena {price:,.0f} USD ponad sufit budżetu {profile.budget.max_bid_usd:,.0f} USD"
+            f"cena {price:,.0f} USD ponad sufit budżetu {ceiling.max_bid_usd:,.0f} USD"
         )
 
     return reasons
@@ -382,10 +408,11 @@ def _criteria_fit(lot: CarLot, criteria: ClientCriteria, profile: ClientProfile)
         notes.append("przebieg " + ("ok" if ok else "ponad limit"))
 
     price = _lot_price(lot)
-    if profile.budget and price:
+    ceiling = _ceiling_for(lot, profile)
+    if ceiling and price:
         # Zapas budżetu: lot za 4 tys. przy sufcie 8 tys. zostawia miejsce na naprawę
         # i transport, więc jest wart więcej niż taki za 7 900.
-        headroom = (profile.budget.max_bid_usd - price) / profile.budget.max_bid_usd
+        headroom = (ceiling.max_bid_usd - price) / ceiling.max_bid_usd
         checks.append(_ramp(headroom * 100, [(0.0, 0.4), (20.0, 0.8), (40.0, 1.0)]))
         notes.append(f"zapas budżetu {headroom * 100:.0f}%")
 

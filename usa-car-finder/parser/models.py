@@ -53,6 +53,27 @@ class CarLot(BaseModel):
     raw_data: dict = Field(default_factory=dict)
 
 
+class SearchTarget(BaseModel):
+    """Jedna para marka+model do przeszukania.
+
+    Klient rzadko podaje jeden model. W arkuszu leadów pada "karoq kodiaq, vw tiguan"
+    — trzy modele z dwóch marek, które trzeba przeszukać razem i porównać w jednym
+    rankingu. Pojedyncze pola make/model zostają jako cel podstawowy (pierwszy z listy),
+    żeby nie przepisywać kilkunastu miejsc, które je czytają.
+    """
+
+    make: str
+    model: Optional[str] = None
+
+    @field_validator("make")
+    @classmethod
+    def make_not_empty(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Marka celu wyszukiwania nie może być pusta")
+        return cleaned
+
+
 class ClientCriteria(BaseModel):
     make: str
     model: Optional[str] = None
@@ -67,6 +88,24 @@ class ClientCriteria(BaseModel):
     )
     max_results: int = 15
     sources: list[str] = Field(default_factory=lambda: ["copart", "iaai"])
+
+    # Dodatkowe cele wyszukiwania poza parą make/model. Pusta lista = szukamy tylko
+    # celu podstawowego, czyli zachowanie sprzed wprowadzenia list.
+    targets: list[SearchTarget] = Field(default_factory=list)
+
+    # Segment nadwozia z pierwszej rozmowy ("suv"). NIE jest filtrem wyszukiwania —
+    # Copart i IAAI szukają pełnotekstowo po marce i modelu, więc samo "suv" nie
+    # zawęzi niczego sensownie. Służy agentowi do zaproponowania konkretnych modeli
+    # w budżecie, gdy klient nie umie ich wskazać.
+    segment: Optional[str] = None
+
+    # Budżet "pod klucz" w Polsce, tak jak podaje go klient ("50/60 tys").
+    # Sufit ceny aukcyjnej wylicza scoring/budget.py, bo zależy od stanu USA.
+    budget_pln_from: Optional[float] = None
+    budget_pln_to: Optional[float] = None
+    # Forma zakupu przesuwa sufit o ~1400 USD przy 50 tys. PLN, więc nie może być
+    # założeniem — to pytanie do klienta.
+    settlement: str = "private"
 
     @field_validator("make")
     @classmethod
@@ -113,12 +152,50 @@ class ClientCriteria(BaseModel):
             return None
         return cleaned.title()
 
+    @field_validator("settlement")
+    @classmethod
+    def valid_settlement(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in {"private", "company"}:
+            raise ValueError("settlement musi być 'private' albo 'company'")
+        return normalized
+
+    def search_targets(self) -> list[SearchTarget]:
+        """Wszystkie pary marka+model do przeszukania, bez powtórzeń.
+
+        Cel podstawowy zawsze pierwszy — od niego zależy kolejność, w jakiej
+        scraper wyczerpuje budżet zapytań.
+        """
+        seen: set[tuple[str, Optional[str]]] = set()
+        targets: list[SearchTarget] = []
+        for candidate in [SearchTarget(make=self.make, model=self.model), *self.targets]:
+            key = (candidate.make.strip().lower(), (candidate.model or "").strip().lower() or None)
+            if key in seen:
+                continue
+            seen.add(key)
+            targets.append(candidate)
+        return targets
+
+    def budget_pln(self) -> Optional[float]:
+        """Górna granica budżetu — po niej liczymy sufit ceny aukcyjnej.
+
+        Klient podaje widełki ("50/60 tys"), a szukamy do górnej: dolna mówi tylko,
+        od czego zaczyna się rozmowa o cenie.
+        """
+        return self.budget_pln_to or self.budget_pln_from
+
     @model_validator(mode="after")
     def validate_ranges(self):
         if self.year_from and self.year_to and self.year_from > self.year_to:
             raise ValueError("Rocznik od nie może być większy niż rocznik do")
         if self.max_odometer_mi is not None and self.max_odometer_mi <= 0:
             raise ValueError("Przebieg musi być większy od zera")
+        if (
+            self.budget_pln_from
+            and self.budget_pln_to
+            and self.budget_pln_from > self.budget_pln_to
+        ):
+            raise ValueError("Budżet od nie może być większy niż budżet do")
         return self
 
 

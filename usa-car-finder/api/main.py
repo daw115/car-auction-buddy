@@ -3707,6 +3707,14 @@ class DefaultCriteriaSettings(BaseModel):
     excluded_damage_types: list[str] = Field(default_factory=lambda: ["Flood", "Fire"])
     max_results: int = 15
     sources: list[str] = Field(default_factory=lambda: ["copart", "iaai"])
+    # Kryteria z rozmowy z klientem: kilka modeli naraz, segment jako kontekst,
+    # budżet "pod klucz" w PLN. Wszystko opcjonalne — szablon ma się wypełniać
+    # stopniowo, bo pierwsza rozmowa rzadko daje komplet.
+    targets: list[dict] = Field(default_factory=list)
+    segment: Optional[str] = None
+    budget_pln_from: Optional[float] = None
+    budget_pln_to: Optional[float] = None
+    settlement: str = "private"
 
 
 _AI_PROVIDER_TASKS: dict[str, dict] = {

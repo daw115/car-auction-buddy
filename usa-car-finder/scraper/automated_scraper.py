@@ -157,18 +157,25 @@ class AutomatedScraper:
 
         # 1. Równoległy scrape obu źródeł (gdy oba aktywne) — oszczędza ~40% czasu.
         #    Każde źródło ma własne retry/blocked w _run_source; gather czeka na obie.
-        source_specs = []
-        if "copart" in criteria.sources:
-            source_specs.append(("copart", CopartScraper, parse_copart_html))
-        if "iaai" in criteria.sources:
-            source_specs.append(("iaai", IAAIScraper, parse_iaai_html))
-        if "manheim" in criteria.sources:
-            source_specs.append(("manheim", ManheimScraper, parse_manheim_html))
+        # Klient rzadko podaje jeden model — w arkuszu leadów pada "karoq kodiaq,
+        # vw tiguan". Każdy cel przeszukujemy w każdym wybranym źródle, a wyniki lądują
+        # we wspólnym rankingu, żeby dało się je porównać między sobą.
+        sources = [
+            ("copart", CopartScraper, parse_copart_html),
+            ("iaai", IAAIScraper, parse_iaai_html),
+            ("manheim", ManheimScraper, parse_manheim_html),
+        ]
+        source_specs = [
+            (name, factory, parse_fn, target)
+            for target in criteria.search_targets()
+            for name, factory, parse_fn in sources
+            if name in criteria.sources
+        ]
 
         per_source_criteria = source_criteria(len(source_specs)) if source_specs else criteria
-        for name, _, _ in source_specs:
-            logger.info("Scrapuję %s dla %s %s", name.upper(), criteria.make, criteria.model or "")
-            _emit(progress_cb, name, {"make": criteria.make, "model": criteria.model or ""})
+        for name, _, _, target in source_specs:
+            logger.info("Scrapuję %s dla %s %s", name.upper(), target.make, target.model or "")
+            _emit(progress_cb, name, {"make": target.make, "model": target.model or ""})
 
         if source_specs:
             results = await asyncio.gather(
@@ -177,12 +184,14 @@ class AutomatedScraper:
                         source_name=name,
                         scraper_factory=factory,
                         parse_fn=parse_fn,
-                        criteria=per_source_criteria,
+                        criteria=per_source_criteria.model_copy(
+                            update={"make": target.make, "model": target.model}
+                        ),
                         min_window_hours=min_window_hours,
                         max_window_hours=max_window_hours,
                         progress_cb=progress_cb,
                     )
-                    for name, factory, parse_fn in source_specs
+                    for name, factory, parse_fn, target in source_specs
                 ],
                 return_exceptions=False,
             )
