@@ -78,6 +78,7 @@ These env vars are read across modules; consult before debugging "why does the s
 - Browser/extensions: `USE_EXTENSIONS`, `KEEP_BROWSER_OPEN`, `DISABLED_EXTENSIONS`, `CHROME_EXECUTABLE_PATH`
 - Filtering: `FILTER_SELLER_INSURANCE_ONLY`, `MIN_AUCTION_WINDOW_HOURS`, `MAX_AUCTION_WINDOW_HOURS`
 - AI: `AI_ANALYSIS_MODE`, `AI_ANALYSIS_STRICT`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_API_KEY`
+- Claude Code as the model provider (the current default for analysis, reports and offers): `ai/claude_code.py` is the single entry point — it shells out to `claude -p` and authenticates with the logged-in **subscription**, not an API key (`ANTHROPIC_API_KEY` in `.env` belongs to the dead `oneprovider.dev` proxy). Never add `--bare`: it disables the OAuth read this depends on. The system prompt must stay byte-identical between calls — it is passed via `--system-prompt` so the ~21k-token prefix hits the prompt cache (measured 13× cheaper on the second call). Models per task: `CLAUDE_CODE_MODEL`, `CLAUDE_CODE_OFFER_MODEL`, `CLAUDE_CODE_REPORTS_MODEL`. If calls fail with "niezalogowany", run `claude /login` on the server as the service user.
 - Orchestrator: `ORCHESTRATOR_MAX_RESULTS`, `CLIENT_EMAIL`, `GMAIL_ADDRESS`
 
 The `README.md` in `usa-car-finder/` has a fuller annotated `.env` example.
