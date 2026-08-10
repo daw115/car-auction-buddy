@@ -134,12 +134,42 @@ async function reportJob(jobId, capture, error) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message) => {
+// Szablony żądań trzymamy poza pamięcią strony: po przeładowaniu karty (a tym
+// bardziej po restarcie przeglądarki) hook startuje pusty, a bez szablonu nie
+// da się powtórzyć wyszukiwania. Tak zlecenia działają od razu po starcie.
+async function storeTemplate(operationName, template) {
+  const { templates = {} } = await chrome.storage.local.get({ templates: {} });
+  templates[operationName] = template;
+  await chrome.storage.local.set({ templates });
+}
+
+async function sendTemplates(tabId, frameId) {
+  const { templates = {} } = await chrome.storage.local.get({ templates: {} });
+  if (!Object.keys(templates).length) return;
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "manheim-templates", templates }, { frameId });
+  } catch (_) {
+    // Karta mogła zniknąć w międzyczasie — nic się nie psuje, hook nadrobi
+    // szablon przy pierwszym wyszukiwaniu.
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender) => {
   if (!message || message.type !== "manheim-capture") return;
   const payload = message.payload || {};
 
   if (payload.kind === "replay-result") {
     reportJob(payload.jobId, payload.capture || null, payload.error || null);
+    return;
+  }
+
+  if (payload.kind === "template") {
+    storeTemplate(payload.operationName, payload.template);
+    return;
+  }
+
+  if (payload.kind === "templates-request") {
+    if (sender.tab) sendTemplates(sender.tab.id, sender.frameId ?? 0);
     return;
   }
 

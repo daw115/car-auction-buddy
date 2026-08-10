@@ -37,6 +37,11 @@
     }
   }
 
+  // Szablony przeżywają przeładowanie strony: bez tego po każdym restarcie
+  // przeglądarki (albo zwykłym F5) zlecenia padały, dopóki ktoś nie wyszukał
+  // ręcznie. Trzymamy je w chrome.storage przez service workera.
+  const PERSISTED = ["getSearches", "getExecuteSearchId"];
+
   function rememberTemplate(url, method, headers, body) {
     if (!body || typeof body !== "string") return;
     let parsed;
@@ -46,7 +51,21 @@
       return;
     }
     if (!parsed || !parsed.operationName) return;
-    templates.set(parsed.operationName, { url, method: method || "POST", headers, body: parsed });
+    const template = { url, method: method || "POST", headers, body: parsed };
+    templates.set(parsed.operationName, template);
+    if (PERSISTED.includes(parsed.operationName)) {
+      emit({ kind: "template", operationName: parsed.operationName, template });
+    }
+  }
+
+  function restoreTemplates(stored) {
+    for (const [name, template] of Object.entries(stored || {})) {
+      // Świeższy szablon z bieżącej sesji ma pierwszeństwo — nagłówki
+      // autoryzacji potrafią wygasnąć.
+      if (!templates.has(name) && template && template.url && template.body) {
+        templates.set(name, template);
+      }
+    }
   }
 
   function report(kind, url, method, requestBody, responseText, requestHeaders) {
@@ -221,8 +240,9 @@
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.channel !== CHANNEL || data.command !== "replay") return;
-    replay(data.jobId, data.keyword);
+    if (!data || data.channel !== CHANNEL) return;
+    if (data.command === "replay") replay(data.jobId, data.keyword);
+    if (data.command === "templates") restoreTemplates(data.templates);
   });
 
   emit({
@@ -230,4 +250,6 @@
     pageUrl: window.location.href,
     capturedAt: new Date().toISOString(),
   });
+  // Poproś o zapamiętane szablony — odpowiedź wróci jako command: "templates".
+  emit({ kind: "templates-request" });
 })();

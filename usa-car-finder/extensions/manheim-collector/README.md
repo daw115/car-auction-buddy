@@ -55,10 +55,14 @@ strona         → getExecuteSearchId {searchId} → wyniki (gzip w base64)
 rozszerzenie   → POST /api/manheim/ingest {jobId, captures}
 ```
 
-Szablony obu żądań pochodzą z ruchu samej aplikacji — dlatego **po każdym
-przeładowaniu karty trzeba raz wyszukać ręcznie**, żeby wtyczka je podpatrzyła.
-Zanim to nastąpi, zlecenie kończy się czytelnym błędem, a źródło sięga po to,
-co kolektor zebrał wcześniej.
+Szablony obu żądań pochodzą z ruchu samej aplikacji, więc **raz** trzeba
+wyszukać ręcznie — potem trafiają do `chrome.storage` i przeżywają zarówno
+przeładowanie karty, jak i restart przeglądarki. Bez tego każdy restart
+serwera wymagałby ręcznej interwencji, a usługa ma wstawać sama.
+
+Gdy szablonu nie ma (pierwsze uruchomienie profilu) albo nagłówki autoryzacji
+wygasły, zlecenie kończy się czytelnym błędem, a źródło sięga po to, co
+kolektor zebrał wcześniej.
 
 Hook musi być w świecie MAIN, bo tylko tam widać wywołania samej aplikacji —
 świat izolowany ma własny `window` i tych żądań nie zobaczy.

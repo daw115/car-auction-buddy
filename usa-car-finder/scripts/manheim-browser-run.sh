@@ -44,8 +44,18 @@ done
 
 command -v openbox >/dev/null && { openbox & WM_PID=$!; }
 
-echo "[manheim-browser] x11vnc na 127.0.0.1:$VNC_PORT (tylko lokalnie)"
-x11vnc -display "$DISPLAY_NUM" -localhost -rfbport "$VNC_PORT" -forever -shared -nopw -quiet &
+# Hasło, gdy plik istnieje. macOS Screen Sharing odbija się od serwera bez
+# uwierzytelniania ("Connection failed"), więc -nopw jest tu pułapką, nie
+# ułatwieniem. Utworzenie hasła: x11vnc -storepasswd HASLO ~/.vnc/passwd
+VNC_PASSWD="${MANHEIM_VNC_PASSWD:-$HOME/.vnc/passwd}"
+if [[ -f "$VNC_PASSWD" ]]; then
+    VNC_AUTH=(-rfbauth "$VNC_PASSWD")
+    echo "[manheim-browser] x11vnc na 127.0.0.1:$VNC_PORT (hasło z $VNC_PASSWD)"
+else
+    VNC_AUTH=(-nopw)
+    echo "[manheim-browser] x11vnc na 127.0.0.1:$VNC_PORT (BEZ hasła — macOS może odmówić)"
+fi
+x11vnc -display "$DISPLAY_NUM" -localhost -rfbport "$VNC_PORT" -forever -shared "${VNC_AUTH[@]}" -quiet &
 VNC_PID=$!
 
 echo "[manheim-browser] Chrome, profil $PROFILE_DIR"

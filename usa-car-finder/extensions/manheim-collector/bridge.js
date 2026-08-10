@@ -21,15 +21,23 @@
 
   // service worker -> strona (zlecenie powtórzenia wyszukiwania)
   chrome.runtime.onMessage.addListener((message) => {
-    if (!message || message.type !== "manheim-replay") return;
-    window.postMessage(
-      {
-        channel: CHANNEL,
-        command: "replay",
-        jobId: message.jobId,
-        keyword: message.keyword,
-      },
-      window.location.origin,
-    );
+    if (!message) return;
+    if (message.type === "manheim-replay") {
+      window.postMessage(
+        {
+          channel: CHANNEL,
+          command: "replay",
+          jobId: message.jobId,
+          keyword: message.keyword,
+        },
+        window.location.origin,
+      );
+    }
+    if (message.type === "manheim-templates") {
+      window.postMessage(
+        { channel: CHANNEL, command: "templates", templates: message.templates },
+        window.location.origin,
+      );
+    }
   });
 })();
