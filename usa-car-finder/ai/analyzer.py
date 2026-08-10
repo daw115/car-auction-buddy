@@ -896,6 +896,10 @@ def _estimate_repair_cost(lot: CarLot) -> tuple[int, list[str], float]:
             base = 3000
             flags.append("Niska ocena stanu (CR)")
             score_delta -= 0.5
+    elif lot.source == "manheim":
+        # Manheim to rynek dealerski — brak opisu szkód jest tam normą, a nie brakiem
+        # danych. Flaga "nieprecyzyjny opis" straszyłaby brokera bez powodu.
+        base = 800
     else:
         base = 3000
         flags.append("Nieprecyzyjny opis uszkodzeń")
@@ -996,6 +1000,20 @@ def _analyze_lots_locally(lots: List[CarLot], criteria: ClientCriteria, top_n: i
             recommendation = "POLECAM"
         else:
             recommendation = "RYZYKO"
+
+        # Ta sama skala co przy analizie AI. Bez tego awaria modelu cicho zmieniałaby
+        # kryteria rankingu: heurystyka poniżej startuje od 5.5 i dodaje własne korekty,
+        # więc "7.2" z lokalnej ścieżki znaczyło co innego niż "7.2" ze scoringu.
+        unified = (lot.raw_data or {}).get("unified_score")
+        if unified:
+            score = float(unified["score"])
+            if unified["disqualifiers"]:
+                recommendation = "ODRZUĆ"
+                for reason in unified["disqualifiers"]:
+                    if reason not in red_flags:
+                        red_flags.append(reason)
+            else:
+                recommendation = unified["recommendation"]
 
         price_note = f"aktualna oferta ${bid_usd:,.0f}".replace(",", " ") if bid_usd else "brak pewnej ceny ofertowej"
         reserve_note = ""
