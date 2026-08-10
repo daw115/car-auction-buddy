@@ -7,7 +7,7 @@ from typing import Optional
 
 
 class CarLot(BaseModel):
-    source: str                              # "copart" | "iaai"
+    source: str                              # "copart" | "iaai" | "manheim"
     lot_id: str
     url: str
     html_file: Optional[str] = None
@@ -96,11 +96,11 @@ class ClientCriteria(BaseModel):
     @field_validator("sources")
     @classmethod
     def valid_sources(cls, value: list[str]) -> list[str]:
-        allowed = {"copart", "iaai"}
+        allowed = {"copart", "iaai", "manheim"}
         normalized = [item.lower() for item in value]
         invalid = set(normalized) - allowed
         if invalid or not normalized:
-            raise ValueError("sources musi zawierać copart, iaai lub oba")
+            raise ValueError("sources musi zawierać copart, iaai lub manheim (co najmniej jedno)")
         return normalized
 
     @field_validator("fuel_type")

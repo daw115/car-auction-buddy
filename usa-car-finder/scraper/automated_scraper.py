@@ -43,8 +43,10 @@ from parser.models import CarLot, ClientCriteria
 from scraper.base import BaseScraper
 from scraper.copart import CopartScraper
 from scraper.iaai import IAAIScraper
+from scraper.manheim import ManheimScraper, manheim_result_limit
 from parser.copart_parser import parse_copart_html
 from parser.iaai_parser import parse_iaai_html
+from parser.manheim_parser import parse_manheim_html
 from scraper.extension_enricher import ExtensionEnricher
 
 logger = logging.getLogger("scraper.automated")
@@ -160,6 +162,8 @@ class AutomatedScraper:
             source_specs.append(("copart", CopartScraper, parse_copart_html))
         if "iaai" in criteria.sources:
             source_specs.append(("iaai", IAAIScraper, parse_iaai_html))
+        if "manheim" in criteria.sources:
+            source_specs.append(("manheim", ManheimScraper, parse_manheim_html))
 
         per_source_criteria = source_criteria(len(source_specs)) if source_specs else criteria
         for name, _, _ in source_specs:
@@ -220,7 +224,7 @@ class AutomatedScraper:
                 and len(all_lots) > criteria.max_results
                 and not self.filter_insurance_only
             ):
-                all_lots = all_lots[:criteria.max_results]
+                all_lots = self._truncate_with_manheim_quota(all_lots, criteria.max_results)
                 logger.info("Ograniczam do %d lotów wg kryterium max_results", len(all_lots))
 
         _emit(progress_cb, "filter", {"output": len(all_lots), "_status": "done"})
@@ -263,7 +267,7 @@ class AutomatedScraper:
             and len(all_lots) > criteria.max_results
             and not self.collect_all_prefiltered_results
         ):
-            all_lots = all_lots[:criteria.max_results]
+            all_lots = self._truncate_with_manheim_quota(all_lots, criteria.max_results)
             logger.info("Ograniczam finalnie do %d lotów wg kryterium max_results", len(all_lots))
 
         logger.info("Łącznie znaleziono %d lotów (sort: %s)", len(all_lots), list_sort_by)
@@ -381,9 +385,17 @@ class AutomatedScraper:
         deadline = now + timedelta(hours=max_hours)
         filtered = []
 
+        keep_dateless_manheim = (
+            os.getenv("MANHEIM_IGNORE_AUCTION_WINDOW", "true").lower() == "true"
+        )
+
         for lot in lots:
             if not lot.auction_date:
-                # Brak daty - odrzuć, bo nie spełnia kryterium okna czasu
+                # Manheim: OVE / Buy Now / Private Store nie mają terminu zakończenia
+                # aukcji — odrzucanie ich tu wycięłoby całe źródło do zera. Copart/IAAI
+                # bez daty nadal odrzucamy, tam brak daty oznacza niekompletny scrape.
+                if lot.source == "manheim" and keep_dateless_manheim:
+                    filtered.append(lot)
                 continue
 
             try:
@@ -416,10 +428,19 @@ class AutomatedScraper:
         explicit_match = re.search(r"/(?:lot|VehicleDetail)/(\d+)", url, flags=re.IGNORECASE)
         if explicit_match:
             return explicit_match.group(1)
+        # Manheim: /vdp/<id> — identyfikatory bywają alfanumeryczne (work order,
+        # UUID), więc nie wolno ich przepuścić przez wyciąganie samych cyfr niżej.
+        vdp_match = re.search(r"/vdp/([A-Za-z0-9_-]+)", url, flags=re.IGNORECASE)
+        if vdp_match:
+            return vdp_match.group(1)
         clean = url.split("?", 1)[0].rstrip("/")
         if not clean:
             return None
         tail = clean.split("/")[-1]
+        if "manheim.com" in url.lower():
+            # Manheim identyfikuje pojazdy work orderem/UUID-em; wyciągnięcie
+            # samych cyfr zrobiłoby z "9f2c-uuid-77" bezużyteczne "9".
+            return tail or None
         m = re.search(r"(\d+)", tail)
         return m.group(1) if m else tail
 
@@ -619,6 +640,31 @@ class AutomatedScraper:
             )
 
         return filtered
+
+    @staticmethod
+    def _truncate_with_manheim_quota(lots: List[CarLot], limit: int) -> List[CarLot]:
+        """Przycina listę do max_results, ale rezerwuje miejsca dla Manheima.
+
+        Bez tego Manheim znika z wyników: sortujemy po dacie aukcji rosnąco, a
+        loty OVE/Buy Now nie mają terminu, więc lądują na końcu i wypada je
+        pierwsze cięcie. Kolejność wejściowa (czyli aktywny sort) zostaje.
+        """
+        if not limit or len(lots) <= limit:
+            return lots
+
+        quota = min(manheim_result_limit(), limit)
+        reserved = {
+            id(lot) for lot in [lot for lot in lots if lot.source == "manheim"][:quota]
+        }
+        others_budget = limit - len(reserved)
+        kept: List[CarLot] = []
+        for lot in lots:
+            if id(lot) in reserved:
+                kept.append(lot)
+            elif others_budget > 0:
+                kept.append(lot)
+                others_budget -= 1
+        return kept
 
     @staticmethod
     def _auction_sort_key(lot: CarLot):
