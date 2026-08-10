@@ -265,11 +265,16 @@ def _call_vision_claude_code(images: list[str], user_text: str, cache_key: str) 
 
 
 def _download_image_bytes(url: str, timeout: int) -> Optional[tuple[bytes, str]]:
-    """Surowe bajty zdjęcia plus rozszerzenie — dla dostawców czytających z dysku."""
-    import requests
+    """Surowe bajty zdjęcia plus rozszerzenie — dla dostawców czytających z dysku.
+
+    Świadomie httpx, nie requests: tego drugiego nie ma w venv na serwerze, a
+    ścieżka Gemini, która go importuje, nigdy się nie wykonała (brak klucza),
+    więc braku nikt nie zauważył.
+    """
+    import httpx
 
     try:
-        resp = requests.get(url, timeout=timeout)
+        resp = httpx.get(url, timeout=timeout, follow_redirects=True)
         resp.raise_for_status()
         content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
         suffix = {"image/png": ".png", "image/webp": ".webp"}.get(content_type, ".jpg")
