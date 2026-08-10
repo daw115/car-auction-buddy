@@ -29,6 +29,7 @@
           command: "replay",
           jobId: message.jobId,
           keyword: message.keyword,
+          templates: message.templates,
         },
         window.location.origin,
       );

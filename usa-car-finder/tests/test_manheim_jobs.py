@@ -19,7 +19,9 @@ def test_job_is_handed_out_once_and_then_completed():
     job_id = manheim_jobs.create("toyota rav4")
 
     taken = manheim_jobs.next_pending()
-    assert taken == {"id": job_id, "keyword": "toyota rav4"}
+    # Do zlecenia dołączane są szablony żądań — świeżo otwarta karta swoich
+    # jeszcze nie ma, a bez nich nie powtórzy zapytania.
+    assert taken == {"id": job_id, "keyword": "toyota rav4", "templates": {}}
     # Drugi odbiorca nie dostaje tego samego zadania.
     assert manheim_jobs.next_pending() is None
 
@@ -124,3 +126,25 @@ def test_scraper_falls_back_to_the_store_when_nobody_takes_the_job(monkeypatch, 
         )
     )
     assert len(saved) == 1
+
+
+def test_templates_survive_and_ride_along_with_the_job():
+    """Szablon żyje na backendzie, nie w przeglądarce.
+
+    chrome.storage ginie przy restarcie przeglądarki (i przy skasowaniu
+    profilu), a bez szablonu kolektor nie powtórzy zapytania — więc trwałym
+    miejscem jest backend, a szablon jedzie do karty razem ze zleceniem.
+    """
+    template = {
+        "url": "https://onesearch-api.manheim.com/graphql",
+        "method": "POST",
+        "headers": {"Authorization": "Bearer x"},
+        "body": {"operationName": "getSearches", "variables": {"payload": "{}"}},
+    }
+    assert manheim_jobs.store_templates({"getSearches": template}) == 1
+    # Śmieci bez url-a nie wchodzą.
+    assert manheim_jobs.store_templates({"getExecuteSearchId": {"brak": "url"}}) == 1
+
+    job_id = manheim_jobs.create("bmw x5")
+    taken = manheim_jobs.next_pending()
+    assert taken["templates"]["getSearches"]["url"].endswith("/graphql")

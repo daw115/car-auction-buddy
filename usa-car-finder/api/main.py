@@ -1425,6 +1425,9 @@ class ManheimIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     captures: list[dict] = Field(default_factory=list, max_length=200)
+    # Szablony żądań podpatrzone przez kolektor — backend jest ich trwałym
+    # miejscem, bo przeglądarka bywa restartowana.
+    templates: dict = Field(default_factory=dict)
     # Ustawiane przez rozszerzenie, gdy paczka jest odpowiedzią na zlecone
     # wyszukiwanie — wtedy wynik trafia też do konkretnego zadania.
     job_id: Optional[str] = Field(default=None, alias="jobId", max_length=64)
@@ -1466,6 +1469,8 @@ async def manheim_ingest(
     from api import manheim_jobs
 
     summary = ingest_store.store(request.captures)
+    if request.templates:
+        summary["templates"] = manheim_jobs.store_templates(request.templates)
     if request.job_id:
         summary["job"] = manheim_jobs.complete(
             request.job_id, ingest_store.last_batch_records(), request.error

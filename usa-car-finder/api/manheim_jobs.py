@@ -21,6 +21,10 @@ logger = logging.getLogger("api.manheim_jobs")
 
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}
+# Szablony żądań podpatrzone przez kolektor. Trzymamy je TU, a nie w
+# chrome.storage: przeglądarka bywa restartowana i przeładowywana, a backend
+# jest jedynym miejscem, które i tak przeżywa wszystko po drodze.
+_templates: dict[str, dict] = {}
 
 
 def job_ttl_seconds() -> float:
@@ -70,6 +74,20 @@ def create(keyword: str) -> str:
     return job_id
 
 
+def store_templates(templates: dict) -> int:
+    """Zapamiętuje szablony przysłane przez kolektor. Zwraca ile znanych."""
+    with _lock:
+        for name, template in (templates or {}).items():
+            if isinstance(template, dict) and template.get("url"):
+                _templates[name] = template
+        return len(_templates)
+
+
+def templates() -> dict[str, dict]:
+    with _lock:
+        return dict(_templates)
+
+
 def next_pending() -> Optional[dict]:
     with _lock:
         _prune_locked()
@@ -77,7 +95,14 @@ def next_pending() -> Optional[dict]:
             if job["status"] == "pending":
                 job["status"] = "running"
                 job["leasedAt"] = time.time()
-                return {"id": job["id"], "keyword": job["keyword"]}
+                # Szablony jadą razem ze zleceniem — hook w świeżo otwartej
+                # karcie nie ma jeszcze własnych, a bez nich nie powtórzy
+                # zapytania.
+                return {
+                    "id": job["id"],
+                    "keyword": job["keyword"],
+                    "templates": dict(_templates),
+                }
     return None
 
 
@@ -116,3 +141,4 @@ def status() -> dict[str, Any]:
 def clear() -> None:
     with _lock:
         _jobs.clear()
+        _templates.clear()

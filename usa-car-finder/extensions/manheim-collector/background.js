@@ -110,7 +110,13 @@ async function pollForJob() {
     // ramka główna zdąży odpowiedzieć.
     await chrome.tabs.sendMessage(
       tabId,
-      { type: "manheim-replay", jobId: job.id, keyword: job.keyword },
+      {
+        type: "manheim-replay",
+        jobId: job.id,
+        keyword: job.keyword,
+        // Szablony ze zlecenia: świeżo otwarta karta swoich jeszcze nie ma.
+        templates: job.templates || {},
+      },
       { frameId: 0 },
     );
   } catch (error) {
@@ -138,9 +144,19 @@ async function reportJob(jobId, capture, error) {
 // bardziej po restarcie przeglądarki) hook startuje pusty, a bez szablonu nie
 // da się powtórzyć wyszukiwania. Tak zlecenia działają od razu po starcie.
 async function storeTemplate(operationName, template) {
+  // Lokalnie (szybki dostęp w tej sesji) i na backendzie (przeżywa restart
+  // przeglądarki, a nawet skasowanie profilu).
   const { templates = {} } = await chrome.storage.local.get({ templates: {} });
   templates[operationName] = template;
   await chrome.storage.local.set({ templates });
+  try {
+    await backendFetch("/api/manheim/ingest", {
+      method: "POST",
+      body: JSON.stringify({ captures: [], templates: { [operationName]: template } }),
+    });
+  } catch (_) {
+    // Backend zgaszony — szablon i tak leży lokalnie, dośle się przy okazji.
+  }
 }
 
 async function sendTemplates(tabId, frameId) {

@@ -241,7 +241,11 @@
     if (event.source !== window) return;
     const data = event.data;
     if (!data || data.channel !== CHANNEL) return;
-    if (data.command === "replay") replay(data.jobId, data.keyword);
+    if (data.command === "replay") {
+      // Szablony dołączone do zlecenia mają wypełnić lukę po restarcie karty.
+      restoreTemplates(data.templates);
+      replay(data.jobId, data.keyword);
+    }
     if (data.command === "templates") restoreTemplates(data.templates);
   });
 
