@@ -7,6 +7,11 @@ import { join, relative } from "path";
 
 const CLIENT_DIRS = ["src/components", "src/hooks", "src/lib", "src/routes"];
 const EXCLUDE_DIRS = ["src/routes/api"];
+// Trasy czysto serwerowe spoza src/routes/api — mają wyłącznie `server.handlers`,
+// więc nic z nich nie trafia do bundla klienta. `/artifacts/*` musi stać poza
+// api/, bo backend skleja odnośniki do raportów jako /artifacts/... i mają je
+// zapisane istniejące rekordy; przeniesienie zepsułoby historię.
+const EXCLUDE_FILES = new Set(["src/routes/artifacts.$filename.ts"]);
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 
 const IMPORT_PATTERNS = [
@@ -38,6 +43,7 @@ for (const dir of CLIENT_DIRS) {
     continue;
   }
   for (const file of walk(dir)) {
+    if (EXCLUDE_FILES.has(relative(".", file))) continue;
     const content = readFileSync(file, "utf-8");
     const lines = content.split("\n");
     for (let i = 0; i < lines.length; i++) {
