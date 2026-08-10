@@ -817,6 +817,26 @@ def _estimate_repair_cost(lot: CarLot) -> tuple[int, list[str], float]:
         # Pożądane — grad (PDR), mechanika nienaruszona
         base = 1800
         score_delta += 0.6
+    elif "condition grade" in damage:
+        # Manheim opisuje stan oceną CR, nie typem szkody. Wcześniej wpadało to w
+        # gałąź "nieprecyzyjny opis" i lot tracił punkty za to, że auto jest CAŁE —
+        # nieuszkodzony egzemplarz wypadał gorzej niż rozbity.
+        grade = None
+        match = re.search(r"condition grade\s+([\d.]+)", damage)
+        if match:
+            try:
+                grade = float(match.group(1))
+            except ValueError:
+                grade = None
+        if grade is not None and grade >= 4.0:
+            base = 400
+            score_delta += 1.0
+        elif grade is not None and grade >= 3.0:
+            base = 1500
+        else:
+            base = 3000
+            flags.append("Niska ocena stanu (CR)")
+            score_delta -= 0.5
     else:
         base = 3000
         flags.append("Nieprecyzyjny opis uszkodzeń")
