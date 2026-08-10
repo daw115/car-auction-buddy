@@ -73,11 +73,11 @@ def collector_seen_recently() -> bool:
     zalogowana przeglądarka, która przyjmie zlecenie.
     """
     try:
-        from api.manheim_ingest import status as ingest_status
+        from api.manheim_ingest import last_contact_at
     except Exception:
         return False
 
-    last = ingest_status().get("lastIngestAt")
+    last = last_contact_at()
     if not last:
         return False
     window = max(60.0, float(os.getenv("MANHEIM_COLLECTOR_ALIVE_SECONDS", "300")))
@@ -94,16 +94,23 @@ def unavailable_reason() -> str:
     if source_mode() != "collector":
         return "manheim_session_not_configured"
     try:
-        from api.manheim_ingest import last_rejection
+        from api.manheim_ingest import last_contact_at, last_rejection
     except Exception:
         return "manheim_session_not_configured"
 
     rejection = last_rejection()
-    if rejection and (time.time() - float(rejection["at"])) <= 3600:
-        if rejection["status"] == 403:
-            return "collector_token_mismatch"
-        return "collector_unauthorized"
-    return "collector_not_seen_recently"
+    if not rejection:
+        return "collector_not_seen_recently"
+
+    # Odrzucenie liczy się tylko wtedy, gdy jest ŚWIEŻSZE niż ostatni udany
+    # kontakt. Inaczej poprawiony token nadal wyglądałby na niezgodny — przez
+    # godzinę od ostatniego 403.
+    contact = last_contact_at()
+    if contact and float(contact) >= float(rejection["at"]):
+        return "collector_not_seen_recently"
+    if (time.time() - float(rejection["at"])) > 3600:
+        return "collector_not_seen_recently"
+    return "collector_token_mismatch" if rejection["status"] == 403 else "collector_unauthorized"
 
 
 def config_ready() -> bool:

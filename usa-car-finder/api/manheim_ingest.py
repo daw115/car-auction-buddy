@@ -32,6 +32,10 @@ _last_batch: list[dict] = []
 # tokena w rozszerzeniu była linijka w jego opcjach, do której nikt nie zagląda —
 # a na zewnątrz wyglądało to jak "brak skonfigurowanej sesji Manheima".
 _last_rejection: Optional[dict] = None
+# Udane odpytanie o zlecenie. To jest właściwy dowód życia kolektora: sam ingest
+# nie wystarcza, bo próbki przychodzą dopiero po zleceniu, a zlecenia nie ma,
+# dopóki źródło uchodzi za niedostępne. Bez tego Manheim nigdy się nie włącza.
+_last_poll_at: Optional[float] = None
 
 
 def storage_dir() -> Path:
@@ -204,6 +208,20 @@ def vehicles() -> list[dict]:
         ]
 
 
+def note_poll() -> None:
+    """Kolektor odpytał i został wpuszczony."""
+    global _last_poll_at
+    with _lock:
+        _last_poll_at = time.time()
+
+
+def last_contact_at() -> Optional[float]:
+    """Ostatni dowód, że po drugiej stronie stoi żywa, uprawniona przeglądarka."""
+    with _lock:
+        stamps = [t for t in (_last_ingest_at, _last_poll_at) if t]
+        return max(stamps) if stamps else None
+
+
 def note_rejection(status_code: int, detail: str) -> None:
     """Kolektor pukał i został odbity — zapamiętaj, bo to najczęstsza awaria."""
     global _last_rejection
@@ -228,6 +246,7 @@ def status() -> dict:
             "lastIngestAt": _last_ingest_at,
             "ttlSeconds": ttl_seconds(),
             "rawBatchesSaved": _raw_batches,
+            "lastPollAt": _last_poll_at,
             "lastRejection": dict(_last_rejection) if _last_rejection else None,
         }
 
@@ -238,8 +257,9 @@ def clear() -> None:
     Bez zerowania `_last_ingest_at` pusty magazyn nadal raportowałby, że
     kolektor żyje — a na tym opiera się gotowość źródła w /api/capabilities.
     """
-    global _last_batch, _last_ingest_at
+    global _last_batch, _last_ingest_at, _last_poll_at
     with _lock:
+        _last_poll_at = None
         _vehicles.clear()
         _seen_at.clear()
         _last_batch = []

@@ -383,15 +383,42 @@ def test_collector_liveness_uses_the_configured_window(monkeypatch):
     assert manheim_session.collector_seen_recently() is False
 
     now = manheim_session.time.time()
-    monkeypatch.setattr(
-        manheim_ingest, "status", lambda: {"lastIngestAt": now - 30}
-    )
+    monkeypatch.setattr(manheim_ingest, "last_contact_at", lambda: now - 30)
     assert manheim_session.collector_seen_recently() is True
 
-    monkeypatch.setattr(
-        manheim_ingest, "status", lambda: {"lastIngestAt": now - 600}
-    )
+    monkeypatch.setattr(manheim_ingest, "last_contact_at", lambda: now - 600)
     assert manheim_session.collector_seen_recently() is False
+
+
+def test_a_successful_poll_alone_proves_the_collector_is_alive(monkeypatch):
+    """Bez tego Manheim nigdy się nie włączał.
+
+    Gotowość mierzona wyłącznie udanym zbiorem tworzy zapętlenie: próbki
+    przychodzą dopiero po zleceniu, a zlecenia nie ma, dopóki źródło uchodzi
+    za niedostępne. Samo wpuszczone odpytanie o zlecenie jest dowodem, że po
+    drugiej stronie stoi żywa i uprawniona przeglądarka.
+    """
+    from api import manheim_ingest
+
+    monkeypatch.setenv("MANHEIM_COLLECTOR_ALIVE_SECONDS", "300")
+    manheim_ingest.clear()
+    assert manheim_session.collector_seen_recently() is False
+
+    manheim_ingest.note_poll()
+    assert manheim_session.collector_seen_recently() is True
+
+
+def test_corrected_token_stops_being_reported_as_a_mismatch(monkeypatch):
+    """Świeży sukces musi przebić starsze odrzucenie, inaczej powód kłamie."""
+    from api import manheim_ingest
+
+    monkeypatch.setenv("MANHEIM_SOURCE_MODE", "collector")
+    manheim_ingest.clear()
+    manheim_ingest.note_rejection(403, "token się nie zgadza")
+    assert manheim_session.unavailable_reason() == "collector_token_mismatch"
+
+    manheim_ingest.note_poll()
+    assert manheim_session.unavailable_reason() != "collector_token_mismatch"
 
 
 def test_insurance_only_filter_does_not_wipe_out_manheim(monkeypatch):

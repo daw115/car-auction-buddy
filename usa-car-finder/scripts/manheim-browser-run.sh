@@ -56,6 +56,18 @@ else
     echo "[manheim-browser] x11vnc na 127.0.0.1:$VNC_PORT (BEZ hasła — macOS może odmówić)"
 fi
 x11vnc -display "$DISPLAY_NUM" -localhost -rfbport "$VNC_PORT" -forever -shared "${VNC_AUTH[@]}" -quiet &
+
+# Bez tego wklejanie z Maca do tej przeglądarki po prostu nie działa: openbox nie
+# utrzymuje właściciela schowka, więc x11vnc ma co wysłać, ale nikt tego nie
+# odbiera. autocutsel mostkuje CLIPBOARD i PRIMARY — kosztuje dwa procesy,
+# a oszczędza przepisywanie tokenów ze zdjęcia ekranu.
+if command -v autocutsel >/dev/null; then
+    DISPLAY="$DISPLAY_NUM" autocutsel -selection CLIPBOARD -fork
+    DISPLAY="$DISPLAY_NUM" autocutsel -selection PRIMARY -fork
+else
+    echo "[manheim-browser] UWAGA: brak autocutsel — schowek z Maca nie będzie działał" >&2
+    echo "[manheim-browser] napraw: sudo apt-get install -y autocutsel" >&2
+fi
 VNC_PID=$!
 
 echo "[manheim-browser] Chrome, profil $PROFILE_DIR"

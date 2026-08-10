@@ -1594,8 +1594,10 @@ async def manheim_next_job(_auth: None = Depends(_require_manheim_ingest_token))
     Kierunek jest odwrócony (backend nie woła przeglądarki, tylko czeka), bo
     tylko strona ma sesję Manheima — patrz api/manheim_jobs.py.
     """
+    from api import manheim_ingest as ingest_store
     from api import manheim_jobs
 
+    ingest_store.note_poll()
     return manheim_jobs.next_pending() or {}
 
 
