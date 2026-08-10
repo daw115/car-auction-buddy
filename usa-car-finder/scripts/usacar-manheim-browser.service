@@ -1,20 +1,29 @@
 [Unit]
 Description=USA Car Finder — przeglądarka Manheim (Xvfb + Chrome + BidWise)
-Documentation=file:///opt/usacar/usa-car-finder/extensions/manheim-collector/README.md
+Documentation=file:///home/dawid/usacar/usa-car-finder/extensions/manheim-collector/README.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=dawid
-WorkingDirectory=%h/usacar/usa-car-finder
+# UWAGA: w unicie SYSTEMOWYM %h rozwija się do /root, a nie do katalogu
+# użytkownika z User= (specyfikatory podstawiane są przed zmianą użytkownika).
+# Ścieżki muszą być bezwzględne — inaczej start kończy się 200/CHDIR.
+WorkingDirectory=/home/dawid/usacar/usa-car-finder
 Environment=MANHEIM_DISPLAY=:99
 Environment=MANHEIM_VNC_PORT=5900
-Environment=MANHEIM_CHROME_PROFILE_DIR=%h/.chrome-manheim-profile
-ExecStart=/bin/bash %h/usacar/usa-car-finder/scripts/manheim-browser-run.sh
+Environment=HOME=/home/dawid
+Environment=MANHEIM_CHROME_PROFILE_DIR=/home/dawid/.chrome-manheim-profile
+ExecStart=/bin/bash /home/dawid/usacar/usa-car-finder/scripts/manheim-browser-run.sh
 
 # Chrome potrafi paść (OOM, crash renderera), a bez niego Manheim milknie —
 # sesja BidWise siedzi w profilu, więc restart jest bezobsługowy.
+# journald na tej maszynie nie zbiera logów usług (sprawdzone: pusto także dla
+# usacar-api), więc kierujemy je do pliku — inaczej awaria startu jest niema.
+StandardOutput=append:/var/log/usacar-manheim-browser.log
+StandardError=append:/var/log/usacar-manheim-browser.log
+
 Restart=always
 RestartSec=15
 
