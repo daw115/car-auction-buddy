@@ -250,6 +250,13 @@
     pageUrl: window.location.href,
     capturedAt: new Date().toISOString(),
   });
-  // Poproś o zapamiętane szablony — odpowiedź wróci jako command: "templates".
-  emit({ kind: "templates-request" });
+
+  // Prośbę o zapamiętane szablony ponawiamy: hook (świat MAIN) startuje przy
+  // document_start, czasem ZANIM most w świecie izolowanym zdąży zarejestrować
+  // nasłuch — pierwsza prośba przepada bez śladu. Kończymy, gdy szablony są.
+  (function requestTemplates(attempt) {
+    if (attempt > 5 || templates.has("getExecuteSearchId")) return;
+    emit({ kind: "templates-request" });
+    setTimeout(() => requestTemplates(attempt + 1), 500 * 2 ** attempt);
+  })(0);
 })();
