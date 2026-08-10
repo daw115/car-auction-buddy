@@ -71,6 +71,18 @@ Backend trzyma rekordy z TTL (`MANHEIM_INGEST_TTL_MINUTES`, domyślnie 30 min)
 i scala je po VIN-ie: SPA rozbija pojazd na osobne zapytania (opis pojazdu
 osobno, status licytacji z `highBid`/`endTime` osobno).
 
+## Po przeładowaniu rozszerzenia — przeładuj też kartę
+
+Chrome wyrzuca content scripty z otwartych kart w chwili przeładowania
+rozszerzenia. Objaw: zlecenie wraca z `Receiving end does not exist`. Sam
+restart przeglądarki tego nie wymaga (karta ładuje się od nowa), ale klikając
+↻ na kafelku w `chrome://extensions` trzeba potem odświeżyć kartę Manheima.
+
+Uwaga na service workera: przy podbiciu wersji potrafi jeszcze przez chwilę
+chodzić na starym kodzie, mimo że `chrome://extensions` pokazuje już nową.
+Objawia się to niespójnością — content script zachowuje się po nowemu, worker
+po staremu. Ratuje przeładowanie kafelka.
+
 ## Sprawdzenie
 
 ```bash
