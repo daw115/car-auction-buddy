@@ -92,9 +92,52 @@ def last_batch_records() -> list[dict]:
         return list(_last_batch)
 
 
+# Operacje GraphQL, których szablon pozwala powtórzyć wyszukiwanie.
+_TEMPLATE_OPERATIONS = ("getSearches", "getExecuteSearchId")
+
+
+def _harvest_templates(captures: list[dict]) -> dict:
+    """Wyciąga szablony żądań wprost z przychodzących próbek.
+
+    Kolektor i tak przysyła pełne ciało żądania razem z nagłówkami, więc
+    backend nie musi polegać na osobnej ścieżce w rozszerzeniu — jedna droga
+    mniej to jedna awaria mniej.
+    """
+    found: dict[str, dict] = {}
+    for capture in captures:
+        if not isinstance(capture, dict):
+            continue
+        raw = capture.get("requestBody")
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        operation = body.get("operationName") if isinstance(body, dict) else None
+        if operation not in _TEMPLATE_OPERATIONS:
+            continue
+        found[operation] = {
+            "url": capture.get("url"),
+            "method": capture.get("method") or "POST",
+            "headers": capture.get("requestHeaders") or {},
+            "body": body,
+        }
+    return found
+
+
 def store(captures: list[dict]) -> dict:
     """Przyjmuje partię próbek, zwraca podsumowanie dla wywołującego."""
     global _last_ingest_at, _raw_batches, _last_batch
+
+    templates = _harvest_templates(captures)
+    if templates:
+        try:
+            from api.manheim_jobs import store_templates
+
+            store_templates(templates)
+        except Exception:
+            logger.debug("[manheim-ingest] nie zapisałem szablonów", exc_info=True)
 
     fresh: list[dict] = []
     for capture in captures:

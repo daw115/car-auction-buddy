@@ -135,3 +135,53 @@ def test_plain_stringified_payload_still_works():
     )
     assert summary["stored"] == 1
     assert manheim_ingest.vehicles()[0]["make"] == "Chrysler"
+
+
+def test_templates_are_harvested_from_ordinary_captures(monkeypatch, tmp_path):
+    """Szablon wyciągamy z tego, co kolektor i tak przysyła.
+
+    Osobna ścieżka "wyślij szablon" w rozszerzeniu okazała się zawodna, a paczki
+    z ruchem strony niosą komplet: URL, nagłówki i ciało żądania.
+    """
+    from api import manheim_jobs
+
+    monkeypatch.setenv("MANHEIM_TEMPLATES_PATH", str(tmp_path / "t.json"))
+    manheim_jobs.clear()
+
+    capture = {
+        "kind": "fetch",
+        "url": "https://onesearch-api.manheim.com/graphql",
+        "method": "POST",
+        "requestHeaders": {"Authorization": "Bearer abc"},
+        "requestBody": json.dumps(
+            {
+                "operationName": "getSearches",
+                "variables": {"payload": '{"keyword":"toyota rav4"}'},
+                "query": "query getSearches(...)",
+            }
+        ),
+        "responseBody": json.dumps({"data": {"getSearches": {}}}),
+    }
+    manheim_ingest.store([capture])
+
+    stored = manheim_jobs.templates()
+    assert "getSearches" in stored
+    assert stored["getSearches"]["headers"]["Authorization"] == "Bearer abc"
+    assert stored["getSearches"]["body"]["operationName"] == "getSearches"
+
+
+def test_unrelated_operations_are_not_treated_as_templates(monkeypatch, tmp_path):
+    from api import manheim_jobs
+
+    monkeypatch.setenv("MANHEIM_TEMPLATES_PATH", str(tmp_path / "t2.json"))
+    manheim_jobs.clear()
+
+    manheim_ingest.store(
+        [
+            {
+                "url": "https://onesearch-api.manheim.com/graphql",
+                "requestBody": json.dumps({"operationName": "getWorkbooks"}),
+            }
+        ]
+    )
+    assert manheim_jobs.templates() == {}
