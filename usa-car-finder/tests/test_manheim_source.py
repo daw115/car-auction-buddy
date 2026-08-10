@@ -494,3 +494,30 @@ def test_vehicles_sharing_a_nested_id_stay_separate(monkeypatch, tmp_path):
     assert len({path for path, _ in saved}) == 2, "każdy lot musi mieć własny plik"
     vins = {parse_manheim_html(__import__("pathlib").Path(path)).vin for path, _ in saved}
     assert vins == {"2T3P1RFV7SW514400", "JTMRWRFV9PD204814"}
+
+
+def test_pre_rank_keeps_manheim_even_when_the_heuristic_dislikes_it():
+    """Manheim znikał z każdego wyszukiwania i nikt tego nie widział.
+
+    Kwota istniała tylko w przycinaniu scrapera, które przy
+    COLLECT_ALL_PREFILTERED_RESULTS=true w ogóle się nie uruchamia. Jedynym
+    realnym cięciem był pre-ranking, zbudowany pod aukcje powypadkowe: premiuje
+    "hail" i "minor dent", a auta dealerskie z oceną stanu nie pasują do żadnego
+    koszyka i zawsze przegrywają.
+    """
+    from api.main import _pre_rank_lots_for_ai
+
+    def lot(source, lot_id, damage):
+        return CarLot(
+            source=source, lot_id=lot_id, url=f"https://x/{lot_id}", year=2019,
+            make="Ford", model="Edge", odometer_mi=70_000, current_bid_usd=6_000,
+            location_state="FL", damage_primary=damage, title_type="Clean",
+        )
+
+    salvage = [lot("copart", f"c{i}", "Hail") for i in range(12)]
+    manheim = [lot("manheim", f"m{i}", "Condition grade 4.5") for i in range(3)]
+
+    top = _pre_rank_lots_for_ai(salvage + manheim, top_n=10)
+
+    assert len(top) == 10
+    assert sum(1 for l in top if l.source == "manheim") == 3

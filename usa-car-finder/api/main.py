@@ -1155,13 +1155,25 @@ def _pre_rank_lots_for_ai(lots: list, top_n: int = 10) -> list:
 
     scored = [(lot_score(l), l) for l in lots]
     scored.sort(key=lambda x: -x[0])  # desc — najlepsze pierwsze
-    top = [l for s, l in scored[:top_n] if s > -100]  # filtr out auto-reject
+    survivors = [l for s, l in scored if s > -100]  # filtr out auto-reject
 
+    # Kwota Manheima musi obowiązywać TU, a nie tylko w scraperze. Scraperowe
+    # przycinanie nie odpala się przy COLLECT_ALL_PREFILTERED_RESULTS=true, więc
+    # w praktyce jedynym cięciem jest to. Bez kwoty Manheim znika z każdego
+    # wyszukiwania: heurystyka jest zbudowana pod aukcje powypadkowe (premiuje
+    # "hail" i "minor dent"), a auta dealerskie z oceną stanu nie pasują do
+    # żadnego z tych koszyków i zostają na wyniku bazowym.
+    from scraper.automated_scraper import AutomatedScraper
+
+    top = AutomatedScraper._truncate_with_manheim_quota(survivors, top_n)
+
+    by_source: dict[str, int] = {}
+    for lot in top:
+        by_source[lot.source] = by_source.get(lot.source, 0) + 1
     logger.info(
-        "[pre_rank] %d lots -> top %d (best score: %.1f, worst: %.1f)",
-        len(lots), len(top),
+        "[pre_rank] %d lots -> top %d %s (best score: %.1f)",
+        len(lots), len(top), by_source,
         scored[0][0] if scored else 0,
-        scored[len(top) - 1][0] if top else 0,
     )
     return top
 
