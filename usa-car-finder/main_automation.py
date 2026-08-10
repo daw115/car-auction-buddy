@@ -2,7 +2,7 @@
 Main Automation Orchestrator — pełny pipeline:
   1. Parsuj email klienta
   2. Scrapy Copart + IAAI z filtrem daty aukcji (12h do 5 dni)
-  3. Analiza AI → TOP 5 + lista do 10
+  3. Analiza AI → TOP 3-4 dla klienta + pełna lista
   4. Generuj profesjonalną ofertę HTML
   5. Wyślij na Telegram → czekaj na /approve
   6. Wyślij email HTML do klienta
@@ -34,6 +34,10 @@ CLIENT_EMAIL = os.getenv("CLIENT_EMAIL", os.getenv("GMAIL_ADDRESS", ""))
 DEFAULT_AUCTION_WINDOW_HOURS: Optional[int] = int(os.getenv("MAX_AUCTION_WINDOW_HOURS", "120"))
 DEFAULT_AUCTION_WINDOW_MIN_HOURS: int = 12
 ORCHESTRATOR_MAX_RESULTS = int(os.getenv("ORCHESTRATOR_MAX_RESULTS", "10"))
+# Ile ofert dostaje klient. Cztery to sufit: więcej pozycji paraliżuje wybór, a mniej
+# wygląda na brak oferty. Ranking i tak odrzuca loty poniżej progu jakości, więc realnie
+# bywa ich trzy — lepiej trzy dobre niż cztery z zapchajdziurą.
+CLIENT_OFFERS_COUNT = int(os.getenv("CLIENT_OFFERS_COUNT", "4"))
 
 
 class AutomationOrchestrator:
@@ -112,9 +116,11 @@ class AutomationOrchestrator:
 
             print(f"  ✅ Znaleziono {len(all_lots)} lotów po filtrowaniu")
 
-            # ── 3. ANALIZA AI → TOP 5 + LISTA DO 10 ──────────────
-            print("\n[3/6] Analiza AI i wybór TOP 5...")
-            top_5, all_results = analyze_lots(all_lots, criteria, top_n=5)
+            # ── 3. ANALIZA AI → 3-4 OFERTY DLA KLIENTA + PEŁNA LISTA ──
+            print("\n[3/6] Analiza AI i wybór ofert dla klienta...")
+            top_offers, all_results = analyze_lots(
+                all_lots, criteria, top_n=CLIENT_OFFERS_COUNT
+            )
 
             # TOP 5 (is_top_recommendation=True)
             top_lots = [r for r in all_results if r.is_top_recommendation][:5]

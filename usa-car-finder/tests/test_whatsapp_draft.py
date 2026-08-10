@@ -1,0 +1,85 @@
+"""Wiadomość WhatsApp dla klienta — generowana, wysyłana ręcznie przez brokera."""
+from urllib.parse import unquote
+
+import pytest
+
+from parser.models import CarLot
+from report.whatsapp import MAX_OFFERS, build_draft
+
+
+def lot(model="RAV4", price=6000.0, state="FL", odo=51_000, year=2019) -> CarLot:
+    return CarLot(
+        source="manheim", lot_id=model, url="u", year=year, make="Toyota", model=model,
+        odometer_mi=odo, current_bid_usd=price, location_state=state,
+    )
+
+
+def test_prices_are_landed_pln_not_auction_usd():
+    """Klient myśli w złotówkach pod klucz — cena aukcyjna w USD nic mu nie mówi."""
+    draft = build_draft([lot(price=6000.0)], client_name="Wojciech Beyger")
+
+    assert "zł" in draft.text
+    assert "USD" not in draft.text and "$" not in draft.text
+    # 6 000 USD z Florydy to ~49 tys. zł pod klucz, nie 24 tys. z przeliczenia kursem.
+    assert "49" in draft.text or "48" in draft.text
+
+
+def test_no_internal_score_leaks_to_the_client():
+    draft = build_draft([lot()], client_name="Wojciech")
+    lowered = draft.text.lower()
+    assert "score" not in lowered and "/10" not in lowered and "ai" not in lowered.split()
+
+
+def test_caps_at_four_offers():
+    """Więcej pozycji paraliżuje wybór."""
+    draft = build_draft([lot(model=f"M{i}", price=5000 + i * 100) for i in range(9)])
+    assert draft.offers == MAX_OFFERS
+    assert draft.text.count("•") == MAX_OFFERS
+
+
+def test_returns_nothing_when_there_is_nothing_to_offer():
+    """Pusta wiadomość jest gorsza niż jej brak."""
+    assert build_draft([]) is None
+    assert build_draft([CarLot(source="manheim", lot_id="1", url="u")]) is None
+
+
+def test_greeting_uses_the_first_name_only():
+    assert build_draft([lot()], client_name="Wojciech Beyger").text.startswith(
+        "Dzień dobry, Wojciech"
+    )
+    # Bez nazwiska wiadomość nadal brzmi naturalnie, tylko bez imienia.
+    bez_imienia = build_draft([lot()]).text
+    assert bez_imienia.startswith("Dzień dobry, mam")
+    assert "Wojciech" not in bez_imienia
+
+
+def test_model_name_keeps_its_comma_before_mileage():
+    """Regresja: zamiana przecinków w całej linii zjadała ten po nazwie modelu."""
+    line = build_draft([lot(odo=51_000)]).text
+    assert "RAV4, 51 tys. mil" in line
+
+
+def test_budget_is_mentioned_when_known():
+    draft = build_draft([lot()], client_name="Piotr", budget_pln=60_000)
+    assert "60 tys. zł" in draft.text
+
+
+def test_message_ends_with_a_question():
+    """Celem wiadomości jest rozmowa, nie zamknięcie sprzedaży."""
+    assert build_draft([lot()]).text.rstrip().endswith("?")
+
+
+def test_wa_me_link_carries_the_text_and_normalises_the_number():
+    """Numer z arkusza jest krajowy, bez kierunkowego."""
+    draft = build_draft([lot()], client_name="Marek")
+    url = draft.wa_me_url("605083832")
+
+    assert url.startswith("https://wa.me/48605083832?text=")
+    assert "Dzień dobry, Marek" in unquote(url)
+
+
+def test_company_settlement_gives_higher_landed_price():
+    """Firma płaci VAT od całości — ta sama aukcja kosztuje więcej pod klucz."""
+    prywatnie = build_draft([lot(price=6000.0)], settlement="private")
+    firma = build_draft([lot(price=6000.0)], settlement="company")
+    assert prywatnie.text != firma.text

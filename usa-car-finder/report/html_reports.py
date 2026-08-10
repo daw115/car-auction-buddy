@@ -337,7 +337,9 @@ def _build_notes(item: AnalyzedLot) -> dict:
         "headline_c": f"Konkretna kalkulacja kosztów zamiast domysłów — {name}",
         "communication_risks": "Klient może obawiać się ukrytych kosztów i formalności — zaadresuj to w pierwszej wiadomości",
         "followup_48h": f"Aukcja {lot.auction_date or 'wkrótce'} — potrzebuję potwierdzenia limitu bidu do 24h przed końcem",
-        "short_whatsapp": f"{name}, wynik AI {ai.score:.0f}/10. Warto? Mam pełną kalkulację.",
+        # Bez wewnętrznego score — to nasza metryka robocza, a klientowi brzmi jak
+        # ocena wystawiona przez maszynę. Pełna wiadomość: report/whatsapp.py.
+        "short_whatsapp": f"{name} z aukcji USA — mam pełną kalkulację pod klucz. Podesłać?",
         "damaging_admission": "To auto ma uszkodzenia karoserii — piszę o tym otwarcie, bo ukrywanie tego nie ma sensu",
     }
 
