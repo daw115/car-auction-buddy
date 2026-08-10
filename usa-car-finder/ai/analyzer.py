@@ -609,12 +609,35 @@ def _lot_payloads(lots: List[CarLot]) -> list[dict]:
     ]
 
 
+def _budget_line(criteria: ClientCriteria) -> str:
+    """Budżet tak, jak liczy go scoring — inaczej model ocenia według innej miary.
+
+    Klient podaje kwotę pod klucz w złotówkach; sufit ceny aukcyjnej wylicza
+    scoring per lot, bo zależy od stanu USA. Stare pole budget_usd zostaje dla
+    kryteriów z maila, ale nie udajemy, że znaczy to samo.
+    """
+    budget_pln = criteria.budget_pln()
+    if budget_pln:
+        forma = "firma na VAT" if criteria.settlement == "company" else "osoba prywatna"
+        # Spacja jako separator tysięcy tylko w liczbie — podmiana w całym zdaniu
+        # zjadłaby przecinki w wyliczeniu poniżej.
+        kwota = f"{budget_pln:,.0f}".replace(",", "\u00a0")
+        return (
+            f"{kwota} zł pod klucz w Polsce ({forma}) — zakup, transport, cło, "
+            "akcyza i prowizja. Werdykt budżetowy dla każdego lota jest już "
+            "policzony w unified_score.budget; nie przeliczaj go sam."
+        )
+    if criteria.budget_usd:
+        return f"{criteria.budget_usd} USD ceny aukcyjnej (klient nie podał kwoty pod klucz)"
+    return "bez limitu (klient nie podał)"
+
+
 def _analysis_user_prompt(lots_data: list[dict], criteria: ClientCriteria) -> str:
     return f"""
 Kryteria klienta:
 - Marka/model: {criteria.make} {criteria.model or '(dowolny)'}
 - Rocznik: {criteria.year_from or 'dowolny'}–{criteria.year_to or 'dowolny'}
-- Budżet maksymalny: {f'{criteria.budget_usd} USD (łącznie z transportem i naprawą)' if criteria.budget_usd else 'bez limitu (klient nie podał)'}
+- Budżet klienta: {_budget_line(criteria)}
 - Maksymalny przebieg: {criteria.max_odometer_mi or 'bez limitu'} mil
 - Wykluczone typy uszkodzeń: {', '.join(criteria.excluded_damage_types)}
 

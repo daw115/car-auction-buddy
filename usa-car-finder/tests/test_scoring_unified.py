@@ -187,3 +187,27 @@ def test_explanation_shows_every_component_contribution():
     """Broker ma widzieć DLACZEGO, nie samą liczbę."""
     text = score_lot(manheim_lot(), CRITERIA).explain()
     assert "Cena vs rynek" in text and "Stan techniczny" in text and "×" in text
+
+
+def test_model_gets_the_same_budget_the_scoring_uses():
+    """Model i scoring muszą mierzyć tym samym: kwotą pod klucz w PLN.
+
+    Wcześniej prompt podawał budżet w USD "łącznie z transportem i naprawą",
+    więc model oceniał dopasowanie według innej definicji niż ta, z której
+    powstaje unified_score.over_budget.
+    """
+    from ai.analyzer import _budget_line
+
+    linia = _budget_line(ClientCriteria(make="Toyota", budget_pln_to=60_000))
+
+    assert "zł pod klucz" in linia
+    assert "USD" not in linia
+    # Przecinki w wyliczeniu muszą przeżyć formatowanie liczby.
+    assert "zakup, transport, cło" in linia
+
+
+def test_budget_line_falls_back_to_usd_only_when_pln_is_missing():
+    from ai.analyzer import _budget_line
+
+    assert "USD" in _budget_line(ClientCriteria(make="Toyota", budget_usd=9_000))
+    assert "bez limitu" in _budget_line(ClientCriteria(make="Toyota"))

@@ -1,3 +1,13 @@
+# ARCHIWUM — nieużywany prompt Gemini
+
+> **Tego pliku nie wczytuje żaden moduł.** Prompt systemowy analizy to stała
+> `SYSTEM_PROMPT` w `usa-car-finder/ai/analyzer.py`, a dostawcą modelu jest Claude Code
+> w trybie headless (`ai/claude_code.py`), nie Gemini. Treść poniżej opisuje mechanizmy,
+> których w kodzie nie ma: ocenę liczoną przez model, `damage_score`, `repair_cost`
+> i rekomendacje `strong_buy`/`hold`/`strong_avoid`. Dziś ocenę liczy deterministycznie
+> `scoring/unified.py`, a dopuszczalne rekomendacje to POLECAM / RYZYKO / PONAD BUDŻET /
+> ODRZUĆ. Zostawiony jako ślad historyczny — nie edytuj go i nie traktuj jako specyfikacji.
+
 # System Prompt dla Gemini - AutoScout US Application
 
 ## Tożsamość i Rola

@@ -69,9 +69,8 @@ Oraz z rankingowanych `Listing`:
 - `location`
 - `current_bid_usd`
 - `buy_now_usd`
-- `ai_damage_score`
-- `ai_repair_estimate_usd_low`
-- `ai_repair_estimate_usd_high`
+- `score` (0-10 ze `scoring/unified.py`, do briefu brokera — NIE do maila klienta)
+- `recommendation` (POLECAM / RYZYKO / PONAD BUDŻET / ODRZUĆ, też tylko do briefu)
 - `ai_notes`
 - `total_cost_pln`
 

@@ -2,152 +2,180 @@
 
 ## Cel Kalkulatora
 
-Kalkulator służy do szybkiej oceny opłacalności zakupu pojazdu z aukcji amerykańskich (Copart, IAAI, Amerpol) i importu do Polski. Pomaga importerom podjąć decyzję zakupową w czasie rzeczywistym podczas aukcji.
+Kalkulator liczy **cenę pod klucz w Polsce** dla auta z aukcji amerykańskich (Copart, IAAI, Manheim). Wynikiem jest kwota, którą zapłaci klient: koszt sprowadzenia plus prowizja brokera (`pricing/import_calculator.client_price_pln`). Kalkulator NIE liczy wartości odsprzedaży, zysku ani ROI — służy do wyceny oferty dla klienta i do wyznaczenia sufitu licytacji z jego budżetu (`scoring/budget.max_bid_for_budget`), nie do oceny inwestycji.
 
 ## Dane Wejściowe
 
 ### 1. Cena Zakupu
 - **Cena aukcyjna** (Winning Bid) - USD
-- **Opłata aukcyjna** (Buyer's Fee) - USD, zależna od platformy:
-  - Copart: $50-$600 (skala progresywna)
-  - IAAI: $300-$500 (zależna od ceny pojazdu)
-  - Amerpol: 10% ceny młotkowej
+- **Opłata aukcyjna** (`AUCTION_FEE_RATE`) - **8% kwoty licytacji**, jedna stawka dla wszystkich platform:
+  - brak progów i brak rozróżnienia Copart / IAAI / Manheim
+  - liczona zawsze jako `bid_usd × 0.08`, wchodzi do sumy kosztów USA
 
 ### 2. Koszty Naprawy
-- **Szacunek AI** (z analizy Gemini) - USD
-  - Minimum repair cost
-  - Maximum repair cost
-  - Średnia: (min + max) / 2
-- **Ręczna korekta** - możliwość nadpisania przez użytkownika
 
-### 3. Transport USA → Polska
-- **Transport wewnętrzny USA** (do portu):
-  - Wschodnie wybrzeże: $200-400
-  - Zachodnie wybrzeże: $400-800
-  - Środkowy zachód: $300-600
-- **Fracht morski** (port USA → port PL):
-  - Kontener 20ft (1 auto): $1,500-2,000
-  - Kontener 40ft (2-3 auta): $2,500-3,500 (podzielone)
-  - RoRo (roll-on/roll-off): $800-1,200
-- **Transport w Polsce** (port → magazyn):
-  - $150-300
+Koszt naprawy **nie wchodzi** do ceny pod klucz. `report/cost_calculator.calculate_full_cost` zwraca `repair_usd` / `repair_pln` jako pozycję **obok** sumy — szacunek naprawy nie jest kosztem, który ktokolwiek zafakturuje, a wliczony po cichu rozjeżdżałby raport z ofertą.
 
-**Domyślna wartość**: $2,000 (średnia dla pojedynczego auta)
+Model AI ma zakaz szacowania napraw (`ai/analyzer.SYSTEM_PROMPT`): pola `estimated_repair_usd` i `estimated_total_cost_usd` zostają na 0/null. Formularz kalkulatora nie ma pola na naprawę ani na jej ręczną korektę.
+
+### 3. Koszty po stronie USA i frachtu
+
+- **Transport z placu aukcyjnego (towing)** - z tabeli `window.TOWING_LOCATIONS`
+  (`api/static/calculator-data.js`), per lokalizacja aukcji; gdy znamy tylko stan,
+  bierzemy medianę stanu, a bez stanu - 1 000 USD
+- **Załadunek** (`DEFAULT_LOADING_USD`): 560 USD
+- **Fracht morski** (`DEFAULT_FREIGHT_USD`): 1 050 USD
+- **Transport po odprawie (DE → PL)**, liczony w złotówkach:
+  - osoba prywatna (`TRANSPORT_PRIVATE_PLN`): 2 500 PLN
+  - firma (`TRANSPORT_COMPANY_PLN`): 2 100 PLN
+
+Auto jedzie przez odprawę w Niemczech, nie do portu w Polsce. Kalkulator nie zna
+wariantów kontener 20ft / 40ft / RoRo i nie ma domyślnej kwoty transportu 2 000 USD.
 
 ### 4. Cła i Podatki (Import do Polski)
 
-#### Cło importowe:
-- **Samochody osobowe**: 10% wartości celnej
-- **Wartość celna** = cena zakupu + transport + ubezpieczenie
+#### Cło importowe (`CUSTOMS_DUTY_RATE` = 10%):
+- **Osoba prywatna**: podstawa = 40% sumy kosztów USA w PLN + 550 USD × kurs
+  (`PRIVATE_CUSTOMS_BASE_RATE`, `FIXED_EXCISE_BASE_USD`)
+- **Firma**: podstawą jest cała suma kosztów USA w PLN
 
 #### VAT:
-- **23%** od (wartość celna + cło)
-- Możliwość odliczenia dla firm z VAT-UE
+- **Osoba prywatna**: VAT niemiecki **21%** (`DE_VAT_RATE`) od (podstawa odprawy + cło) —
+  odprawa idzie przez Niemcy, więc w tym wariancie VAT-u polskiego nie ma
+- **Firma**: VAT polski **23%** (`PL_VAT_RATE`) od całości netto (suma USA + opłaty DE
+  + akcyza), a nie od „wartości celnej + cło"
 
-#### Akcyza (dla aut >2000 cm³):
-- Silniki benzynowe >2000 cm³: 18.6% wartości + €3.1/cm³ powyżej 2000
-- Silniki diesla >2000 cm³: 18.6% wartości + €3.1/cm³ powyżej 2000
-- Auta elektryczne: 0%
+#### Akcyza:
+- Do 2,0 l pojemności: **3,1%** (`EXCISE_SMALL`)
+- Powyżej 2,0 l: **18,6%** (`EXCISE_LARGE`)
+- Auta elektryczne: **0%** (`EXCISE_EV`)
+- Nieznana pojemność → bierzemy stawkę wyższą (18,6%), bo pomyłka w drugą stronę zaniża
+  cenę klienta o ok. 5 000 zł przy locie za 10 000 USD
 
-**Uproszczenie kalkulatora**: 
-- Cło: 10% wartości celnej
-- VAT: 23% (wartość celna + cło)
-- Akcyza: opcjonalnie dla aut >2000 cm³
+Nie ma składnika €3,1 za cm³ — stawka jest wyłącznie procentowa. Akcyza nie jest
+opcjonalna, liczy się zawsze; różni się tylko podstawa:
+- **Osoba prywatna**: 50% wartości przed akcyzą × stawka
+- **Firma**: (kwota licytacji + 550 USD) × kurs × stawka
 
 ### 5. Koszty Dodatkowe
 
-- **Ubezpieczenie transportu**: 1-2% wartości pojazdu
-- **Opłaty portowe**: $100-200
-- **Homologacja w Polsce**: 500-1,500 PLN
-- **Rejestracja**: 500-1,000 PLN
-- **Badanie techniczne**: 200-500 PLN
+- **Koszty dodatkowe** (`DEFAULT_ADDITIONAL_COSTS_USD`): **300 USD**, jedna pozycja ryczałtowa
+  wchodząca do sumy kosztów USA
+- **Serwis + ubezpieczenie**: 2% sumy USA (`SERVICE_INSURANCE_RATE`) plus połowa tej kwoty
+  na obsługę szkody — razem 3%. Pozycja **informacyjna**, pokazywana w panelu, ale
+  NIE doliczana ani do sumy prywatnej, ani do firmowej.
 
-**Domyślna wartość**: $500 (suma kosztów dodatkowych)
+Homologacji, rejestracji i badania technicznego kalkulator **nie liczy** — nie ma ich
+w arkuszu, z którego został przepisany, i nie da się ich dopisać „na oko".
 
 ## Formuła Kalkulacji
 
-### Całkowity Koszt Inwestycji (Total Investment)
+### Cena Pod Klucz (Client Price)
 
 ```
-Total Investment = 
-  Cena aukcyjna
-  + Opłata aukcyjna
-  + Koszty naprawy (średnia z AI)
-  + Transport USA → PL
-  + Cło (10% wartości celnej)
-  + VAT (23% z cła)
-  + Akcyza (jeśli >2000 cm³)
-  + Koszty dodatkowe
+Suma USA (USD) =
+  kwota licytacji
+  + prowizja aukcyjna 8%
+  + towing (tabela / mediana stanu)
+  + załadunek (560)
+  + fracht (1050)
+  + koszty dodatkowe (300)
+
+Suma USA (PLN) = Suma USA (USD) × kurs USD/PLN (domyślnie 4,0)
+
+OSOBA PRYWATNA:
+  podstawa odprawy  = 40% × Suma USA (PLN) + 550 USD × kurs
+  cło               = 10% × podstawa odprawy
+  VAT DE            = 21% × (podstawa odprawy + cło)
+  opłaty DE         = 3000 (odprawa) + cło + VAT DE + 2500 (transport DE→PL)
+  przed akcyzą      = Suma USA (PLN) + opłaty DE
+  akcyza            = 50% × przed akcyzą × stawka akcyzy
+  private_total_pln = przed akcyzą + akcyza
+
+FIRMA:
+  cło               = 10% × Suma USA (PLN)
+  opłaty DE         = 3000 + cło
+  akcyza            = (licytacja + 550 USD) × kurs × stawka akcyzy
+  netto             = Suma USA (PLN) + opłaty DE + akcyza
+  company_gross_pln = netto × 1,23 + 2100 (transport DE→PL)
+
+CENA DLA KLIENTA = private_total_pln (albo company_gross_pln)
+                 + prowizja brokera brutto
 ```
 
-### Wartość Celna (Customs Value)
+Prowizja brokera: basic 1 800 PLN + 2% licytacji (netto), premium 3 600 PLN + 4%
+licytacji (netto), obie ×1,23. Definicja ceny końcowej siedzi w jednym miejscu —
+`pricing/import_calculator.client_price_pln` — i korzystają z niej sufit budżetu,
+mail ofertowy, wiadomość WhatsApp i raport per lot.
+
+### Podstawa Odprawy (Customs Base)
 
 ```
-Customs Value = 
-  Cena aukcyjna
-  + Opłata aukcyjna
-  + Transport USA → PL
-  + Ubezpieczenie (1.5% wartości)
+Osoba prywatna:
+  podstawa = 40% × Suma USA (PLN) + 550 USD × kurs
+
+Firma:
+  podstawa = Suma USA (PLN)
 ```
 
-### Szacowana Wartość Sprzedaży w Polsce
+Ubezpieczenie nie wchodzi do podstawy. Kalkulator liczy osobno pozycję informacyjną
+„serwis + ubezpieczenie": 2% sumy USA plus połowa tej kwoty na obsługę szkody — razem 3%.
+Ta pozycja NIE jest doliczana ani do sumy prywatnej, ani do firmowej.
 
-**Źródła danych**:
-- Otomoto.pl - średnie ceny dla danego modelu/rocznika
-- AutoScout24.pl - porównanie z rynkiem europejskim
-- Manualny input użytkownika
 
-**Korekty wartości**:
-- Salvage title: -20% do -40%
-- Prawostronne kierownice: -25% do -35%
-- Brak historii serwisowej: -10%
-- Uszkodzenia strukturalne (frame damage): -30% do -50%
-- Flood/fire damage: -40% do -60%
 
-**Domyślna wartość**: Estimated Retail Value z aukcji × 1.2 (przelicznik USA → PL)
 
-### Zysk Netto (Net Profit)
-
-```
-Net Profit = 
-  Szacowana wartość sprzedaży PL
-  - Total Investment
-```
-
-### ROI (Return on Investment)
-
-```
-ROI % = (Net Profit / Total Investment) × 100
-```
 
 ## Progi Decyzyjne
 
-### Rekomendacje zakupu:
+### Rekomendacje (`scoring/unified.py`)
 
-- **Strong Buy**: ROI > 40%, Net Profit > $5,000
-- **Buy**: ROI > 25%, Net Profit > $3,000
-- **Hold**: ROI 15-25%, Net Profit $1,500-3,000
-- **Avoid**: ROI < 15%, Net Profit < $1,500
-- **Strong Avoid**: ROI < 0% (strata)
+Ocena lota to liczba 0-10 liczona deterministycznie POZA modelem. Dopuszczalne wartości
+rekomendacji są dokładnie cztery:
 
-### Red Flags (automatyczne obniżenie rekomendacji):
+- **POLECAM**: ocena ≥ 7,5 (`RECOMMEND_THRESHOLD`)
+- **RYZYKO**: ocena ≥ 5,0 i < 7,5 (`RISK_THRESHOLD`)
+- **ODRZUĆ**: ocena < 5,0 albo twardy dyskwalifikator (wtedy ocena = 0,0)
+- **PONAD BUDŻET** (`OVER_BUDGET`): cena przekracza sufit wyliczony z budżetu klienta —
+  nadpisuje rekomendację, ale NIE zmienia oceny
 
-- Frame damage → max "Hold"
-- Flood damage → max "Avoid"
-- Fire damage → max "Avoid"
-- Salvage title + high mileage (>150k miles) → max "Hold"
-- Missing keys + No start/run → max "Avoid"
-- Airbags deployed + structural damage → max "Hold"
+Wagi składowe oceny (renormalizowane, gdy brakuje danych): cena vs rynek 0,25,
+stan techniczny 0,20, tytuł 0,15, przebieg 0,15, logistyka 0,10, wiarygodność 0,10,
+dopasowanie do klienta 0,05.
+
+Nie ma progów ROI ani rekomendacji Strong Buy / Buy / Hold / Avoid / Strong Avoid.
+
+### Twarde dyskwalifikatory (`scoring.unified.disqualify`)
+
+Poniższe powody nie obniżają punktacji — przekreślają lot: ocena = **0,0**,
+rekomendacja **ODRZUĆ**:
+
+- zalanie lub pożar (flood / water damage / fire / burn w opisie szkód albo w tytule)
+- uszkodzenie konstrukcji: flaga `hasFrameDamage`, słowo frame/structural w opisie albo
+  vision `frame_damage_check.frame_damaged` z `confidence ≥ 0.5` (i bez `images_inaccessible`)
+- tytuł salvage, gdy klient wymaga Clean (`require_clean_title`)
+- czerwone światło (sprzedaż as-is), gdy apetyt na ryzyko = `none`
+
+Brak kluczy, wysoki przebieg i odpalone poduszki NIE są dyskwalifikatorami — wchodzą
+do składowych oceny. Przekroczenie budżetu też nie jest dyskwalifikatorem: daje osobny
+werdykt **PONAD BUDŻET**, a ocena liczy się normalnie.
 
 ## Parametry Konfigurowalne
 
-Użytkownik może dostosować:
+Użytkownik może dostosować (pola formularza w `api/static/index.html`):
 
-1. **Kurs USD/PLN** - aktualizowany automatycznie z API NBP
-2. **Koszt transportu** - zależny od lokalizacji aukcji
-3. **Koszty naprawy** - nadpisanie szacunku AI
-4. **Szacowana wartość sprzedaży** - własna ocena rynku
-5. **Marża zysku** - minimalna akceptowalna marża
+1. **Kwota licytacji (USD)**
+2. **Stan i lokalizacja aukcji** — podstawiają towing z tabeli
+3. **Towing (USD)** — nadpisanie wartości z tabeli
+4. **Koszty dodatkowe (USD)** — domyślnie 300
+5. **Załadunki (USD)** — domyślnie 560
+6. **Fracht (USD)** — domyślnie 1 050
+7. **Kurs USD/PLN** — stała domyślna 4,0 (`DEFAULT_USD_RATE`), wpisywana ręcznie;
+   nie ma integracji z API NBP ani z żadnym innym źródłem kursu
+8. **Akcyza** — wybór stawki (3,1% / 18,6% / 0%)
+9. **Dokładka do prowizji (PLN)** — wpływa wyłącznie na rozliczenie pracownika
+
+Nie ma pól na koszt naprawy, wartość odsprzedaży ani marżę zysku.
 
 ## Przykład Kalkulacji
 
@@ -160,40 +188,75 @@ Użytkownik może dostosować:
 - Wartość sprzedaży PL: 80,000 PLN (~$20,000)
 
 ### Kalkulacja:
+## Przykład Kalkulacji
+
+### Dane wejściowe:
+- Pojazd: 2020 Toyota Camry LE, Floryda
+- Kwota licytacji: $8,000
+- Towing (mediana stanu FL): $980
+- Akcyza: 18,6% (silnik powyżej 2,0 l)
+- Kurs: 4,00 PLN/USD
+
+### Kalkulacja:
 ```
-Wartość celna = $8,000 + $400 + $2,000 + $150 (ubezp.) = $10,550
-Cło (10%) = $1,055
-VAT (23% z $11,605) = $2,669
-Koszty naprawy = $1,200
-Koszty dodatkowe = $500
+Prowizja aukcyjna 8%                             =    $640
+Suma USA = 8000 + 640 + 980 + 560 + 1050 + 300   = $11 530  →  46 120 PLN
 
-Total Investment = $8,000 + $400 + $1,200 + $2,000 + $1,055 + $2,669 + $500
-                 = $15,824
+OSOBA PRYWATNA:
+  podstawa odprawy = 0,4 × 46 120 + 550 × 4      = 20 648 PLN
+  cło 10%                                        =  2 065 PLN
+  VAT DE 21%                                     =  4 770 PLN
+  opłaty DE (3000 + cło + VAT + 2500 transport)  = 12 334 PLN
+  wartość przed akcyzą                           = 58 454 PLN
+  akcyza 18,6% od połowy                         =  5 436 PLN
+  koszt sprowadzenia (private_total_pln)         = 63 891 PLN
+  prowizja brokera basic brutto                  =  3 001 PLN
+  CENA POD KLUCZ DLA KLIENTA                     = 66 892 PLN
 
-Net Profit = $20,000 - $15,824 = $4,176
-ROI = ($4,176 / $15,824) × 100 = 26.4%
-
-Rekomendacja: BUY (ROI > 25%, zysk > $3,000)
+FIRMA:
+  koszt sprowadzenia (company_gross_pln)         = 76 015 PLN
+  + prowizja basic brutto                        = 79 016 PLN
 ```
+
+W drugą stronę: budżet 60 000 PLN pod klucz (osoba prywatna, Floryda) daje sufit
+licytacji ok. **7 534 USD** — tyle wyznacza `scoring/budget.max_bid_for_budget`
+bisekcją, per stan USA.
 
 ## Integracja z AI
 
-Kalkulator wykorzystuje wyniki analizy Gemini:
-- `damage_score` → wpływ na wartość sprzedaży
-- `repair_cost_min/max` → koszty naprawy
-- `risk_flags` → obniżenie rekomendacji
-- `investment_analysis.recommendation` → wstępna sugestia
+Ocena lota (0-10) jest liczona deterministycznie w `scoring/unified.py`, POZA modelem,
+i doklejana do lota jako `raw_data["unified_score"]`. Model dostaje ją gotową razem
+z rozbiciem na składowe i pisze wyłącznie uzasadnienie po polsku — jego `score`
+i `recommendation` są nadpisywane wynikiem scoringu
+(`ai/analyzer._results_from_analysis_data`).
 
-Ostateczna decyzja = AI recommendation + kalkulator finansowy
+Dostawcą modelu jest domyślnie **Claude Code w trybie headless** (`ai/claude_code.py`),
+uwierzytelniany sesją zalogowanej subskrypcji (OAuth), a nie kluczem API.
+
+Model nie zwraca pól `damage_score`, `repair_cost_min/max`, `risk_flags` ani
+`investment_analysis`. Kontrakt `AIAnalysis` to: `score`, `recommendation`, `red_flags`,
+`client_description_pl`, `ai_notes` oraz dwa pola kosztowe, które mają zostać na 0.
+
+Ostateczna rekomendacja = scoring deterministyczny; kalkulator odpowiada wyłącznie
+za kwoty.
 
 ## Wyświetlanie Wyników
 
-### Widok podstawowy:
-- Total Investment (USD + PLN)
-- Estimated Resale Value (PLN)
-- Net Profit (PLN)
-- ROI (%)
-- Recommendation (Strong Buy → Strong Avoid)
+### KPI na górze panelu:
+- Suma USA (USD)
+- Osoba prywatna z akcyzą (PLN)
+- Firma brutto z akcyzą (PLN)
+
+### Cztery tabele pozycji:
+- **Koszty USA**: kwota licytacji, prowizja aukcyjna 8%, towing, koszty dodatkowe,
+  załadunki, fracht, suma, serwis + ubezpieczenie 2% + 1%
+- **Osoba prywatna**: baza odprawy DE, cło 10%, VAT DE 21%, opłaty DE + transport PL,
+  wartość przed akcyzą, akcyza, razem
+- **Firma**: cło 10%, opłaty DE, akcyza, netto, brutto + transport PL
+- **Prowizje**: 1800 + 2% (netto/brutto), 3600 + 4% (netto/brutto), rozliczenie
+  pracownika w dwóch wariantach
+
+Nie ma wykresu kołowego, „timeline do zysku" ani porównania z podobnymi ofertami.
 
 ### Widok szczegółowy (rozwijany):
 - Breakdown kosztów (pie chart):
@@ -208,23 +271,32 @@ Ostateczna decyzja = AI recommendation + kalkulator finansowy
 
 ## Aktualizacje i Źródła Danych
 
-### Automatyczne aktualizacje:
-- Kurs USD/PLN: API NBP (codziennie)
-- Ceny transportu: co kwartał (dane od spedytorów)
-- Stawki celne: co rok (Taryfa Celna UE)
+### Wartości wpisane na stałe w kodzie
+(`pricing/import_calculator.py` i `api/static/calculator.js` — zmiana wymaga edycji **obu**):
+- Kurs USD/PLN: stała 4,0, nadpisywalna ręcznie w formularzu. Brak integracji z API NBP.
+- Koszty dodatkowe 300 USD, załadunek 560 USD, fracht 1 050 USD
+- Opłata aukcyjna 8%, cło 10%, VAT DE 21%, VAT PL 23%, odprawa DE 3 000 PLN,
+  transport DE→PL 2 500 / 2 100 PLN
+- Akcyza 3,1% / 18,6% / 0% (EV)
 
-### Manualne źródła:
-- Ceny rynkowe PL: Otomoto.pl, AutoScout24.pl
-- Koszty naprawy: bazy danych części (RockAuto, CarParts)
-- Opłaty aukcyjne: oficjalne cenniki Copart/IAAI
+### Dane generowane:
+- Tabela towing per lokalizacja aukcji: `api/static/calculator-data.js`
+  (`window.TOWING_LOCATIONS`)
+
+### Ceny rynkowe:
+- Ceny referencyjne rynku PL pobiera `scraper/otomoto.py` (Otomoto.pl, cache 7 dni)
+  na potrzeby raportów, NIE kalkulatora. AutoScout24 nie jest nigdzie używany.
 
 ## Ograniczenia i Zastrzeżenia
 
 ⚠️ Kalkulator podaje **szacunki**, nie gwarancje:
-- Rzeczywiste koszty naprawy mogą być wyższe (ukryte uszkodzenia)
-- Wartość sprzedaży zależy od stanu rynku i popytu
-- Czas sprzedaży może być dłuższy niż zakładany
-- Koszty transportu mogą wzrosnąć (ceny paliw, kursy walut)
-- Nie uwzględnia kosztów magazynowania i finansowania
+- Kurs 4,0 PLN/USD jest założeniem, nie kursem dnia — przy locie za 15 000 USD każde
+  0,10 PLN różnicy to ok. 1 500 PLN
+- Towing jest medianą stanu, gdy nie znamy dokładnej lokalizacji aukcji
+- Przy nieznanej pojemności silnika bierzemy wyższą stawkę akcyzy (18,6%)
+- Kwota nie zawiera naprawy, rejestracji, homologacji ani badania technicznego —
+  arkusz ich nie liczy i nie da się ich dopisać „na oko"
 
-**Zalecenie**: Zawsze dodaj 10-15% bufora bezpieczeństwa do Total Investment.
+**Zalecenie**: klientowi zawsze podawaj kwotę z `client_price_pln` (sprowadzenie +
+prowizja), nigdy samego `private_total_pln` / `company_gross_pln` — pominięcie prowizji
+zaniża ofertę o 2 800-4 200 zł.

@@ -8,10 +8,9 @@ This repo is a workspace for the **USA Car Finder** project — a tool that scra
 
 - `usa-car-finder/` — the actual application (FastAPI + Playwright + AI pipeline). All commands below run from inside this directory.
 - `backend/services/scrapers/` — standalone Playwright-with-extensions experiments, **not** wired into `usa-car-finder`. Treat as reference/sandbox.
-- `chrome_extensions/{auctiongate,autohelperbot}/` — unpacked Chromium extensions loaded by the scraper when `USE_EXTENSIONS=true`. The scraper expects them at this exact path (see `usa-car-finder/extensions/`).
+- `usa-car-finder/extensions/{auctiongate,autohelperbot,bidwise,manheim-collector}/` — unpacked Chromium extensions. AuctionGate/AutoHelperBot are loaded by the scraper when `USE_EXTENSIONS=true`; `manheim-collector` is our own and runs in the logged-in Chrome on the server (see `scripts/manheim-browser-run.sh`).
 - `playwright_profiles/`, `usa-car-finder/playwright_profiles/` — saved login state for Copart/IAAI used by the scraper.
 - Top-level `*.md` files (`ZALOZENIA_APLIKACJI.md`, `PLAYWRIGHT_ARCHITECTURE.md`, `KALKULATOR_ZALOZENIA.md`, `agent-oferta-auto-usa.md`, `przyklady_maili_README.md`, `usa_car_finder_prompt.md`) are the **product/architecture spec** in Polish — they are the source of truth for business logic (scoring rules, import-cost calculator, mail/PDF templates, agent prompts).
-- `*` and `* 2.py` duplicates exist in several directories (e.g. `analyzer.py` / `analyzer 2.py`). The `* 2.py` files are macOS Finder/iCloud copies — edit the un-suffixed file.
 
 ## Common commands
 
@@ -40,7 +39,13 @@ python test_scrapers.py
 python search_audi_a5_report.py
 ```
 
-There is **no test runner, linter, or formatter configured**. The `test_*.py` files are runnable scripts (`python test_scrapers.py`), not pytest suites.
+Tests are of two kinds. `tests/` is a pytest suite and is the gate before every deploy:
+
+```bash
+python -m pytest tests/ -q
+```
+
+The `test_*.py` files in the project root are runnable scripts (`python test_scrapers.py`), not pytest cases. No linter or formatter is configured.
 
 ## Architecture
 
@@ -56,18 +61,21 @@ ClientCriteria → AutomatedScraper (Playwright) → HTML cache + parsed CarLot[
   - `api/main.py` — FastAPI app. Key routes: `POST /search`, `POST /report`, `POST /report/offer-email-html`, `GET /artifacts/{filename}`, `GET /config`, `POST /browser/close`, `GET /health`. Serves the UI from `api/static/`.
   - `main_automation.py` — `AutomationOrchestrator` that wires Gmail → `email_parser` → scraper → analyzer → `offer_agent` → Telegram approval → outbound mail. Used for the unattended flow.
 
-- **Scraping (`scraper/`)** — `AutomatedScraper` is the facade over `copart.py`, `iaai.py` and `manheim.py`, all built on `base.py` + `browser_context.py`. Manheim is opt-in (`MANHEIM_BACKEND_ENABLED`), returns only the top 3 lots, and needs the BidWise extension in the persistent Chrome profile — its login uses OTP, so there is no headless login path; `scraper/manheim_session.py` holds the dependency-free readiness check used by `/api/capabilities`. When `USE_EXTENSIONS=true`, `extension_enricher.py` reads the AuctionGate/AutoHelperBot iframes directly from the detail page (full VIN, reserve price, seller type) — the extensions only work in Playwright's bundled Chromium, not Google Chrome. `storage_state.py` and `*_login_helper.py` persist auth in `data/chrome_profile/` and the `playwright_profiles/*.json` files.
+- **Scraping (`scraper/`)** — `AutomatedScraper` is the facade over `copart.py`, `iaai.py` and `manheim.py`, all built on `base.py` + `browser_context.py`. Manheim is opt-in (`MANHEIM_BACKEND_ENABLED`), returns only the top 3 lots, and cannot be driven directly: the BidWise extension occupies the single `chrome.debugger` slot on its tab. Instead the backend leaves jobs (`api/manheim_jobs.py`) that our own `manheim-collector` extension polls from inside the logged-in page and answers by replaying the GraphQL chain into `POST /api/manheim/ingest`. `scraper/manheim_session.py` holds the dependency-free readiness check used by `/api/capabilities`. When `USE_EXTENSIONS=true`, `extension_enricher.py` reads the AuctionGate/AutoHelperBot iframes directly from the detail page (full VIN, reserve price, seller type) — the extensions only work in Playwright's bundled Chromium, not Google Chrome. `storage_state.py` and `*_login_helper.py` persist auth in `data/chrome_profile/` and the `playwright_profiles/*.json` files.
 
 - **Parsing (`parser/`)** — `models.py` defines the canonical Pydantic types: `ClientCriteria`, `CarLot`, `AIAnalysis`, `AnalyzedLot`, `SearchResponse`. `copart_parser.py` / `iaai_parser.py` turn cached HTML into `CarLot`s. All downstream code consumes these models — when extending fields, change `models.py` first.
 
 - **AI scoring (`ai/analyzer.py`)** — `analyze_lots(lots, criteria)` is the single entry. Behavior is driven by env vars:
-  - `AI_ANALYSIS_MODE` ∈ `auto` (default; OpenAI → Anthropic → local), `openai`/`gpt`, `anthropic`, `local`
+  - `AI_ANALYSIS_MODE` ∈ `claude-code` (what `.env` actually sets), `auto`, `openai`/`gpt`, `anthropic`, `local`
   - `AI_ANALYSIS_STRICT=true` → no fallback to local on missing keys / API errors
-  - The system prompt encodes business rules: Eastern-US states get +1.5 score, Western −1.0, Flood/Fire damage auto-rejected. Edits to scoring rules live in this prompt, not in the analyzer code.
+  - **The score is computed outside the model.** `scoring/unified.py` produces it deterministically (weighted components with weight renormalisation, thresholds 7.5 POLECAM / 5.0 RYZYKO), and `ai/analyzer.py` overwrites whatever the model returned. Scoring rule changes go in `scoring/unified.py`, **not** in the prompt.
+  - US region is one component (`logistics`, weight 0.10) via `scoring/regions.py` — not a flat ±1.5 bonus. Flood/fire, frame damage, salvage-when-Clean-required and red-light are hard disqualifiers: score 0.0 and ODRZUĆ.
+  - Budget is **not** a disqualifier. A lot above the client's ceiling keeps its score and gets a separate verdict — `recommendation` becomes `PONAD BUDŻET` (the fourth allowed value). Such lots never enter the client offer unless the broker explicitly allows them (`allow_over_budget`).
+  - The client's budget is a **landed PLN amount**, not an auction price. The auction ceiling is derived per lot by `scoring/budget.max_bid_for_budget()`, because towing enters the customs base and is multiplied by duty, VAT and excise.
 
 - **Pricing (`pricing/import_calculator.py`)** — landed-cost calculation for PL import (transport, customs, VAT, akcyza, homologacja). The assumptions are documented in `KALKULATOR_ZALOZENIA.md` — keep that file in sync when changing rates.
 
-- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` and `offer_html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief for the automation pipeline — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `ai_input` / `ai_prompt` / `analysis_json` / `client_report` files into `data/client_searches/` and exposes them via `/artifacts/{filename}`). Mail HTML structure must follow `przyklady_maili_README.md`.
+- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` and `offer_html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief for the automation pipeline — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `<slug>_analysis.json` and `<slug>_client_report.md` into `data/client_searches/` and exposes them via `/artifacts/{filename}`), `whatsapp.py` (short client message + wa.me link — **generates only, never sends**; the broker approves and sends it). Mail HTML structure must follow `przyklady_maili_README.md`.
 
 ## Configuration knobs that change behavior significantly
 

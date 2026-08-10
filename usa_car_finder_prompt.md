@@ -13,8 +13,10 @@ Klient podaje kryteria (marka, model, rocznik, budżet, przebieg, uszkodzenia)
   → Opcjonalnie: Playwright z rozszerzeniami AuctionGate + AutoHelperBot
     wzbogaca loty o: pełny VIN, cenę rezerwową, typ sprzedawcy, kalkulator dostawy
   → Parser HTML wyciąga dane do modeli Pydantic (JSON)
-  → Claude API analizuje loty: opłacalność, czerwone flagi, ranking, opis PL
-  → Raport PDF generowany przez Jinja2 + WeasyPrint
+  → Deterministyczny scoring (scoring/unified.py) liczy ocenę 0-10, rekomendację
+    i werdykt budżetowy POZA modelem
+  → Claude Code w trybie headless (`claude -p`) pisze uzasadnienie, czerwone flagi i opis PL
+  → Raport PDF generowany przez ReportLab (report/generator.py); Jinja2 obsługuje raporty HTML
   → FastAPI serwuje frontend i API pod localhost:8000
 ```
 
@@ -74,7 +76,8 @@ lxml==5.2.2
 pydantic==2.7.1
 fastapi==0.111.0
 uvicorn==0.29.0
-anthropic==0.28.0
+anthropic>=0.50.0
+reportlab==4.4.10
 jinja2==3.1.4
 weasyprint==62.3
 python-dotenv==1.0.1
@@ -106,7 +109,7 @@ from typing import Optional
 
 
 class CarLot(BaseModel):
-    source: str                              # "copart" | "iaai"
+    source: str                              # "copart" | "iaai" | "manheim"
     lot_id: str
     url: str
     html_file: Optional[str] = None
@@ -157,20 +160,26 @@ class ClientCriteria(BaseModel):
     model: Optional[str] = None
     year_from: Optional[int] = None
     year_to: Optional[int] = None
-    budget_usd: float
+    budget_usd: Optional[float] = None        # opcjonalny sufit ceny aukcyjnej
+    # Budżet "pod klucz" w Polsce, tak jak podaje go klient ("50/60 tys").
+    # Sufit ceny aukcyjnej wylicza scoring/budget.max_bid_for_budget() PER STAN USA,
+    # bo towing wchodzi do podstawy celnej i mnoży się przez cło, VAT i akcyzę.
+    budget_pln_from: Optional[float] = None
+    budget_pln_to: Optional[float] = None
+    settlement: str = "private"                # "private" | "company"
     max_odometer_mi: Optional[int] = None
     allowed_damage_types: list[str] = Field(default_factory=list)
     excluded_damage_types: list[str] = Field(
         default_factory=lambda: ["Flood", "Fire"]
     )
-    max_results: int = 30
+    max_results: int = 15                     # walidator przycina do 15 (twardy limit z UI)
     sources: list[str] = Field(default_factory=lambda: ["copart", "iaai"])
 
 
 class AIAnalysis(BaseModel):
     lot_id: str
     score: float = Field(ge=0, le=10)
-    recommendation: str              # "POLECAM" | "RYZYKO" | "ODRZUĆ"
+    recommendation: str              # "POLECAM" | "RYZYKO" | "PONAD BUDŻET" | "ODRZUĆ"
     red_flags: list[str] = Field(default_factory=list)
     estimated_repair_usd: Optional[int] = None
     estimated_total_cost_usd: Optional[int] = None
@@ -232,11 +241,13 @@ class BaseScraper:
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         })
-        # Blokuj obrazy i fonty żeby przyspieszyć scraping
-        await page.route(
-            "**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf,otf}",
-            lambda route: route.abort()
-        )
+        # Blokada obrazów i fontów jest opcjonalna i domyślnie WYŁĄCZONA
+        # (BLOCK_MEDIA_ASSETS=false w .env).
+        if BLOCK_MEDIA_ASSETS:
+            await page.route(
+                "**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf,otf}",
+                lambda route: route.abort()
+            )
 ```
 
 ---
@@ -271,7 +282,7 @@ class CopartScraper(BaseScraper):
         return url
 
     async def scrape(self, criteria: ClientCriteria) -> list[str]:
-        """Zwraca listę ścieżek do zapisanych plików HTML."""
+        """Zwraca listę krotek (ścieżka HTML, oryginalny URL lota)."""
         saved_files = []
 
         async with async_playwright() as p:
@@ -348,7 +359,7 @@ class IAAIScraper(BaseScraper):
         return url
 
     async def scrape(self, criteria: ClientCriteria) -> list[str]:
-        """Zwraca listę ścieżek do zapisanych plików HTML."""
+        """Zwraca listę krotek (ścieżka HTML, oryginalny URL lota)."""
         saved_files = []
 
         async with async_playwright() as p:
@@ -443,10 +454,11 @@ class ExtensionEnricher:
 
     async def enrich_lot(self, url: str, html_cache_path: Path) -> dict:
         """
-        Otwiera stronę lota z załadowanymi rozszerzeniami.
-        Wyciąga dane wstrzyknięte przez AuctionGate/AutoHelperBot.
-        Nadpisuje plik HTML w cache wzbogaconym contentem.
-        Zwraca słownik z dodatkowymi danymi.
+        Wzbogaca pojedynczy lot — cienki wrapper na enrich_lots_batch().
+        Dane czyta z iframe'u autohelperbot.com osadzonego na stronie lota
+        (nie z atrybutów data-auctiongate-* w DOM strony aukcji).
+        Nadpisuje plik HTML w cache treścią strony po wzbogaceniu.
+        Zwraca słownik: full_vin, seller_type, seller_reserve_usd, average_price_usd.
         """
         extensions_arg = self._get_extensions_arg()
         if not extensions_arg:
@@ -536,12 +548,13 @@ class ExtensionEnricher:
                 await context.close()
 
     async def enrich_all(self, lots: list[tuple[str, Path]]) -> dict[str, dict]:
-        """Wzbogaca listę (url, cache_path). Przetwarza sekwencyjnie."""
-        results = {}
-        for url, cache_path in lots:
-            results[url] = await self.enrich_lot(url, cache_path)
-            await asyncio.sleep(3)
-        return results
+        """Wzbogaca listę (url, cache_path) i zwraca {url: dane}.
+
+        Jeden kontekst Playwright z rozszerzeniami na CAŁY batch (enrich_lots_batch),
+        a nie osobna przeglądarka na lot — start kontekstu z rozszerzeniami jest drogi.
+        """
+        results_list = await self.enrich_lots_batch(lots)
+        return {url: data for (url, _), data in zip(lots, results_list) if data}
 ```
 
 ---
@@ -850,11 +863,21 @@ def parse_price_from_str(text: str | None) -> float | None:
         return None
 
 
-def analyze_lots(lots: list[CarLot], criteria: ClientCriteria) -> list[AnalyzedLot]:
+def analyze_lots(
+    lots: list[CarLot],
+    criteria: ClientCriteria,
+    top_n: int = 5,
+    force_local: bool = False,
+) -> tuple[list[AnalyzedLot], list[AnalyzedLot]]:
+    """Zwraca (top_recommendations, all_results)."""
     if not lots:
         return []
 
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    # Dostawca modelu: Claude Code w trybie headless (ai/claude_code.py) —
+    # uwierzytelnienie z sesji subskrypcji (OAuth), NIE z ANTHROPIC_API_KEY.
+    # Klucz w .env należy do martwego proxy oneprovider.dev, a podproces i tak
+    # dostaje środowisko z wyciętym ANTHROPIC_API_KEY.
+    from ai import claude_code
 
     lots_data = []
     for lot in lots:
@@ -892,25 +915,26 @@ Oceń poniższe {len(lots_data)} lotów:
 
 Dla każdego lota zwróć obiekt JSON z polami:
 - lot_id (string, dokładnie jak w danych wejściowych)
-- score (liczba 0.0–10.0, im wyższa tym lepszy lot dla klienta)
-- recommendation (string: dokładnie "POLECAM", "RYZYKO" lub "ODRZUĆ")
+- score (liczba 0.0–10.0 — POWTÓRZ wartość z `unified_score.score`; ocena jest policzona
+  deterministycznie poza modelem i tak zostanie nadpisana)
+- recommendation (string: dokładnie "POLECAM", "RYZYKO", "PONAD BUDŻET" lub "ODRZUĆ";
+  "PONAD BUDŻET" gdy `unified_score.over_budget` = true, "ODRZUĆ" gdy `unified_score.disqualifiers` niepuste)
 - red_flags (array of strings — lista problemów, może być pusta [])
-- estimated_repair_usd (int lub null — szacowany koszt naprawy)
-- estimated_total_cost_usd (int — suma: current_bid + estimated_repair + 1600 transport + 500 inne)
+- estimated_repair_usd (zostaw 0 lub null — aukcyjne estymaty napraw są nierealne)
+- estimated_total_cost_usd (zostaw 0 lub null — koszt pod klucz liczy Python
+  w pricing/import_calculator.py, model go nie szacuje)
 - client_description_pl (string — 2–3 zdania po polsku dla klienta, rzeczowo i konkretnie)
 - ai_notes (string lub null — uwagi techniczne dla brokera po polsku)
 """
 
     print(f"[AI] Analizuję {len(lots)} lotów przez Claude API...")
 
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=8192,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}]
+    raw = claude_code.call(
+        SYSTEM_PROMPT,                    # identyczny co do bajtu między wywołaniami — wpada do cache'u promptów
+        user_prompt,
+        model_env="CLAUDE_CODE_MODEL",    # domyślnie "sonnet"; bez klucza API — sesja subskrypcji
+        label="analiza lotów",
     )
-
-    raw = message.content[0].text.strip()
 
     # Bezpieczne parsowanie — usuń markdown code fences jeśli są
     if "```" in raw:
@@ -942,9 +966,10 @@ Dla każdego lota zwróć obiekt JSON z polami:
         )
         results.append(AnalyzedLot(lot=lots_by_id[lot_id], analysis=analysis))
 
-    # Sortuj: POLECAM > RYZYKO > ODRZUĆ, potem wg score malejąco
-    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+    # Sortuj: POLECAM > RYZYKO > PONAD BUDŻET > ODRZUĆ, potem wg score malejąco
+    order = {"POLECAM": 0, "RYZYKO": 1, "PONAD BUDŻET": 2, "ODRZUĆ": 3}
     results.sort(key=lambda x: (order.get(x.analysis.recommendation, 99), -x.analysis.score))
+    # Auta ponad budżet nie wchodzą do TOP-ki pokazywanej klientowi — tylko jawną decyzją brokera.
 
     polecam = sum(1 for r in results if r.analysis.recommendation == "POLECAM")
     ryzyko = sum(1 for r in results if r.analysis.recommendation == "RYZYKO")
@@ -1453,17 +1478,19 @@ class SearchRequest(BaseModel):
     criteria: ClientCriteria
 
 
-@app.post("/search", response_model=list[AnalyzedLot])
+@app.post("/search", status_code=202)
 async def search_cars(request: SearchRequest):
+    """Zakłada zadanie w tle i zwraca job_id + status_url/stream_url.
+    Wyniki (SearchResponse: top_recommendations + all_results) odbiera się z
+    GET /search/jobs/{job_id} albo ze strumienia GET /search/stream/{job_id}."""
     criteria = request.criteria
     all_lots = []
 
     # --- Scraping ---
-    if "copart" in criteria.sources:
-        scraper = CopartScraper()
-        await scraper.scrape(criteria)
-        copart_lots = parse_all_copart(HTML_CACHE_DIR / "copart")
-        all_lots.extend(copart_lots)
+    from scraper.automated_scraper import AutomatedScraper
+
+    scraper = AutomatedScraper()
+    all_lots = await scraper.search_cars(criteria)   # fasada nad copart.py, iaai.py i manheim.py
 
     if "iaai" in criteria.sources:
         scraper = IAAIScraper()
@@ -1503,13 +1530,13 @@ async def search_cars(request: SearchRequest):
                 lot.enriched_by_extension = True
 
     # --- Analiza AI ---
-    analyzed = analyze_lots(all_lots, criteria)
-    return analyzed
+    top_recommendations, all_results = analyze_lots(all_lots, criteria)
+    return SearchResponse(top_recommendations=top_recommendations, all_results=all_results)
 
 
 @app.post("/report")
-async def generate_report(analyzed_lots: list[AnalyzedLot]):
-    """Przyjmuje listę przeanalizowanych lotów i zwraca PDF."""
+async def generate_report(request: ApproveReportRequest):
+    """Generuje PDF tylko dla lotów zatwierdzonych przez brokera (included_in_report)."""
     output_path = generate_pdf_report(analyzed_lots)
     return FileResponse(
         path=str(output_path),
@@ -1550,7 +1577,9 @@ playwright install chromium
 
 # 2. Konfiguracja
 cp .env.example .env
-# Edytuj .env i wpisz ANTHROPIC_API_KEY
+# Analiza idzie przez Claude Code (AI_ANALYSIS_MODE=claude-code), który uwierzytelnia się
+# sesją subskrypcji (OAuth) — ANTHROPIC_API_KEY nie jest do niczego potrzebny.
+# Jeśli CLI zgłasza "niezalogowany": claude /login
 
 # 3. Uruchom
 python -m api.main
@@ -1598,7 +1627,7 @@ Formularz → Scraper (Playwright) → HTML Cache → Parser → AI (Claude) →
 pip install -r requirements.txt
 playwright install chromium
 cp .env.example .env
-# Wpisz ANTHROPIC_API_KEY w pliku .env
+# Zaloguj Claude Code: claude /login   (analiza działa na sesji subskrypcji, nie na kluczu API)
 python -m api.main
 # Otwórz http://localhost:8000
 ```

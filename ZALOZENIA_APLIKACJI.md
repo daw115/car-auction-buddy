@@ -39,10 +39,14 @@ AutoScout US to aplikacja webowa dla polskich importerów samochodów, umożliwi
    - Cache HTML (24h) dla optymalizacji
 
 2. **Analiza AI**
-   - Claude Sonnet 4.6 Thinking ocenia każdy lot
-   - Scoring 0-10 z bonusem za lokalizację (wschód +1.5, zachód -1.0)
-   - Rekomendacje: POLECAM / RYZYKO / ODRZUĆ
-   - Szacowanie kosztów naprawy i całkowitych kosztów
+   - Ocena 0-10 liczona deterministycznie w `scoring/unified.py` — poza modelem
+   - Wagi bazowe: cena vs rynek 0.25, stan techniczny 0.20, tytuł 0.15, przebieg 0.15,
+     logistyka 0.10, wiarygodność oferty 0.10, dopasowanie do klienta 0.05
+     (renormalizowane, gdy dla składowej brakuje danych)
+   - Progi: ≥ 7.5 POLECAM, ≥ 5.0 RYZYKO, poniżej ODRZUĆ
+   - Rekomendacje: POLECAM / RYZYKO / PONAD BUDŻET / ODRZUĆ
+   - Model (Claude Code) dostaje ocenę gotową i pisze wyłącznie uzasadnienie po polsku;
+     kosztów naprawy nie szacuje — od nich jest `pricing/import_calculator.py`
 
 3. **Kalkulator Opłacalności**
    - 1000+ lokalizacji z predefiniowanymi stawkami towing
@@ -83,9 +87,10 @@ AutoScout US to aplikacja webowa dla polskich importerów samochodów, umożliwi
 - Chromium (embedded browser)
 
 **AI:**
-- Anthropic Claude API
-- Model: claude-sonnet-4-6-thinking
-- Max tokens: 8192
+- Claude Code w trybie headless (`claude -p`), uwierzytelnienie sesją subskrypcji (OAuth)
+- Model: alias z `CLAUDE_CODE_MODEL` (domyślnie `sonnet`)
+- Prompt systemowy przez `--system-prompt` (stały co do bajtu — cache promptów)
+- Ścieżki zapasowe przez `AI_ANALYSIS_MODE`: openai / anthropic / gemini / kiro / local
 
 **PDF Generation:**
 - WeasyPrint 62.3
@@ -174,11 +179,12 @@ carsmillionaire/
     
 [6] AI ANALYSIS
     ↓
+    _attach_unified_scores(lots, criteria)  → scoring/unified.py liczy ocenę POZA modelem
     analyze_lots(lots, criteria) → (top_recommendations, all_results)
-    ├── Model: claude-sonnet-4-6-thinking
-    ├── System prompt: ekspert od importu aut z USA do Polski
-    ├── Analiza: lokalizacja, uszkodzenia, koszty transportu
-    └── Output: score (0-10), recommendation, repair_cost
+    ├── Dostawca: Claude Code headless (ai/claude_code.py), sesja subskrypcji
+    ├── System prompt: ekspert od importu aut z USA do Polski (stały co do bajtu)
+    ├── Model pisze: client_description_pl, ai_notes, red_flags
+    └── Output: score i recommendation z unified_score NADPISUJĄ to, co zwrócił model
     
 [7] RESPONSE
     ↓
@@ -207,19 +213,23 @@ carsmillionaire/
 
 ### Baza Danych
 
-**BRAK tradycyjnej bazy danych (PostgreSQL/MySQL).**
+**SQLite** — `./data/app.db` (ścieżka z `APP_DATABASE_PATH`), obsługa w
+`api/client_database.py`: tabele klientów i rekordów wyszukiwań wraz z wynikami.
+Osobne bazy: `api/job_db.py` (zadania wyszukiwania), `api/watch_queue_db.py`
+(kolejka ponownych sprawdzeń), `api/settings_db.py` (ustawienia dashboardu),
+`api/telegram_database.py` (subskrybenci bota).
+**Brak** silnika serwerowego (PostgreSQL/MySQL) — SQLite wystarcza na jeden proces.
 
-System używa:
+Poza bazą system używa:
 - **Cache HTML na dysku**: `./data/html_cache/copart/`, `./data/html_cache/iaai/`
-- **Storage state Playwright**: `./playwright_profiles/*.json` (sesje logowania)
-- **Raporty PDF**: `./data/reports/`
+- **Storage state Playwright**: `playwright_profiles/*.json` (sesje logowania)
+- **Raporty i artefakty**: `./data/reports/`, `./data/client_searches/`
 - **Profil Chrome**: `./data/chrome_profile/` (cookies, localStorage)
 
 **Uzasadnienie:**
-- Aplikacja działa w trybie "stateless" - każde wyszukiwanie jest niezależne
-- Cache HTML wystarczy do optymalizacji (24h TTL)
-- Brak potrzeby przechowywania historii wyszukiwań
-- Prostsze deployment (brak migracji, backupów bazy)
+- Historia wyszukiwań i feedback brokera są potrzebne (`/records`, `/api/feedback`)
+- Cache HTML zmniejsza liczbę zapytań do giełd (24h TTL)
+- SQLite nie wymaga osobnego serwera ani backupów bazy serwerowej
 
 ---
 
@@ -247,7 +257,7 @@ System używa:
 - Rocznik od-do (number, optional)
 - Maksymalny przebieg (number, mile, optional)
 - Źródła aukcji (checkboxes: Copart, IAAI, oba)
-- Maksymalna liczba wyników (number, default: 30)
+- Maksymalna liczba wyników (number, default: 10; backend i tak tnie do 15)
 
 **Przycisk:** "Szukaj i analizuj"
 
@@ -606,20 +616,21 @@ async function approveAndGeneratePdf() {
 }
 ```
 
-**Response:**
+**Response (HTTP 202 — wyszukiwanie jest asynchroniczne):**
 ```json
 {
-  "top_recommendations": [
-    {
-      "lot": { /* CarLot */ },
-      "analysis": { /* AIAnalysis */ },
-      "is_top_recommendation": true,
-      "included_in_report": true
-    }
-  ],
-  "all_results": [ /* wszystkie AnalyzedLot */ ]
+  "job_id": "uuid",
+  "status_url": "/search/jobs/{job_id}",
+  "stream_url": "/search/stream/{job_id}",
+  "cancel_url": "/search/jobs/{job_id}",
+  "idempotent": false
 }
 ```
+
+Właściwy `SearchResponse` (`top_recommendations`, `all_results`) odbiera się przez
+`GET /search/jobs/{job_id}` albo strumień zdarzeń `GET /search/stream/{job_id}`.
+Powtórne żądanie z tymi samymi kryteriami w oknie idempotencji zwraca istniejące
+zadanie z `"idempotent": true`.
 
 **Pipeline:**
 1. Walidacja `ClientCriteria` przez Pydantic
@@ -680,12 +691,21 @@ class ClientCriteria(BaseModel):
     model: Optional[str] = None
     year_from: Optional[int] = None
     year_to: Optional[int] = None
-    budget_usd: float                            # Wymagane
+    budget_usd: Optional[float] = None           # Opcjonalny — klient często go nie podaje
     max_odometer_mi: Optional[int] = None
+    fuel_type: Optional[str] = None              # Gas / Hybrid / Diesel / Electric
     allowed_damage_types: list[str] = []
     excluded_damage_types: list[str] = ["Flood", "Fire"]  # Domyślnie
-    max_results: int = 30
-    sources: list[str] = ["copart", "iaai"]      # Domyślnie oba
+    max_results: int = 15                        # Walidator tnie do 15
+    sources: list[str] = ["copart", "iaai"]      # Dozwolone: copart, iaai, manheim
+    targets: list[SearchTarget] = []             # Dodatkowe pary marka+model
+    segment: Optional[str] = None                # np. "suv" — podpowiedź, nie filtr
+    # Budżet "pod klucz" w PLN — tak podaje go klient ("50/60 tys").
+    # Sufit ceny aukcyjnej liczy scoring/budget.py per stan USA (towing wchodzi
+    # do podstawy celnej), a cena dla klienta zawiera prowizję brokera.
+    budget_pln_from: Optional[float] = None
+    budget_pln_to: Optional[float] = None
+    settlement: str = "private"                  # "private" | "company"
 ```
 
 #### CarLot
@@ -745,7 +765,7 @@ class CarLot(BaseModel):
 class AIAnalysis(BaseModel):
     lot_id: str
     score: float                                 # 0.0-10.0 (walidacja: ge=0, le=10)
-    recommendation: str                          # "POLECAM" | "RYZYKO" | "ODRZUĆ"
+    recommendation: str                          # "POLECAM" | "RYZYKO" | "PONAD BUDŻET" | "ODRZUĆ"
     red_flags: list[str] = []                    # ["Deployed airbags", "Salvage title", ...]
     estimated_repair_usd: Optional[int] = None   # Szacunek kosztów naprawy
     estimated_total_cost_usd: Optional[int] = None  # Bid + repair + transport + fees
@@ -865,7 +885,9 @@ def _filter_by_auction_date(self, lots: List[CarLot], min_hours: int, max_hours:
 **Lokalizacja:**
 - `/usa-car-finder/scraper/copart.py` - Copart scraper
 - `/usa-car-finder/scraper/iaai.py` - IAAI scraper
-- `/usa-car-finder/scraper/base.py` - klasy bazowe (nieużywane w aktualnej implementacji)
+- `/usa-car-finder/scraper/base.py` - `BaseScraper` i `ListingCandidate`: klasa bazowa wszystkich scraperów (Copart, IAAI, Manheim) plus wspólne stałe cache'u
+- `/usa-car-finder/scraper/manheim.py` - Manheim scraper (opt-in, `MANHEIM_BACKEND_ENABLED`)
+- `/usa-car-finder/scraper/browser_context.py` - współdzielony kontekst Chromium i ładowanie rozszerzeń
 
 ### Storage State (Sesje Logowania)
 
@@ -1136,11 +1158,10 @@ await page.wait_for_timeout(3000)  # 3s dla JavaScript
 **Lokalizacja:** `/usa-car-finder/scraper/extension_enricher.py`
 
 **Proces:**
-1. Otwórz stronę lotu z rozszerzeniami Chrome (headless=False)
-2. Czekaj 15s na wstrzyknięcie iframe przez rozszerzenie
-3. Znajdź iframe z `autohelperbot.com` lub `auctiongate.io`
-4. Wyciągnij dane z iframe przez `evaluate()`
-5. Zapisz wzbogacony HTML do cache
+1. Otwórz stronę lotu we współdzielonym kontekście Chromium z rozszerzeniami (headless=False)
+2. Odpytuj ramki co sekundę, aż pojawi się iframe `autohelperbot.com` (maks. 20 s) — bez sztywnego sleepa
+3. Wyciągnij dane z iframe przez `evaluate()`
+4. Zapisz wzbogacony HTML do cache
 
 **Implementacja:**
 ```python
@@ -1202,14 +1223,18 @@ class ExtensionEnricher:
 ### Wymagania
 
 **Konfiguracja:**
-- `USE_EXTENSIONS=true` w `.env`
-- `CHROME_EXECUTABLE_PATH` wskazujący na Google Chrome
-- Rozpakowane CRX w `chrome_extensions/auctiongate/`, `chrome_extensions/autohelperbot/`
+- `USE_EXTENSIONS=true` ORAZ `HEADLESS=false` w `.env` (przy HEADLESS=true enrichment
+  jest automatycznie wyłączany z ostrzeżeniem)
+- `BROWSER_CHANNEL=chromium` — Google Chrome od wersji 137 ignoruje `--load-extension`,
+  więc rozszerzenia ładują się wyłącznie w Chromium dostarczanym z Playwrightem
+  (`BROWSER_EXECUTABLE_PATH` nadpisuje kanał)
+- Rozpakowane rozszerzenia w `usa-car-finder/extensions/auctiongate/`,
+  `usa-car-finder/extensions/autohelperbot/` (Manheim: `extensions/bidwise/`)
 
 **Ograniczenia:**
 - **Tylko lokalnie** - wymaga GUI (headless=False)
 - **Nie działa na Railway** - brak interfejsu graficznego
-- **Wolniejsze** - 15s delay per lot dla iframe injection
+- **Wolniejsze** - oczekiwanie na iframe AutoHelperBota do 20 s na lot
 - **Wymaga autoryzacji** - rozszerzenia wymagają logowania do ich serwisów
 
 ### Dane Wzbogacone
@@ -1234,12 +1259,17 @@ CarLot(
 
 ### Model i Konfiguracja
 
-**Model:** `claude-sonnet-4-6-thinking`
-**Max tokens:** 8192
-**API:** Anthropic Claude API
-**Klucz:** `ANTHROPIC_API_KEY` w `.env`
+**Dostawca:** Claude Code w trybie headless (`claude -p`) — jedno wejście: `ai/claude_code.py`
+**Uwierzytelnienie:** sesja zalogowanej subskrypcji (OAuth). NIE `ANTHROPIC_API_KEY` — klucz
+z `.env` należy do martwego proxy `oneprovider.dev` i jest usuwany ze środowiska podprocesu
+**Model:** `CLAUDE_CODE_MODEL` (domyślnie alias `sonnet`); per zadanie:
+`CLAUDE_CODE_OFFER_MODEL`, `CLAUDE_CODE_REPORTS_MODEL`
+**Prompt systemowy:** przez `--system-prompt`; musi być identyczny co do bajtu między
+wywołaniami, żeby stały prefiks trafiał do cache promptów (~13× taniej)
+**Ścieżki alternatywne** (`AI_ANALYSIS_MODE`): `openai`, `anthropic`, `gemini`, `kiro`,
+`claude-code`, `local`; bez dostępnego dostawcy analizator schodzi do scoringu lokalnego
 
-**Lokalizacja:** `/usa-car-finder/ai/analyzer.py`
+**Lokalizacja:** `/usa-car-finder/ai/analyzer.py`, `/usa-car-finder/ai/claude_code.py`
 
 ### System Prompt
 
@@ -1345,25 +1375,36 @@ Oceń poniższe {len(lots_data)} lotów:
 
 {json.dumps(lots_data, ensure_ascii=False, indent=2)}
 
-Dla każdego lota zwróć obiekt JSON z polami:
-- lot_id (string)
-- score (liczba 0.0–10.0)
-  WAŻNE: Dodaj +1.5 dla wschodu (NY,NJ,PA,CT,MA,RI,VT,NH,ME,MD,DE,VA,NC,SC,GA,FL)
-  WAŻNE: Odejmij -1.0 dla zachodu (CA,OR,WA,NV,AZ,UT,CO,NM)
-- recommendation (string: "POLECAM", "RYZYKO" lub "ODRZUĆ")
-- red_flags (array of strings)
-- estimated_repair_usd (int lub null)
-- estimated_total_cost_usd (int - bid + repair + transport + 500 inne)
-- client_description_pl (string - 3-5 zdań po polsku, SZCZEGÓŁOWO)
-- ai_notes (string - SZCZEGÓŁOWE uwagi techniczne dla brokera)
+Zwróć WYŁĄCZNIE poprawny JSON object w formacie:
+{
+  "analyses": [
+    {
+      "lot_id": "string",
+      "score": 0.0,
+      "recommendation": "POLECAM|RYZYKO|PONAD BUDŻET|ODRZUĆ",
+      "red_flags": ["string"],
+      "estimated_repair_usd": 0,
+      "estimated_total_cost_usd": 0,
+      "client_description_pl": "3-5 zdań po polsku dla klienta",
+      "ai_notes": "szczegółowe uwagi techniczne dla brokera po polsku"
+    }
+  ]
+}
+
+Zasady:
+- score przepisz z `unified_score.score` — ocena jest policzona poza modelem.
+- estimated_repair_usd i estimated_total_cost_usd zostaw na 0 (Python liczy sam).
+- Limit znaków: client_description_pl maks. 280, ai_notes maks. 450.
 """
     
-    # Wywołanie Claude API
-    message = client.messages.create(
-        model="claude-sonnet-4-6-thinking",
-        max_tokens=8192,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}]
+    # Wywołanie Claude Code w trybie headless — uwierzytelnienie sesją subskrypcji,
+    # bez ANTHROPIC_API_KEY. SYSTEM_PROMPT musi być identyczny co do bajtu między
+    # wywołaniami, bo na tym stoi cache promptów (ai/claude_code.py).
+    raw = claude_code.call(
+        SYSTEM_PROMPT,
+        user_prompt,
+        model_env="CLAUDE_CODE_MODEL",   # domyślnie "sonnet"
+        label="analiza lotów",
     )
     
     # Parsowanie JSON z odpowiedzi
@@ -1408,15 +1449,18 @@ Dla każdego lota zwróć obiekt JSON z polami:
         )
         results.append(AnalyzedLot(lot=lots_by_id[lot_id], analysis=analysis))
     
-    # Sortowanie: POLECAM > RYZYKO > ODRZUĆ, potem po score malejąco
-    order = {"POLECAM": 0, "RYZYKO": 1, "ODRZUĆ": 2}
+    # Sortowanie: POLECAM > RYZYKO > PONAD BUDŻET > ODRZUĆ, potem po score malejąco
+    order = {"POLECAM": 0, "RYZYKO": 1, "PONAD BUDŻET": 2, "ODRZUĆ": 3}
     results.sort(key=lambda x: (order.get(x.analysis.recommendation, 99), -x.analysis.score))
-    
-    # Wybierz TOP N najlepszych
-    top_results = results[:top_n]
+
+    for item in results:
+        item.is_top_recommendation = False
+
+    # TOP N bez aut ponad budżet — te wchodzą do oferty tylko jawną decyzją brokera
+    top_results = [r for r in results if r.analysis.recommendation != "PONAD BUDŻET"][:top_n]
     for lot in top_results:
         lot.is_top_recommendation = True
-    
+
     return top_results, results
 ```
 
@@ -1629,8 +1673,11 @@ function stateMedianTowing(state) {
 
 ### Technologia
 
-**WeasyPrint 62.3** - konwersja HTML → PDF
-**Jinja2** - templating HTML
+**ReportLab 4.4.10** - generowanie PDF (platypus: SimpleDocTemplate, Table, Paragraph)
+**Jinja2** - szablony `report/templates/*.j2`, ale tylko dla raportów HTML
+(`report/html_reports.py`), nie dla PDF
+
+WeasyPrint jest jeszcze w `requirements.txt`, lecz żaden moduł go nie importuje.
 
 **Lokalizacja:** `/usa-car-finder/report/generator.py`
 
@@ -1786,27 +1833,33 @@ def generate_pdf_report(lots: List[AnalyzedLot]) -> Path:
 **Dane:** Analogiczne do Copart
 **Storage state:** `playwright_profiles/iaai.json`
 
-### Claude API (Anthropic)
+### Claude Code (dostawca modelu)
 
-**Model:** claude-sonnet-4-6-thinking
-**Endpoint:** https://api.anthropic.com/v1/messages
-**Klucz:** `ANTHROPIC_API_KEY=qua-3fe84831eb5df3856a4790c2461ae1bf`
-**Max tokens:** 8192
+**Wywołanie:** `claude -p` w trybie headless — `usa-car-finder/ai/claude_code.py`
+**Uwierzytelnienie:** sesja zalogowanej subskrypcji (OAuth), **nie** klucz API.
+Podproces dostaje środowisko z wyciętym `ANTHROPIC_API_KEY` — klucz w `.env` należy
+do martwego proxy `oneprovider.dev`. Gdy sesja wygaśnie: `claude /login` na serwerze
+jako użytkownik usługi.
+**Model:** `CLAUDE_CODE_MODEL` (domyślnie `sonnet`), per zadanie `CLAUDE_CODE_OFFER_MODEL`
+**Prompt systemowy:** przez `--system-prompt`, identyczny co do bajtu między wywołaniami —
+stały prefiks (~21 tys. tokenów) wpada wtedy do cache'u promptów i kolejne wywołania
+kosztują ułamek pierwszego.
 
 **Zadania:**
-- Analiza lotów z aukcji
-- Ocena damage_score (0-10)
-- Szacowanie repair_cost_min/max
-- Risk flags (frame_damage, flood_damage, fire_damage, airbag_deployed)
-- Investment recommendation (POLECAM/RYZYKO/ODRZUĆ)
-- Opis po polsku dla klienta
+- Uzasadnienie i opis po polsku dla klienta (`client_description_pl`, `ai_notes`)
+- Czerwone flagi (`red_flags`)
+- Proza do oferty i briefu brokera (`report/offer_agent.py`)
+
+**Czego model NIE robi:** nie liczy oceny ani rekomendacji — te powstają deterministycznie
+w `scoring/unified.py` i nadpisują to, co zwrócił model (`ai/analyzer.py`). Nie szacuje
+kosztu naprawy ani ceny pod klucz — liczy je `pricing/import_calculator.py`.
 
 ### Gmail API (Monitoring Alertów)
 
 **Protokół:** IMAP + App Password
 **Credentials:**
-- `GMAIL_ADDRESS=damiansomano@gmail.com`
-- `GMAIL_APP_PASSWORD=cplbgqmrikgqawou`
+- `GMAIL_ADDRESS=<adres w .env>`
+- `GMAIL_APP_PASSWORD=<w .env, nie w dokumentacji>`
 
 **Funkcja:** Automatyczne pobieranie alertów email z Copart/IAAI
 
@@ -1815,10 +1868,10 @@ def generate_pdf_report(lots: List[AnalyzedLot]) -> Path:
 ### Telegram Bot (Notyfikacje)
 
 **Credentials:**
-- `TELEGRAM_BOT_TOKEN=8527421679:AAEY8aqDzm2rsUUpTiOLEG6mrelNxLizops`
+- `TELEGRAM_BOT_TOKEN=<w .env, nie w dokumentacji>`
 - `TELEGRAM_CHAT_ID=7594790035`
 
-**Funkcja:** Wysyłanie notyfikacji o nowych lotach spełniających kryteria (score >7, ROI >30%)
+**Funkcja:** Wysyłka briefu brokera do zatwierdzenia (`/approve` albo `/reject`, timeout 30 min) oraz powiadomień o błędach i o wysłanym mailu. Nie ma progu ROI ani progu score — decyduje broker.
 
 ### NBP API (Kurs USD/PLN)
 
@@ -1849,10 +1902,12 @@ POST /search
   → Cache HTML (jeśli FORCE_REFRESH=false i cache <24h)
   → Parser HTML → list[CarLot]
   → Opcjonalnie: ExtensionEnricher (pełny VIN, reserve price)
-→ analyze_lots(all_lots, criteria, top_n=5)
-  → Claude API: analiza każdego lotu
-  → Ranking według score + ROI
-  → TOP 5 + 5 dodatkowych
+→ analyze_lots(lots_for_ai, criteria)   # do modelu idzie pre-rank top AI_ANALYSIS_TOP_N (10)
+  → scoring/unified.py: deterministyczna ocena 0-10 dla każdego lota
+  → Claude Code: opis i uzasadnienie (ocena przychodzi gotowa)
+  → Ranking: POLECAM > RYZYKO > PONAD BUDŻET > ODRZUĆ, potem po score malejąco
+  → Showcase = wszystkie POLECAM + 2 najlepsze RYZYKO (sort po dacie aukcji)
+  → Lista zwracana do UI cięta do MAX_FINAL_RESULTS (domyślnie 10)
 → SearchResponse(top_recommendations, all_results)
 ```
 
@@ -1891,11 +1946,12 @@ POST /report
 - Tworzy obiekty CarLot
 ```
 
-**Krok 3: Analiza + Notyfikacja**
+**Krok 3: Analiza + oferta do zatwierdzenia**
 ```
-- Claude API analizuje nowe loty
-- Jeśli score >7 i ROI >30%:
-  → Wysyła notyfikację Telegram
+- scoring/unified.py liczy ocenę 0-10, Claude Code pisze opisy
+- report/offer_agent.py buduje mail klienta (maks. 4 auta) i brief brokera
+- Brief leci na Telegram i pipeline czeka na /approve albo /reject (maks. 30 min)
+- Dopiero po /approve mail HTML idzie do klienta — bez zatwierdzenia nic nie wychodzi
 ```
 
 ### Scenariusz 3: Generator Ofert Handlowych (DOCX)
@@ -1924,7 +1980,7 @@ POST /report
 
 ```bash
 # AI
-ANTHROPIC_API_KEY=qua-3fe84831eb5df3856a4790c2461ae1bf
+ANTHROPIC_API_KEY=<w .env, nie w dokumentacji>
 
 # Scraping
 MAX_RESULTS_PER_SOURCE=30
@@ -1937,7 +1993,7 @@ CACHE_MAX_AGE_HOURS=24
 
 # Filtering
 MIN_AUCTION_WINDOW_HOURS=12
-MAX_AUCTION_WINDOW_HOURS=168  # 7 dni
+MAX_AUCTION_WINDOW_HOURS=120  # 5 dni
 FILTER_SELLER_INSURANCE_ONLY=false
 
 # Paths
@@ -1947,12 +2003,12 @@ CHROME_PROFILE_DIR=./data/chrome_profile
 CHROME_EXECUTABLE_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 
 # Email
-GMAIL_ADDRESS=damiansomano@gmail.com
-GMAIL_APP_PASSWORD=cplbgqmrikgqawou
-CLIENT_EMAIL=damiansomano@gmail.com
+GMAIL_ADDRESS=<adres w .env>
+GMAIL_APP_PASSWORD=<w .env, nie w dokumentacji>
+CLIENT_EMAIL=<adres w .env>
 
 # Telegram
-TELEGRAM_BOT_TOKEN=8527421679:AAEY8aqDzm2rsUUpTiOLEG6mrelNxLizops
+TELEGRAM_BOT_TOKEN=<w .env, nie w dokumentacji>
 TELEGRAM_CHAT_ID=7594790035
 ```
 
@@ -1972,7 +2028,7 @@ TELEGRAM_CHAT_ID=7594790035
 
 **Filtering:**
 - `MIN_AUCTION_WINDOW_HOURS` - minimalne okno aukcji (domyślnie 12h)
-- `MAX_AUCTION_WINDOW_HOURS` - maksymalne okno aukcji (domyślnie 168h = 7 dni)
+- `MAX_AUCTION_WINDOW_HOURS` - maksymalne okno aukcji (domyślnie 120h = 5 dni)
 - `FILTER_SELLER_INSURANCE_ONLY` - czy filtrować tylko ubezpieczycieli (true=tak)
 
 **Paths:**
@@ -2362,11 +2418,12 @@ Total Investment (bezpieczny): $17,250
 
 ### Kluczowe Cechy Aplikacji
 
-1. **Automatyzacja** - Równoległe scrapowanie Copart + IAAI przez Playwright
-2. **Inteligencja** - Claude Sonnet 4.6 analizuje każdy lot (score, rekomendacje, koszty)
-3. **Lokalizacja** - Bonus za wschód USA (+1.5), penalty za zachód (-1.0)
-4. **Kalkulator** - 1000+ lokalizacji z stawkami towing, automatyczne przeliczenie
-5. **Raport PDF** - Profesjonalny dokument dla klienta (TOP 5 + dodatkowe)
+1. **Automatyzacja** - Równoległe scrapowanie Copart + IAAI przez Playwright (opcjonalnie Manheim)
+2. **Powtarzalność** - Ocena 0-10 liczona deterministycznie w `scoring/unified.py`;
+   model (Claude Code) pisze wyłącznie uzasadnienie po polsku
+3. **Lokalizacja** - Logistyka jako składowa oceny z wagą 0.10 (wschód 1.0, centrum 0.6, zachód 0.25)
+4. **Kalkulator** - 1000+ lokalizacji ze stawkami towing, budżet klienta liczony pod klucz w PLN
+5. **Oferta** - Mail HTML z 3-4 autami dla klienta + brief brokera; PDF (ReportLab) na żądanie
 
 ### Stack Technologiczny
 

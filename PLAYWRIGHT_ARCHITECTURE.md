@@ -191,7 +191,8 @@ for item in scraped_items:
 # backend/tasks.py:analyze_one()
 photos = json.loads(listing.photos_json)
 result = await analyzer.analyze_listing(listing_data, photos)
-# Claude Sonnet 4.6 analizuje zdjęcia, zwraca damage_score, repair_estimate
+# UWAGA: to opis sandboksa backend/services/scrapers, nie aplikacji usa-car-finder.
+# W aplikacji ocenę liczy scoring/unified.py, a model zwraca tylko opis po polsku.
 ```
 
 ## Problemy i rozwiązania
