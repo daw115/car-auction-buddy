@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Manheim collector — ustawienia</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 24px;
+        max-width: 560px;
+      }
+      label {
+        display: block;
+        margin: 16px 0 4px;
+        font-weight: 600;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 6px 8px;
+        box-sizing: border-box;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .status {
+        margin-top: 20px;
+        padding: 10px;
+        background: #f3f4f6;
+        border-radius: 6px;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      button {
+        margin-top: 20px;
+        padding: 8px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Manheim collector</h1>
+    <p>
+      Przekazuje odpowiedzi wyszukiwarki Manheim do lokalnego backendu USA Car Finder.
+      Nie używa <code>chrome.debugger</code>, więc nie odbiera slotu wtyczce BidWise.
+    </p>
+
+    <label for="backendUrl">Adres backendu</label>
+    <input id="backendUrl" type="text" placeholder="http://127.0.0.1:8000" />
+
+    <label for="token">Token (SCRAPER_API_TOKEN lub MANHEIM_INGEST_TOKEN)</label>
+    <input id="token" type="password" placeholder="pusty = backend bez autoryzacji" />
+
+    <div class="row">
+      <input id="enabled" type="checkbox" />
+      <label for="enabled" style="margin: 0">Zbieranie włączone</label>
+    </div>
+
+    <button id="save">Zapisz</button>
+
+    <div class="status" id="status">—</div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

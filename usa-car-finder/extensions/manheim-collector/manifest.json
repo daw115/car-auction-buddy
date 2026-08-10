@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "USA Car Finder — Manheim collector",
+  "version": "1.3.0",
+  "description": "Zbiera odpowiedzi wyszukiwarki Manheim i wykonuje zlecone wyszukiwania w kontekście strony. Nie używa chrome.debugger, więc nie koliduje z BidWise.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.manheim.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.manheim.com/*"
+      ],
+      "js": [
+        "page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.manheim.com/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}
