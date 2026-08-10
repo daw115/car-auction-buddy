@@ -30,6 +30,12 @@ const SOURCE_UNAVAILABLE_MESSAGES: Record<string, string> = {
   invalid_capabilities_response: "backend zwrócił nieprawidłowe capabilities",
   credentials_or_adapter_missing: "brak adaptera lub poświadczeń API",
   manheim_session_not_configured: "brak zalogowanej wtyczki BidWise w profilu scrapera",
+  collector_not_seen_recently:
+    "przeglądarka z Manheimem się nie odezwała — sprawdź usługę usacar-manheim-browser",
+  collector_token_mismatch:
+    "token w opcjach wtyczki manheim-collector nie zgadza się z backendem — popraw go przez VNC",
+  collector_unauthorized:
+    "wtyczka manheim-collector wysyła bez tokena — uzupełnij go w jej opcjach",
   live_backend_not_configured: "backend nie działa w trybie live",
   enabled_by_server_configuration: "włączone w konfiguracji backendu",
 };
