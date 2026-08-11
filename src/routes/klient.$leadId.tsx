@@ -11,6 +11,7 @@ import {
   recordClientReply,
   regenerateDraft,
   rejectDraft,
+  patchLead,
   setLeadStage,
 } from "@/functions/sales.functions";
 import { readWhatsappConversation } from "@/functions/intake.functions";
@@ -21,6 +22,7 @@ import type { ClientCriteria } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -84,12 +86,15 @@ function KartaKlienta() {
   const fnRegenerate = useServerFn(regenerateDraft);
   const fnReply = useServerFn(recordClientReply);
   const fnStage = useServerFn(setLeadStage);
+  const fnPatch = useServerFn(patchLead);
   const fnReadWhatsapp = useServerFn(readWhatsappConversation);
   const fnSearch = useServerFn(backendSearch);
 
   const [odpowiedz, setOdpowiedz] = useState("");
   const [tresc, setTresc] = useState<string | null>(null);
   const [zajety, setZajety] = useState<string | null>(null);
+  const [budzet, setBudzet] = useState<string>("");
+  const [przebieg, setPrzebieg] = useState<string>("");
 
   const { data: lead, isLoading } = useQuery({
     queryKey: ["lead", id],
@@ -335,6 +340,92 @@ function KartaKlienta() {
                 </ul>
               </div>
             )}
+          </Card>
+
+          {/* Poprawki po telefonie. Wysyłamy tylko zmienione pola — backend
+              rozróżnia brak pola od jawnego null, a damage_ok jest trójstanem. */}
+          <Card className="p-4">
+            <h3 className="mb-2 text-sm font-semibold">✏️ Popraw po rozmowie</h3>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-muted-foreground" htmlFor="pole-budzet">
+                  Budżet pod klucz (zł)
+                </label>
+                <Input
+                  id="pole-budzet"
+                  type="number"
+                  placeholder={lead.budget_pln ? String(lead.budget_pln) : "nie podał"}
+                  value={budzet}
+                  onChange={(e) => setBudzet(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground" htmlFor="pole-przebieg">
+                  Maksymalny przebieg (mile)
+                </label>
+                <Input
+                  id="pole-przebieg"
+                  type="number"
+                  placeholder={lead.max_odometer_mi ? String(lead.max_odometer_mi) : "bez limitu"}
+                  value={przebieg}
+                  onChange={(e) => setPrzebieg(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-xs text-muted-foreground">Auto po szkodzie:</span>
+                {[
+                  { etykieta: "zgadza się", wartosc: true as boolean | null },
+                  { etykieta: "odmawia", wartosc: false as boolean | null },
+                  { etykieta: "nie pytaliśmy", wartosc: null as boolean | null },
+                ].map((opcja) => (
+                  <Button
+                    key={String(opcja.wartosc)}
+                    size="sm"
+                    variant={lead.damage_ok === opcja.wartosc ? "default" : "outline"}
+                    disabled={zajety !== null}
+                    onClick={() =>
+                      zrob(
+                        "patch",
+                        () =>
+                          fnPatch({ data: { leadId: id, changes: { damage_ok: opcja.wartosc } } }),
+                        "Zapisane.",
+                      )
+                    }
+                  >
+                    {opcja.etykieta}
+                  </Button>
+                ))}
+              </div>
+              <Button
+                size="sm"
+                className="mt-1"
+                disabled={zajety !== null || (!budzet && !przebieg)}
+                onClick={() =>
+                  zrob(
+                    "patch",
+                    async () => {
+                      const changes: Record<string, number> = {};
+                      if (budzet) changes.budget_pln = Number(budzet);
+                      if (przebieg) changes.max_odometer_mi = Number(przebieg);
+                      const wynik = await fnPatch({ data: { leadId: id, changes } });
+                      setBudzet("");
+                      setPrzebieg("");
+                      toast.info(
+                        `Ocena po zmianie: ${wynik.score.score}/100 (${wynik.score.segment})`,
+                      );
+                    },
+                    "Zapisane.",
+                  )
+                }
+              >
+                {zajety === "patch" ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Zapisz
+              </Button>
+            </div>
           </Card>
 
           <Card className="p-4">

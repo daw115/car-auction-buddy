@@ -55,6 +55,8 @@ export type Lead = {
   budget_pln: number | null;
   settlement: string;
   timeline_days: number | null;
+  /** Sufit przebiegu z rozmowy. Backend go zwraca, typ o nim milczał. */
+  max_odometer_mi: number | null;
   damage_ok: boolean | null;
   bought_before: boolean;
   referred_by: string | null;
@@ -272,5 +274,37 @@ export const regenerateDraft = createServerFn({ method: "POST" })
         // Model potrafi liczyć kilkadziesiąt sekund; domyślny timeout transportu
         // uciąłby wywołanie w połowie i broker zobaczyłby błąd zamiast propozycji.
         timeoutMs: 180_000,
+      }),
+  );
+
+/** PATCH /api/sales/leads/{id} — poprawki po telefonie z klientem.
+ *
+ *  Wysyłamy WYŁĄCZNIE pola, które broker zmienił: backend rozróżnia „pola nie ma"
+ *  od „pole ustawione na null", a `damage_ok` jest trójstanem, gdzie null znaczy
+ *  „nie pytaliśmy", a nie „klient odmawia auta po szkodzie".
+ */
+export const patchLead = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      changes: z
+        .object({
+          budget_pln: z.number().min(0).max(10_000_000).nullable().optional(),
+          settlement: z.enum(["private", "company"]).optional(),
+          max_odometer_mi: z.number().int().min(0).max(1_000_000).nullable().optional(),
+          damage_ok: z.boolean().nullable().optional(),
+          notes: z.string().max(4000).optional(),
+          phone: z.string().max(40).optional(),
+        })
+        .refine((c) => Object.keys(c).length > 0, "Nie ma czego zapisać."),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ lead: Lead; score: LeadScore; changed: string[] }> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}`,
+        method: "PATCH",
+        body: data.changes,
       }),
   );
