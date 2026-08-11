@@ -12,6 +12,7 @@ import {
   regenerateDraft,
   rejectDraft,
   patchLead,
+  promoteLead,
   setLeadStage,
 } from "@/functions/sales.functions";
 import { readWhatsappConversation } from "@/functions/intake.functions";
@@ -87,6 +88,7 @@ function KartaKlienta() {
   const fnReply = useServerFn(recordClientReply);
   const fnStage = useServerFn(setLeadStage);
   const fnPatch = useServerFn(patchLead);
+  const fnPromote = useServerFn(promoteLead);
   const fnReadWhatsapp = useServerFn(readWhatsappConversation);
   const fnSearch = useServerFn(backendSearch);
 
@@ -171,6 +173,30 @@ function KartaKlienta() {
           </SelectContent>
         </Select>
         {lead.phone && <span className="text-sm text-muted-foreground">{lead.phone}</span>}
+        {/* Awans to jawna decyzja brokera, nie skutek uboczny zmiany etapu. */}
+        {lead.client_id ? (
+          <Badge variant="secondary">klient #{lead.client_id}</Badge>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={zajety !== null}
+            title="Zapisz jako klienta w kartotece"
+            onClick={() =>
+              zrob("promote", async () => {
+                const wynik = await fnPromote({ data: { leadId: id } });
+                toast.success(wynik.message);
+              })
+            }
+          >
+            {zajety === "promote" ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Awansuj na klienta
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

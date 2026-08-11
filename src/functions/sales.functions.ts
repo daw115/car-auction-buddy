@@ -64,6 +64,8 @@ export type Lead = {
   created_at: string | null;
   updated_at: string | null;
   last_client_message_at: string | null;
+  /** Ustawiane dopiero przez /promote — panel po tym poznaje, czy pokazać awans. */
+  client_id: number | null;
 };
 
 export type InboxItem = {
@@ -307,4 +309,18 @@ export const patchLead = createServerFn({ method: "POST" })
         method: "PATCH",
         body: data.changes,
       }),
+  );
+
+/** POST /api/sales/leads/{id}/promote — wygrana sprzedaż zostawia ślad w bazie klientów.
+ *
+ *  Świadomie osobna akcja brokera, nie skutek uboczny zmiany etapu: automat przy
+ *  przejściu na „wygrana" zaśmieciłby bazę przy pierwszym błędnym kliknięciu w select.
+ *  Idempotentne — drugie kliknięcie nie zakłada duplikatu.
+ */
+export const promoteLead = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
+  .handler(
+    async ({ data }): Promise<{ client_id: number; created: boolean; message: string }> =>
+      backendRequest({ path: `/api/sales/leads/${data.leadId}/promote`, method: "POST" }),
   );
