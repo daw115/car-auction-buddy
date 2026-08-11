@@ -16,7 +16,12 @@ import pytest
 
 from sales import db
 from sales.agent import mentions_unknown_amount, validate_message
-from sales.intake import _detect_budget_pln, _detect_damage_ok, _detect_years
+from sales.intake import (
+    _detect_budget_pln,
+    _detect_damage_ok,
+    _detect_make_model,
+    _detect_years,
+)
 from sales.models import Author, Channel, Draft, Lead, Segment, Stage
 from sales.qualification import MIN_SENSIBLE_BID_USD, score_lead
 
@@ -159,6 +164,42 @@ def test_rocznik_z_tresci():
     assert _detect_years("rocznik 2018-2021") == (2018, 2021)
 
 
+@pytest.mark.parametrize(
+    "tekst, oczekiwane",
+    [
+        # Polska odmiana zjada końcówki nazw — to jest normalny sposób pisania klienta.
+        ("szukam Forda Explorera 2020+", ("FORD", "EXPLORER")),
+        ("jeżdżę Jeepem, szukam Wranglera", ("JEEP", "WRANGLER")),
+        ("Hyundai Tucsona z 2021", ("HYUNDAI", "TUCSON")),
+        ("Toyoty Highlander szukam", ("TOYOTA", "HIGHLANDER")),
+        # Nazwa kończąca się na "a" NIE jest odmianą — obcinanie końcówek regułą
+        # zrobiłoby z Sonaty "Sonat" i wyszukiwarka nie znalazłaby nic.
+        ("Hyundai Sonata", ("HYUNDAI", "SONATA")),
+        # Dłuższa nazwa wygrywa z krótszą, która się w niej zawiera.
+        ("Jeep Grand Cherokee", ("JEEP", "GRAND CHEROKEE")),
+        # Marka bez modelu: pytamy o model, ale już nie o markę.
+        ("Ford, budżet 120 tys", ("FORD", None)),
+    ],
+)
+def test_marka_i_model_z_tresci(tekst, oczekiwane):
+    assert _detect_make_model(tekst) == oczekiwane
+
+
+@pytest.mark.parametrize(
+    "tekst",
+    [
+        "rama nośna do naprawy",          # 'ram' w środku polskiego słowa
+        "słucham audiobooków w aucie",    # 'audi' w środku
+        "potrzebuję minivana dla rodziny",  # 'mini' w środku
+        "mam minimalne wymagania",
+        "szukam czegoś taniego",
+    ],
+)
+def test_falszywe_trafienia_marek(tekst):
+    """Zgadnięta marka trafia do kryteriów i po cichu zawęża wyszukiwanie do zera."""
+    assert _detect_make_model(tekst) == (None, None)
+
+
 # ──────────────────────────────────────────────────────────── walidator wiadomości
 
 
@@ -168,6 +209,9 @@ def test_rocznik_z_tresci():
         "Daję gwarancję na to auto.",                 # obietnica nie do dotrzymania
         "To auto jest bezwypadkowe.",                 # z aukcji nie ma bezwypadkowych
         "Proszę o zaliczkę na konto.",                # ustalenia finansowe to broker
+        "Wpłatę proszę zrobić na numeru konta z maila.",  # ta sama zasada w odmianie
+        "Prześlę Panu numer konta do wpłaty.",
+        "Mogę rozłożyć to na raty po wpłacie zaliczki.",
         "Mogę dać rabat na prowizję.",                # nie agent o tym decyduje
         "Ocena tego auta to 8/10.",                   # metryka wewnętrzna
         "Auto ma clean title.",                       # żargon aukcyjny
@@ -177,6 +221,12 @@ def test_rocznik_z_tresci():
 )
 def test_walidator_odrzuca_zakazane_wiadomosci(tresc):
     assert validate_message(tresc) is None
+
+
+def test_zakaz_finansowy_nie_lapie_zwyklych_slow():
+    """Rdzeń 'kont' nie może wycinać 'kontakt' ani 'kontrola' — zakaz zjadłby połowę zdań."""
+    assert validate_message("Proszę o kontakt, gdy będzie Pan mógł.") is not None
+    assert validate_message("Po kontroli technicznej auto nadaje się do rejestracji.") is not None
 
 
 def test_walidator_przepuszcza_poprawna_wiadomosc():

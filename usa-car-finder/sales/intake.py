@@ -18,6 +18,7 @@ a klient dostaje pytanie o budżet, który podał poprzednio.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Optional
@@ -112,6 +113,143 @@ def _detect_budget_pln(text: str) -> Optional[float]:
     return max(sensowne) if sensowne else None
 
 
+# Marki, o które realnie pytają klienci szukający auta z USA. Lista jest krótka
+# celowo — ma trafiać, a nie obejmować wszystko. Marki spoza niej wyjmie parser
+# modelowy, gdy jest dostępny, albo broker w rozmowie.
+#
+# Klucz to RDZEŃ, nie pełna nazwa: klient pisze "Forda Explorera", "Jeepem",
+# "w Toyocie". Polska odmiana zjada końcówki, więc dopasowujemy początek słowa.
+_MAKE_STEMS: tuple[tuple[str, str], ...] = (
+    ("chevrolet", "CHEVROLET"), ("chevy", "CHEVROLET"),
+    ("cadillac", "CADILLAC"), ("chrysler", "CHRYSLER"), ("dodge", "DODGE"),
+    ("ford", "FORD"), ("gmc", "GMC"), ("jeep", "JEEP"), ("lincoln", "LINCOLN"),
+    ("ram", "RAM"), ("tesla", "TESLA"), ("buick", "BUICK"),
+    ("acura", "ACURA"), ("honda", "HONDA"), ("hyundai", "HYUNDAI"),
+    ("infiniti", "INFINITI"), ("kia", "KIA"), ("lexus", "LEXUS"),
+    ("mazda", "MAZDA"), ("mitsubishi", "MITSUBISHI"), ("nissan", "NISSAN"),
+    ("subaru", "SUBARU"), ("suzuki", "SUZUKI"), ("toyot", "TOYOTA"),
+    ("audi", "AUDI"), ("bmw", "BMW"), ("mercedes", "MERCEDES-BENZ"),
+    ("porsche", "PORSCHE"), ("volkswagen", "VOLKSWAGEN"), ("volvo", "VOLVO"),
+    ("mini", "MINI"), ("jaguar", "JAGUAR"), ("land rover", "LAND ROVER"),
+    ("range rover", "LAND ROVER"),
+)
+
+# Modele, o które pytają najczęściej. Lista istnieje, bo polska odmiana zjada
+# końcówki nazw: klient pisze "Explorera", "Wranglera", "Tucsona". Obcinanie końcówek
+# regułą jest nie do zrobienia bez psucia nazw, które NAPRAWDĘ kończą się na "a"
+# (Sonata, Corsa, Impreza) — z "Sonaty" zrobiłaby się "Sonat" i wyszukiwarka nic
+# by nie znalazła. Dopasowanie do listy po przedrostku jest odporne na odmianę
+# i nie zmyśla nazw, których nie znamy.
+_KNOWN_MODELS: tuple[str, ...] = (
+    # Ford
+    "EXPLORER", "ESCAPE", "EDGE", "EXPEDITION", "MUSTANG", "F-150", "F150", "RANGER",
+    "BRONCO", "FUSION", "FOCUS", "MAVERICK", "TRANSIT",
+    # GM
+    "SILVERADO", "TAHOE", "SUBURBAN", "EQUINOX", "TRAVERSE", "MALIBU", "CAMARO",
+    "CORVETTE", "COLORADO", "BLAZER", "TRAILBLAZER", "ESCALADE", "SIERRA", "YUKON",
+    "ACADIA", "TERRAIN", "ENCORE", "ENCLAVE",
+    # Stellantis
+    "WRANGLER", "GRAND CHEROKEE", "CHEROKEE", "COMPASS", "RENEGADE", "GLADIATOR",
+    "WAGONEER", "CHARGER", "CHALLENGER", "DURANGO", "PACIFICA", "RAM 1500",
+    # Japonia i Korea
+    "RAV4", "HIGHLANDER", "CAMRY", "COROLLA", "TACOMA", "TUNDRA", "4RUNNER", "PRIUS",
+    "SIENNA", "VENZA", "CR-V", "CRV", "PILOT", "ACCORD", "CIVIC", "ODYSSEY", "HR-V",
+    "ROGUE", "ALTIMA", "PATHFINDER", "MURANO", "SENTRA", "FRONTIER",
+    "TUCSON", "SANTA FE", "ELANTRA", "SONATA", "PALISADE", "KONA",
+    "SPORTAGE", "SORENTO", "TELLURIDE", "SELTOS", "OPTIMA", "STINGER",
+    "CX-5", "CX5", "CX-9", "CX9", "MAZDA3", "MAZDA6", "OUTBACK", "FORESTER",
+    "CROSSTREK", "IMPREZA", "ASCENT",
+    "RX", "NX", "GX", "LX", "ES", "IS",
+    # Europa
+    "X1", "X3", "X5", "X6", "X7", "M3", "M4", "M5",
+    "Q3", "Q5", "Q7", "Q8", "A4", "A5", "A6", "A7", "A8", "E-TRON",
+    "GLC", "GLE", "GLS", "GLA", "GLB", "C-CLASS", "E-CLASS", "S-CLASS", "SPRINTER",
+    "TIGUAN", "ATLAS", "JETTA", "PASSAT", "GOLF", "TAOS",
+    "MACAN", "CAYENNE", "PANAMERA", "TAYCAN",
+    "XC60", "XC90", "XC40", "S60", "S90",
+    # Elektryki
+    "MODEL 3", "MODEL Y", "MODEL S", "MODEL X", "MACH-E", "BOLT", "IONIQ", "EV6",
+)
+
+# Najdłuższe najpierw: "GRAND CHEROKEE" musi wygrać z "CHEROKEE", a "RAM 1500" z "RAM".
+_MODELS_BY_LENGTH = tuple(sorted(_KNOWN_MODELS, key=len, reverse=True))
+
+_WORD_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789ąćęłńóśźż"
+
+
+# Końcówki, jakie polska odmiana dokleja do nazwy marki: "Forda", "Jeepem", "Toyocie".
+# Zbiór jest wąski celowo. Dopuszczenie "o" wpuściłoby "audio" jako Audi, a "van"
+# zrobiłoby z "minivana" Mini.
+_DECLENSION_SUFFIXES = ("", "a", "i", "y", "u", "ą", "ę", "em", "ie", "om", "ów", "owi", "owie", "ami")
+
+# Rdzenie krótsze niż to wymagają dokładnej granicy słowa: "ram" + "a" to "rama",
+# a nie Ram w dopełniaczu.
+_MIN_STEM_FOR_DECLENSION = 4
+
+
+def _starts_word(text: str, position: int) -> bool:
+    """Czy dopasowanie zaczyna słowo — chroni 'ram' przed trafieniem w 'rama'."""
+    return position == 0 or text[position - 1] not in _WORD_CHARS
+
+
+def _ends_word_or_declension(text: str, end: int, stem_length: int) -> bool:
+    """Czy po rdzeniu kończy się słowo albo stoi tylko końcówka odmiany."""
+    reszta = ""
+    index = end
+    while index < len(text) and text[index] in _WORD_CHARS:
+        reszta += text[index]
+        index += 1
+    if not reszta:
+        return True
+    if stem_length < _MIN_STEM_FOR_DECLENSION:
+        return False
+    return reszta in _DECLENSION_SUFFIXES
+
+
+def _detect_make_model(text: str) -> tuple[Optional[str], Optional[str]]:
+    """Marka i model z treści zgłoszenia.
+
+    Bez tego agent pytał o markę klienta, który przed chwilą napisał „szukam Forda
+    Explorera" — a pytanie o rzecz już powiedzianą kosztuje więcej niż brak pytania.
+    Parser modelowy robi to lepiej, ale bywa niedostępny i wtedy zostaje ta reguła.
+
+    Marki i modelu szukamy NIEZALEŻNIE, w całym tekście. Wiązanie modelu z pozycją
+    po marce nie działa po polsku: "jeżdżę Jeepem, szukam Wranglera" ma między nimi
+    dwa słowa i przecinek.
+
+    Model zwracamy wyłącznie z listy znanych. Zgadnięty model trafia do kryteriów
+    wyszukiwania i cicho zawęża je do zera wyników — brak modelu jest bezpieczniejszy,
+    bo wtedy agent po prostu o niego zapyta.
+    """
+    lowered = (text or "").lower()
+    if not lowered:
+        return None, None
+
+    make: Optional[str] = None
+    for stem, nazwa in _MAKE_STEMS:
+        pozycja = lowered.find(stem)
+        # Krótkie rdzenie ("ram", "kia") wymagają granicy słowa z obu stron, inaczej
+        # "rama nośna" robi się Ramem, a "kiap" Kią.
+        while pozycja >= 0:
+            if _starts_word(lowered, pozycja) and _ends_word_or_declension(
+                lowered, pozycja + len(stem), len(stem)
+            ):
+                make = nazwa
+                break
+            pozycja = lowered.find(stem, pozycja + 1)
+        if make:
+            break
+
+    model: Optional[str] = None
+    for kandydat in _MODELS_BY_LENGTH:
+        pozycja = lowered.find(kandydat.lower())
+        if pozycja >= 0 and _starts_word(lowered, pozycja):
+            model = kandydat
+            break
+
+    return make, model
+
+
 def _detect_years(text: str) -> tuple[Optional[int], Optional[int]]:
     """Rocznik od/do z treści. Zakres wygrywa z pojedynczym rokiem."""
     zakres = _YEAR_RANGE.search(text or "")
@@ -159,6 +297,17 @@ def _normalize_phone(phone: Optional[str]) -> Optional[str]:
     return digits or None
 
 
+def parser_enabled() -> bool:
+    """Czy wolno wołać modelowy parser wiadomości.
+
+    Wyłącznik, nie optymalizacja. `ai/message_parser.py` chodzi po sieci i ponawia
+    próby z odczekaniem, więc przy braku łączności jedno zgłoszenie potrafi zająć
+    kilkanaście sekund — a formularz z landing page'a czeka wtedy na coś, bez czego
+    da się obejść. Reguły w tym module wyciągają budżet i rocznik same.
+    """
+    return os.getenv("SALES_PARSER_ENABLED", "true").lower() in ("1", "true", "yes")
+
+
 def _parse_request(text: str) -> dict:
     """Marka, model, rocznik i budżet z treści zgłoszenia.
 
@@ -167,6 +316,8 @@ def _parse_request(text: str) -> dict:
     pola — i to jest w porządku, bo brakujące dane są wejściem do pytania w pierwszej
     wiadomości, a nie awarią.
     """
+    if not parser_enabled():
+        return {}
     try:
         from ai.message_parser import parse_client_message
 
@@ -232,8 +383,9 @@ def submit(
     lead.phone = lead.phone or telefon
     lead.email = lead.email or mail
     lead.referred_by = lead.referred_by or referred_by
-    lead.make = lead.make or parsed.get("make")
-    lead.model = lead.model or parsed.get("model")
+    marka, model = _detect_make_model(tresc)
+    lead.make = lead.make or parsed.get("make") or marka
+    lead.model = lead.model or parsed.get("model") or model
     lead.max_odometer_mi = lead.max_odometer_mi or _int_or_none(parsed.get("max_odometer_mi"))
 
     # Model pierwszy, reguła jako domknięcie. Kolejność ma znaczenie: model rozumie

@@ -505,6 +505,15 @@ def test_pre_rank_keeps_manheim_even_when_the_heuristic_dislikes_it():
     "hail" i "minor dent", a auta dealerskie z oceną stanu nie pasują do żadnego
     koszyka i zawsze przegrywają.
     """
+    # Python 3.9: wcześniejsze testy w tym pliku zamykają pętlę zdarzeń, a import
+    # api.main jej dotyka. Na serwerze (3.12) problem nie występuje.
+    import asyncio
+
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     from api.main import _pre_rank_lots_for_ai
 
     def lot(source, lot_id, damage):
@@ -578,3 +587,30 @@ def test_thumbnails_are_used_when_nothing_better_exists():
     from ai.frame_damage_vision import _pick_diagnostic_images
 
     assert _pick_diagnostic_images(["https://x/a_thb.jpg"]) == ["https://x/a_thb.jpg"]
+
+
+def test_copart_parser_keeps_the_trim_that_tells_engines_apart(tmp_path):
+    """"2018 MAZDA 6 GRAND TOURING RESERVE" to 2.5 turbo, "SPORT" to wolnossący.
+
+    Copart podaje wersję w osobnym polu `ltd`, a parser ją wyrzucał — zostawało
+    samo "6" i nie było czym odróżnić topowej wersji od bazowej. To dokładnie ta
+    różnica, o którą pytają klienci szukający najwyższej półki.
+    """
+    from parser.copart_parser import parse_copart_html
+
+    listing = {
+        "mkn": "MAZDA", "lm": "6", "ltd": "GRAND TOURING RESERVE", "lcy": 2018,
+        "fv": "JM1GL1WY4J1328753", "ts": "KS", "dd": "FRONT END",
+    }
+    # Parser bierze numer lota z nazwy pliku (copart_parser.py:132).
+    path = tmp_path / "60175336.html"
+    path.write_text(
+        'cachedSolrLotDetailsStr: "' + json.dumps(listing).replace('"', '\\"') + '", nastepny: 1',
+        encoding="utf-8",
+    )
+
+    lot = parse_copart_html(path)
+
+    assert lot is not None
+    assert lot.model == "6", "model zostaje surowy — po nim filtrujemy"
+    assert lot.trim == "GRAND TOURING RESERVE"

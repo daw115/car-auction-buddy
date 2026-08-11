@@ -34,10 +34,30 @@ wariantów kontener 20ft / 40ft / RoRo i nie ma domyślnej kwoty transportu 2 00
 
 ### 4. Cła i Podatki (Import do Polski)
 
-#### Cło importowe (`CUSTOMS_DUTY_RATE` = 10%):
+#### Cło importowe — stawka NIE jest stała (od 1 lipca 2026)
+
+Rozporządzenie UE 2026/1455 zniosło cła na amerykańskie towary przemysłowe. Stawka
+zależy więc od konkretnego auta i wybiera ją `pricing/tariff.py`, a nie stała modułu:
+
+- **0%** — auto zmontowane w USA, niebędące elektrykiem. Preferencja obowiązuje
+  od 1 lipca 2026 do 31 grudnia 2029 (`DUTY_FREE_FROM`, `DUTY_FREE_UNTIL`).
+- **10%** (`DUTY_STANDARD`, dawniej `CUSTOMS_DUTY_RATE`) — wszystko pozostałe:
+  auta zmontowane poza USA, elektryki (wyłączone z preferencji) i każdy przypadek,
+  w którym kraju montażu nie da się ustalić.
+
+Decyduje **miejsce montażu, nie marka**. Ustalamy je z pierwszego znaku VIN-u
+(`pricing/vin.py`): 1, 4, 5 → USA; 2 → Kanada; 3 → Meksyk; J → Japonia; W → Niemcy.
+BMW ze Spartanburga ma 0%, Audi Q5 z Puebli kupione na tej samej aukcji ma 10%.
+Copart maskuje sześć ostatnich znaków VIN-u, ale pierwszy jest zawsze widoczny,
+więc kwalifikację znamy przed otwarciem szczegółów aukcji.
+
+Podstawa naliczenia nie zmieniła się:
 - **Osoba prywatna**: podstawa = 40% sumy kosztów USA w PLN + 550 USD × kurs
   (`PRIVATE_CUSTOMS_BASE_RATE`, `FIXED_EXCISE_BASE_USD`)
 - **Firma**: podstawą jest cała suma kosztów USA w PLN
+
+Cło wchodzi do podstawy VAT-u, więc zerowa stawka ścina i cło, i podatek od niego —
+na aucie za 15 000 USD to około 9 000 zł różnicy w cenie pod klucz.
 
 #### VAT:
 - **Osoba prywatna**: VAT niemiecki **21%** (`DE_VAT_RATE`) od (podstawa odprawy + cło) —
@@ -45,12 +65,32 @@ wariantów kontener 20ft / 40ft / RoRo i nie ma domyślnej kwoty transportu 2 00
 - **Firma**: VAT polski **23%** (`PL_VAT_RATE`) od całości netto (suma USA + opłaty DE
   + akcyza), a nie od „wartości celnej + cło"
 
-#### Akcyza:
-- Do 2,0 l pojemności: **3,1%** (`EXCISE_SMALL`)
-- Powyżej 2,0 l: **18,6%** (`EXCISE_LARGE`)
-- Auta elektryczne: **0%** (`EXCISE_EV`)
-- Nieznana pojemność → bierzemy stawkę wyższą (18,6%), bo pomyłka w drugą stronę zaniża
-  cenę klienta o ok. 5 000 zł przy locie za 10 000 USD
+#### Akcyza — cztery stawki, nie dwie (stan na sierpień 2026)
+
+Wybiera je `pricing/tariff.excise_rate_for()` na podstawie napędu i pojemności:
+
+| napęd | pojemność | stawka | stała |
+|---|---|---|---|
+| spalinowy | do 2 000 cm³ | **3,1%** | `EXCISE_ICE_SMALL` |
+| spalinowy | powyżej 2 000 cm³ | **18,6%** | `EXCISE_ICE_LARGE` |
+| hybryda | do 2 000 cm³ | **1,55%** | `EXCISE_HYBRID_SMALL` |
+| hybryda | 2 000–3 500 cm³ | **9,3%** | `EXCISE_HYBRID_MEDIUM` |
+| hybryda | powyżej 3 500 cm³ | **18,6%** — bez preferencji | `EXCISE_ICE_LARGE` |
+| elektryczny | — | **0%** | `EXCISE_EV` |
+
+Interpretacja ogólna Ministra Finansów z 26 lutego 2026 objęła obniżonymi stawkami
+także **łagodne hybrydy (MHEV, instalacja 48 V)**. To jest największa pojedyncza
+różnica w tym kalkulatorze: typowy amerykański SUV z V6 i instalacją 48 V płaci
+9,3% zamiast 18,6%, czyli przy locie za 15 000 USD około 5 000 zł mniej.
+
+Uwaga na próg 3 500 cm³. Duże jednostki z 48 V — Ram 1500 eTorque 3.6, Hemi 5.7 —
+hybrydami w rozumieniu przepisu są, ale pojemnością wychodzą ponad próg i preferencji
+nie mają. Policzenie im 9,3% zaniża cenę klienta o kilka tysięcy złotych.
+
+Napęd rozpoznajemy z opisu wersji (`pricing/drivetrain.py`), a nie z homologacji.
+Dlatego hybrydę uznajemy wyłącznie przy jednoznacznym słowie w danych; wszystko
+niepewne idzie po stawce spalinowej. Nieznana pojemność → 18,6%, bo pomyłka w drugą
+stronę zaniża cenę klienta o ok. 5 000 zł przy locie za 10 000 USD.
 
 Nie ma składnika €3,1 za cm³ — stawka jest wyłącznie procentowa. Akcyza nie jest
 opcjonalna, liczy się zawsze; różni się tylko podstawa:
@@ -81,11 +121,14 @@ Suma USA (USD) =
   + fracht (1050)
   + koszty dodatkowe (300)
 
-Suma USA (PLN) = Suma USA (USD) × kurs USD/PLN (domyślnie 4,0)
+Suma USA (PLN) = Suma USA (USD) × kurs USD/PLN (z NBP + narzut)
+
+stawka cła    = 0% dla auta zmontowanego w USA (poza elektrykami), inaczej 10%
+stawka akcyzy = 1,55% / 3,1% / 9,3% / 18,6% / 0% — zależnie od napędu i pojemności
 
 OSOBA PRYWATNA:
   podstawa odprawy  = 40% × Suma USA (PLN) + 550 USD × kurs
-  cło               = 10% × podstawa odprawy
+  cło               = stawka cła × podstawa odprawy
   VAT DE            = 21% × (podstawa odprawy + cło)
   opłaty DE         = 3000 (odprawa) + cło + VAT DE + 2500 (transport DE→PL)
   przed akcyzą      = Suma USA (PLN) + opłaty DE
@@ -93,7 +136,7 @@ OSOBA PRYWATNA:
   private_total_pln = przed akcyzą + akcyza
 
 FIRMA:
-  cło               = 10% × Suma USA (PLN)
+  cło               = stawka cła × Suma USA (PLN)
   opłaty DE         = 3000 + cło
   akcyza            = (licytacja + 550 USD) × kurs × stawka akcyzy
   netto             = Suma USA (PLN) + opłaty DE + akcyza
@@ -170,9 +213,15 @@ Użytkownik może dostosować (pola formularza w `api/static/index.html`):
 4. **Koszty dodatkowe (USD)** — domyślnie 300
 5. **Załadunki (USD)** — domyślnie 560
 6. **Fracht (USD)** — domyślnie 1 050
-7. **Kurs USD/PLN** — stała domyślna 4,0 (`DEFAULT_USD_RATE`), wpisywana ręcznie;
-   nie ma integracji z API NBP ani z żadnym innym źródłem kursu
-8. **Akcyza** — wybór stawki (3,1% / 18,6% / 0%)
+7. **Kurs USD/PLN** — pobierany z **API NBP** (tabela A) przez `pricing/fx.py`,
+   z narzutem `FX_MARKUP_PCT` (domyślnie 2%), bo bank sprzedaje drożej niż kurs
+   środkowy, a między ofertą a zamknięciem aukcji mija kilka dni. Kurs trzymany jest
+   w pamięci do końca dnia roboczego; przy niedostępności NBP schodzimy na ostatni
+   zapisany, a dopiero potem na `DEFAULT_USD_RATE` z `.env`.
+   `FX_RATE_OVERRIDE` przybija kurs na sztywno — do testów i wtedy, gdy broker kupił
+   dolary po znanym kursie. Stała 4,0 była wpisana na sztywno do sierpnia 2026
+   i zawyżała każdą wycenę o około 7%.
+8. **Akcyza** — wybór stawki (1,55% / 3,1% / 9,3% / 18,6% / 0%)
 9. **Dokładka do prowizji (PLN)** — wpływa wyłącznie na rozliczenie pracownika
 
 Nie ma pól na koszt naprawy, wartość odsprzedaży ani marżę zysku.

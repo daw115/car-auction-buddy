@@ -285,25 +285,41 @@ async def inbox() -> dict[str, Any]:
     kolejnosc = {"A": 0, "B": 1, "C": 2, "D": 3}
     pozycje.sort(key=lambda p: (kolejnosc.get(p["score"]["segment"], 9), -p["score"]["score"]))
 
-    # Druga sekcja: leady, na które nikt nie odpisał i które nie mają propozycji.
-    # Bez niej lead ginie za każdym razem, gdy model nie odpowie — a to jest awaria,
-    # która wygląda jak cisza i nie zgłasza się sama.
+    # Druga sekcja: leady bez propozycji, na które ktoś czeka.
+    #
+    # Bez niej lead znika za każdym razem, gdy agent nie ma czego napisać — model
+    # nie odpowiedział, reguła nie miała pytania, propozycja poleciała do kosza.
+    # To jest awaria, która wygląda jak cisza i nie zgłasza się sama.
+    #
+    # „Czeka” znaczy: nigdy do niego nie napisaliśmy albo ostatnie słowo należy
+    # do klienta. Lead, na którego wiadomość odpowiedzieliśmy, nie wymaga niczego.
     z_draftem = {p["lead_id"] for p in pozycje}
     czekaja = []
     for lead in db.list_leads(only_open=True):
         if lead.id in z_draftem:
             continue
         historia = db.messages(lead.id)
-        if any(m.author is Author.BROKER for m in historia):
+        odpisalismy = any(m.author is Author.BROKER for m in historia)
+        ostatnie_od_klienta = bool(historia) and historia[-1].author is Author.KLIENT
+        if odpisalismy and not ostatnie_od_klienta:
             continue
         score = score_lead(lead)
-        czekaja.append({**_lead_json(lead), "score": _score_json(score)})
+        czekaja.append(
+            {
+                **_lead_json(lead),
+                "score": _score_json(score),
+                "waiting_since": (
+                    historia[-1].created_at.isoformat() if historia and historia[-1].created_at else None
+                ),
+                "last_client_message": historia[-1].text if ostatnie_od_klienta else None,
+            }
+        )
     czekaja.sort(key=lambda p: (kolejnosc.get(p["score"]["segment"], 9), -p["score"]["score"]))
 
     return {
         "count": len(pozycje),
         "items": pozycje,
-        "awaiting_first_reply": czekaja,
+        "needs_attention": czekaja,
     }
 
 

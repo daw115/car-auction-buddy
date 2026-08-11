@@ -148,6 +148,7 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
         make = None
         model = None
         year = None
+        trim = None
         vin_raw = None
         location_state = None
         location_city = None
@@ -170,6 +171,12 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
                 data = json.loads(json_str)
                 make = data.get("mkn")
                 model = data.get("lm")
+                # Wersja wyposażenia siedzi w osobnym polu i była wyrzucana.
+                # Bez niej "2018 MAZDA 6 GRAND TOURING RESERVE" (2.5 turbo) jest
+                # nie do odróżnienia od "2018 MAZDA 6 SPORT" (wolnossący) — a to
+                # dokładnie ta różnica, o którą pytają klienci szukający topowej
+                # wersji. Model zostaje surowy ("6"), bo po nim filtrujemy.
+                trim = data.get("ltd") or None
                 year = data.get("lcy")
                 vin_raw = data.get("fv")
                 location_state = data.get("ts")
@@ -217,6 +224,7 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
             year=year,
             make=make or None,
             model=model or None,
+            trim=trim or None,
             odometer_mi=mi,
             odometer_km=km,
             damage_primary=damage_primary or None,

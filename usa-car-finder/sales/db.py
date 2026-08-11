@@ -25,6 +25,21 @@ from sales.models import Author, Channel, Draft, Lead, Message, Stage
 
 DB_PATH = Path(os.getenv("APP_DATABASE_PATH", "./data/app.db"))
 
+# Ścieżka wymuszona jawnie, ważniejsza od zmiennej środowiskowej.
+#
+# POWÓD JEST KONKRETNY, NIE ESTETYCZNY. Kilka modułów scrapera woła
+# `load_dotenv(override=True)` na poziomie modułu, a importują się leniwie, w środku
+# obsługi żądania. Zmienna `APP_DATABASE_PATH` ustawiona przez test wraca wtedy do
+# wartości z `.env` w połowie testu — i test zaczyna pisać do produkcyjnej bazy
+# aplikacji, nie zgłaszając niczego. Zdarzyło się to przy pisaniu tego modułu.
+_forced_path: Optional[Path] = None
+
+
+def use_database(path) -> None:
+    """Przypina bazę na sztywno. Do testów i skryptów jednorazowych."""
+    global _forced_path
+    _forced_path = Path(path) if path else None
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -41,7 +56,7 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
 
 
 def _connect() -> sqlite3.Connection:
-    path = Path(os.getenv("APP_DATABASE_PATH", str(DB_PATH)))
+    path = _forced_path or Path(os.getenv("APP_DATABASE_PATH", str(DB_PATH)))
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row

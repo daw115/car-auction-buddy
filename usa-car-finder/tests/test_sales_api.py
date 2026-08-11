@@ -113,8 +113,8 @@ def test_lead_bez_propozycji_i_tak_jest_widoczny(client, auth, monkeypatch):
     client.post("/api/public/leads", json=ZGLOSZENIE)
     inbox = client.get("/api/sales/inbox", headers=auth).json()
     assert inbox["count"] == 0
-    assert len(inbox["awaiting_first_reply"]) == 1
-    assert inbox["awaiting_first_reply"][0]["score"]["segment"] == "A"
+    assert len(inbox["needs_attention"]) == 1
+    assert inbox["needs_attention"][0]["score"]["segment"] == "A"
 
 
 def _pierwszy_draft(client, auth):

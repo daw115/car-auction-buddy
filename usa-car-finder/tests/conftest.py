@@ -26,4 +26,23 @@ def _pin_usd_rate(monkeypatch):
     # Agent sprzedażowy nie woła modelu w testach. Wywołanie chodzi po sieci, wymaga
     # zalogowanej sesji i kosztuje — a testujemy tu regułę i walidator, nie model.
     monkeypatch.setenv("SALES_AGENT_MODEL_ENABLED", "false")
+    # To samo dotyczy parsera zgłoszeń: bez wyłącznika każdy test przyjmujący lead
+    # czeka na ponawiane wywołania sieciowe. Suita rosła przez to z sekund do minut.
+    monkeypatch.setenv("SALES_PARSER_ENABLED", "false")
     yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_sales_db(tmp_path):
+    """Baza agenta sprzedażowego w katalogu tymczasowym — dla KAŻDEGO testu.
+
+    Nie przez `APP_DATABASE_PATH`: kilka modułów scrapera woła `load_dotenv(override=True)`
+    przy imporcie, a importują się leniwie w trakcie obsługi żądania, więc zmienna wraca
+    w połowie testu do wartości z `.env`. Testy zaczynały wtedy dopisywać leady do
+    produkcyjnej bazy aplikacji i nic tego nie zgłaszało.
+    """
+    from sales import db
+
+    db.use_database(tmp_path / "sales.db")
+    yield
+    db.use_database(None)

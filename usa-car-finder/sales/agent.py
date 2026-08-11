@@ -54,20 +54,26 @@ _SENTENCE = re.compile(r"[.!?]+(?:\s|$)")
 # Zwroty zakazane wyłącznie w rozmowie. Oferta ich nie potrzebuje, bo tam nikt nie pyta
 # o zaliczkę — a w rozmowie to jest najczęstsze pytanie, na które agent nie ma prawa
 # odpowiedzieć. Warunki płatności ustala broker i tylko broker.
-BANNED_IN_CONVERSATION = (
-    "zaliczk",
-    "przedpłat",
-    "numer konta",
-    "przelej",
-    "wpłać",
-    "rabat",
-    "obniżę",
-    "obnizę",
-    "upust",
-    "gwarantuję",
-    "gwarantuje, że",
-    "na pewno wygramy",
-    "na pewno kupimy",
+#
+# DOPASOWANIE PO RDZENIU, NIE PO CAŁYM ZWROCIE. Lista zapisana jako gotowe frazy
+# przepuściła wiadomość ze słowami „numeru konta”, bo zakaz brzmiał „numer konta”.
+# Polska odmiana odmienia każde z tych słów, a zakaz, który omija odmiana, nie jest
+# zakazem. Rdzenie dopasowujemy z granicą słowa od lewej, żeby „kont” nie trafiało
+# w „kontakt” ani w „kontrolę”.
+_CONVERSATION_STEMS = (
+    r"zaliczk\w*",
+    r"przedpłat\w*|przedplat\w*",
+    r"kont[aoue]\b|kontem\b",          # konto, konta, koncie — ale nie kontakt
+    r"przelej\w*|przelew\w*",
+    r"wpłat\w*|wplat\w*|wpłac\w*|wplac\w*",
+    r"rabat\w*",
+    r"upust\w*",
+    r"obniż\w*|obniz\w*",
+    r"gwarantuj\w*",
+    r"na pewno (wygramy|kupimy|uda)",
+)
+_BANNED_IN_CONVERSATION = re.compile(
+    r"\b(?:" + "|".join(_CONVERSATION_STEMS) + r")", re.IGNORECASE
 )
 
 
@@ -224,29 +230,53 @@ def validate_message(text: Any) -> Optional[str]:
         return None
 
     lowered = cleaned.lower()
-    for bad in (*BANNED_FRAGMENTS, *JARGON_FRAGMENTS, *BANNED_IN_CONVERSATION):
+    for bad in (*BANNED_FRAGMENTS, *JARGON_FRAGMENTS):
         if bad in lowered:
             logger.info("odrzucam propozycję — zakazany zwrot %r", bad)
             return None
+
+    trafienie = _BANNED_IN_CONVERSATION.search(lowered)
+    if trafienie:
+        logger.info("odrzucam propozycję — ustalenia finansowe: %r", trafienie.group(0))
+        return None
     return cleaned
 
 
 _AMOUNT = re.compile(r"\d[\d\s .,]*\s*(?:zł|pln|tys)", re.IGNORECASE)
 
 
-def mentions_unknown_amount(text: str, offers: Optional[list[dict[str, Any]]]) -> bool:
+def mentions_unknown_amount(
+    text: str,
+    offers: Optional[list[dict[str, Any]]],
+    *,
+    budget_pln: Optional[float] = None,
+) -> bool:
     """Czy w treści jest kwota, której nie policzyliśmy.
 
     Model dostaje ceny gotowe i wolno mu je powtórzyć. Kwota, której nie ma wśród
     podanych, znaczy, że coś przeliczył sam — a wtedy klient dostanie liczbę, której
     nikt nie potwierdzi, i to ona będzie tą, o którą się upomni.
+
+    BUDŻET KLIENTA JEST KWOTĄ ZNANĄ. Podał go sam i agent musi móc się do niego odnieść
+    („szukam w Pana budżecie”, „przy stu dwudziestu tysiącach…”). Bez tego wyjątku
+    walidator wycinał każdą sensowną odpowiedź na obiekcję cenową i agent milczał
+    dokładnie wtedy, kiedy najbardziej powinien się odezwać.
+
+    Uznajemy też zapis skrócony: „120 tys.” to ta sama kwota co „120 000”, a klient
+    czyta ją łatwiej.
     """
-    znalezione = _AMOUNT.findall(text)
-    if not znalezione:
+    if not _AMOUNT.search(text):
         return False
+
     dozwolone = {
         re.sub(r"\D", "", f"{o['cena_pln']:.0f}") for o in (offers or []) if o.get("cena_pln")
     }
+    if budget_pln:
+        pelna = f"{budget_pln:.0f}"
+        dozwolone.add(pelna)
+        if budget_pln >= 1000 and budget_pln % 1000 == 0:
+            dozwolone.add(f"{budget_pln / 1000:.0f}")  # "120" z "120 tys."
+
     for fragment in _AMOUNT.finditer(text):
         cyfry = re.sub(r"\D", "", fragment.group(0))
         if cyfry and cyfry not in dozwolone:
@@ -287,18 +317,44 @@ def propose_reply(
     if surowa is None:
         return _fallback_draft(lead, score)
 
-    tresc = validate_message(surowa.get("message"))
-    if tresc and mentions_unknown_amount(tresc, offers):
+    # Rozróżniamy dwie różne rzeczy, które kończą się brakiem treści:
+    #  * model ŚWIADOMIE nie pisze (zwrócił pusty `message`) — to poprawna odpowiedź,
+    #  * walidator ODRZUCIŁ to, co napisał — to nasz problem, nie decyzja agenta.
+    # Sklejenie ich w jedno dawało brokerowi notatkę „agent celowo nie pisze” pod
+    # wiadomością, którą agent napisał i którą myśmy wycięli. Diagnoza była wtedy
+    # dokładnie odwrotna od prawdy.
+    napisany = str(surowa.get("message") or "").strip()
+    tresc = validate_message(napisany) if napisany else None
+    odrzucony = bool(napisany) and not tresc
+
+    if tresc and mentions_unknown_amount(tresc, offers, budget_pln=lead.budget_pln):
         logger.info("odrzucam propozycję — kwota spoza danych")
-        tresc = None
+        tresc, odrzucony = None, True
+
+    notatka_brokera = str(surowa.get("broker_note") or "").strip()
+
+    # Pusta wiadomość Z NOTATKĄ to świadoma odmowa pisania, przewidziana w prompcie:
+    # pytanie o warunki płatności, sprawa zamknięta, brak kontaktu.
+    if not tresc and not odrzucony and notatka_brokera:
+        return Draft(
+            lead_id=lead.id or 0,
+            text="",
+            channel=_channel_for(lead),
+            rationale=f"Agent celowo nie pisze. {notatka_brokera}",
+        )
 
     if not tresc:
-        return _fallback_draft(lead, score)
+        zapasowy = _fallback_draft(lead, score, history)
+        if zapasowy and odrzucony:
+            zapasowy.rationale = (
+                f"{zapasowy.rationale} UWAGA: propozycję modelu odrzucił walidator "
+                f"(złamane zasady treści), to jest wersja regułowa."
+            )
+        return zapasowy
 
     uzasadnienie = str(surowa.get("rationale") or "").strip()
-    notatka = str(surowa.get("broker_note") or "").strip()
-    if notatka:
-        uzasadnienie = f"{uzasadnienie}\n\nDla brokera: {notatka}".strip()
+    if notatka_brokera:
+        uzasadnienie = f"{uzasadnienie}\n\nDla brokera: {notatka_brokera}".strip()
 
     return Draft(
         lead_id=lead.id or 0,
@@ -370,7 +426,11 @@ def _ask_model(
 # ────────────────────────────────────────────────────────── wariant zapasowy
 
 
-def _fallback_draft(lead: Lead, score: LeadScore) -> Optional[Draft]:
+def _fallback_draft(
+    lead: Lead,
+    score: LeadScore,
+    history: Optional[list[Message]] = None,
+) -> Optional[Draft]:
     """Propozycja bez modelu — złożona z reguł.
 
     Potrzebna z dwóch powodów. Po pierwsze, sesja Claude Code czasem wygasa i skrzynka
@@ -419,6 +479,31 @@ def _fallback_draft(lead: Lead, score: LeadScore) -> Optional[Draft]:
             channel=_channel_for(lead),
             rationale=f"Wariant zapasowy (bez modelu). Brakuje: {brak}.",
             stage_after=_stage_after(lead),
+        )
+
+    # Komplet danych i nikt do klienta nie odezwał się jeszcze ani razu. Milczenie
+    # jest tu najgorszą z możliwych odpowiedzi: lead z kompletem kryteriów to lead
+    # gotowy do kupienia, a pierwsze wrażenie robi czas reakcji, nie treść.
+    # Potwierdzamy przyjęcie i mówimy, kiedy wrócimy — bez obiecywania konkretów.
+    #
+    # Warunek „ani razu” jest istotny. Bez niego reguła powtarzała tę samą wiadomość
+    # powitalną w odpowiedzi na każdą kolejną wiadomość klienta — a powtórzenie
+    # brzmi gorzej niż cisza, bo wygląda na automat, którym jest.
+    juz_pisalismy = any(m.author is Author.BROKER for m in (history or []))
+    if not juz_pisalismy and lead.stage in (Stage.NOWY, Stage.KWALIFIKACJA, Stage.SZUKANIE):
+        return Draft(
+            lead_id=lead.id or 0,
+            text=(
+                f"{powitanie}. Mam komplet informacji i zaczynam szukać. "
+                "Odezwę się, gdy będę miał konkretne auta do pokazania. "
+                "Czy mogę pisać na tym numerze?"
+            ),
+            channel=_channel_for(lead),
+            rationale=(
+                "Wariant zapasowy (bez modelu). Komplet kryteriów — potwierdzenie "
+                "przyjęcia i zapowiedź kontaktu. Uruchom wyszukiwanie."
+            ),
+            stage_after=Stage.SZUKANIE if lead.stage is not Stage.SZUKANIE else None,
         )
 
     return None
