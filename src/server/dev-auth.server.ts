@@ -1,11 +1,28 @@
 // Shared auth helper for /dev/* endpoints.
-// Requires DEV_LOGS_TOKEN env var. Access only allowed in non-production.
+// Wymaga DEV_LOGS_TOKEN. Na produkcji dodatkowo DEV_LOGS_ALLOW_PRODUCTION=true.
 
 const COOKIE_NAME = "dev_logs_token";
 
 function isDevEnvironment(): boolean {
   // Cloudflare Workers / Node — treat anything not "production" as dev.
   return (process.env.NODE_ENV ?? "development") !== "production";
+}
+
+/** Czy panel logów wolno otworzyć w tym środowisku.
+ *
+ * Poza produkcją: zawsze. Na produkcji tylko po jawnym włączeniu
+ * DEV_LOGS_ALLOW_PRODUCTION=true — i wtedy chroni go DEV_LOGS_TOKEN,
+ * limit prób logowania i cookie httpOnly.
+ *
+ * Sama blokada po NODE_ENV była martwym przełącznikiem: dashboard chodzi pod
+ * publiczną domeną WYŁĄCZNIE w trybie produkcyjnym, więc panel nie działał
+ * dokładnie tam, gdzie jest potrzebny — przy podglądzie trwającego wyszukiwania.
+ * Dwa osobne warunki (token ORAZ jawna zgoda) trzymają intencję autora: samo
+ * ustawienie tokena nie wystawia logów przez przypadek.
+ */
+export function isPanelAllowedHere(): boolean {
+  if (isDevEnvironment()) return true;
+  return (process.env.DEV_LOGS_ALLOW_PRODUCTION ?? "").trim() === "true";
 }
 
 function parseCookies(header: string | null): Record<string, string> {
@@ -26,9 +43,7 @@ export function getExpectedToken(): string | null {
   return t && t.length > 0 ? t : null;
 }
 
-export type DevAuthResult =
-  | { ok: true }
-  | { ok: false; status: 401 | 403 | 503; reason: string };
+export type DevAuthResult = { ok: true } | { ok: false; status: 401 | 403 | 503; reason: string };
 
 function timingSafeEqualStr(a: string, b: string): boolean {
   // Constant-time string compare to avoid token leakage via timing.
@@ -41,7 +56,7 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 }
 
 export function checkDevAuth(request: Request): DevAuthResult {
-  if (!isDevEnvironment()) {
+  if (!isPanelAllowedHere()) {
     return { ok: false, status: 403, reason: "Dev panel disabled in production" };
   }
   const expected = getExpectedToken();
@@ -54,9 +69,10 @@ export function checkDevAuth(request: Request): DevAuthResult {
   const url = new URL(request.url);
   const fromQuery = url.searchParams.get("token");
   const authHeader = request.headers.get("authorization");
-  const fromBearer = authHeader && authHeader.startsWith("Bearer ")
-    ? authHeader.slice("Bearer ".length).trim()
-    : null;
+  const fromBearer =
+    authHeader && authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : null;
 
   const provided = fromCookie || fromBearer || fromQuery;
   if (!provided) return { ok: false, status: 401, reason: "Missing token" };
@@ -116,7 +132,8 @@ function intFromEnv(name: string, fallback: number, min: number, max: number): n
 function getLimits() {
   return {
     maxAttempts: intFromEnv("DEV_LOGS_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS, 1, 100),
-    windowMs: intFromEnv("DEV_LOGS_ATTEMPT_WINDOW_SECONDS", DEFAULT_WINDOW_SECONDS, 10, 86400) * 1000,
+    windowMs:
+      intFromEnv("DEV_LOGS_ATTEMPT_WINDOW_SECONDS", DEFAULT_WINDOW_SECONDS, 10, 86400) * 1000,
     lockoutMs: intFromEnv("DEV_LOGS_LOCKOUT_SECONDS", DEFAULT_LOCKOUT_SECONDS, 10, 86400) * 1000,
   };
 }

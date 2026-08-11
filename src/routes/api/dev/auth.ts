@@ -12,6 +12,7 @@ import {
   getClientKey,
   getCookieTtlSeconds,
   getExpectedToken,
+  isPanelAllowedHere,
   registerFailedAttempt,
   resetAttempts,
 } from "@/server/dev-auth.server";
@@ -38,7 +39,10 @@ export const Route = createFileRoute("/api/dev/auth")({
             { status: 503 },
           );
         }
-        if ((process.env.NODE_ENV ?? "development") === "production") {
+        // Ta sama zasada co w checkDevAuth: na produkcji panel dziala tylko po
+        // jawnym DEV_LOGS_ALLOW_PRODUCTION=true. Inaczej logowanie bylo mozliwe
+        // wylacznie tam, gdzie panelu i tak nikt nie uzywa.
+        if (!isPanelAllowedHere()) {
           return Response.json(
             { ok: false, reason: "Dev panel disabled in production" },
             { status: 403 },
