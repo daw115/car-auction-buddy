@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
+import type { CarLot } from "@/lib/types";
 
 // ---------- typy ----------
 
@@ -74,6 +75,7 @@ export type InboxItem = {
   lead: Lead | null;
   score: LeadScore;
   wa_me: string | null;
+  search?: LeadSearch;
 };
 
 export type Inbox = {
@@ -207,6 +209,56 @@ export const recordClientReply = createServerFn({ method: "POST" })
         method: "POST",
         body: { text: data.text, channel: "whatsapp" },
       }),
+  );
+
+/** Podsumowanie przy leadzie — bez samych lotów, tylko ich liczba. */
+export type LeadSearch = {
+  status: "brak" | "running" | "done" | "error";
+  candidate_count: number;
+  error?: string | null;
+  finished_at?: string | null;
+  offer_ready: boolean;
+};
+
+/**
+ * Kandydat z wyszukiwania: lot razem z oceną, w kolejności z rankingu.
+ *
+ * Ocena zostaje przy locie, bo broker wybiera auta patrząc na nią i na uzasadnienie,
+ * a nie na sam opis. `CarLot` jest współdzielony z resztą panelu, więc karta leada
+ * i lista wyników pokazują to samo auto tak samo.
+ */
+export type LeadCandidate = {
+  lot: CarLot;
+  score: number | null;
+  recommendation: string | null;
+  reasoning: string | null;
+  is_top: boolean;
+};
+
+/**
+ * Uruchamia wyszukiwanie z kryteriów leada. Wraca od razu — scrape leci w tle
+ * i trwa minuty, więc postęp czyta się przez `getLeadCandidates`.
+ */
+export const startLeadSearch = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
+  .handler(
+    async ({ data }): Promise<{ started: boolean; warnings: string[] }> =>
+      backendRequest({ path: `/api/sales/leads/${data.leadId}/search`, method: "POST" }),
+  );
+
+export const getLeadCandidates = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      status: LeadSearch["status"];
+      candidates: LeadCandidate[];
+      offer_ready: boolean;
+      error?: string | null;
+    }> => backendRequest({ path: `/api/sales/leads/${data.leadId}/candidates`, method: "GET" }),
   );
 
 export const regenerateDraft = createServerFn({ method: "POST" })

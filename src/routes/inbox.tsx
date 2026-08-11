@@ -18,6 +18,7 @@ import {
   Loader2,
   MessageSquare,
   RefreshCw,
+  Search,
   Send,
   X,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import {
   recordClientReply,
   regenerateDraft,
   rejectDraft,
+  startLeadSearch,
   type Inbox,
   type InboxItem,
   type LeadScore,
@@ -84,6 +86,78 @@ function ScoreBreakdown({ score }: { score: LeadScore }) {
           <span className="truncate text-muted-foreground/80">{c.note}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Wyszukiwanie z kryteriów leada — ostatnie brakujące ogniwo agenta.
+ *
+ * Do tej pory marka, model, rocznik i budżet leżały w bazie, a broker i tak
+ * przepisywał je ręcznie do formularza na stronie głównej. Tu jest jeden przycisk,
+ * a wynik ląduje przy leadzie.
+ */
+function SearchRow({ item, onDone }: { item: InboxItem; onDone: () => void }) {
+  const start = useServerFn(startLeadSearch);
+  const [busy, setBusy] = useState(false);
+  const stan = item.search;
+  const lead = item.lead;
+
+  // Bez marki nie ma czego szukać — backend i tak odmówi, więc nie pokazujemy
+  // przycisku, który na pewno zwróci błąd.
+  if (!lead?.make) return null;
+
+  const handleStart = async () => {
+    setBusy(true);
+    try {
+      const wynik = await start({ data: { leadId: item.lead_id } });
+      toast.success(
+        wynik.warnings.length
+          ? `Szukam. Uwaga: brakuje ${wynik.warnings.join(", ")}.`
+          : "Szukam — wynik pojawi się za kilka minut.",
+      );
+      onDone();
+    } catch (error) {
+      const msg = String(error);
+      toast.error(
+        msg.includes("409") ? "Dla tego leada wyszukiwanie już trwa." : `Nie udało się: ${msg}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const opis =
+    stan?.status === "running"
+      ? "Szukam…"
+      : stan?.status === "done"
+        ? `${stan.candidate_count} ${stan.candidate_count === 1 ? "kandydat" : "kandydatów"}`
+        : stan?.status === "error"
+          ? `Wyszukiwanie padło: ${stan.error ?? "nieznany błąd"}`
+          : "Nie szukaliśmy jeszcze";
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+      <span className="text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">
+          {lead.make} {lead.model ?? ""} {lead.year_from ? `${lead.year_from}+` : ""}
+        </span>
+        {" · "}
+        {opis}
+      </span>
+      <Button
+        size="sm"
+        variant={stan?.offer_ready ? "secondary" : "outline"}
+        onClick={handleStart}
+        disabled={busy || stan?.status === "running"}
+      >
+        {busy || stan?.status === "running" ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Search className="mr-2 h-4 w-4" />
+        )}
+        {stan?.status === "done" ? "Szukaj ponownie" : "Szukaj aut"}
+      </Button>
     </div>
   );
 }
@@ -257,6 +331,8 @@ function DraftCard({ item, onDone }: { item: InboxItem; onDone: () => void }) {
           Odrzuć
         </Button>
       </div>
+
+      <SearchRow item={item} onDone={onDone} />
 
       <div className="space-y-2 border-t pt-3">
         <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
