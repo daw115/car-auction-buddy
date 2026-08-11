@@ -135,6 +135,40 @@ def _clean_text(value: Optional[str]) -> Optional[str]:
     return value or None
 
 
+def find_client_by_contact(
+    *, email: Optional[str] = None, phone: Optional[str] = None
+) -> Optional[int]:
+    """Id istniejącego klienta o tym mailu albo telefonie. Tylko odczyt.
+
+    Ta sama kolejność dopasowania, co w `upsert_client` (najpierw mail, potem
+    telefon) — inaczej obie funkcje odpowiadałyby na to samo pytanie inaczej.
+
+    Powstało dla awansu leada na klienta: `upsert_client` zwraca id, ale nie mówi,
+    czy je utworzyło, czy znalazło. Brokerowi robi to różnicę — „podpięto do
+    istniejącego klienta" i „założono nowego" to dwie różne wiadomości.
+    """
+    email = _clean_text(email)
+    phone = _clean_text(phone)
+    if not email and not phone:
+        return None
+
+    init_db()
+    with _connect() as conn:
+        if email:
+            row = conn.execute(
+                "SELECT id FROM clients WHERE lower(email) = lower(?) LIMIT 1", (email,)
+            ).fetchone()
+            if row:
+                return int(row["id"])
+        if phone:
+            row = conn.execute(
+                "SELECT id FROM clients WHERE phone = ? LIMIT 1", (phone,)
+            ).fetchone()
+            if row:
+                return int(row["id"])
+    return None
+
+
 def upsert_client(client: Optional[dict[str, Any]]) -> Optional[int]:
     client = client or {}
     name = _clean_text(client.get("name"))

@@ -200,6 +200,9 @@ def _lead_json(lead: Lead) -> dict[str, Any]:
         "bought_before": lead.bought_before,
         "referred_by": lead.referred_by,
         "notes": lead.notes,
+        # Ustawione = lead awansował na klienta. Panel po tym poznaje, czy pokazać
+        # przycisk awansu, czy link do kartoteki.
+        "client_id": lead.client_id,
         "created_at": lead.created_at.isoformat() if lead.created_at else None,
         "updated_at": lead.updated_at.isoformat() if lead.updated_at else None,
         "last_client_message_at": (
@@ -831,6 +834,86 @@ async def patch_lead(lead_id: int, payload: LeadPatch) -> dict[str, Any]:
         # wyszedł z parkingu — panel od razu widzi, czy się udało.
         "gate": {"passes": werdykt.passes, "reasons": werdykt.reasons, "unlock": werdykt.unlock},
         "changed": sorted(zmiany),
+    }
+
+
+@router.post("/api/sales/leads/{lead_id}/promote")
+async def promote_lead(lead_id: int) -> dict[str, Any]:
+    """Awansuje leada na klienta w bazie klientów — ostatnie ogniwo lejka.
+
+    `Lead.client_id` istniał w modelu od początku i nic go nigdy nie zapisywało,
+    więc wygrana sprzedaż nie zostawiała śladu: `api/client_database.py` i `sales/`
+    żyły obok siebie jako dwa niepołączone zbiory.
+
+    AWANS JEST OSOBNĄ, JAWNĄ AKCJĄ. Nie robimy go automatycznie przy przejściu na
+    etap `wygrana`: pierwsze pomyłkowe kliknięcie w select etapu zakładałoby wtedy
+    klienta, którego nikt nie chciał, a kartotek klientów się nie kasuje odruchowo.
+
+    IDEMPOTENTNE. Drugie wywołanie zwraca tego samego klienta i `created: false` —
+    ten sam wzorzec, co `approve_and_send`, bo panel bywa klikany dwa razy.
+    """
+    from api import client_database
+
+    lead = db.get_lead(lead_id)
+    if lead is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    if lead.client_id:
+        return {
+            "lead": _lead_json(lead),
+            "client_id": lead.client_id,
+            "created": False,
+            "linked": False,
+            "message": "Ten lead jest już powiązany z klientem.",
+        }
+
+    if not lead.contactable:
+        raise HTTPException(
+            422,
+            "Bez telefonu i maila nie ma czego zapisać w bazie klientów — "
+            "kartoteka bez kontaktu jest bezużyteczna.",
+        )
+
+    # Sprawdzamy PRZED zapisem, żeby wiedzieć, czy klient powstał, czy się podpiął.
+    # `upsert_client` zwraca id w obu przypadkach i sam tej różnicy nie zdradza,
+    # a brokerowi ona robi różnicę.
+    istniejacy = client_database.find_client_by_contact(email=lead.email, phone=lead.phone)
+
+    client_id = client_database.upsert_client(
+        {
+            "name": lead.name,
+            "email": lead.email,
+            "phone": lead.phone,
+            # Notatki leada niosą to, czego nie ma w polach: czego klient szuka
+            # i co ustalono w rozmowie. Zgubienie ich przy awansie znaczyłoby,
+            # że kartoteka klienta zaczyna się od pustej strony.
+            "notes": lead.notes or lead.raw_request or None,
+        }
+    )
+    if client_id is None:
+        raise HTTPException(500, "Nie udało się zapisać klienta.")
+
+    lead.client_id = client_id
+    db.update_lead(lead)
+    lead = db.get_lead(lead_id) or lead
+
+    podpiety = istniejacy is not None
+    logger.info(
+        "[leads] #%s → klient #%s (%s)",
+        lead_id,
+        client_id,
+        "podpięty do istniejącego" if podpiety else "nowy",
+    )
+    return {
+        "lead": _lead_json(lead),
+        "client_id": client_id,
+        "created": not podpiety,
+        "linked": podpiety,
+        "message": (
+            f"Podpięto do istniejącego klienta #{client_id}."
+            if podpiety
+            else f"Założono klienta #{client_id}."
+        ),
     }
 
 

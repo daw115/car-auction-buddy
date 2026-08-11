@@ -325,3 +325,91 @@ def test_walidacja_patcha(client, auth, body, kod):
 
 def test_patch_nieistniejacego_leada_to_404(client, auth):
     assert client.patch("/api/sales/leads/9999", json={"notes": "x"}, headers=auth).status_code == 404
+
+
+# ──────────────────────── awans leada na klienta — ostatnie ogniwo lejka
+
+
+def test_promote_wymaga_tokena(client):
+    assert client.post("/api/sales/leads/1/promote").status_code == 401
+
+
+def test_awans_zaklada_klienta_i_wiaze_go_z_leadem(client, auth):
+    """`Lead.client_id` istniał w modelu i nic go nigdy nie zapisywało — wygrana
+    sprzedaż nie zostawiała śladu w bazie klientów."""
+    zapisany = db.create_lead(lead())
+    r = client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["created"] is True
+    assert body["client_id"] > 0
+    assert db.get_lead(zapisany.id).client_id == body["client_id"]
+
+
+def test_awans_jest_idempotentny(client, auth):
+    """Panel bywa klikany dwa razy — drugi klik nie może założyć drugiej kartoteki."""
+    zapisany = db.create_lead(lead())
+    pierwszy = client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth).json()
+    drugi = client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth).json()
+
+    assert drugi["client_id"] == pierwszy["client_id"]
+    assert drugi["created"] is False
+
+
+def test_klient_o_tym_samym_numerze_jest_podpiety_a_nie_duplikowany(client, auth):
+    """Klient, który wraca po drugie auto, ma jedną kartotekę, nie dwie."""
+    from api import client_database
+
+    istniejacy = client_database.upsert_client(
+        {"name": "Marek Kowalski", "phone": "48605083832"}
+    )
+    zapisany = db.create_lead(lead(phone="48605083832"))
+
+    body = client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth).json()
+    assert body["client_id"] == istniejacy
+    assert body["created"] is False
+    assert body["linked"] is True
+
+
+def test_lead_bez_kontaktu_nie_awansuje(client, auth):
+    """Kartoteka klienta bez telefonu i maila jest bezużyteczna."""
+    zapisany = db.create_lead(lead(phone=None, email=None))
+    r = client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth)
+    assert r.status_code == 422
+
+
+def test_notatki_leada_trafiaja_do_kartoteki(client, auth):
+    """Zgubienie ich przy awansie znaczyłoby, że kartoteka zaczyna się od pustej strony."""
+    from api import client_database
+
+    zapisany = db.create_lead(lead(notes="szuka drugiego auta dla żony"))
+    body = client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth).json()
+
+    klient = client_database.find_client_by_contact(phone=zapisany.phone)
+    assert klient == body["client_id"]
+
+
+def test_awans_nie_dzieje_sie_sam_przy_zmianie_etapu(client, auth):
+    """Pierwsze pomyłkowe kliknięcie w select etapu zakładałoby klienta,
+    którego nikt nie chciał — a kartotek nie kasuje się odruchowo."""
+    zapisany = db.create_lead(lead())
+    client.put(
+        f"/api/sales/leads/{zapisany.id}/stage", json={"stage": "wygrana"}, headers=auth
+    )
+    assert db.get_lead(zapisany.id).client_id is None
+
+
+def test_client_id_jest_widoczny_w_karcie_leada(client, auth):
+    """Panel po tym poznaje, czy pokazać przycisk awansu, czy link do kartoteki."""
+    zapisany = db.create_lead(lead())
+    przed = client.get(f"/api/sales/leads/{zapisany.id}", headers=auth).json()
+    assert przed["client_id"] is None
+
+    client.post(f"/api/sales/leads/{zapisany.id}/promote", headers=auth)
+    po = client.get(f"/api/sales/leads/{zapisany.id}", headers=auth).json()
+    assert po["client_id"] is not None
+
+
+def test_promote_nieistniejacego_leada_to_404(client, auth):
+    assert client.post("/api/sales/leads/9999/promote", headers=auth).status_code == 404

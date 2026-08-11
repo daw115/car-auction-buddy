@@ -33,6 +33,27 @@ def _pin_usd_rate(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_client_db(tmp_path, monkeypatch):
+    """Baza klientów w katalogu tymczasowym — dla KAŻDEGO testu.
+
+    `api/client_database.py` czyta `APP_DATABASE_PATH` RAZ, przy imporcie, do stałej
+    modułu `DB_PATH`, a `_connect()` używa już tej stałej. Ustawienie zmiennej
+    środowiskowej w teście nie ma więc żadnego wpływu — trzeba podmienić samą stałą.
+
+    Bez tego każdy test dotykający klientów (np. awansu leada) dopisywałby wiersze
+    do produkcyjnej bazy aplikacji i nic by tego nie zgłosiło. Ta sama pułapka
+    zdarzyła się już raz przy `sales/db.py`.
+    """
+    from api import client_database
+
+    monkeypatch.setattr(client_database, "DB_PATH", tmp_path / "clients.db")
+    # W produkcji schemat zakłada `init_db()` z lifespanu aplikacji. Testy startu
+    # nie mają, więc bez tego pierwsze `upsert_client` pada na "no such table".
+    client_database.init_db()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolated_sales_db(tmp_path):
     """Baza agenta sprzedażowego w katalogu tymczasowym — dla KAŻDEGO testu.
 
