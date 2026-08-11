@@ -222,3 +222,106 @@ def test_wyszukiwanie_bez_wynikow_nie_jest_gotowe_do_oferty(client, auth):
 def test_nieistniejacy_lead_to_404(client, auth):
     assert client.post("/api/sales/leads/9999/search", headers=auth).status_code == 404
     assert client.get("/api/sales/leads/9999/candidates", headers=auth).status_code == 404
+
+
+# ────────────────────────────── edycja leada (PATCH) — to, co broker robi po telefonie
+
+
+def test_patch_wymaga_tokena(client):
+    assert client.patch("/api/sales/leads/1", json={"budget_pln": 300_000}).status_code == 401
+
+
+def test_broker_wpisuje_budzet_po_telefonie(client, auth):
+    """Bez tego zapisu budżet podany przez telefon nie miał gdzie trafić, a bez
+    budżetu nie ma sufitu ceny aukcyjnej i werdykt PONAD BUDŻET nigdy nie padał."""
+    zapisany = db.create_lead(lead(budget_pln=None))
+    r = client.patch(f"/api/sales/leads/{zapisany.id}", json={"budget_pln": 350_000}, headers=auth)
+    assert r.status_code == 200
+    assert r.json()["lead"]["budget_pln"] == 350_000
+    assert r.json()["changed"] == ["budget_pln"]
+
+
+def test_ocena_wraca_przeliczona_a_nie_zapamietana(client, auth):
+    """LeadScore nie jest trzymany w bazie — liczy się na żądanie z aktualnych pól.
+
+    Zwrócenie samego leada zostawiłoby panel z nowym budżetem obok starego segmentu.
+    """
+    zapisany = db.create_lead(lead(budget_pln=None, make=None, model=None, damage_ok=None))
+    przed = client.get(f"/api/sales/leads/{zapisany.id}", headers=auth).json()["score"]["score"]
+
+    po = client.patch(
+        f"/api/sales/leads/{zapisany.id}",
+        json={"budget_pln": 400_000, "make": "BMW", "model": "X5", "damage_ok": True},
+        headers=auth,
+    ).json()["score"]["score"]
+    assert po > przed
+
+
+def test_pominiete_pole_nie_kasuje_wartosci(client, auth):
+    """Sedno trójstanu: PATCH bez `damage_ok` nie może skasować odpowiedzi klienta."""
+    zapisany = db.create_lead(lead(damage_ok=True))
+    client.patch(f"/api/sales/leads/{zapisany.id}", json={"notes": "dzwonił"}, headers=auth)
+    assert db.get_lead(zapisany.id).damage_ok is True
+
+
+def test_jawny_null_kasuje_wartosc(client, auth):
+    """`null` znaczy „wracamy do 'nie pytaliśmy'", i to jest inna intencja niż brak pola."""
+    zapisany = db.create_lead(lead(damage_ok=True))
+    client.patch(f"/api/sales/leads/{zapisany.id}", json={"damage_ok": None}, headers=auth)
+    assert db.get_lead(zapisany.id).damage_ok is None
+
+
+def test_damage_ok_false_to_nie_to_samo_co_brak_odpowiedzi(client, auth):
+    """False blokuje leada w sicie, None tylko obniża pewność oceny."""
+    zapisany = db.create_lead(lead())
+    r = client.patch(f"/api/sales/leads/{zapisany.id}", json={"damage_ok": False}, headers=auth)
+    assert r.json()["gate"]["passes"] is False
+    assert any("po szkodzie" in powod for powod in r.json()["gate"]["reasons"])
+
+
+def test_edycja_wyciaga_leada_z_parkingu(client, auth):
+    """Po to zwykle edytuje się budżet — panel ma od razu widzieć, czy się udało."""
+    zapisany = db.create_lead(lead(budget_pln=80_000.0))
+    assert client.get("/api/sales/inbox", headers=auth).json()["parked"]
+
+    wynik = client.patch(
+        f"/api/sales/leads/{zapisany.id}", json={"budget_pln": 350_000}, headers=auth
+    ).json()
+    assert wynik["gate"]["passes"] is True
+
+
+def test_numer_nalezacy_do_innego_leada_jest_odrzucany(client, auth):
+    """Dwa leady pod jednym numerem rozbijają deduplikację: kolejne zgłoszenie
+    trafia w jeden, a rozmowa toczy się w drugim."""
+    pierwszy = db.create_lead(lead(phone="48600100200"))
+    db.create_lead(lead(name="Jan", phone="48601200300"))
+
+    r = client.patch(f"/api/sales/leads/{pierwszy.id}", json={"phone": "601200300"}, headers=auth)
+    assert r.status_code == 409
+    assert "Scal" in r.json()["detail"]
+
+
+def test_wlasny_numer_mozna_zapisac_ponownie(client, auth):
+    """Zapis tego samego numeru nie jest kolizją z samym sobą."""
+    zapisany = db.create_lead(lead(phone="48600100200"))
+    r = client.patch(f"/api/sales/leads/{zapisany.id}", json={"phone": "600100200"}, headers=auth)
+    assert r.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "body, kod",
+    [
+        ({}, 400),                              # nie ma czego zmieniać
+        ({"settlement": "gotówka"}, 422),       # tylko private/company
+        ({"budget_pln": -1}, 422),
+        ({"year_from": 1900}, 422),
+        ({"kolor": "czarny"}, 422),             # nieznane pole to literówka, nie życzenie
+    ],
+)
+def test_walidacja_patcha(client, auth, body, kod):
+    zapisany = db.create_lead(lead())
+    assert client.patch(f"/api/sales/leads/{zapisany.id}", json=body, headers=auth).status_code == kod
+
+
+def test_patch_nieistniejacego_leada_to_404(client, auth):
+    assert client.patch("/api/sales/leads/9999", json={"notes": "x"}, headers=auth).status_code == 404

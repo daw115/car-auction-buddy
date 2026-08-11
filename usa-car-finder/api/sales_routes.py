@@ -24,7 +24,7 @@ from typing import Any, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from sales import db, intake
 from sales.models import Author, Channel, Draft, Lead, LeadScore, Stage
@@ -119,6 +119,38 @@ class RejectIn(BaseModel):
 
 class StageIn(BaseModel):
     stage: Stage
+
+
+class LeadPatch(BaseModel):
+    """Poprawka danych leada — wszystko opcjonalne, brak pola znaczy „bez zmian".
+
+    TRÓJSTAN `damage_ok` JEST TU SEDNEM, NIE DETALEM.
+
+    `None` znaczy „nie pytaliśmy", a nie „klient się nie zgadza" — i od tej różnicy
+    zależy waga składowej w ocenie oraz to, czy lead trafia na parking. Samo
+    `Optional[bool]` tego nie utrzyma: pole pominięte i pole wysłane jako `null`
+    dają w modelu dokładnie tę samą wartość.
+
+    Rozstrzyga `model_fields_set` (czyli `exclude_unset`): Pydantic pamięta, które
+    pola klient faktycznie przysłał. Bez tego każdy PATCH bez `damage_ok` kasowałby
+    odpowiedź, którą broker zapisał wcześniej.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = Field(default=None, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=32)
+    email: Optional[str] = Field(default=None, max_length=160)
+    make: Optional[str] = Field(default=None, max_length=60)
+    model: Optional[str] = Field(default=None, max_length=60)
+    year_from: Optional[int] = Field(default=None, ge=1980, le=2100)
+    year_to: Optional[int] = Field(default=None, ge=1980, le=2100)
+    budget_pln: Optional[float] = Field(default=None, gt=0, le=10_000_000)
+    settlement: Optional[str] = Field(default=None, pattern="^(private|company)$")
+    max_odometer_mi: Optional[int] = Field(default=None, gt=0, le=1_000_000)
+    damage_ok: Optional[bool] = None
+    timeline_days: Optional[int] = Field(default=None, ge=0, le=3650)
+    notes: Optional[str] = Field(default=None, max_length=4000)
 
 
 # ───────────────────────────────────────────────────────────── serializacja
@@ -734,6 +766,72 @@ async def reject(draft_id: int, body: RejectIn) -> dict[str, Any]:
     if not db.reject_draft(draft_id, reason=body.reason):
         raise HTTPException(409, "ten draft został już zatwierdzony albo odrzucony")
     return {"rejected": True}
+
+
+@router.patch("/api/sales/leads/{lead_id}")
+async def patch_lead(lead_id: int, payload: LeadPatch) -> dict[str, Any]:
+    """Poprawka danych leada — to, co broker robi po telefonie z klientem.
+
+    Do tej pory jedynym zapisem z panelu była zmiana etapu, więc budżetu podanego
+    przez telefon nie dało się nigdzie wpisać. Bez budżetu nie ma sufitu ceny
+    aukcyjnej, a bez sufitu żaden lot nie dostaje werdyktu PONAD BUDŻET i cała ta
+    mechanika stoi bezużyteczna.
+
+    Zmieniamy WYŁĄCZNIE pola, które przyszły w żądaniu (`exclude_unset`). Pominięte
+    zostają nietknięte, a jawne `null` kasuje wartość — to są dwie różne intencje
+    i przy `damage_ok` różnica jest znacząca.
+
+    Ocena wraca przeliczona, bo `LeadScore` nie jest trzymany w bazie: liczy się na
+    żądanie z aktualnych pól. Zwrócenie samego leada zostawiłoby panel z nowym
+    budżetem obok starego segmentu.
+    """
+    from sales.gate import check as gate_check
+    from sales.intake import _normalize_phone
+
+    lead = db.get_lead(lead_id)
+    if lead is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    zmiany = payload.model_dump(exclude_unset=True)
+    if not zmiany:
+        raise HTTPException(400, "Puste żądanie — nie ma czego zmieniać.")
+
+    if "phone" in zmiany:
+        zmiany["phone"] = _normalize_phone(zmiany["phone"])
+    if "email" in zmiany and zmiany["email"]:
+        zmiany["email"] = zmiany["email"].strip() or None
+
+    # Dwa leady pod tym samym numerem rozbijają deduplikację: kolejne zgłoszenie
+    # od tego klienta trafi w jeden z nich, a rozmowa toczy się w drugim.
+    for pole in ("phone", "email"):
+        nowa = zmiany.get(pole)
+        if not nowa or nowa == getattr(lead, pole):
+            continue
+        kolizja = db.find_lead_by_contact(**{pole: nowa})
+        if kolizja is not None and kolizja.id != lead_id:
+            raise HTTPException(
+                409,
+                f"Ten {'numer' if pole == 'phone' else 'adres'} należy już do leada "
+                f"#{kolizja.id} ({kolizja.display_name()}). Scal je zamiast duplikować.",
+            )
+
+    for pole, wartosc in zmiany.items():
+        setattr(lead, pole, wartosc)
+    db.update_lead(lead)
+
+    lead = db.get_lead(lead_id) or lead
+    score = score_lead(lead)
+    werdykt = gate_check(lead, score)
+    logger.info("[leads] #%s zmienione: %s → %s", lead_id, ", ".join(zmiany), score.summary())
+
+    return {
+        "lead": _lead_json(lead),
+        "score": _score_json(score),
+        # Dodatkowo, bo edycja budżetu robi się zwykle właśnie po to, żeby lead
+        # wyszedł z parkingu — panel od razu widzi, czy się udało.
+        "gate": {"passes": werdykt.passes, "reasons": werdykt.reasons, "unlock": werdykt.unlock},
+        "changed": sorted(zmiany),
+    }
 
 
 @router.put("/api/sales/leads/{lead_id}/stage")
