@@ -77,8 +77,17 @@ echo "[manheim-browser] Chrome, profil $PROFILE_DIR"
 # Dymki Chrome ("Restore pages?", "Can't update Chrome") wyskakują nad nagłówkiem
 # strony i zasłaniają pole wyszukiwania — na wirtualnym ekranie nie ma ich kto
 # zamknąć, a przy automatyzacji przechwytują kliknięcia. Wyłączamy je u źródła.
+# Port debugowania na pętli zwrotnej: pozwala czytać DOM otwartych kart
+# (wywiad z klienta z WhatsApp Web) bez klikania po ekranie i bez OCR-owania
+# zrzutów. Inny numer niż 9222, bo tam stoi osobna przeglądarka od wzbogacania
+# bidfax. UWAGA: nie podpinaj się pod kartę Manheima — BidWise trzyma na niej
+# jedyny slot chrome.debugger i taka próba zamyka kartę w kilka sekund.
+DEBUG_PORT="${MANHEIM_DEBUG_PORT:-9333}"
+
 google-chrome \
     --user-data-dir="$PROFILE_DIR" \
+    --remote-debugging-port="$DEBUG_PORT" \
+    --remote-debugging-address=127.0.0.1 \
     --no-sandbox \
     --no-first-run \
     --no-default-browser-check \
