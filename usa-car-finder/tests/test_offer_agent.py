@@ -448,3 +448,26 @@ def test_over_budget_label_comes_from_scoring_not_a_copy():
     from scoring import OVER_BUDGET
 
     assert offer_agent.OVER_BUDGET_LABEL is OVER_BUDGET
+
+
+def test_agent_prompt_is_looked_up_in_several_places(tmp_path, monkeypatch):
+    """Release na serwerze dostaje tylko usa-car-finder/, a prompt leży w korzeniu repo.
+
+    Regresja z produkcji: pliku nie było, oferta cicho szła bez prozy modelu przez
+    kilkanaście wdrożeń — fallback działał, więc nikt tego nie zauważył.
+    """
+    w_aplikacji = tmp_path / "agent-oferta-auto-usa.md"
+    w_aplikacji.write_text("PROMPT Z RELEASE", encoding="utf-8")
+    monkeypatch.setattr(
+        offer_agent, "AGENT_PROMPT_CANDIDATES",
+        (tmp_path / "nie-ma.md", w_aplikacji),
+    )
+    assert offer_agent._load_agent_prompt() == "PROMPT Z RELEASE"
+
+
+def test_missing_prompt_names_every_place_it_looked(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        offer_agent, "AGENT_PROMPT_CANDIDATES", (tmp_path / "a.md", tmp_path / "b.md")
+    )
+    with pytest.raises(FileNotFoundError, match="a.md.*b.md"):
+        offer_agent._load_agent_prompt()

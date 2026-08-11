@@ -62,7 +62,20 @@ from pricing.import_calculator import (
     excise_rate_for,
 )
 
-AGENT_PROMPT_PATH = Path(__file__).parent.parent.parent / "agent-oferta-auto-usa.md"
+_AGENT_PROMPT_NAME = "agent-oferta-auto-usa.md"
+
+# Prompt agenta leży w korzeniu repo, a release na serwerze dostaje tylko katalog
+# usa-car-finder/ — przez to w produkcji pliku NIE BYŁO i oferta od wdrożenia szła bez
+# prozy modelu. Awaria była cicha: fallback deterministyczny działa, więc mail wychodził
+# poprawny, tylko uboższy, a jedynym śladem było ostrzeżenie w briefie brokera.
+# Dlatego szukamy w kilku miejscach zamiast ufać jednej ścieżce.
+_PACKAGE_DIR = Path(__file__).resolve().parent.parent          # usa-car-finder/
+AGENT_PROMPT_CANDIDATES = (
+    _PACKAGE_DIR.parent / _AGENT_PROMPT_NAME,                  # korzeń repo (praca lokalna)
+    _PACKAGE_DIR / _AGENT_PROMPT_NAME,                         # wewnątrz aplikacji (release)
+    _PACKAGE_DIR / "report" / _AGENT_PROMPT_NAME,
+)
+AGENT_PROMPT_PATH = AGENT_PROMPT_CANDIDATES[0]
 
 Settlement = Literal["private", "company"]
 FeeTier = Literal["basic", "premium"]
@@ -393,9 +406,14 @@ def build_car(
 
 
 def _load_agent_prompt() -> str:
-    if not AGENT_PROMPT_PATH.exists():
-        raise FileNotFoundError(f"Brak pliku agenta: {AGENT_PROMPT_PATH}")
-    return AGENT_PROMPT_PATH.read_text(encoding="utf-8")
+    """Prompt systemowy agenta z pierwszej istniejącej lokalizacji."""
+    for candidate in AGENT_PROMPT_CANDIDATES:
+        if candidate.exists():
+            return candidate.read_text(encoding="utf-8")
+    raise FileNotFoundError(
+        "Brak pliku agenta — szukałem w: "
+        + ", ".join(str(path) for path in AGENT_PROMPT_CANDIDATES)
+    )
 
 
 def _facts_for_model(cars: list[OfferCar], client_name: Optional[str], query: str) -> str:
