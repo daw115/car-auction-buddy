@@ -39,6 +39,7 @@ import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
 import { Route as ApiPublicHooksCasesRefreshRouteImport } from './routes/api/public/hooks/cases-refresh'
+import { Route as ApiDevLogsStreamRouteImport } from './routes/api/dev/logs/stream'
 
 const WatchlistRoute = WatchlistRouteImport.update({
   id: '/watchlist',
@@ -193,6 +194,11 @@ const ApiPublicHooksCasesRefreshRoute =
     path: '/api/public/hooks/cases-refresh',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiDevLogsStreamRoute = ApiDevLogsStreamRouteImport.update({
+  id: '/api/dev/logs/stream',
+  path: '/api/dev/logs/stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -253,6 +260,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -286,6 +294,7 @@ export interface FileRoutesById {
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -320,6 +329,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/api/dev/auth'
     | '/api/reports/pdf'
+    | '/api/dev/logs/stream'
     | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -351,6 +361,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/api/dev/auth'
     | '/api/reports/pdf'
+    | '/api/dev/logs/stream'
     | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -383,6 +394,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/api/dev/auth'
     | '/api/reports/pdf'
+    | '/api/dev/logs/stream'
     | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -410,6 +422,7 @@ export interface RootRouteChildren {
   KlientLeadIdRoute: typeof KlientLeadIdRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
+  ApiDevLogsStreamRoute: typeof ApiDevLogsStreamRoute
   ApiPublicHooksCasesRefreshRoute: typeof ApiPublicHooksCasesRefreshRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
@@ -626,6 +639,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksCasesRefreshRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/dev/logs/stream': {
+      id: '/api/dev/logs/stream'
+      path: '/api/dev/logs/stream'
+      fullPath: '/api/dev/logs/stream'
+      preLoaderRoute: typeof ApiDevLogsStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -694,6 +714,7 @@ const rootRouteChildren: RootRouteChildren = {
   KlientLeadIdRoute: KlientLeadIdRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
+  ApiDevLogsStreamRoute: ApiDevLogsStreamRoute,
   ApiPublicHooksCasesRefreshRoute: ApiPublicHooksCasesRefreshRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }

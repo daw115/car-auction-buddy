@@ -1,5 +1,8 @@
 # Logs
-logs
+# Ukośnik na początku jest istotny: samo "logs" dopasowuje KAŻDY katalog o tej nazwie,
+# także src/routes/api/dev/logs/ — przez co route SSE panelu /dev/logs nigdy nie trafił
+# do repozytorium ani na serwer. UI wołał go i dostawał 404, co wyglądało jak "brak logów".
+/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
