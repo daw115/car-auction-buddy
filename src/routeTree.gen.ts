@@ -10,7 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SprawdzVinRouteImport } from './routes/sprawdz-vin'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RecordsRouteImport } from './routes/records'
 import { Route as JobsRouteImport } from './routes/jobs'
@@ -34,7 +34,6 @@ import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
-import { Route as ApiScraperLogsStreamRouteImport } from './routes/api/scraper-logs.stream'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
@@ -46,9 +45,9 @@ const WatchlistRoute = WatchlistRouteImport.update({
   path: '/watchlist',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
+const SprawdzVinRoute = SprawdzVinRouteImport.update({
+  id: '/sprawdz-vin',
+  path: '/sprawdz-vin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -166,11 +165,6 @@ const ApiConfigRoute = ApiConfigRouteImport.update({
   path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiScraperLogsStreamRoute = ApiScraperLogsStreamRouteImport.update({
-  id: '/api/scraper-logs/stream',
-  path: '/api/scraper-logs/stream',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
   id: '/api/reports/pdf',
   path: '/api/reports/pdf',
@@ -210,7 +204,7 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/sprawdz-vin': typeof SprawdzVinRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
@@ -228,7 +222,6 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
-  '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
   '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -242,7 +235,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/sprawdz-vin': typeof SprawdzVinRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
@@ -260,7 +253,6 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
-  '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
   '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -276,7 +268,7 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
-  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/sprawdz-vin': typeof SprawdzVinRoute
   '/watchlist': typeof WatchlistRoute
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
@@ -294,7 +286,6 @@ export interface FileRoutesById {
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
-  '/api/scraper-logs/stream': typeof ApiScraperLogsStreamRoute
   '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -311,7 +302,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/records'
     | '/settings'
-    | '/sitemap.xml'
+    | '/sprawdz-vin'
     | '/watchlist'
     | '/api/config'
     | '/api/diagnostics'
@@ -329,7 +320,6 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/api/dev/auth'
     | '/api/reports/pdf'
-    | '/api/scraper-logs/stream'
     | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -343,7 +333,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/jobs'
     | '/records'
-    | '/sitemap.xml'
+    | '/sprawdz-vin'
     | '/watchlist'
     | '/api/config'
     | '/api/diagnostics'
@@ -361,7 +351,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/api/dev/auth'
     | '/api/reports/pdf'
-    | '/api/scraper-logs/stream'
     | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -376,7 +365,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/records'
     | '/settings'
-    | '/sitemap.xml'
+    | '/sprawdz-vin'
     | '/watchlist'
     | '/api/config'
     | '/api/diagnostics'
@@ -394,7 +383,6 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/api/dev/auth'
     | '/api/reports/pdf'
-    | '/api/scraper-logs/stream'
     | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -410,7 +398,7 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRoute
   RecordsRoute: typeof RecordsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
-  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  SprawdzVinRoute: typeof SprawdzVinRoute
   WatchlistRoute: typeof WatchlistRoute
   ApiConfigRoute: typeof ApiConfigRoute
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
@@ -422,7 +410,6 @@ export interface RootRouteChildren {
   KlientLeadIdRoute: typeof KlientLeadIdRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
-  ApiScraperLogsStreamRoute: typeof ApiScraperLogsStreamRoute
   ApiPublicHooksCasesRefreshRoute: typeof ApiPublicHooksCasesRefreshRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
@@ -436,11 +423,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchlistRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
+    '/sprawdz-vin': {
+      id: '/sprawdz-vin'
+      path: '/sprawdz-vin'
+      fullPath: '/sprawdz-vin'
+      preLoaderRoute: typeof SprawdzVinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -604,13 +591,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/scraper-logs/stream': {
-      id: '/api/scraper-logs/stream'
-      path: '/api/scraper-logs/stream'
-      fullPath: '/api/scraper-logs/stream'
-      preLoaderRoute: typeof ApiScraperLogsStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/reports/pdf': {
       id: '/api/reports/pdf'
       path: '/api/reports/pdf'
@@ -702,7 +682,7 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRoute,
   RecordsRoute: RecordsRoute,
   SettingsRoute: SettingsRouteWithChildren,
-  SitemapDotxmlRoute: SitemapDotxmlRoute,
+  SprawdzVinRoute: SprawdzVinRoute,
   WatchlistRoute: WatchlistRoute,
   ApiConfigRoute: ApiConfigRoute,
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
@@ -714,7 +694,6 @@ const rootRouteChildren: RootRouteChildren = {
   KlientLeadIdRoute: KlientLeadIdRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
-  ApiScraperLogsStreamRoute: ApiScraperLogsStreamRoute,
   ApiPublicHooksCasesRefreshRoute: ApiPublicHooksCasesRefreshRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }

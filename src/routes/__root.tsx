@@ -1,4 +1,13 @@
-import { Outlet, Link, createRootRouteWithContext, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  HeadContent,
+  Scripts,
+  useRouterState,
+} from "@tanstack/react-router";
+
+import { isPublicRoute } from "@/lib/public-routes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, themeBootstrapScript } from "@/components/theme-provider";
@@ -13,7 +22,6 @@ import appCss from "../styles.css?url";
 interface RouterContext {
   queryClient: QueryClient;
 }
-
 
 function NotFoundComponent() {
   return (
@@ -49,12 +57,28 @@ export const Route = createRootRouteWithContext<RouterContext>()({
           "Panel operacyjny do wyszukiwania aut z aukcji Copart, IAAI i Manheim, analiza AI i raporty dla klientów.",
       },
       { property: "og:title", content: "USA Car Finder — panel operatora" },
-      { property: "og:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
+      {
+        property: "og:description",
+        content:
+          "Web application for searching US auction cars, managing clients, AI analysis, and report generation.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:title", content: "USA Car Finder — panel operatora" },
-      { name: "twitter:description", content: "Web application for searching US auction cars, managing clients, AI analysis, and report generation." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Web application for searching US auction cars, managing clients, AI analysis, and report generation.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/65dd55e3-8f53-4cfe-8132-d0a422ee2cdb/id-preview-a3a5a654--edf9b460-b0a8-4a4d-baf9-8b64e6cbcb5c.lovable.app-1777578956307.png",
+      },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
@@ -86,6 +110,22 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  // Strona publiczna renderuje się bez bramki hasła i bez panelu bocznego —
+  // to jest landing dla klientów z zewnątrz, nie ekran brokera. Lista dozwolonych
+  // ścieżek jest jedna i dopasowuje dokładnie: `src/lib/public-routes.ts`.
+  if (isPublicRoute(pathname)) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <Outlet />
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
@@ -106,4 +146,3 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
-
