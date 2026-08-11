@@ -42,7 +42,12 @@ def _isolated_sales_db(tmp_path):
     produkcyjnej bazy aplikacji i nic tego nie zgłaszało.
     """
     from sales import db
+    from watch import db as watch_db
 
     db.use_database(tmp_path / "sales.db")
+    # Nasłuchy trafiają do tego samego pliku aplikacji, więc podlegają tej samej
+    # pułapce. Zdarzyło się: test nasłuchu czytał wiersze, których sam nie stworzył.
+    watch_db.use_database(tmp_path / "sales.db")
     yield
     db.use_database(None)
+    watch_db.use_database(None)
