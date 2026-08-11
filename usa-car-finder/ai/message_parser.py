@@ -316,6 +316,26 @@ def _call_kiro(message: str) -> dict:
     return _parse_json_loose(text)
 
 
+def _call_claude_code(message: str) -> dict:
+    """Parser wymagań przez Claude Code w trybie headless.
+
+    Dashboard pozwalał wybrać tego dostawcę dla raportów i parsowania wiadomości,
+    ale dispatch go nie znał — wybór wpadał w gałąź `else` i szedł na Anthropic,
+    czyli na klucz od martwego proxy. Rozmowa z klientem kończyła się wtedy
+    komunikatem "Brak ANTHROPIC_API_KEY" mimo poprawnie odczytanej treści.
+    """
+    from ai import claude_code
+
+    raw = claude_code.call(
+        SYSTEM_PROMPT,
+        message,
+        model_env="CLAUDE_CODE_REPORTS_MODEL",
+        timeout=int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "300")),
+        label="parsowanie wiadomości klienta",
+    )
+    return _parse_json_loose(raw)
+
+
 def parse_client_message(message: str) -> dict:
     """Główna funkcja — provider dispatch z fallback.
 
@@ -327,15 +347,29 @@ def parse_client_message(message: str) -> dict:
 
     try:
         from api.settings_db import get_ai_provider_override
-        provider = (get_ai_provider_override("llm_reports_provider") or os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
+        provider = (get_ai_provider_override("llm_reports_provider") or os.getenv("LLM_REPORTS_PROVIDER", "claude-code") or "claude-code").lower()
     except Exception:
-        provider = (os.getenv("LLM_REPORTS_PROVIDER", "anthropic") or "anthropic").lower()
+        provider = (os.getenv("LLM_REPORTS_PROVIDER", "claude-code") or "claude-code").lower()
     fallback = os.getenv("LLM_REPORTS_FALLBACK_ANTHROPIC", "true").lower() == "true"
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
 
     last_exc: Optional[Exception] = None
 
-    if provider == "gemini":
+    if provider in ("claude-code", "claude_code", "claudecode"):
+        try:
+            return _call_claude_code(message)
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                f"[MessageParser] Claude Code failed: {type(exc).__name__}: {str(exc)[:120]}"
+            )
+            if fallback and has_anthropic:
+                try:
+                    return _call_anthropic(message)
+                except Exception as exc2:
+                    last_exc = exc2
+                    logger.warning(f"[MessageParser] Anthropic fallback failed: {type(exc2).__name__}")
+    elif provider == "gemini":
         try:
             return _call_gemini(message)
         except Exception as exc:
