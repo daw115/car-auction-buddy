@@ -309,3 +309,43 @@ def test_voice_intake_returns_criteria_and_never_starts_a_scrape(monkeypatch):
     assert "Q7" in payload["transcript"]["text"]
     # Kontrakt: żadnego job_id — wyszukiwanie zleca człowiek.
     assert "job_id" not in payload and "jobId" not in payload
+
+
+def test_whatsapp_intake_says_plainly_when_no_chat_is_open(monkeypatch):
+    """Czytamy to, co broker otworzył — nie szukamy rozmów sami."""
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+    from scraper import whatsapp_reader
+
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
+
+    async def brak():
+        raise whatsapp_reader.WhatsappUnavailable("Żadna rozmowa nie jest otwarta")
+
+    monkeypatch.setattr(whatsapp_reader, "read_open_conversation", brak)
+
+    with TestClient(api_main.app) as client:
+        response = client.post("/api/intake/whatsapp")
+
+    assert response.status_code == 409
+    assert "rozmowa" in response.json()["detail"].lower()
+
+
+def test_conversation_is_rendered_for_the_requirements_parser():
+    """Parser wymagań dostaje rozmowę z zaznaczonym, kto co powiedział."""
+    from scraper.whatsapp_reader import Conversation
+
+    rozmowa = Conversation(
+        chat="+48 535 113 530",
+        messages=[
+            {"kierunek": "klient", "tekst": "Szukam Audi Q7"},
+            {"kierunek": "broker", "tekst": "Jaki budżet?"},
+            {"kierunek": "klient", "tekst": "Do 200 tysięcy pod klucz"},
+        ],
+        total=3,
+    )
+
+    tekst = rozmowa.as_text()
+
+    assert tekst.startswith("klient: Szukam Audi Q7")
+    assert "broker: Jaki budżet?" in tekst

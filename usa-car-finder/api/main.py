@@ -3520,6 +3520,61 @@ async def intake_voice(
     return payload
 
 
+@app.post("/api/intake/whatsapp")
+async def intake_whatsapp(_auth: None = Depends(_require_bearer)):
+    """Rozmowa otwarta w WhatsApp Web operatora -> spisane wymagania klienta.
+
+    Czyta TO, CO BROKER OTWORZYŁ. Nie przegląda listy czatów i nie wchodzi
+    w rozmowy z własnej inicjatywy — wybór, czyją korespondencję czytamy, należy
+    do człowieka. Niczego też nie wysyła.
+    """
+    from scraper.whatsapp_reader import WhatsappUnavailable, read_open_conversation
+
+    try:
+        conversation = await read_open_conversation()
+    except WhatsappUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("[intake] odczyt WhatsAppa nie powiódł się")
+        raise HTTPException(status_code=502, detail=f"Odczyt padł: {exc}") from exc
+
+    payload: dict = {
+        "chat": conversation.chat,
+        "messages": conversation.messages,
+        "total": conversation.total,
+        "criteria": None,
+        "assumed": [],
+        "summary": "",
+    }
+    text = conversation.as_text()
+    if not text.strip():
+        payload["summary"] = "Rozmowa jest pusta."
+        return payload
+
+    from ai.criteria_from_message import criteria_from_parsed
+    from ai.message_parser import parse_client_message
+
+    try:
+        parsed = await asyncio.to_thread(parse_client_message, text)
+    except Exception as exc:
+        payload["summary"] = f"Rozmowa odczytana, ale bez kryteriów: {exc}"
+        return payload
+
+    parsed.pop("_warnings", None)
+    payload["summary"] = parsed.pop("_summary", "") or ""
+    result = criteria_from_parsed(parsed)
+    if result is None:
+        payload["summary"] = (
+            payload["summary"] or "Klient nie podał marki — bez niej nie ma czego szukać."
+        )
+        return payload
+
+    payload["criteria"] = result.criteria.model_dump(mode="json")
+    payload["assumed"] = result.assumed
+    payload["summary"] = result.summary or payload["summary"]
+    return payload
+
+
 class ParseClientMessageRequest(BaseModel):
     """Wiadomość od klienta do sparsowania na ClientCriteria."""
     message: str
