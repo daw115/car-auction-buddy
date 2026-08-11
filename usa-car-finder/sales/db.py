@@ -125,6 +125,25 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_draft_lead ON lead_drafts(lead_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_draft_pending
                 ON lead_drafts(approved_at, rejected_at);
+
+            -- Wyszukiwania uruchomione z leada. Osobna tabela, a nie kolumny przy
+            -- leadzie, bo dla jednego klienta puszcza się scrape wielokrotnie:
+            -- po korekcie budżetu, po zmianie rocznika, po przegranej licytacji.
+            -- Nadpisywanie poprzedniego wyniku kasowałoby historię tego, co już
+            -- klientowi pokazaliśmy.
+            CREATE TABLE IF NOT EXISTS lead_searches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+                job_id TEXT,
+                status TEXT NOT NULL DEFAULT 'running',
+                criteria_json TEXT NOT NULL DEFAULT '{}',
+                candidates_json TEXT NOT NULL DEFAULT '[]',
+                error TEXT,
+                created_at TEXT NOT NULL,
+                finished_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_lead_searches
+                ON lead_searches(lead_id, created_at DESC);
             """
         )
 
@@ -472,3 +491,95 @@ def approve_and_send(draft_id: int, *, edited_text: Optional[str] = None) -> Opt
             created_at=_parse_dt(now),
             sent_at=_parse_dt(now),
         )
+
+
+# ────────────────────────────────────────────────── wyszukiwania z leada
+
+
+def start_lead_search(lead_id: int, criteria: dict) -> int:
+    """Otwiera wyszukiwanie dla leada. Zwraca jego id.
+
+    Wiersz powstaje ZANIM scrape ruszy, ze statusem 'running'. Dzięki temu broker
+    widzi w panelu, że coś się dzieje, zamiast patrzeć na pustą listę przez kilka
+    minut i uruchamiać wyszukiwanie drugi raz.
+    """
+    init_db()
+    now = _now_iso()
+    with _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO lead_searches (lead_id, status, criteria_json, created_at)"
+            " VALUES (?, 'running', ?, ?)",
+            (lead_id, json.dumps(criteria, ensure_ascii=False), now),
+        )
+        conn.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now, lead_id))
+        return int(cursor.lastrowid)
+
+
+def finish_lead_search(search_id: int, *, job_id: Optional[str], candidates: list) -> None:
+    init_db()
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE lead_searches SET status = 'done', job_id = ?, candidates_json = ?,"
+            " finished_at = ? WHERE id = ?",
+            (job_id, json.dumps(candidates, ensure_ascii=False, default=str), _now_iso(), search_id),
+        )
+
+
+def fail_lead_search(search_id: int, error: str) -> None:
+    """Zapisuje błąd zamiast go gubić.
+
+    Wyszukiwanie leci w tle, więc wyjątek nie ma komu wypłynąć. Bez tego wiersza
+    lead zostawałby na zawsze w stanie 'running' i wyglądał jak trwające zadanie.
+    """
+    init_db()
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE lead_searches SET status = 'error', error = ?, finished_at = ? WHERE id = ?",
+            (error[:500], _now_iso(), search_id),
+        )
+
+
+def _row_to_search(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "lead_id": row["lead_id"],
+        "job_id": row["job_id"],
+        "status": row["status"],
+        "criteria": json.loads(row["criteria_json"] or "{}"),
+        "candidates": json.loads(row["candidates_json"] or "[]"),
+        "error": row["error"],
+        "created_at": row["created_at"],
+        "finished_at": row["finished_at"],
+    }
+
+
+def latest_lead_search(lead_id: int) -> Optional[dict[str, Any]]:
+    """Ostatnie wyszukiwanie dla leada — to, które broker właśnie ogląda."""
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM lead_searches WHERE lead_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+            (lead_id,),
+        ).fetchone()
+    return _row_to_search(row) if row else None
+
+
+def lead_searches(lead_id: int, *, limit: int = 10) -> list[dict[str, Any]]:
+    init_db()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM lead_searches WHERE lead_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (lead_id, limit),
+        ).fetchall()
+    return [_row_to_search(r) for r in rows]
+
+
+def running_search(lead_id: int) -> bool:
+    """Czy dla tego leada już coś leci — żeby nie puszczać drugiego scrape'u."""
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM lead_searches WHERE lead_id = ? AND status = 'running' LIMIT 1",
+            (lead_id,),
+        ).fetchone()
+    return row is not None

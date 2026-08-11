@@ -404,6 +404,7 @@ async def inbox() -> dict[str, Any]:
             **_draft_json(draft, lead),
             "score": _score_json(score),
             "wa_me": wa_me_link(lead.phone, draft.final_text),
+            "search": _search_summary(lead.id),
         }
         # Sito rozdziela skrzynkę na dwie listy zamiast ukrywać cokolwiek. Lead odrzucony
         # nie znika — leży widocznie, z powodem i z warunkiem powrotu. Ukrywanie go
@@ -515,6 +516,29 @@ async def lead_detail(lead_id: int) -> dict[str, Any]:
         "pending_drafts": [
             _draft_json(d) for d in db.pending_drafts() if d.lead_id == lead_id
         ],
+        "search": _search_summary(lead_id),
+    }
+
+
+def _search_summary(lead_id: int) -> dict[str, Any]:
+    """Stan wyszukiwania przy leadzie — bez samych lotów.
+
+    Loty potrafią mieć po kilkadziesiąt pól i listę zdjęć; wpakowanie ich tutaj
+    robiłoby z karty leada odpowiedź na kilkaset kilobajtów. Pełną listę wydaje
+    `GET /api/sales/leads/{id}/candidates`, wołane dopiero po kliknięciu.
+    """
+    wyszukiwanie = db.latest_lead_search(lead_id)
+    if wyszukiwanie is None:
+        return {"status": "brak", "candidate_count": 0, "offer_ready": False}
+    # `candidate_count`, nie `candidates` — endpoint szczegółowy zwraca pod tą nazwą
+    # TABLICĘ lotów. Ta sama nazwa dla liczby i dla listy to pułapka, na której front
+    # wywala się dopiero w runtime.
+    return {
+        "status": wyszukiwanie["status"],
+        "candidate_count": len(wyszukiwanie["candidates"]),
+        "error": wyszukiwanie["error"],
+        "finished_at": wyszukiwanie["finished_at"],
+        "offer_ready": wyszukiwanie["status"] == "done" and bool(wyszukiwanie["candidates"]),
     }
 
 
@@ -534,6 +558,78 @@ async def record_reply(lead_id: int, body: ReplyIn) -> dict[str, Any]:
         "lead": _lead_json(wynik.lead),
         "score": _score_json(wynik.score),
         "draft": _draft_json(wynik.draft) if wynik.draft else None,
+    }
+
+
+@router.post("/api/sales/leads/{lead_id}/search")
+async def start_lead_search(lead_id: int, background: BackgroundTasks) -> dict[str, Any]:
+    """Uruchamia wyszukiwanie z kryteriów leada — bez przepisywania czegokolwiek.
+
+    Do tej pory to był jedyny krok, którego agent nie robił: marka, model, rocznik
+    i budżet leżały w bazie, a broker i tak wpisywał je ręcznie w formularzu na
+    stronie głównej. Etap `SZUKANIE` istniał w modelu i nic go nie wypełniało.
+
+    Scrape trwa minuty, więc leci w tle, a endpoint wraca od razu ze statusem.
+    Postęp i wynik czyta się przez `GET /api/sales/leads/{id}/candidates`.
+    """
+    from sales.search import readiness
+
+    lead = db.get_lead(lead_id)
+    if lead is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    gotowosc = readiness(lead)
+    if not gotowosc.ready:
+        raise HTTPException(422, f"Nie da się szukać — {gotowosc.reason()}.")
+
+    # Drugi scrape dla tego samego leada tylko zajmuje kolejkę i daje ten sam wynik.
+    if db.running_search(lead_id):
+        raise HTTPException(409, "Dla tego leada wyszukiwanie już trwa.")
+
+    background.add_task(_run_lead_search, lead_id)
+    return {
+        "started": True,
+        "lead_id": lead_id,
+        "warnings": gotowosc.missing,
+    }
+
+
+def _run_lead_search(lead_id: int) -> None:
+    """Zadanie w tle. Wyjątek zapisuje `sales/search.py`, tu go tylko logujemy."""
+    import asyncio
+
+    from sales.search import run_search_for_lead
+
+    try:
+        asyncio.run(run_search_for_lead(lead_id))
+    except Exception as exc:  # noqa: BLE001 — zadanie w tle nie ma komu zgłosić błędu
+        logger.warning("[sales] wyszukiwanie dla leada #%s nie doszło do skutku: %s", lead_id, exc)
+
+
+@router.get("/api/sales/leads/{lead_id}/candidates")
+async def lead_candidates(lead_id: int) -> dict[str, Any]:
+    """Auta znalezione dla leada — to, z czego broker wybiera do oferty.
+
+    Zwraca też `offer_ready`: czy jest już z czego składać ofertę. Bez tego panel
+    musiałby sam interpretować status i pustą listę, a to są dwie różne sytuacje
+    („jeszcze szukamy" i „nic nie znaleźliśmy").
+    """
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    wyszukiwanie = db.latest_lead_search(lead_id)
+    if wyszukiwanie is None:
+        return {"status": "brak", "candidates": [], "offer_ready": False}
+
+    return {
+        "status": wyszukiwanie["status"],
+        "job_id": wyszukiwanie["job_id"],
+        "criteria": wyszukiwanie["criteria"],
+        "candidates": wyszukiwanie["candidates"],
+        "error": wyszukiwanie["error"],
+        "created_at": wyszukiwanie["created_at"],
+        "finished_at": wyszukiwanie["finished_at"],
+        "offer_ready": wyszukiwanie["status"] == "done" and bool(wyszukiwanie["candidates"]),
     }
 
 
