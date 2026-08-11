@@ -211,10 +211,18 @@ def _ceiling_for(lot: CarLot, profile: "ClientProfile") -> Optional[BudgetCeilin
         return profile.budget
     if not profile.budget_pln:
         return None
+    from pricing.tariff import rates_for_lot
     from scoring.budget import max_bid_for_budget
 
+    # Stawka cła wyprowadzona z VIN-u tego auta, a nie domyślna. Auto zmontowane w USA
+    # ma cło 0% (preferencja UE 2026/1455), więc przy tym samym budżecie klienta stać
+    # na wyraźnie wyższą stawkę na aukcji. Liczony bez tego sufit stemplował werdyktem
+    # PONAD BUDŻET auta, które w budżecie siedzą.
     return max_bid_for_budget(
-        profile.budget_pln, settlement=profile.settlement, state=lot.location_state
+        profile.budget_pln,
+        settlement=profile.settlement,
+        state=lot.location_state,
+        duty_rate=rates_for_lot(lot).duty_rate,
     )
 
 

@@ -1340,6 +1340,17 @@ def _require_bearer(authorization: Optional[str] = Header(default=None)) -> None
         raise HTTPException(status_code=403, detail="Nieprawidłowy token")
 
 
+# ─── Agent sprzedażowy ────────────────────────────────────────────────
+# Podpięty tutaj, a nie w `sales_routes.py`, bo bramka autoryzacji siedzi w tym pliku.
+# Publiczny formularz z landing page'a idzie osobnym routerem, bez tokena — token
+# umieszczony na stronie publicznej nie jest tajemnicą, więc tamten endpoint chroni
+# limit zapytań i pole-pułapka (`api/sales_routes.py`).
+from api import sales_routes  # noqa: E402 — po definicji _require_bearer
+
+app.include_router(sales_routes.public_router)
+app.include_router(sales_routes.router, dependencies=[Depends(_require_bearer)])
+
+
 class UnavailableSourceCapability(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

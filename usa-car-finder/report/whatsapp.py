@@ -21,7 +21,7 @@ from typing import Iterable, Optional
 from urllib.parse import quote
 
 from parser.models import CarLot
-from scoring.budget import Settlement, landed_cost_pln
+from scoring.budget import Settlement, landed_cost_for_lot, landed_cost_pln
 
 MAX_OFFERS = 4
 MIN_OFFERS = 3
@@ -115,9 +115,17 @@ def build_draft(
         price = lot.current_bid_usd or lot.buy_now_price_usd
         if not price:
             continue
-        landed = landed_cost_pln(
-            price, settlement=settlement, state=lot.location_state, usd_rate=usd_rate
-        )
+        # Cenę bierzemy z wersji "per lot", bo tylko ona zna kraj montażu i napęd —
+        # a od nich zależy cło (0% albo 10%) i akcyza. Wariant po samej cenie zostaje
+        # jako awaryjny dla wywołań z jawnym kursem, np. z testów porównawczych.
+        if usd_rate:
+            landed = landed_cost_pln(
+                price, settlement=settlement, state=lot.location_state, usd_rate=usd_rate
+            )
+        else:
+            landed = landed_cost_for_lot(lot, settlement=settlement)
+        if landed is None:
+            continue
         over = bool(budget_pln and landed > budget_pln)
         if over and not allow_over_budget:
             continue

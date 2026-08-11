@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from pricing import fx as _fx
 from pricing.import_calculator import (
     CLEARANCE_DE_PLN,
     CUSTOMS_DUTY_RATE,
@@ -44,21 +45,46 @@ def calculate_full_cost(
     settlement: str = "private",
     fee_tier: str = "basic",
     electric: bool = False,
+    lot: Optional[object] = None,
 ) -> dict:
     """Pełny koszt sprowadzenia auta rozbity na pozycje do szablonu.
 
     `grand_total_pln` to cena dla klienta: sprowadzenie plus prowizja. Naprawa stoi
     OBOK sumy, nie w niej — szacunek AI nie jest kosztem, który ktokolwiek zafakturuje,
     a wliczony po cichu rozjeżdżałby raport z ofertą.
+
+    Podaj `lot`, jeśli go masz. Wtedy cło i akcyza wychodzą z danych auta — kraju montażu
+    z VIN-u i rodzaju napędu — zamiast z domyślnych stawek. Bez lota liczymy zachowawczo
+    (cło 10%), bo to samo robi `landed_cost_pln`, a te dwie ścieżki muszą podawać
+    identyczną kwotę: raport per lot i mail ofertowy opisują to samo auto.
     """
     bid = max(0.0, float(bid_usd or 0))
-    excise_rate = excise_rate_for(engine_liters, electric=electric)
     towing = (
         towing_for_location(location_state, location_city)
         if location_city
         else state_median_towing(location_state)
     )
-    costs = calculate_import_costs(bid_usd=bid, towing_usd=towing, excise_rate=excise_rate)
+
+    rates = None
+    if lot is not None:
+        from pricing.tariff import rates_for_lot
+
+        rates = rates_for_lot(lot)
+
+    if rates is not None:
+        excise_rate = rates.excise_rate
+        duty_rate = rates.duty_rate
+    else:
+        excise_rate = excise_rate_for(engine_liters, electric=electric)
+        duty_rate = CUSTOMS_DUTY_RATE
+
+    costs = calculate_import_costs(
+        bid_usd=bid,
+        towing_usd=towing,
+        excise_rate=excise_rate,
+        duty_rate=duty_rate,
+        usd_rate=_fx.current_rate(),
+    )
 
     rate = float(costs["usd_rate"])
     private = settlement == "private"
@@ -88,7 +114,7 @@ def calculate_full_cost(
         # Odprawa i podatki
         "customs_base_pln": int(customs_base_pln),
         "duty_pln": int(duty_pln),
-        "duty_pct": int(CUSTOMS_DUTY_RATE * 100),
+        "duty_pct": round(duty_rate * 100),
         "vat_pln": int(vat_pln),
         "vat_pct": vat_pct,
         "vat_where": "DE" if private else "PL",

@@ -22,25 +22,35 @@ logger = logging.getLogger(__name__)
 DEBUG_URL = os.getenv("OPERATOR_CHROME_CDP_URL", "http://127.0.0.1:9333")
 MAX_MESSAGES = int(os.getenv("WHATSAPP_MAX_MESSAGES", "80"))
 
-# Selektory WhatsApp Web bywają zmieniane bez zapowiedzi, więc czytamy po
-# klasach kierunku wiadomości (message-in/message-out), które przetrwały już
-# kilka przebudów interfejsu, a nie po wygenerowanych nazwach klas.
+# Nazwy klas w WhatsApp Web są generowane i zmieniają się bez zapowiedzi —
+# `message-in` / `message-out` już nie istnieją (zmierzone: przy pełnej rozmowie
+# na ekranie ekstraktor zwracał zero wiadomości). Trzymamy się dwóch rzeczy,
+# które są częścią kontraktu z czytnikami ekranu i z protokołem:
+#   * `[role=row]` — jeden wiersz listy wiadomości,
+#   * `data-id` w formacie "<odNas>_<czat>_<idWiadomosci>", gdzie pierwszy
+#     człon to "true" dla wiadomości wysłanych przez nas.
 _EXTRACT_JS = """
 (() => {
   const main = document.querySelector('#main');
   if (!main) return JSON.stringify({ error: 'brak_otwartej_rozmowy' });
   const header = (main.querySelector('header') || {}).innerText || '';
-  const rows = Array.from(main.querySelectorAll('div.message-in, div.message-out'));
-  const messages = rows.map((row) => {
-    const bubble = row.querySelector('span.selectable-text') || row;
-    return {
-      kierunek: row.classList.contains('message-out') ? 'broker' : 'klient',
-      tekst: (bubble.innerText || '').trim(),
-    };
-  }).filter((m) => m.tekst);
+  const rows = Array.from(main.querySelectorAll('[data-id]'));
+  const seen = new Set();
+  const messages = [];
+  let bezTekstu = 0;
+  for (const row of rows) {
+    const id = row.getAttribute('data-id') || '';
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const bubble = row.querySelector('span.selectable-text');
+    const tekst = (bubble ? bubble.innerText : '').trim();
+    if (!tekst) { bezTekstu += 1; continue; }
+    messages.push({ kierunek: id.startsWith('true_') ? 'broker' : 'klient', tekst: tekst });
+  }
   return JSON.stringify({
     rozmowa: header.split('\\n')[0] || '',
     wszystkich: messages.length,
+    bezTekstu: bezTekstu,
     wiadomosci: messages.slice(-%d),
   });
 })()
@@ -52,6 +62,9 @@ class Conversation:
     chat: str
     messages: list[dict] = field(default_factory=list)
     total: int = 0
+    #: Wiersze bez tekstu (zdjęcia, głosówki, pliki) — nie da się z nich wyczytać
+    #: wymagań, ale broker ma wiedzieć, że w rozmowie było coś jeszcze.
+    attachments: int = 0
 
     def as_text(self) -> str:
         """Rozmowa w formie, którą rozumie parser wymagań klienta."""
@@ -116,6 +129,7 @@ async def read_open_conversation() -> Conversation:
         chat=data.get("rozmowa") or "",
         messages=data.get("wiadomosci") or [],
         total=int(data.get("wszystkich") or 0),
+        attachments=int(data.get("bezTekstu") or 0),
     )
     logger.info(
         "[whatsapp] odczytano rozmowę '%s': %d wiadomości (z %d)",

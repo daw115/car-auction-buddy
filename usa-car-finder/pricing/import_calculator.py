@@ -151,8 +151,19 @@ def calculate_import_costs(
     freight_usd: float = DEFAULT_FREIGHT_USD,
     usd_rate: float = DEFAULT_USD_RATE,
     excise_rate: float = DEFAULT_EXCISE_RATE,
+    duty_rate: float = CUSTOMS_DUTY_RATE,
     topup_pln: float = 0,
 ) -> dict[str, float]:
+    """Czysta arytmetyka importu. Stawki przychodzą z zewnątrz.
+
+    `duty_rate` jest parametrem od sierpnia 2026, bo cło przestało być stałą: auta
+    zmontowane w USA mają 0% (rozporządzenie UE 2026/1455), reszta nadal 10%. Który
+    wariant dotyczy konkretnego auta, rozstrzyga `pricing/tariff.py` — tutaj wchodzi
+    już gotowa liczba, żeby wzory dały się testować bez znajomości przepisów.
+
+    Domyślne 10% jest celowo zachowawcze: wywołanie bez podanej stawki liczy drożej,
+    więc pominięcie parametru w nowym kodzie zawyży wycenę, zamiast ją po cichu zaniżyć.
+    """
     auction_fee_usd = bid_usd * AUCTION_FEE_RATE
     usa_total_usd = (
         additional_costs_usd
@@ -168,14 +179,14 @@ def calculate_import_costs(
     claim_service_usd = service_insurance_usd / 2
 
     private_customs_base_pln = (usa_total_pln * PRIVATE_CUSTOMS_BASE_RATE) + (FIXED_EXCISE_BASE_USD * usd_rate)
-    private_duty_pln = private_customs_base_pln * CUSTOMS_DUTY_RATE
+    private_duty_pln = private_customs_base_pln * duty_rate
     private_vat_de_pln = (private_customs_base_pln + private_duty_pln) * DE_VAT_RATE
     private_de_fees_pln = CLEARANCE_DE_PLN + private_duty_pln + private_vat_de_pln + TRANSPORT_PRIVATE_PLN
     private_before_excise_pln = usa_total_pln + private_de_fees_pln
     private_excise_pln = (private_before_excise_pln * 0.5) * excise_rate
     private_total_pln = private_before_excise_pln + private_excise_pln
 
-    company_duty_pln = usa_total_pln * CUSTOMS_DUTY_RATE
+    company_duty_pln = usa_total_pln * duty_rate
     company_de_fees_pln = CLEARANCE_DE_PLN + company_duty_pln
     company_excise_pln = ((bid_usd + FIXED_EXCISE_BASE_USD) * usd_rate) * excise_rate
     company_net_pln = usa_total_pln + company_de_fees_pln + company_excise_pln
@@ -203,6 +214,7 @@ def calculate_import_costs(
         "freight_usd": freight_usd,
         "usd_rate": usd_rate,
         "excise_rate": excise_rate,
+        "duty_rate": duty_rate,
         "auction_fee_usd": auction_fee_usd,
         "usa_total_usd": usa_total_usd,
         "usa_total_pln": usa_total_pln,
@@ -230,17 +242,61 @@ def calculate_import_costs(
     }
 
 
-def calculate_lot_import_costs(lot: Any, *, excise_rate: float = DEFAULT_EXCISE_RATE) -> Optional[dict[str, float]]:
+def calculate_lot_import_costs(
+    lot: Any,
+    *,
+    excise_rate: Optional[float] = None,
+    duty_rate: Optional[float] = None,
+    usd_rate: Optional[float] = None,
+) -> Optional[dict[str, Any]]:
+    """Koszty importu konkretnego lota — ze stawkami wyprowadzonymi z jego danych.
+
+    To jest wąskie gardło całej aplikacji: liczą z niego raporty, mail ofertowy,
+    wiadomość WhatsApp i artefakty klienta. Dlatego stawki wybierane są tutaj, raz,
+    a nie w każdym z tych miejsc osobno — inaczej klient zobaczyłby dwie różne kwoty
+    za to samo auto, zależnie od tego, którym kanałem przyszła.
+
+    Wyprowadzamy trzy rzeczy, których wcześniej nie było:
+
+      * cło — 0% dla aut zmontowanych w USA, 10% dla reszty i dla elektryków
+        (`pricing/tariff.py`, kraj montażu z pierwszego znaku VIN-u),
+      * akcyzę — z uwzględnieniem stawek hybrydowych 1,55% i 9,3%,
+      * kurs dolara — z NBP z narzutem, zamiast wpisanych na sztywno 4,00 zł.
+
+    Każdy z tych parametrów da się nadpisać. Jawnie podana stawka wygrywa z wyliczoną,
+    bo broker, który sprawdził VIN u agencji celnej, wie więcej niż nasz parser.
+
+    Zwracany słownik niesie dodatkowo `duty_reason`, `excise_reason` i `pricing_assumptions`
+    — to materiał do briefu brokera, nie do oferty klienta.
+    """
     bid_usd = lot.current_bid_usd or lot.buy_now_price_usd
     if not bid_usd:
         return None
 
+    # Import lokalny: tariff sięga po engine_liters_from_trim z tego modułu, więc
+    # zależność na poziomie modułu zamknęłaby cykl.
+    from pricing import fx
+    from pricing.tariff import rates_for_lot
+
+    rates = rates_for_lot(lot)
+    rate_info = fx.usd_rate() if usd_rate is None else None
+
     towing_usd = towing_for_location(lot.location_state, lot.location_city)
-    return calculate_import_costs(
+    costs = calculate_import_costs(
         bid_usd=float(bid_usd),
         towing_usd=towing_usd,
-        excise_rate=excise_rate,
+        excise_rate=rates.excise_rate if excise_rate is None else excise_rate,
+        duty_rate=rates.duty_rate if duty_rate is None else duty_rate,
+        usd_rate=rate_info.rate if rate_info is not None else float(usd_rate),
     )
+
+    costs["duty_reason"] = rates.duty_reason
+    costs["excise_reason"] = rates.excise_reason
+    costs["drivetrain"] = rates.drivetrain.value
+    costs["assembly_country"] = rates.country_name
+    costs["pricing_assumptions"] = list(rates.assumptions)
+    costs["fx_source"] = rate_info.summary() if rate_info is not None else "kurs podany jawnie"
+    return costs
 
 
 def format_usd(value: Optional[float]) -> str:

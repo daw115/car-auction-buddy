@@ -295,10 +295,17 @@ def _engine_liters(lot: CarLot) -> Optional[float]:
     return engine_liters_from_trim(lot.trim, lot.model)
 
 
-def _excise_rate(lot: CarLot, criteria: Optional[ClientCriteria]) -> float:
-    """Stawka akcyzy dla tego auta — reguła wspólna z raportami per lot."""
-    electric = bool(criteria and (criteria.fuel_type or "").lower() == "electric")
-    return excise_rate_for(_engine_liters(lot), electric=electric)
+def _excise_rate(lot: CarLot, criteria: Optional[ClientCriteria]) -> Optional[float]:
+    """Stawka akcyzy dla tego auta, albo None — wtedy policzy ją kalkulator.
+
+    Zwracamy liczbę tylko wtedy, gdy wiemy coś, czego kalkulator z danych lota nie
+    wyczyta: klient zadeklarował elektryka. W pozostałych przypadkach oddajemy decyzję
+    do `pricing/tariff.py`, bo tamten moduł zna stawki hybrydowe (1,55% i 9,3%), a ta
+    funkcja ich nie znała — liczyła każdy duży silnik po 18,6%, także w hybrydzie.
+    """
+    if criteria and (criteria.fuel_type or "").lower() == "electric":
+        return excise_rate_for(_engine_liters(lot), electric=True)
+    return None
 
 
 # ─────────────────────────────────────────────────────────────── budowa pozycji
@@ -371,7 +378,10 @@ def build_car(
         fee_pln=_fee_pln(costs, fee_tier),
         # Jedna definicja ceny końcowej dla całego systemu — patrz import_calculator.
         client_price_pln=client_price_pln(costs, settlement=settlement, fee_tier=fee_tier),
-        excise_rate=excise,
+        # Stawka odczytana z WYNIKU, a nie z tego, co podaliśmy na wejściu. Przy
+        # `excise=None` liczy ją kalkulator (hybrydy!), więc wpisanie tu wejścia
+        # pokazywałoby brokerowi w briefie inną stawkę, niż faktycznie zastosowano.
+        excise_rate=float(costs["excise_rate"]),
         settlement=settlement,
         fee_tier=fee_tier,
         report_url=report_url,

@@ -22,16 +22,27 @@ def test_prices_are_landed_pln_not_auction_usd():
     assert "USD" not in draft.text and "$" not in draft.text
     # 6 000 USD z Florydy to ~52 tys. zł pod klucz (49 425 sprowadzenie + 2 804 prowizji),
     # nie 24 tys. z przeliczenia kursem.
-    assert "52" in draft.text
+    # Próg zamiast wpisanej liczby: kurs bierzemy z NBP, więc konkretna kwota zmienia
+    # się co dzień. Test na "52" pilnowałby tabeli kursowej, a nie tego, co sprawdza.
+    from pricing import fx
+
+    kwota = int("".join(ch for ch in draft.text.split("—")[1] if ch.isdigit()))
+    assert kwota > 6000.0 * fx.current_rate() * 1.8
 
 
 def test_price_includes_the_commission():
     """Prowizja doliczona po ofercie to dopłata po drodze, której obiecujemy nie robić."""
-    from scoring.budget import landed_cost_pln
+    from scoring.budget import landed_cost_for_lot
 
-    z_prowizja = landed_cost_pln(6000.0, state="FL")
-    assert z_prowizja > 52_000
-    assert f"{z_prowizja:,.0f}".replace(",", " ") in build_draft([lot(price=6000.0)]).text
+    # Porównanie idzie do wersji PER LOT, nie do `landed_cost_pln`. Odkąd cło zależy od
+    # kraju montażu, a akcyza od rodzaju napędu, funkcja licząca z samej ceny i stanu nie
+    # zna dość danych, żeby podać tę samą kwotę — i nie wolno jej używać tam, gdzie mamy
+    # obiekt auta. Zgodność kanałów bierze się z jednego wejścia, a nie z dwóch przypadkiem
+    # zbieżnych.
+    auto = lot(price=6000.0)
+    z_prowizja = landed_cost_for_lot(auto)
+    assert z_prowizja > 6000.0 * 4
+    assert f"{z_prowizja:,.0f}".replace(",", " ") in build_draft([auto]).text
 
 
 def test_registration_is_not_promised_inside_the_price():

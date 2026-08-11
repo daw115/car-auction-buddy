@@ -153,6 +153,24 @@ def usd_rate(*, force_refresh: bool = False) -> UsdRate:
     """Kurs do wyceny. Bezpieczny wątkowo, pyta NBP najwyżej raz dziennie."""
     global _cached
 
+    # Kurs przybity na sztywno: `FX_RATE_OVERRIDE`. Dwa zastosowania — testy, które
+    # muszą dawać ten sam wynik bez sieci, i broker, który kupił dolary po znanym
+    # kursie i chce wyceniać po nim, a nie po dzisiejszej tabeli NBP.
+    pinned = os.getenv("FX_RATE_OVERRIDE")
+    if pinned:
+        try:
+            value = float(pinned)
+        except ValueError:
+            logger.warning("FX_RATE_OVERRIDE='%s' nie jest liczbą — pomijam", pinned)
+        else:
+            return UsdRate(
+                rate=value,
+                mid=value,
+                markup_pct=0.0,
+                source="override",
+                as_of=date.today().isoformat(),
+            )
+
     with _lock:
         if _cached is not None and not force_refresh and _fresh_enough(_cached):
             return _cached
