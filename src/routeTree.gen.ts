@@ -14,6 +14,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RecordsRouteImport } from './routes/records'
 import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ClientsRouteImport } from './routes/clients'
@@ -24,6 +25,7 @@ import { Route as SettingsFiltersRouteImport } from './routes/settings.filters'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
 import { Route as SettingsAiRouteImport } from './routes/settings.ai'
+import { Route as KlientLeadIdRouteImport } from './routes/klient.$leadId'
 import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as ArtifactsFilenameRouteImport } from './routes/artifacts.$filename'
@@ -62,6 +64,11 @@ const RecordsRoute = RecordsRouteImport.update({
 const JobsRoute = JobsRouteImport.update({
   id: '/jobs',
   path: '/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DatabaseRoute = DatabaseRouteImport.update({
@@ -113,6 +120,11 @@ const SettingsAiRoute = SettingsAiRouteImport.update({
   id: '/ai',
   path: '/ai',
   getParentRoute: () => SettingsRoute,
+} as any)
+const KlientLeadIdRoute = KlientLeadIdRouteImport.update({
+  id: '/klient/$leadId',
+  path: '/klient/$leadId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DevLogsRoute = DevLogsRouteImport.update({
   id: '/dev/logs',
@@ -194,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/clients': typeof ClientsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -207,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
+  '/klient/$leadId': typeof KlientLeadIdRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -225,6 +239,7 @@ export interface FileRoutesByTo {
   '/clients': typeof ClientsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -237,6 +252,7 @@ export interface FileRoutesByTo {
   '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
+  '/klient/$leadId': typeof KlientLeadIdRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -256,6 +272,7 @@ export interface FileRoutesById {
   '/clients': typeof ClientsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/database': typeof DatabaseRoute
+  '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -269,6 +286,7 @@ export interface FileRoutesById {
   '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/dev/logs': typeof DevLogsRoute
+  '/klient/$leadId': typeof KlientLeadIdRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -289,6 +307,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/dashboard'
     | '/database'
+    | '/inbox'
     | '/jobs'
     | '/records'
     | '/settings'
@@ -302,6 +321,7 @@ export interface FileRouteTypes {
     | '/artifacts/$filename'
     | '/clients/$clientId'
     | '/dev/logs'
+    | '/klient/$leadId'
     | '/settings/ai'
     | '/settings/default-criteria'
     | '/settings/diagnostics'
@@ -320,6 +340,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/dashboard'
     | '/database'
+    | '/inbox'
     | '/jobs'
     | '/records'
     | '/sitemap.xml'
@@ -332,6 +353,7 @@ export interface FileRouteTypes {
     | '/artifacts/$filename'
     | '/clients/$clientId'
     | '/dev/logs'
+    | '/klient/$leadId'
     | '/settings/ai'
     | '/settings/default-criteria'
     | '/settings/diagnostics'
@@ -350,6 +372,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/dashboard'
     | '/database'
+    | '/inbox'
     | '/jobs'
     | '/records'
     | '/settings'
@@ -363,6 +386,7 @@ export interface FileRouteTypes {
     | '/artifacts/$filename'
     | '/clients/$clientId'
     | '/dev/logs'
+    | '/klient/$leadId'
     | '/settings/ai'
     | '/settings/default-criteria'
     | '/settings/diagnostics'
@@ -382,6 +406,7 @@ export interface RootRouteChildren {
   ClientsRoute: typeof ClientsRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   DatabaseRoute: typeof DatabaseRoute
+  InboxRoute: typeof InboxRoute
   JobsRoute: typeof JobsRoute
   RecordsRoute: typeof RecordsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -394,6 +419,7 @@ export interface RootRouteChildren {
   ApiVersionRoute: typeof ApiVersionRoute
   ArtifactsFilenameRoute: typeof ArtifactsFilenameRoute
   DevLogsRoute: typeof DevLogsRoute
+  KlientLeadIdRoute: typeof KlientLeadIdRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiScraperLogsStreamRoute: typeof ApiScraperLogsStreamRoute
@@ -436,6 +462,13 @@ declare module '@tanstack/react-router' {
       path: '/jobs'
       fullPath: '/jobs'
       preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/database': {
@@ -507,6 +540,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/ai'
       preLoaderRoute: typeof SettingsAiRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/klient/$leadId': {
+      id: '/klient/$leadId'
+      path: '/klient/$leadId'
+      fullPath: '/klient/$leadId'
+      preLoaderRoute: typeof KlientLeadIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/dev/logs': {
       id: '/dev/logs'
@@ -658,6 +698,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsRoute: ClientsRouteWithChildren,
   DashboardRoute: DashboardRoute,
   DatabaseRoute: DatabaseRoute,
+  InboxRoute: InboxRoute,
   JobsRoute: JobsRoute,
   RecordsRoute: RecordsRoute,
   SettingsRoute: SettingsRouteWithChildren,
@@ -670,6 +711,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiVersionRoute: ApiVersionRoute,
   ArtifactsFilenameRoute: ArtifactsFilenameRoute,
   DevLogsRoute: DevLogsRoute,
+  KlientLeadIdRoute: KlientLeadIdRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiScraperLogsStreamRoute: ApiScraperLogsStreamRoute,

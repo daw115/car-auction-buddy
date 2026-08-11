@@ -319,7 +319,7 @@ export type SearchAuditEntry = {
 
 // ---------- kryteria wyszukiwania ----------
 
-const criteriaShape = z.object({
+export const criteriaShape = z.object({
   make: z.string().min(1).max(80),
   model: z.string().max(80).optional().nullable(),
   year_from: z.number().int().min(1900).max(2100).optional().nullable(),

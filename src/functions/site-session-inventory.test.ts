@@ -7,8 +7,10 @@ const PRIVATE_FUNCTION_MODULES = [
   "backend.functions.ts",
   "default-criteria.functions.ts",
   "external.functions.ts",
+  "intake.functions.ts",
   "pipeline-filters.functions.ts",
-  "queue.functions.ts",
+  "sales.functions.ts",
+  "watches.functions.ts",
   "watchlist.functions.ts",
 ];
 

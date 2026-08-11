@@ -13,8 +13,8 @@ import {
   Cpu,
   Filter,
   Users,
+  Inbox,
 } from "lucide-react";
-
 
 import {
   Sidebar,
@@ -38,13 +38,16 @@ type NavItem = {
 
 const workItems: NavItem[] = [
   { title: "Szukaj", url: "/", icon: Search, exact: true },
+  // Skrzynka wysoko, bo to jest pierwszy ekran dnia: co wysłać i do kogo.
+  // Skrzynka jest ekranem startowym brokera: karty klientów otwiera się z niej,
+  // bo do klienta wchodzi się przez sprawę, a nie przez listę nazwisk.
+  { title: "Skrzynka", url: "/inbox", icon: Inbox },
   { title: "Aktywne joby", url: "/jobs", icon: Activity },
   { title: "Rekordy", url: "/records", icon: Database },
   { title: "Klienci", url: "/clients", icon: Users },
   { title: "Watchlist", url: "/watchlist", icon: Bookmark },
   { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
 ];
-
 
 const toolItems: NavItem[] = [
   { title: "Kalkulator", url: "/calculator", icon: Calculator },
@@ -69,11 +72,7 @@ export function AppSidebar() {
     const active = isActive(item);
     return (
       <SidebarMenuItem key={item.url}>
-        <SidebarMenuButton
-          asChild
-          isActive={active}
-          tooltip={collapsed ? item.title : undefined}
-        >
+        <SidebarMenuButton asChild isActive={active} tooltip={collapsed ? item.title : undefined}>
           <Link to={item.url} className="flex items-center gap-2">
             <item.icon className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="truncate">{item.title}</span>}

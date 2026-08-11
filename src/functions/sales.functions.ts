@@ -1,0 +1,224 @@
+// Skrzynka agenta sprzedażowego — proxy do FastAPI.
+//
+// Wszystko idzie przez server function, tak jak reszta panelu, żeby Bearer token
+// nie trafił do bundla klienta (patrz backend.functions.ts). Endpointy sprzedażowe
+// są za tym samym tokenem co reszta — publiczny jest tylko formularz z landing
+// page'a, którego panel nie wywołuje.
+//
+// ŻADNA Z TYCH FUNKCJI NIE WYSYŁA WIADOMOŚCI DO KLIENTA. `approveDraft` zapisuje
+// ją jako wysłaną i zwraca link wa.me — otwiera go broker, ze swojego telefonu.
+
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+
+import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
+import { backendRequest } from "@/lib/backend-transport.server";
+
+// ---------- typy ----------
+
+export type LeadSegment = "A" | "B" | "C" | "D";
+
+export type ScoreComponent = {
+  key: string;
+  label: string;
+  value: number;
+  weight: number;
+  points: number;
+  note: string;
+};
+
+export type LeadScore = {
+  score: number;
+  segment: LeadSegment;
+  segment_label: string;
+  summary: string;
+  next_action: string;
+  red_flags: string[];
+  missing: string[];
+  components: ScoreComponent[];
+};
+
+export type Lead = {
+  id: number;
+  name: string | null;
+  display_name: string;
+  phone: string | null;
+  email: string | null;
+  channel: string;
+  stage: string;
+  raw_request: string;
+  make: string | null;
+  model: string | null;
+  year_from: number | null;
+  year_to: number | null;
+  budget_pln: number | null;
+  settlement: string;
+  timeline_days: number | null;
+  damage_ok: boolean | null;
+  bought_before: boolean;
+  referred_by: string | null;
+  notes: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_client_message_at: string | null;
+};
+
+export type InboxItem = {
+  id: number;
+  lead_id: number;
+  text: string;
+  channel: string;
+  rationale: string;
+  stage_after: string | null;
+  created_at: string | null;
+  lead: Lead | null;
+  score: LeadScore;
+  wa_me: string | null;
+};
+
+export type Inbox = {
+  count: number;
+  items: InboxItem[];
+  /**
+   * Leady bez propozycji, na które ktoś czeka — nigdy do nich nie napisaliśmy albo
+   * ostatnie słowo należy do klienta. Nie mogą zniknąć tylko dlatego, że agent nie
+   * miał czego napisać: to awaria, która wygląda jak cisza.
+   */
+  needs_attention: Array<
+    Lead & { score: LeadScore; waiting_since: string | null; last_client_message: string | null }
+  >;
+};
+
+export type ConversationMessage = {
+  id: number;
+  author: "klient" | "broker" | "agent";
+  text: string;
+  channel: string | null;
+  created_at: string | null;
+  sent_at: string | null;
+};
+
+export type LeadDetail = Lead & {
+  score: LeadScore;
+  messages: ConversationMessage[];
+  pending_drafts: InboxItem[];
+};
+
+export type ApproveResult = {
+  sent: boolean;
+  text: string;
+  channel: string | null;
+  wa_me: string | null;
+  mailto: string | null;
+  lead: Lead | null;
+};
+
+// ---------- wywołania ----------
+
+export const getSalesInbox = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(
+    async (): Promise<Inbox> => backendRequest<Inbox>({ path: "/api/sales/inbox", method: "GET" }),
+  );
+
+export const getSalesLeads = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .handler(
+    async (): Promise<{ count: number; items: Array<Lead & { score: LeadScore }> }> =>
+      backendRequest({ path: "/api/sales/leads", method: "GET" }),
+  );
+
+export const getLeadDetail = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
+  .handler(
+    async ({ data }): Promise<LeadDetail> =>
+      backendRequest<LeadDetail>({ path: `/api/sales/leads/${data.leadId}`, method: "GET" }),
+  );
+
+/**
+ * ZGODA BROKERA na wysłanie. Zwraca gotowy link wa.me — kliknięcie w niego jest
+ * ostatnim krokiem i należy do człowieka.
+ */
+/** Ręczna zmiana etapu w lejku. Backend przesuwa automatycznie tylko cztery
+ *  przejścia (nowy→kwalifikacja, →szukanie przy komplecie kryteriów, oferta→rozmowa
+ *  po odpowiedzi klienta, oraz stage_after przy zatwierdzeniu draftu). Wszystko od
+ *  etapu "decyzja" w dół przestawia człowiek — dotąd nie miał czym. */
+export const setLeadStage = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({ leadId: z.number().int().positive(), stage: z.string().min(1).max(40) }).parse,
+  )
+  .handler(async ({ data }) =>
+    backendRequest<{ lead: Lead }>({
+      path: `/api/sales/leads/${data.leadId}/stage`,
+      method: "PUT",
+      body: { stage: data.stage },
+    }),
+  );
+
+export const approveDraft = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      draftId: z.number().int().positive(),
+      editedText: z.string().max(2000).optional(),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<ApproveResult> =>
+      backendRequest<ApproveResult>({
+        path: `/api/sales/drafts/${data.draftId}/approve`,
+        method: "POST",
+        body: { edited_text: data.editedText ?? null },
+      }),
+  );
+
+export const rejectDraft = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      draftId: z.number().int().positive(),
+      reason: z.string().max(500).default(""),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ rejected: boolean }> =>
+      backendRequest({
+        path: `/api/sales/drafts/${data.draftId}/reject`,
+        method: "POST",
+        body: { reason: data.reason },
+      }),
+  );
+
+/** Broker wkleja to, co klient odpisał na WhatsAppie. Agent proponuje odpowiedź. */
+export const recordClientReply = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      text: z.string().min(1).max(2000),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ lead: Lead; score: LeadScore; draft: InboxItem | null }> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/reply`,
+        method: "POST",
+        body: { text: data.text, channel: "whatsapp" },
+      }),
+  );
+
+export const regenerateDraft = createServerFn({ method: "POST" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
+  .handler(
+    async ({ data }): Promise<{ draft: InboxItem | null; reason?: string }> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/regenerate`,
+        method: "POST",
+        // Model potrafi liczyć kilkadziesiąt sekund; domyślny timeout transportu
+        // uciąłby wywołanie w połowie i broker zobaczyłby błąd zamiast propozycji.
+        timeoutMs: 180_000,
+      }),
+  );
