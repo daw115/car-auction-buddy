@@ -34,8 +34,7 @@ class OfferLine:
     over_budget: bool = False
 
     def render(self) -> str:
-        parts = [str(self.lot.year or ""), self.lot.make or "", self.lot.model or ""]
-        name = " ".join(part for part in parts if part).strip()
+        name = f"{self.lot.year or ''} {_short_name(self.lot)}".strip()
         if self.lot.odometer_mi:
             name += f", {self.lot.odometer_mi / 1000:.0f} tys. mil"
         # Spacja jako separator tysięcy, ale TYLKO w liczbie — zamiana przecinków
@@ -65,6 +64,23 @@ def _normalize_phone(phone: str) -> str:
     if len(digits) == 9:  # numer krajowy bez kierunkowego
         return f"48{digits}"
     return digits
+
+
+# Aukcje podają nazwę wersji w całości i wersalikami: "AUDI Q7 PREMIUM PLUS 45
+# TFSI QUATTRO TIPTRONIC". W wiadomości do klienta to szum, który zjada linijkę
+# i brzmi jak przeklejone z systemu.
+MAX_NAME_TOKENS = 4
+
+
+def _short_name(lot: CarLot) -> str:
+    """Marka i model w formie, w jakiej mówi o aucie człowiek."""
+    make = (lot.make or "").strip()
+    model = (lot.model or "").strip()
+    # Model bywa powtórzony razem z marką ("AUDI Q7 ..." przy make="AUDI").
+    if make and model.upper().startswith(make.upper()):
+        model = model[len(make):].strip()
+    tokens = [t for t in f"{make} {model}".split() if t][:MAX_NAME_TOKENS]
+    return " ".join(t.title() if t.isupper() and t.isalpha() else t for t in tokens)
 
 
 def _greeting(client_name: Optional[str]) -> str:

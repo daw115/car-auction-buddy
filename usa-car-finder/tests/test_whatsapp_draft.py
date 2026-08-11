@@ -228,3 +228,17 @@ def test_endpoint_passes_the_brokers_over_budget_decision(monkeypatch):
     assert bez_zgody["text"] is None and bez_zgody["offers"] == 0
     assert z_zgoda["offers"] == 1
     assert "powyżej budżetu" in z_zgoda["text"]
+
+
+def test_auction_trim_noise_does_not_eat_the_line():
+    """Aukcje podają całą nazwę wersji wersalikami — klient nie mówi tak o aucie."""
+    surowy = CarLot(
+        source="iaai", lot_id="X", url="u", year=2023, make="AUDI",
+        model="AUDI Q7 PREMIUM PLUS 45 TFSI QUATTRO TIPTRONIC",
+        odometer_mi=45_000, current_bid_usd=19_975, location_state="NC",
+    )
+
+    linia = build_draft([surowy]).text
+
+    assert "2023 Audi Q7 Premium Plus" in linia
+    assert "TIPTRONIC" not in linia and "QUATTRO" not in linia
