@@ -25,9 +25,9 @@ export const Route = createFileRoute("/dashboard")({
         property: "og:description",
         content: "Analityka: TOP marki, red flagi i timeline analiz z ostatnich 30 dni.",
       },
-      { property: "og:url", content: "https://car-auction-buddy.lovable.app/dashboard" },
+      { property: "og:url", content: "https://moneybitches.organof.org/dashboard" },
     ],
-    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/dashboard" }],
+    links: [{ rel: "canonical", href: "https://moneybitches.organof.org/dashboard" }],
   }),
   component: Dashboard,
 });

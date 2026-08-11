@@ -25,9 +25,9 @@ export const Route = createFileRoute("/watchlist")({
         property: "og:description",
         content: "Lista obserwowanych aukcji z porównywarką i historią zmian cen.",
       },
-      { property: "og:url", content: "https://car-auction-buddy.lovable.app/watchlist" },
+      { property: "og:url", content: "https://moneybitches.organof.org/watchlist" },
     ],
-    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/watchlist" }],
+    links: [{ rel: "canonical", href: "https://moneybitches.organof.org/watchlist" }],
   }),
   component: WatchlistPage,
 });

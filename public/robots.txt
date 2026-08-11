@@ -2,5 +2,3 @@ User-agent: *
 Allow: /
 Disallow: /dev/
 Disallow: /api/
-
-Sitemap: https://car-auction-buddy.lovable.app/sitemap.xml

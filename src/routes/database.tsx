@@ -94,9 +94,9 @@ export const Route = createFileRoute("/database")({
         content:
           "Historia analiz aukcji, lotów i klientów z możliwością filtrowania i sortowania rekordów.",
       },
-      { property: "og:url", content: "https://car-auction-buddy.lovable.app/database" },
+      { property: "og:url", content: "https://moneybitches.organof.org/database" },
     ],
-    links: [{ rel: "canonical", href: "https://car-auction-buddy.lovable.app/database" }],
+    links: [{ rel: "canonical", href: "https://moneybitches.organof.org/database" }],
   }),
   component: DatabasePage,
 });
