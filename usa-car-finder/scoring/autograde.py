@@ -132,6 +132,13 @@ class AutoGrade:
     caps_applied: list[str] = field(default_factory=list)
     source: str = "obliczony"
     notes: list[str] = field(default_factory=list)
+    #: Pasmo, w którym realnie leży grade, gdy nie mamy pozycjowanego raportu stanu.
+    #: None znaczy, że ocena stoi na pełnych danych i pasma nie ma.
+    band: Optional[tuple[float, float]] = None
+
+    @property
+    def certain(self) -> bool:
+        return self.band is None
 
     @property
     def label(self) -> str:
@@ -144,6 +151,8 @@ class AutoGrade:
 
     def summary(self) -> str:
         base = f"{self.grade:.1f} {self.label}"
+        if self.band:
+            base += f" (szacunek, realnie {self.band[0]:.1f}–{self.band[1]:.1f})"
         if self.source != "obliczony":
             base += f" ({self.source})"
         if self.caps_applied:
@@ -176,35 +185,72 @@ def grade_label(grade: float) -> str:
     return "Salvage"
 
 
-def grade_from_items(items: list[DamageItem], *, notes: Optional[list[str]] = None) -> AutoGrade:
+def grade_from_items(
+    items: list[DamageItem],
+    *,
+    notes: Optional[list[str]] = None,
+    condition_report: bool = True,
+) -> AutoGrade:
     """Grade z listy pozycji uszkodzeń.
 
-    Brak pozycji to 5,0 — i tak właśnie wygląda raport auta, które przeszło inspekcję
-    bez uwag: „No exterior condition items were reported".
+    `condition_report` mówi, czy mamy POZYCJOWANY raport stanu, czy tylko zgrubny opis.
+    Ta różnica jest zmierzona i kosztowna:
+
+      * Raport JEST i nie zawiera uwag → 5,0. Tak wygląda auto, które przeszło inspekcję
+        czysto („No exterior condition items were reported").
+      * Raportu NIE MA → punktem wyjścia jest 4,6, nie 5,0. Na 280 lotach z Manheimu bez
+        żadnego sygnału uszkodzenia w polach ustrukturyzowanych prawdziwy grade wyniósł
+        średnio 4,58, przy czym 37% z nich nie było „Extra Clean", a najgorsze auto miało
+        2,2. Zakładanie piątki zawyżało ocenę systematycznie o 0,42 punktu — czyli
+        obiecywało klientowi stan, którego auto nie miało.
+
+    Szczegóły pomiaru i ograniczenia próbki: `scoring/calibration.py`.
+
+    Przy braku raportu wynik niesie `band` — pasmo, w którym grade realnie leży. Broker
+    ma zobaczyć, że to szacunek, a nie odczyt.
     """
-    grade = MAX_GRADE - sum(item.deduction() for item in items)
+    from scoring import calibration as cal
+
+    sufit = MAX_GRADE if condition_report else cal.NO_REPORT_PRIOR
+    grade = sufit - sum(item.deduction() for item in items)
     caps: list[str] = []
 
     # Sufity nakładamy PO odjęciu punktów, biorąc wartość niższą. Auto z uszkodzoną
     # konstrukcją i dwudziestoma rysami ma być gorsze niż samo uszkodzenie konstrukcji,
     # ale nigdy lepsze niż sufit dla konstrukcji.
-    for warunek, sufit, opis in (
+    # Nazwa `limit`, nie `sufit` — zmienna pętli przesłaniała punkt startowy oceny
+    # i pasmo niepewności wychodziło odwrócone (5,1–4,6 zamiast 4,0–4,6).
+    for warunek, limit, opis in (
         (any(i.fire_flood for i in items), FIRE_FLOOD_CAP, "pożar/zalanie/biohazard"),
         (any(i.structural for i in items), STRUCTURAL_CAP, "uszkodzenie konstrukcji"),
         (any(i.non_drivable for i in items), NON_DRIVABLE_CAP, "nie jeździ"),
         (any(i.no_keys for i in items), NO_KEYS_CAP, "brak kluczy"),
     ):
-        if warunek and grade > sufit:
-            grade = sufit
+        if warunek and grade > limit:
+            grade = limit
             caps.append(opis)
         elif warunek:
             caps.append(opis)
 
+    wynik = round(max(MIN_GRADE, min(MAX_GRADE, grade)), 1)
+
+    band = None
+    if not condition_report:
+        # Pasmo przesuwamy razem z odjętymi punktami, ale nie pozwalamy górnej granicy
+        # przekroczyć wyniku — inaczej auto z opisaną szkodą wyglądałoby na potencjalnie
+        # lepsze niż wynika z tego, co o nim wiemy.
+        odjete = sufit - grade
+        band = (
+            round(max(MIN_GRADE, cal.NO_REPORT_P10 - odjete), 1),
+            round(min(wynik, cal.NO_REPORT_P90 - odjete), 1),
+        )
+
     return AutoGrade(
-        grade=round(max(MIN_GRADE, min(MAX_GRADE, grade)), 1),
+        grade=wynik,
         items=items,
         caps_applied=caps,
         notes=list(notes or []),
+        band=band,
     )
 
 
@@ -292,6 +338,21 @@ def items_from_damage_text(*descriptions: Optional[str]) -> list[DamageItem]:
     return list(znalezione.values())
 
 
+def has_condition_report(lot: Any) -> bool:
+    """Czy dla tego lota istnieje POZYCJOWANY raport stanu.
+
+    To jest rozstrzygnięcie o tym, czy wolno startować od 5,0, więc warunek jest wąski:
+    wymagamy dowodu, że raport istnieje, a nie braku dowodu, że go nie ma.
+
+    Copart i IAAI nie robią pozycjowanych raportów w ogóle — dają dwa pola opisu szkody.
+    Dla nich ta funkcja zawsze zwraca False i tak ma być.
+    """
+    listing = getattr(lot, "raw_data", None) or {}
+    if isinstance(listing, dict):
+        listing = listing.get("listing", listing) or {}
+    return bool(listing.get("conditionReportUrl") or listing.get("conditionGrade") is not None)
+
+
 def grade_for_lot(lot: Any) -> AutoGrade:
     """Grade dla lota z dowolnego źródła.
 
@@ -324,7 +385,7 @@ def grade_for_lot(lot: Any) -> AutoGrade:
     if any(t is not None for t in tread):
         items.extend(tire_items(tread, replacement_flagged=bool(listing.get("tireReplacement"))))
 
-    obliczony = grade_from_items(items)
+    obliczony = grade_from_items(items, condition_report=has_condition_report(lot))
 
     podany = _as_float(listing.get("conditionGrade"))
     if podany is None:

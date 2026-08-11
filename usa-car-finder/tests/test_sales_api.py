@@ -34,8 +34,12 @@ def auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {TOKEN}"}
 
 
+# Budżet powyżej progu sita (`sales/gate.MIN_BUDGET_PLN`) świadomie: te testy sprawdzają
+# przepływ zatwierdzania i wysyłki, a nie filtrowanie. Lead poniżej progu trafiłby na
+# parking i połowa asercji tutaj mierzyłaby próg zamiast tego, co ma mierzyć.
+# Samo sito ma własną suitę: `tests/test_gate_and_vincheck.py`.
 ZGLOSZENIE = {
-    "message": "Szukam Forda Explorera 2020+, budżet 120 tys. pod klucz. "
+    "message": "Szukam BMW X5 2022+, budżet 350 tys. pod klucz. "
                "Wiem, że to auta powypadkowe. Potrzebuję na już.",
     "name": "Marek Kowalski",
     "phone": "605083832",
@@ -175,8 +179,8 @@ def test_szczegoly_leada_niosa_ocene_i_rozmowe(client, auth):
 
     body = client.get(f"/api/sales/leads/{lead_id}", headers=auth).json()
     assert body["score"]["segment"] == "A"
-    assert body["budget_pln"] == 120_000
-    assert body["year_from"] == 2020
+    assert body["budget_pln"] == 350_000
+    assert body["year_from"] == 2022
     assert body["damage_ok"] is True
     assert len(body["messages"]) == 1
     assert body["messages"][0]["author"] == "klient"

@@ -238,3 +238,54 @@ def test_kalkulator_niesie_powody_do_briefu_brokera():
     assert costs["duty_rate"] == DUTY_PREFERENTIAL
     assert "montaż w USA" in costs["duty_reason"]
     assert costs["drivetrain"] == "mhev"
+
+
+# ───────────────────────── elektryki, które udawały spalinowe (pomyłka zaniżająca)
+
+
+@pytest.mark.parametrize(
+    "marka, model",
+    [
+        ("BMW", "iX"), ("BMW", "i4"), ("BMW", "i7"),
+        ("MERCEDES-BENZ", "EQE"), ("MERCEDES-BENZ", "EQS"),
+        ("FORD", "MUSTANG MACH-E"), ("FORD", "F-150 LIGHTNING"),
+        ("CADILLAC", "LYRIQ"), ("CHEVROLET", "BLAZER EV"),
+        ("RIVIAN", "R1S"), ("TOYOTA", "BZ4X"), ("PORSCHE", "TAYCAN"),
+        ("KIA", "EV6"), ("NISSAN", "ARIYA"), ("POLESTAR", "2"),
+    ],
+)
+def test_elektryki_bez_slowa_electric_w_nazwie(marka, model):
+    """Nazwa "iX" nie zawiera ani "EV", ani "ELECTRIC", a to jest elektryk.
+
+    Pomyłka w tę stronę jest jedyną w całym module, która ZANIŻA cenę: elektryk wzięty
+    za spalinowy dostaje cło 0% zamiast 10%, czyli kilkanaście tysięcy złotych mniej,
+    niż klient faktycznie zapłaci.
+    """
+    assert detect(marka, model).kind is Drivetrain.BEV
+
+
+@pytest.mark.parametrize(
+    "marka, model, wersja",
+    [
+        ("BMW", "X7", "M60i"),
+        ("BMW", "X5", "sDrive40i"),
+        ("FORD", "F-150", "XLT 5.0 V8"),
+        ("CHEVROLET", "SILVERADO 1500", "5.3 V8"),
+        ("TOYOTA", "RAV4", "XLE"),
+    ],
+)
+def test_spalinowe_nie_lapia_sie_na_wzorce_elektrykow(marka, model, wersja):
+    """Rozszerzenie listy elektryków nie może zamienić X5 w elektryka."""
+    assert detect(marka, model, wersja).kind is not Drivetrain.BEV
+
+
+def test_ostrzezenie_o_elektryku_tylko_gdy_nie_wiemy_co_to_za_auto():
+    """Przy komplecie pól ostrzeżenie odpalałoby się na każdym spalinowym aucie.
+
+    Ostrzeżenie, które widać zawsze, przestaje być ostrzeżeniem — uczy ludzi je pomijać.
+    """
+    z_kompletem = rates_for_lot(lot(vin="1FMSK8DH1NG123456", make="FORD", model="EXPLORER"))
+    bez_marki = rates_for_lot(lot(vin="1FMSK8DH1NG123456", make=None, model=None, trim="Long Range"))
+
+    assert not any("elektryk" in a.lower() for a in z_kompletem.assumptions)
+    assert any("elektryk" in a.lower() for a in bez_marki.assumptions)

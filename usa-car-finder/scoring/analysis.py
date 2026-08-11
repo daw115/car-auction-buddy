@@ -157,6 +157,98 @@ def coverage_for_lot(lot: Any) -> Coverage:
 # ─────────────────────────────────────────────────────────── twarde blokady
 
 
+# Ogłoszenia aukcyjne, które przesądzają o odrzuceniu auta.
+#
+# AutoGrade celowo NIE liczy announcements — i słusznie, bo opisują historię, a nie
+# stan blachy. Ale decyzja zakupowa musi je czytać, bo to tutaj siedzi tytuł brandowany.
+# Realny przykład z tego zbioru: X7 M60i z grade 5,0, zerowym cłem i ceną poniżej MMR,
+# który w ogłoszeniach ma "Lemon Law Manuf Buyback" — odkup fabryczny po wadzie
+# nieusuwalnej. Bez tego sprawdzenia wygrywał ranking.
+_BLOCKING_ANNOUNCEMENTS: tuple[tuple[str, str], ...] = (
+    ("lemon law", "odkup fabryczny (Lemon Law Buyback) — tytuł brandowany"),
+    ("manufacturer buyback", "odkup fabryczny — tytuł brandowany"),
+    ("salvage", "tytuł salvage"),
+    ("flood", "auto zalane"),
+    ("fire damage", "auto po pożarze"),
+    ("frame damage", "uszkodzenie konstrukcji (ogłoszenie)"),
+    ("structural damage", "uszkodzenie konstrukcji (ogłoszenie)"),
+    ("true mileage unknown", "przebieg niepotwierdzony (TMU)"),
+    ("tmu", "przebieg niepotwierdzony (TMU)"),
+    ("odometer discrepancy", "rozbieżność przebiegu"),
+    ("not actual mileage", "przebieg nierzeczywisty"),
+    ("bill of sale only", "tylko umowa kupna — brak tytułu"),
+    ("no title", "brak tytułu"),
+)
+
+# Ogłoszenia, które nie blokują, ale muszą trafić do briefu brokera.
+_WARNING_ANNOUNCEMENTS: tuple[tuple[str, str], ...] = (
+    ("prior paint", "auto lakierowane"),
+    ("ppw", "auto lakierowane (PPW w komentarzu)"),
+    ("canadian", "auto z Kanady — inne cło i homologacja"),
+    ("rental", "auto z wypożyczalni"),
+    ("fleet", "auto z floty"),
+    ("as is", "sprzedaż as-is, bez arbitrażu"),
+    ("emissions", "uwaga na normy emisji"),
+    ("air bag", "uwaga: poduszki"),
+)
+
+
+def _announcement_text(lot: Any, listing: dict) -> str:
+    """Cały tekst ogłoszeń, uwag i komentarzy — jednym stringiem, małymi literami.
+
+    Sprzedawcy wpisują to samo raz w ustrukturyzowanych ogłoszeniach, raz w wolnym
+    komentarzu, a bywa że tylko w jednym z nich. Skoro szukamy tytułu brandowanego,
+    czytamy oba — pominięcie komentarza kosztowałoby dokładnie to jedno auto,
+    o które chodzi.
+    """
+    enrichment = listing.get("announcementsEnrichment") or {}
+    czesci: list[str] = []
+    if isinstance(enrichment, dict):
+        czesci.extend(str(a) for a in (enrichment.get("announcements") or []))
+        if enrichment.get("remarks"):
+            czesci.append(str(enrichment["remarks"]))
+    for klucz in ("comments", "sellerDisclosure", "remarks"):
+        if listing.get(klucz):
+            czesci.append(str(listing[klucz]))
+    return " · ".join(czesci).lower()
+
+
+def announcement_flags(lot: Any) -> tuple[list[str], list[str]]:
+    """(blokady, ostrzeżenia) z ogłoszeń aukcyjnych i komentarza sprzedawcy."""
+    listing = getattr(lot, "raw_data", None) or {}
+    if isinstance(listing, dict):
+        listing = listing.get("listing", listing) or {}
+    tekst = _announcement_text(lot, listing)
+    if not tekst:
+        return [], []
+
+    blokady = [opis for slowo, opis in _BLOCKING_ANNOUNCEMENTS if opis and slowo in tekst]
+    ostrzezenia = [opis for slowo, opis in _WARNING_ANNOUNCEMENTS if slowo in tekst]
+    return list(dict.fromkeys(blokady)), list(dict.fromkeys(ostrzezenia))
+
+
+def contradictions(lot: Any) -> list[str]:
+    """Miejsca, w których flaga aukcji kłóci się z tym, co napisano słowami.
+
+    Realny przypadek: `hasPriorPaint: false` przy komentarzu „PPW - PRIOR PAINTWORK".
+    Jedno z dwóch jest nieprawdą i broker musi wiedzieć, że tu jest co sprawdzać —
+    milcząco zaufać strukturze znaczy uwierzyć w wersję wygodniejszą dla sprzedawcy.
+    """
+    listing = getattr(lot, "raw_data", None) or {}
+    if isinstance(listing, dict):
+        listing = listing.get("listing", listing) or {}
+    tekst = _announcement_text(lot, listing)
+    wyniki: list[str] = []
+
+    if listing.get("hasPriorPaint") is False and ("prior paint" in tekst or "ppw" in tekst):
+        wyniki.append("flaga 'bez lakierowania' wobec wzmianki o lakierowaniu w opisie")
+    if listing.get("hasFrameDamage") is False and ("frame damage" in tekst or "structural" in tekst):
+        wyniki.append("flaga 'konstrukcja OK' wobec wzmianki o konstrukcji w opisie")
+    if listing.get("salvageVehicle") is False and "salvage" in tekst:
+        wyniki.append("flaga 'nie salvage' wobec wzmianki o salvage w opisie")
+    return wyniki
+
+
 def _blockers_for(lot: Any, grade: AutoGrade) -> list[str]:
     """Powody, dla których auta nie proponujemy klientowi niezależnie od ceny.
 
@@ -186,6 +278,9 @@ def _blockers_for(lot: Any, grade: AutoGrade) -> list[str]:
     if "absent" in status:
         powody.append("brak tytułu w dniu aukcji (T/A)")
 
+    z_ogloszen, _ = announcement_flags(lot)
+    powody.extend(z_ogloszen)
+
     return list(dict.fromkeys(powody))
 
 
@@ -214,6 +309,9 @@ def analyze(lot: Any, *, settlement: str = "private") -> LotAnalysis:
         mmr = wyceny["adjustedValue"]
 
     notes: list[str] = list(rates.assumptions)
+    _, ostrzezenia = announcement_flags(lot)
+    notes.extend(ostrzezenia)
+    notes.extend(f"SPRZECZNOŚĆ W DANYCH: {c}" for c in contradictions(lot))
     if mmr is None and (getattr(lot, "source", "") or "").lower() in ("copart", "iaai"):
         notes.append(
             "Brak notowania rynkowego — Copart i IAAI go nie podają. "

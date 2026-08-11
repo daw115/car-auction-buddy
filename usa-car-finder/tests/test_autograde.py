@@ -246,3 +246,81 @@ def test_brak_danych_o_stanie_nie_kara_lota():
         ClientProfile(),
     )
     assert all(c.key != "condition" for c in wynik.components)
+
+
+# ─────────────────────────────────── kalibracja na realnych danych aukcyjnych
+
+
+def test_brak_raportu_stanu_nie_daje_piatki():
+    """Zmierzone na 280 lotach z Manheimu: brak sygnału uszkodzenia to NIE auto idealne.
+
+    Ich prawdziwy grade wyniósł średnio 4,58, a 37% nie było „Extra Clean". Startowanie
+    od 5,0 zawyżało ocenę systematycznie o 0,42 punktu — czyli obiecywało klientowi
+    stan, którego auto nie miało. Szczegóły w `scoring/calibration.py`.
+    """
+    from scoring import calibration as cal
+
+    z_raportem = grade_from_items([], condition_report=True)
+    bez_raportu = grade_from_items([], condition_report=False)
+
+    assert z_raportem.grade == 5.0
+    assert bez_raportu.grade == cal.NO_REPORT_PRIOR
+    assert bez_raportu.grade < z_raportem.grade
+
+
+def test_ocena_bez_raportu_niesie_pasmo_niepewnosci():
+    """Broker ma zobaczyć, że to szacunek, a nie odczyt."""
+    ocena = grade_from_items([], condition_report=False)
+    assert ocena.band is not None
+    assert not ocena.certain
+    dol, gora = ocena.band
+    assert dol < gora <= ocena.grade
+    assert "szacunek" in ocena.summary()
+
+
+def test_pasmo_przesuwa_sie_razem_z_odjetymi_punktami():
+    """Auto z opisaną szkodą ma pasmo niżej, a nie to samo co auto bez opisu."""
+    czyste = grade_from_items([], condition_report=False)
+    ze_szkoda = grade_from_items(
+        [DamageItem("przód", Tier.MODERATE)], condition_report=False
+    )
+    assert ze_szkoda.band[0] < czyste.band[0]
+    assert ze_szkoda.band[1] < czyste.band[1]
+
+
+def test_pasmo_nie_jest_odwrocone():
+    """Zmienna pętli `sufit` przesłaniała punkt startowy i pasmo wychodziło 5,1-4,6."""
+    for pozycje in ([], [DamageItem("x", Tier.MINOR)], [DamageItem("y", Tier.MAJOR, structural=True)]):
+        ocena = grade_from_items(pozycje, condition_report=False)
+        assert ocena.band[0] <= ocena.band[1], f"odwrócone pasmo: {ocena.band}"
+
+
+def test_copart_nigdy_nie_ma_raportu_stanu_a_manheim_ma():
+    """Copart i IAAI nie robią pozycjowanych raportów — dają dwa pola opisu szkody."""
+    from scoring.autograde import has_condition_report
+
+    assert not has_condition_report(lot(source="copart", damage_primary="Front End"))
+    assert has_condition_report(
+        lot(source="manheim", raw_data={"listing": {"conditionReportUrl": "http://x"}})
+    )
+
+
+def test_ten_sam_opis_szkody_daje_nizsza_ocene_bez_raportu():
+    """Sedno kalibracji: identyczna szkoda, inna wiedza o reszcie auta."""
+    z_raportem = grade_from_items(
+        items_from_damage_text("Front End"), condition_report=True
+    ).grade
+    bez_raportu = grade_from_items(
+        items_from_damage_text("Front End"), condition_report=False
+    ).grade
+    assert bez_raportu < z_raportem
+
+
+def test_kalibracja_niesie_metryczke_probki():
+    """Stała bez metryczki starzeje się po cichu."""
+    from scoring import calibration as cal
+
+    assert cal.SAMPLE_SIZE == 307
+    assert cal.SAMPLE_DATE
+    assert "Manheim" in cal.SAMPLE_SOURCE
+    assert "307" in cal.summary()

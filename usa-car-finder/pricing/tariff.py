@@ -166,6 +166,7 @@ def rates_for(
     drivetrain_guess: DrivetrainGuess,
     engine_liters: Optional[float],
     on: Optional[date] = None,
+    vehicle_identified: bool = True,
 ) -> Rates:
     """Komplet stawek dla auta razem z listą przyjętych założeń."""
     kind = drivetrain_guess.kind
@@ -187,6 +188,20 @@ def rates_for(
         assumptions.append(
             "Pojemność silnika nieznana — przyjęta akcyza 18,6%. "
             "Przy silniku do 2,0 l stawka wynosi 3,1%."
+        )
+
+    # Jedyne założenie, które ZANIŻA cenę, więc jedyne naprawdę groźne.
+    #
+    # Wszystkie pozostałe niepewności prowadzą do wyższej stawki: nieznany kraj montażu
+    # to cło 10%, nierozpoznany napęd to akcyza spalinowa. Tu jest odwrotnie — elektryk
+    # jest WYŁĄCZONY z preferencji celnej, więc wzięcie go za spalinowy daje 0% zamiast
+    # 10% i zaniża wycenę o kilkanaście tysięcy złotych. Przy pustych polach marki
+    # i modelu detektor widzi samą wersję ("Long Range") i tego nie wychwyci.
+    if duty == DUTY_PREFERENTIAL and not drivetrain_guess.confident and not vehicle_identified:
+        assumptions.append(
+            "Nie wiadomo, co to za auto — brakuje marki i modelu, a policzone jest cło 0%. "
+            "Jeśli to elektryk, cło wynosi 10%: elektryki są wyłączone z preferencji. "
+            "Podaj markę i model, żeby to rozstrzygnąć."
         )
 
     return Rates(
@@ -213,4 +228,9 @@ def rates_for_lot(lot, *, on: Optional[date] = None) -> Rates:
             getattr(lot, "model", None),
         ),
         on=on,
+        # Bez marki i modelu detektor napędu widzi samą wersję ("Long Range") i nie ma
+        # z czego rozpoznać elektryka. To jedyny przypadek, w którym warto o tym
+        # ostrzegać — przy komplecie pól ostrzeżenie odpalałoby się na każdym
+        # spalinowym aucie i nauczyłoby wszystkich je ignorować.
+        vehicle_identified=bool(getattr(lot, "make", None) and getattr(lot, "model", None)),
     )

@@ -89,6 +89,21 @@ class LeadForm(BaseModel):
     website: str = Field(default="", max_length=200)
 
 
+class VinCheckIn(BaseModel):
+    """Zapytanie z darmowego checkera na stronie."""
+
+    vin: str = Field(min_length=8, max_length=20)
+    bid_usd: Optional[float] = Field(default=None, gt=0, le=500_000)
+    state: Optional[str] = Field(default=None, max_length=2)
+    # Marka i model są opcjonalne, ale ich brak realnie zmienia wynik: bez nich
+    # detektor napędu widzi samą wersję ("Long Range") i bierze Teslę za spalinową.
+    # Elektryk ma cło 10% i akcyzę 0% — pomyłka idzie wtedy w obie strony naraz.
+    make: Optional[str] = Field(default=None, max_length=60)
+    model: Optional[str] = Field(default=None, max_length=60)
+    trim: Optional[str] = Field(default=None, max_length=120)
+    settlement: str = Field(default="private", pattern="^(private|company)$")
+
+
 class ReplyIn(BaseModel):
     text: str = Field(min_length=1, max_length=2_000)
     channel: Channel = Channel.WHATSAPP
@@ -189,6 +204,113 @@ def wa_me_link(phone: Optional[str], text: str) -> Optional[str]:
     return f"https://wa.me/{digits}?text={quote(text)}" if digits else None
 
 
+VIN_CHECK_RATE_LIMIT = int(os.getenv("VIN_CHECK_RATE_LIMIT_PER_HOUR", "60"))
+
+
+@public_router.post("/api/public/vin-check")
+async def vin_check(body: VinCheckIn, request: Request) -> dict[str, Any]:
+    """Darmowe sprawdzenie: czy TO auto ma zerowe cło i ile wyjdzie pod klucz.
+
+    BEZ BRAMKI KONTAKTOWEJ — wynik wraca od razu, bez podawania telefonu. To jest
+    świadoma decyzja i wynika z arytmetyki, nie z hojności: przy prowizji rzędu
+    3-19 tys. zł nie opłaca się kupować masy leadów, opłaca się kilku właściwych.
+    Otwarty checker filtruje przez samoselekcję — kto sam wróci po pełną kalkulację,
+    jest wart czasu; kto sprawdził VIN z ciekawości, i tak by nie kupił, a jego
+    numer telefonu byłby tylko szumem w skrzynce.
+
+    Osobno: to jest jedyna liczba na rynku, która może być prawdziwa. Osiem publicznych
+    kalkulatorów konkurencji pyta o cenę i pojemność, żaden o VIN — więc żaden nie wie,
+    czy cło wynosi 0% czy 10%. W naszej próbce 175 z 307 aut było zmontowanych w USA,
+    czyli mylą się na większości.
+
+    Limit jest wyższy niż przy formularzu (60/h wobec 10/h), bo to narzędzie ma być
+    używane — sprawdzenie kilkunastu lotów pod rząd to normalna praca kupującego,
+    a nie nadużycie.
+    """
+    ip = _client_ip(request)
+    now = time.time()
+    okno = _hits[f"vin:{ip}"]
+    while okno and now - okno[0] > RATE_LIMIT_WINDOW_S:
+        okno.popleft()
+    if len(okno) >= VIN_CHECK_RATE_LIMIT:
+        raise HTTPException(429, "Za dużo zapytań. Proszę spróbować za chwilę.")
+    okno.append(now)
+
+    from parser.models import CarLot
+    from pricing import fx
+    from pricing.drivetrain import detect
+    from pricing.tariff import rates_for_lot
+    from pricing.vin import origin
+
+    pochodzenie = origin(body.vin)
+    if not pochodzenie.confident:
+        raise HTTPException(
+            422,
+            "Nie rozpoznaję tego numeru VIN. Sprawdź, czy jest kompletny — "
+            "do ustalenia cła wystarczy początek, ale musi być poprawny.",
+        )
+
+    lot = CarLot(
+        source="vin-check",
+        lot_id=body.vin[:11],
+        url="",
+        vin=body.vin,
+        full_vin=body.vin,
+        make=body.make,
+        model=body.model,
+        trim=body.trim,
+        current_bid_usd=body.bid_usd,
+        location_state=(body.state or "").upper() or None,
+    )
+    stawki = rates_for_lot(lot)
+    naped = detect(body.make, body.model, body.trim)
+
+    wynik: dict[str, Any] = {
+        "vin": body.vin.upper()[:17],
+        "assembly_country": stawki.country_name,
+        "assembled_in_usa": pochodzenie.assembled_in_usa,
+        "duty_rate_pct": round(stawki.duty_rate * 100, 1),
+        "duty_free": stawki.duty_free,
+        "duty_reason": stawki.duty_reason,
+        "excise_rate_pct": round(stawki.excise_rate * 100, 2),
+        "excise_reason": stawki.excise_reason,
+        "drivetrain": stawki.drivetrain.value,
+        "drivetrain_confident": naped.confident,
+        "assumptions": stawki.assumptions,
+        "usd_rate": round(fx.current_rate(), 4),
+    }
+
+    if body.bid_usd:
+        from pricing.import_calculator import calculate_import_costs, client_price_pln, towing_for_location
+
+        koszty = calculate_import_costs(
+            bid_usd=body.bid_usd,
+            towing_usd=towing_for_location(lot.location_state, None),
+            usd_rate=fx.current_rate(),
+            excise_rate=stawki.excise_rate,
+            duty_rate=stawki.duty_rate,
+        )
+        cena = client_price_pln(koszty, settlement=body.settlement)
+        # Ile klient zyskuje na tym, że sprawdziliśmy VIN. To jest cała pointa
+        # narzędzia i jedyna liczba, którą warto zapamiętać.
+        po_staremu = client_price_pln(
+            calculate_import_costs(
+                bid_usd=body.bid_usd,
+                towing_usd=towing_for_location(lot.location_state, None),
+                usd_rate=fx.current_rate(),
+                excise_rate=stawki.excise_rate,
+                duty_rate=0.10,
+            ),
+            settlement=body.settlement,
+        )
+        wynik["landed_pln"] = round(cena)
+        wynik["landed_if_duty_10_pln"] = round(po_staremu)
+        wynik["saving_pln"] = round(po_staremu - cena)
+
+    logger.info("[vin-check] %s → cło %s%%", body.vin[:8], wynik["duty_rate_pct"])
+    return wynik
+
+
 # ─────────────────────────────────────────────────────── publiczny formularz
 
 
@@ -267,19 +389,29 @@ async def inbox() -> dict[str, Any]:
 
     To jest jedyny ekran, który broker musi otworzyć rano.
     """
+    from sales import gate as _gate
+    from sales.gate import check as gate_check
+
     pozycje = []
+    parking = []
     for draft in db.pending_drafts():
         lead = db.get_lead(draft.lead_id)
         if lead is None:
             continue
         score = score_lead(lead)
-        pozycje.append(
-            {
-                **_draft_json(draft, lead),
-                "score": _score_json(score),
-                "wa_me": wa_me_link(lead.phone, draft.final_text),
-            }
-        )
+        werdykt = gate_check(lead, score)
+        wpis = {
+            **_draft_json(draft, lead),
+            "score": _score_json(score),
+            "wa_me": wa_me_link(lead.phone, draft.final_text),
+        }
+        # Sito rozdziela skrzynkę na dwie listy zamiast ukrywać cokolwiek. Lead odrzucony
+        # nie znika — leży widocznie, z powodem i z warunkiem powrotu. Ukrywanie go
+        # zamieniłoby filtr w cichą utratę klienta, a o to nie chodzi.
+        if werdykt.passes:
+            pozycje.append(wpis)
+        else:
+            parking.append({**wpis, "parked_reasons": werdykt.reasons, "unlock": werdykt.unlock})
 
     # Gorące leady na górze: broker ma zacząć od tych, którzy kupią.
     kolejnosc = {"A": 0, "B": 1, "C": 2, "D": 3}
@@ -293,7 +425,7 @@ async def inbox() -> dict[str, Any]:
     #
     # „Czeka” znaczy: nigdy do niego nie napisaliśmy albo ostatnie słowo należy
     # do klienta. Lead, na którego wiadomość odpowiedzieliśmy, nie wymaga niczego.
-    z_draftem = {p["lead_id"] for p in pozycje}
+    z_draftem = {p["lead_id"] for p in pozycje} | {p["lead_id"] for p in parking}
     czekaja = []
     for lead in db.list_leads(only_open=True):
         if lead.id in z_draftem:
@@ -304,6 +436,23 @@ async def inbox() -> dict[str, Any]:
         if odpisalismy and not ostatnie_od_klienta:
             continue
         score = score_lead(lead)
+        werdykt = gate_check(lead, score)
+        if not werdykt.passes:
+            parking.append(
+                {
+                    # `lead_id` obok `id`, żeby obie ścieżki parkingu — ta z draftem
+                    # i ta bez — miały ten sam kształt. Front nie ma się domyślać,
+                    # z której gałęzi przyszedł wpis.
+                    "lead_id": lead.id,
+                    "text": "",
+                    "lead": _lead_json(lead),
+                    **_lead_json(lead),
+                    "score": _score_json(score),
+                    "parked_reasons": werdykt.reasons,
+                    "unlock": werdykt.unlock,
+                }
+            )
+            continue
         czekaja.append(
             {
                 **_lead_json(lead),
@@ -316,10 +465,17 @@ async def inbox() -> dict[str, Any]:
         )
     czekaja.sort(key=lambda p: (kolejnosc.get(p["score"]["segment"], 9), -p["score"]["score"]))
 
+    parking.sort(key=lambda p: -p["score"]["score"])
     return {
         "count": len(pozycje),
         "items": pozycje,
         "needs_attention": czekaja,
+        # Odrzuceni przez sito — widoczni, z powodem i warunkiem powrotu.
+        "parked": parking,
+        "gate": {
+            "min_budget_pln": _gate.MIN_BUDGET_PLN,
+            "min_score": _gate.MIN_SCORE,
+        },
     }
 
 
@@ -396,6 +552,55 @@ async def regenerate(lead_id: int) -> dict[str, Any]:
         return {"draft": None, "reason": powod}
 
     return {"draft": _draft_json(db.save_draft(draft))}
+
+
+class OfferIn(BaseModel):
+    """Auta wybrane przez brokera do zaproponowania klientowi."""
+
+    lots: list[dict] = Field(default_factory=list, max_length=10)
+
+
+@router.post("/api/sales/leads/{lead_id}/offer")
+async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
+    """Propozycja wiadomości, która ZNA auta wybrane przez brokera.
+
+    Do tej pory na etapie „oferta" agent pisał ogólniki, bo żaden endpoint nie
+    przekazywał mu `offers` — miał pole na auta i nigdy nic w nim nie dostawał.
+
+    Auta wybiera człowiek. Kolejności nie zmieniamy: broker zaznaczył je w takiej,
+    a przestawianie ich znaczyłoby, że klient dostaje inną propozycję niż ta,
+    którą broker zatwierdził.
+    """
+    from parser.models import CarLot
+    from sales.agent import propose_reply
+    from sales.offers import offers_from_lots
+
+    lead = db.get_lead(lead_id)
+    if lead is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    lots: list[CarLot] = []
+    for raw in payload.lots:
+        try:
+            lots.append(CarLot(**raw))
+        except Exception:
+            logger.debug("[leads] pomijam lot o nieprawidłowym kształcie", exc_info=True)
+
+    offers = offers_from_lots(
+        lots, budget_pln=lead.budget_pln, settlement=lead.settlement
+    )
+    if not offers:
+        raise HTTPException(
+            422,
+            "Żadnego z tych aut nie da się wycenić — bez ceny pod klucz nie ma czego proponować.",
+        )
+
+    draft = propose_reply(lead, db.messages(lead_id), offers=offers)
+    if draft is None or not draft.text:
+        powod = draft.rationale if draft else "agent nie ma nic do napisania na tym etapie"
+        return {"draft": None, "reason": powod, "offers": offers}
+
+    return {"draft": _draft_json(db.save_draft(draft)), "offers": offers}
 
 
 @router.post("/api/sales/drafts/{draft_id}/approve")

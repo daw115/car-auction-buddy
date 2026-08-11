@@ -305,6 +305,14 @@ def propose_reply(
 
     if lead.stage is Stage.STRACONY:
         return None
+
+    # Sito PRZED modelem, nie po nim. Wywołanie kosztuje i trwa kilkanaście sekund,
+    # a lead, którego broker i tak nie zobaczy, nie potrzebuje wypracowanej wiadomości.
+    # Wariant regułowy wystarcza, żeby na parkingu leżało coś sensownego.
+    from sales.gate import worth_model_call
+
+    if not worth_model_call(lead, score):
+        return _fallback_draft(lead, score, history)
     if not lead.contactable:
         return Draft(
             lead_id=lead.id or 0,
