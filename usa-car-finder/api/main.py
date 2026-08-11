@@ -3624,6 +3624,21 @@ async def create_watch(request: WatchCreateRequest, _auth: None = Depends(_requi
     return watch.as_dict()
 
 
+@app.get("/api/watches/hits")
+async def watch_hits(
+    watch_id: Optional[int] = None, limit: int = 20, _auth: None = Depends(_require_bearer)
+):
+    """Co nasłuchy faktycznie znalazły.
+
+    Powiadomienie na Telegramie znika w historii czatu, a licznik nie mówi czego —
+    bez tej listy broker nie ma jak wrócić do tego, co wyłowił nasłuch w nocy.
+    """
+    from watch import db as watch_db
+
+    hits = await asyncio.to_thread(watch_db.recent_hits, watch_id, limit=limit)
+    return {"hits": hits}
+
+
 @app.delete("/api/watches/{watch_id}")
 async def delete_watch(watch_id: int, _auth: None = Depends(_require_bearer)):
     from watch import db as watch_db

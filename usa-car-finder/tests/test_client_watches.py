@@ -119,3 +119,26 @@ def test_runner_notifies_the_broker_and_never_the_client(monkeypatch):
     # Drugi przebieg na tych samych danych: nic nowego, brak powiadomienia.
     powtorka = asyncio.run(runner.run_watch(watch_db.get(watch.id)))
     assert powtorka.fresh == 0 and not powtorka.notified
+
+
+def test_watch_stores_what_it_found_not_only_how_many():
+    """Licznik "znalezionych 3" nie mówi czego — a to jedyny powód, dla którego
+    nasłuch istnieje. Powiadomienie na Telegramie znika w historii czatu."""
+    watch = watch_db.create(KRYTERIA, client_name="Wojciech")
+    watch_db.record_hits(watch.id, [lot("A"), lot("B")])
+
+    hits = watch_db.recent_hits(watch.id)
+
+    assert len(hits) == 2
+    assert {h["lot"]["lot_id"] for h in hits} == {"A", "B"}
+    assert hits[0]["watchId"] == watch.id
+
+
+def test_hits_from_all_watches_are_available_together():
+    pierwszy = watch_db.create(KRYTERIA)
+    drugi = watch_db.create({"make": "Ford"})
+    watch_db.record_hits(pierwszy.id, [lot("A")])
+    watch_db.record_hits(drugi.id, [lot("B")])
+
+    assert len(watch_db.recent_hits()) == 2
+    assert len(watch_db.recent_hits(drugi.id)) == 1

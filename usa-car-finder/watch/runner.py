@@ -133,6 +133,7 @@ async def run_watch(watch: watch_db.Watch) -> WatchResult:
         watch_db.mark_seen(watch.id, warte)
 
         if fresh:
+            watch_db.record_hits(watch.id, fresh)
             result.notified = _notify(watch, fresh)
         watch_db.record_run(watch.id, found=len(fresh))
         logger.info(

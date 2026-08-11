@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS watch_seen_lots (
     PRIMARY KEY (watch_id, lot_key)
 );
 
+CREATE TABLE IF NOT EXISTS watch_hits (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    watch_id   INTEGER NOT NULL,
+    found_at   REAL NOT NULL,
+    lot_key    TEXT NOT NULL,
+    lot_json   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_hits_watch ON watch_hits(watch_id, found_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_watches_active ON client_watches(active, last_run_at);
 """
 
@@ -231,3 +241,52 @@ def record_run(watch_id: int, *, found: int = 0, error: Optional[str] = None) ->
             "found_total = found_total + ? WHERE id = ?",
             (time.time(), error, max(0, found), watch_id),
         )
+
+
+def record_hits(watch_id: int, lots: list) -> int:
+    """Zapamiętuje ZNALEZIONE auta, nie tylko ich liczbę.
+
+    Powiadomienie na Telegramie znika w historii czatu, a licznik „znalezionych 3"
+    nie mówi czego. Bez tego broker nie ma jak wrócić do tego, co nasłuch wyłowił
+    w nocy — a to jest jedyny powód, dla którego nasłuch w ogóle istnieje.
+    """
+    if not lots:
+        return 0
+    now = time.time()
+    init_db()
+    with _connect() as conn:
+        conn.executemany(
+            "INSERT INTO watch_hits (watch_id, found_at, lot_key, lot_json) VALUES (?, ?, ?, ?)",
+            [
+                (
+                    watch_id,
+                    now,
+                    lot_key(lot),
+                    json.dumps(
+                        lot.model_dump(mode="json") if hasattr(lot, "model_dump") else lot,
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                )
+                for lot in lots
+            ],
+        )
+    return len(lots)
+
+
+def recent_hits(watch_id: Optional[int] = None, *, limit: int = 20) -> list[dict]:
+    """Ostatnie znaleziska — całego nasłuchu albo wszystkich naraz."""
+    init_db()
+    query = "SELECT * FROM watch_hits"
+    params: list = []
+    if watch_id is not None:
+        query += " WHERE watch_id = ?"
+        params.append(watch_id)
+    query += " ORDER BY found_at DESC LIMIT ?"
+    params.append(max(1, min(limit, 200)))
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [
+        {"watchId": r["watch_id"], "foundAt": r["found_at"], "lot": json.loads(r["lot_json"])}
+        for r in rows
+    ]
