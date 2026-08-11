@@ -7,6 +7,7 @@ import { Bell, BellOff, Loader2, Trash2, Plus } from "lucide-react";
 import {
   createWatch,
   deleteWatch,
+  listWatchHits,
   listWatches,
   setWatchActive,
 } from "@/functions/watches.functions";
@@ -41,6 +42,7 @@ export function WatchesPanel({ criteria, clientName, clientPhone }: Props) {
   const fnCreate = useServerFn(createWatch);
   const fnDelete = useServerFn(deleteWatch);
   const fnToggle = useServerFn(setWatchActive);
+  const fnHits = useServerFn(listWatchHits);
   const queryClient = useQueryClient();
   const [interval, setInterval] = useState(12);
 
@@ -72,7 +74,15 @@ export function WatchesPanel({ criteria, clientName, clientPhone }: Props) {
       toast.error(e.message || "Nie udało się założyć nasłuchu."),
   });
 
+  // Powiadomienie z Telegrama znika w historii czatu — tu broker do niego wraca.
+  const { data: znaleziska } = useQuery({
+    queryKey: ["watch-hits"],
+    queryFn: () => fnHits({ data: { limit: 10 } }),
+    refetchInterval: 120_000,
+  });
+
   const watches = data?.watches ?? [];
+  const hits = znaleziska?.hits ?? [];
 
   return (
     <Card className="p-4">
@@ -171,6 +181,35 @@ export function WatchesPanel({ criteria, clientName, clientPhone }: Props) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {hits.length > 0 && (
+        <div className="mt-4 border-t pt-3">
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Ostatnio wyłowione</div>
+          <div className="space-y-1">
+            {hits.map((h, i) => (
+              <div key={`${h.watchId}-${h.lot.lot_id}-${i}`} className="text-sm">
+                <span className="font-medium">
+                  {[h.lot.year, h.lot.make, h.lot.model].filter(Boolean).join(" ")}
+                </span>
+                <span className="text-muted-foreground">
+                  {h.lot.odometer_mi ? ` · ${h.lot.odometer_mi.toLocaleString("pl-PL")} mi` : ""}
+                  {h.lot.damage_primary ? ` · ${h.lot.damage_primary}` : ""}
+                </span>
+                {h.lot.url && (
+                  <a
+                    href={h.lot.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-2 text-xs text-primary hover:underline"
+                  >
+                    aukcja
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Card>

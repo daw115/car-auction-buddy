@@ -13,7 +13,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
-import type { ClientCriteria } from "@/lib/types";
+import type { CarLot, ClientCriteria } from "@/lib/types";
 import { criteriaShape } from "@/functions/backend.functions";
 
 export type Watch = {
@@ -74,3 +74,24 @@ export const setWatchActive = createServerFn({ method: "POST" })
         method: "POST",
       }),
   );
+
+export type WatchHit = {
+  watchId: number;
+  foundAt: number;
+  lot: CarLot;
+};
+
+/** Co nasłuchy faktycznie znalazły — powiadomienie z Telegrama znika, to zostaje. */
+export const listWatchHits = createServerFn({ method: "GET" })
+  .middleware([siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      watchId: z.number().int().positive().optional(),
+      limit: z.number().int().min(1).max(200).default(20),
+    }).parse,
+  )
+  .handler(async ({ data }): Promise<{ hits: WatchHit[] }> => {
+    const query = new URLSearchParams({ limit: String(data.limit) });
+    if (data.watchId) query.set("watch_id", String(data.watchId));
+    return backendRequest({ path: `/api/watches/hits?${query}`, method: "GET" });
+  });
