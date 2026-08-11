@@ -7,12 +7,44 @@ import { PasswordGate } from "./PasswordGate";
 import { siteUserLogout, siteUserSession } from "@/functions/site-auth.functions";
 
 vi.mock("@/functions/site-auth.functions", () => ({
+  siteUserDeletePassword: vi.fn(),
   siteUserHasPassword: vi.fn(),
   siteUserLogin: vi.fn(),
   siteUserLogout: vi.fn(),
   siteUserSession: vi.fn(),
   siteUserSetPassword: vi.fn(),
 }));
+
+// Node >= 22 ships a built-in `localStorage` global that stays `undefined` unless the process
+// is started with --localstorage-file. Vitest's jsdom environment only copies window properties
+// that do not already exist on globalThis, so jsdom's real Storage is skipped and `localStorage`
+// resolves to that undefined stub. Install a spec-shaped in-memory Storage when that happens
+// (same approach as src/lib/scrape-job-storage.test.ts).
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    getItem: (key: string) => store.get(String(key)) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(String(key), String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(String(key));
+    },
+    clear: () => store.clear(),
+  };
+}
+
+if (!globalThis.localStorage) {
+  Object.defineProperty(globalThis, "localStorage", {
+    value: createMemoryStorage(),
+    configurable: true,
+    writable: true,
+  });
+}
 
 describe("PasswordGate server session bootstrap", () => {
   beforeEach(() => {
