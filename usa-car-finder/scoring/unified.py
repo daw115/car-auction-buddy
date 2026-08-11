@@ -378,36 +378,54 @@ _DAMAGE_VALUE: list[tuple[re.Pattern[str], float, str]] = [
 
 
 def _condition(lot: CarLot, criteria: ClientCriteria, profile: ClientProfile):
+    """Stan techniczny w skali AutoGrade 0-5, tej samej dla wszystkich źródeł.
+
+    Wcześniej to były dwie różne metryki pod jedną nazwą: dla Manheimu grade z aukcji,
+    dla Copartu i IAAI dopasowanie opisu szkody do listy wzorców. Liczby z tych dwóch
+    ścieżek nie były porównywalne, więc nie dało się odpowiedzieć, czy lot z Copartu
+    jest w lepszym stanie niż ten z Manheimu — a to jest pytanie, od którego zaczyna się
+    każdy wybór między nimi.
+
+    Teraz obie idą przez `scoring/autograde.py`, który liczy grade metodyką AutoGrade
+    (NAAA/Manheim). Gdy aukcja podaje własny grade, wygrywa jej liczba — nasza służy
+    do wyłapania rozjazdu.
+
+    Ramp zostaje bez zmian: grade 2,0 to dla KUPUJĄCEGO zero, a nie 40%. AutoGrade
+    opisuje stan, ta składowa opisuje opłacalność zakupu i wolno jej być ostrzejsza.
+    """
+    from scoring.autograde import grade_for_lot
+
     listing = _listing(lot)
+    ocena = grade_for_lot(lot)
 
-    grade = _as_float(listing.get("conditionGrade"))
-    if grade is not None:
-        # Manheim ocenia stan w skali CR 0-5; to odpowiednik "typu szkody" z Copartu.
-        value = _ramp(grade, [(2.0, 0.0), (3.5, 0.5), (5.0, 1.0)])
-        notes = [f"CR {grade:.1f}"]
-        if listing.get("hasPriorPaint") is True:
-            value -= 0.05
-            notes.append("lakierowane")
-        if listing.get("yellowLight") is True:
-            value -= 0.10
-            notes.append("żółte światło")
-        if listing.get("redLight") is True:
-            value -= 0.25
-            notes.append("czerwone światło")
-        if listing.get("greenLight") is True:
-            notes.append("ride & drive")
-        return _clamp01(value), ", ".join(notes)
-
-    damage = _damage_text(lot)
-    if not damage.strip():
+    if not ocena.items and ocena.source == "obliczony" and not _damage_text(lot).strip():
+        # Brak jakichkolwiek danych o stanie to nie jest auto bez uszkodzeń. Zwracamy
+        # None, żeby waga tej składowej rozłożyła się na pozostałe — tak samo jak przed
+        # zmianą. Auto naprawdę czyste ma w raporcie „no items reported", a to co innego
+        # niż brak raportu.
         return None
-    for pattern, value, label in _DAMAGE_VALUE:
-        if pattern.search(damage):
-            if lot.airbags_deployed:
-                value -= 0.2
-                label += ", poduszki"
-            return _clamp01(value), label
-    return 0.35, "opis szkód nierozpoznany"
+
+    value = _ramp(ocena.grade, [(2.0, 0.0), (3.5, 0.5), (5.0, 1.0)])
+    notes = [f"AutoGrade {ocena.grade:.1f} {ocena.label}"]
+    if ocena.caps_applied:
+        notes.append(", ".join(ocena.caps_applied))
+
+    # Sygnały, których AutoGrade nie obejmuje, a które widzi kupujący na aukcji.
+    # Świadomie poza grade'em: dokument AutoGrade liczy stan, a światło i historia
+    # lakieru to informacje o ryzyku transakcji.
+    if listing.get("hasPriorPaint") is True:
+        value -= 0.05
+        notes.append("lakierowane")
+    if listing.get("yellowLight") is True:
+        value -= 0.10
+        notes.append("żółte światło")
+    if listing.get("redLight") is True:
+        value -= 0.25
+        notes.append("czerwone światło")
+    if listing.get("greenLight") is True:
+        notes.append("ride & drive")
+
+    return _clamp01(value), ", ".join(notes)
 
 
 def _title(lot: CarLot, criteria: ClientCriteria, profile: ClientProfile):

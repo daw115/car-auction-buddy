@@ -1,0 +1,1 @@
+"""Nasluch aukcji pod klienta."""

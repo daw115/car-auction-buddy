@@ -1,0 +1,23 @@
+[Unit]
+Description=USA Car Finder — przebieg nasłuchów pod klientów
+After=usacar-api.service
+Wants=usacar-api.service
+
+[Service]
+Type=oneshot
+User=dawid
+WorkingDirectory=/home/dawid/usacar/usa-car-finder
+Environment=HOME=/home/dawid
+# Scrape zajmuje przeglądarkę i dwurdzeniowy CPU serwera — nasłuch nie może
+# konkurować z wyszukiwaniem, które broker odpalił ręcznie i na które czeka.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+ExecStart=/home/dawid/usacar/usa-car-finder/venv/bin/python -m watch.runner
+# Jeden przebieg to kilka scrape'ów po kilkanaście minut.
+TimeoutStartSec=3600
+StandardOutput=append:/var/log/usacar-watch.log
+StandardError=append:/var/log/usacar-watch.log
+
+[Install]
+WantedBy=multi-user.target

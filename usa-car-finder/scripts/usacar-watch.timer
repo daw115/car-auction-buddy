@@ -1,0 +1,17 @@
+[Unit]
+Description=USA Car Finder — nasłuchy pod klientów (co 6 godzin)
+
+[Timer]
+# Co sześć godzin, a nie co godzinę: aukcje nie odświeżają się w minutach,
+# a każdy przebieg to realne wejście na Copart, IAAI i Manheima. Rzeczywisty
+# odstęp dla konkretnego klienta pilnuje `interval_hours` w bazie — timer tylko
+# budzi runnera, który sam sprawdza, komu minął czas.
+OnCalendar=*-*-* 00,06,12,18:20:00
+# WSL2 bywa wyłączone razem z hostem Windows — bez tego przebieg po prostu by
+# nie wystartował i nikt by nie zauważył.
+Persistent=true
+RandomizedDelaySec=900
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

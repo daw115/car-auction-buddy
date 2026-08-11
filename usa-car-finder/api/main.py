@@ -3586,6 +3586,63 @@ async def intake_whatsapp(_auth: None = Depends(_require_bearer)):
     return payload
 
 
+class WatchCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    criteria: ClientCriteria
+    client_name: Optional[str] = Field(default=None, alias="clientName")
+    client_phone: Optional[str] = Field(default=None, alias="clientPhone")
+    interval_hours: float = Field(default=12.0, alias="intervalHours", ge=1, le=168)
+
+
+@app.get("/api/watches")
+async def list_watches(_auth: None = Depends(_require_bearer)):
+    """Nasłuchy założone pod klientów."""
+    from watch import db as watch_db
+
+    watches = await asyncio.to_thread(watch_db.list_all)
+    return {"watches": [w.as_dict() for w in watches]}
+
+
+@app.post("/api/watches")
+async def create_watch(request: WatchCreateRequest, _auth: None = Depends(_require_bearer)):
+    """Zakłada nasłuch pod klienta.
+
+    Przebiegi robi timer systemd, nie ten endpoint — scrape trwa kilkanaście
+    minut. Powiadomienie idzie DO BROKERA; do klienta nadal nic nie wychodzi
+    bez kliknięcia człowieka.
+    """
+    from watch import db as watch_db
+
+    watch = await asyncio.to_thread(
+        watch_db.create,
+        request.criteria.model_dump(mode="json"),
+        client_name=request.client_name,
+        client_phone=request.client_phone,
+        interval_hours=request.interval_hours,
+    )
+    return watch.as_dict()
+
+
+@app.delete("/api/watches/{watch_id}")
+async def delete_watch(watch_id: int, _auth: None = Depends(_require_bearer)):
+    from watch import db as watch_db
+
+    if not await asyncio.to_thread(watch_db.delete, watch_id):
+        raise HTTPException(status_code=404, detail="Nie ma takiego nasłuchu")
+    return {"status": "deleted", "id": watch_id}
+
+
+@app.post("/api/watches/{watch_id}/pause")
+async def pause_watch(watch_id: int, active: bool = True, _auth: None = Depends(_require_bearer)):
+    from watch import db as watch_db
+
+    watch = await asyncio.to_thread(watch_db.set_active, watch_id, active)
+    if watch is None:
+        raise HTTPException(status_code=404, detail="Nie ma takiego nasłuchu")
+    return watch.as_dict()
+
+
 class ParseClientMessageRequest(BaseModel):
     """Wiadomość od klienta do sparsowania na ClientCriteria."""
     message: str
