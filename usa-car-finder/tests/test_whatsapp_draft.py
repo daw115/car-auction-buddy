@@ -242,3 +242,70 @@ def test_auction_trim_noise_does_not_eat_the_line():
 
     assert "2023 Audi Q7 Premium Plus" in linia
     assert "TIPTRONIC" not in linia and "QUATTRO" not in linia
+
+
+# ─────────────────────────────────────────── wywiad z klienta: nagranie -> kryteria
+
+
+def test_voice_intake_refuses_when_there_is_no_transcription_engine(monkeypatch):
+    """Bez silnika mówimy to wprost, zamiast udawać pustą transkrypcję."""
+    import io
+
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+    from ai import transcribe as transcriber
+
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
+    monkeypatch.setattr(transcriber, "is_available", lambda: False)
+
+    with TestClient(api_main.app) as client:
+        response = client.post(
+            "/api/intake/voice", files={"file": ("nagranie.ogg", io.BytesIO(b"x"), "audio/ogg")}
+        )
+
+    assert response.status_code == 503
+    assert "faster-whisper" in response.json()["detail"]
+
+
+def test_voice_intake_returns_criteria_and_never_starts_a_scrape(monkeypatch):
+    """Transkrypt bywa niedosłowny — broker ma go zobaczyć PRZED wyszukiwaniem.
+
+    Wyszukiwanie trwa kilkanaście minut i kosztuje; uruchamianie go z automatu
+    na podstawie tego, co system usłyszał, oznaczałoby palenie czasu na pomyłki.
+    """
+    import io
+
+    from fastapi.testclient import TestClient
+    from api import main as api_main
+    from ai import transcribe as transcriber
+
+    monkeypatch.setattr(api_main, "SCRAPER_API_TOKEN", "")
+    monkeypatch.setattr(transcriber, "is_available", lambda: True)
+    monkeypatch.setattr(
+        transcriber,
+        "transcribe",
+        lambda path, language=None: transcriber.Transcript(
+            text="Szukam Audi Q7 z 2019 roku, budżet 200 tysięcy pod klucz.",
+            language="pl", duration_s=12.0, model="small",
+        ),
+    )
+    monkeypatch.setattr(
+        "ai.message_parser.parse_client_message",
+        lambda text: {
+            "cars": [{"make": "Audi", "model": "Q7", "year_from": 2019}],
+            "budget_pln_to": 200_000,
+            "_summary": "Klient szuka Audi Q7",
+        },
+    )
+
+    with TestClient(api_main.app) as client:
+        response = client.post(
+            "/api/intake/voice", files={"file": ("nagranie.ogg", io.BytesIO(b"x"), "audio/ogg")}
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["criteria"]["make"] == "Audi"
+    assert "Q7" in payload["transcript"]["text"]
+    # Kontrakt: żadnego job_id — wyszukiwanie zleca człowiek.
+    assert "job_id" not in payload and "jobId" not in payload

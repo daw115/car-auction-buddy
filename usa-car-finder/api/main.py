@@ -5,13 +5,14 @@ import logging
 import re
 import subprocess
 from contextlib import asynccontextmanager
+import contextlib
 from pathlib import Path
 from typing import Literal, Optional, Union
 from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, File, Form, HTTPException, Header, Depends, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -3444,6 +3445,79 @@ async def generate_broker_llm_report(request: ApproveReportRequest):
             render_broker_report_llm, lots_for_report[0], request.criteria, len(request.approved_lots),
         )
     return HTMLResponse(content=html)
+
+
+@app.post("/api/intake/voice")
+async def intake_voice(
+    file: UploadFile = File(...),
+    language: Optional[str] = Form(default=None),
+    _auth: None = Depends(_require_bearer),
+):
+    """Nagranie od klienta -> transkrypt -> spisane wymagania.
+
+    Transkrypcja idzie lokalnie (faster-whisper na CPU): nagranie głosu klienta
+    to dane osobowe i nie ma powodu wysyłać go do zewnętrznego dostawcy.
+
+    Świadomie NIE uruchamia wyszukiwania. Transkrypt bywa niedosłowny — broker
+    ma najpierw zobaczyć, co system usłyszał, poprawić kryteria i dopiero wtedy
+    puścić scrape, który trwa kilkanaście minut.
+    """
+    import tempfile
+
+    from ai import transcribe as transcriber
+
+    if not transcriber.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Brak silnika transkrypcji — zainstaluj faster-whisper w venv serwera",
+        )
+
+    suffix = Path(file.filename or "nagranie").suffix or ".ogg"
+    tmp = tempfile.NamedTemporaryFile(prefix="intake-", suffix=suffix, delete=False)
+    try:
+        tmp.write(await file.read())
+        tmp.close()
+        try:
+            transcript = await asyncio.to_thread(
+                transcriber.transcribe, tmp.name, language=language
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("[intake] transkrypcja nie powiodła się")
+            raise HTTPException(status_code=500, detail=f"Transkrypcja padła: {exc}") from exc
+    finally:
+        # Nagranie znika z dysku od razu — trzymamy tekst, nie głos klienta.
+        with contextlib.suppress(OSError):
+            os.unlink(tmp.name)
+
+    payload: dict = {"transcript": transcript.as_dict(), "criteria": None, "assumed": [], "summary": ""}
+    if not transcript.text.strip():
+        payload["summary"] = "Nagranie nie zawierało rozpoznawalnej mowy."
+        return payload
+
+    from ai.criteria_from_message import criteria_from_parsed
+    from ai.message_parser import parse_client_message
+
+    try:
+        parsed = await asyncio.to_thread(parse_client_message, transcript.text)
+    except Exception as exc:
+        payload["summary"] = f"Transkrypt jest, ale nie wyłapałem z niego kryteriów: {exc}"
+        return payload
+
+    parsed.pop("_warnings", None)
+    payload["summary"] = parsed.pop("_summary", "") or ""
+    result = criteria_from_parsed(parsed)
+    if result is None:
+        payload["summary"] = (
+            payload["summary"] or "Klient nie podał marki — bez niej nie ma czego szukać."
+        )
+        return payload
+
+    payload["criteria"] = result.criteria.model_dump(mode="json")
+    payload["assumed"] = result.assumed
+    payload["summary"] = result.summary or payload["summary"]
+    return payload
 
 
 class ParseClientMessageRequest(BaseModel):
