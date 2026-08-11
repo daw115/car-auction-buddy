@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LiveJobLogs } from "@/components/LiveJobLogs";
 import { backendListJobs, backendCancelJob } from "@/functions/backend.functions";
 import { isAuctionSource } from "@/lib/auction-sources";
 
@@ -163,10 +162,6 @@ function ActiveJobRow({ job, onCancel }: { job: ActiveJob; onCancel: (id: string
             {job.analysis_notice || "Sprawdź czy nazwa modelu jest poprawna."}
           </div>
         </div>
-      )}
-
-      {["running", "scraping", "scraping_list", "scraping_details", "enriching", "parsing", "ai_analyzing", "generating_reports", "in_progress"].includes(job.status) && (
-        <LiveJobLogs jobId={String(job.id)} active={true} />
       )}
     </div>
   );
