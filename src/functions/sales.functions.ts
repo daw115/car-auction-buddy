@@ -75,6 +75,18 @@ export type Lead = {
   last_client_message_at: string | null;
   /** Ustawiane dopiero przez /promote — panel po tym poznaje, czy pokazać awans. */
   client_id: number | null;
+  /**
+   * Dwa budżety, bo klient ma dwie różne kwoty — liczone przez backend, nie trzymane.
+   *
+   * `confirmed` to pieniądze, które ma dzisiaj; `potential` to kwota po sprzedaży auta
+   * w rozliczeniu. Sito patrzy na potencjał (czy warto poświęcić czas), a wyszukiwanie
+   * i wycena na potwierdzony (co mu dziś pokazać). Różnica między nimi jest treścią
+   * rozmowy: „mam sto, będę miał sto osiemdziesiąt pięć po sprzedaży Audi".
+   */
+  confirmed_budget_pln: number | null;
+  potential_budget_pln: number | null;
+  /** Na co lead czeka, zanim będzie mógł kupić. Null = na nic. */
+  waiting_on: string | null;
 };
 
 export type InboxItem = {
@@ -301,19 +313,43 @@ export const patchLead = createServerFn({ method: "POST" })
       leadId: z.number().int().positive(),
       changes: z
         .object({
+          name: z.string().max(120).nullable().optional(),
+          phone: z.string().max(40).optional(),
+          email: z.string().max(160).nullable().optional(),
+          make: z.string().max(60).nullable().optional(),
+          model: z.string().max(60).nullable().optional(),
+          year_from: z.number().int().min(1980).max(2100).nullable().optional(),
+          year_to: z.number().int().min(1980).max(2100).nullable().optional(),
           budget_pln: z.number().min(0).max(10_000_000).nullable().optional(),
           settlement: z.enum(["private", "company"]).optional(),
           max_odometer_mi: z.number().int().min(0).max(1_000_000).nullable().optional(),
           damage_ok: z.boolean().nullable().optional(),
+          timeline_days: z.number().int().min(0).max(3650).nullable().optional(),
           notes: z.string().max(4000).optional(),
+          // Warunek wznowienia i auto w rozliczeniu. Bez nich formularz mógł
+          // przestawić `trade_in_sold`, ale nie zapisać wartości auta — a to od niej
+          // zależy różnica między budżetem potwierdzonym a potencjalnym.
+          blocked_by: z.string().max(200).nullable().optional(),
+          trade_in_model: z.string().max(120).nullable().optional(),
+          trade_in_year: z.number().int().min(1980).max(2100).nullable().optional(),
+          trade_in_value_pln: z.number().min(0).max(10_000_000).nullable().optional(),
           trade_in_sold: z.boolean().optional(),
-          phone: z.string().max(40).optional(),
+          engine_hint: z.string().max(60).nullable().optional(),
+          trim_hint: z.string().max(120).nullable().optional(),
         })
         .refine((c) => Object.keys(c).length > 0, "Nie ma czego zapisać."),
     }).parse,
   )
   .handler(
-    async ({ data }): Promise<{ lead: Lead; score: LeadScore; changed: string[] }> =>
+    async ({
+      data,
+    }): Promise<{
+      lead: Lead;
+      score: LeadScore;
+      changed: string[];
+      /** Czy lead przechodzi sito po zmianie — budżet edytuje się zwykle właśnie po to. */
+      gate: { passes: boolean; reasons: string[]; unlock: string[] };
+    }> =>
       backendRequest({
         path: `/api/sales/leads/${data.leadId}`,
         method: "PATCH",
