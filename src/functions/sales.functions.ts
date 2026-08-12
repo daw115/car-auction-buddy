@@ -12,6 +12,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
+import { devRequestLogger } from "@/functions/dev-logging-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
 import type { CarLot } from "@/lib/types";
 
@@ -143,20 +144,20 @@ export type ApproveResult = {
 // ---------- wywołania ----------
 
 export const getSalesInbox = createServerFn({ method: "GET" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .handler(
     async (): Promise<Inbox> => backendRequest<Inbox>({ path: "/api/sales/inbox", method: "GET" }),
   );
 
 export const getSalesLeads = createServerFn({ method: "GET" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .handler(
     async (): Promise<{ count: number; items: Array<Lead & { score: LeadScore }> }> =>
       backendRequest({ path: "/api/sales/leads", method: "GET" }),
   );
 
 export const getLeadDetail = createServerFn({ method: "GET" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
   .handler(
     async ({ data }): Promise<LeadDetail> =>
@@ -172,7 +173,7 @@ export const getLeadDetail = createServerFn({ method: "GET" })
  *  po odpowiedzi klienta, oraz stage_after przy zatwierdzeniu draftu). Wszystko od
  *  etapu "decyzja" w dół przestawia człowiek — dotąd nie miał czym. */
 export const setLeadStage = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({ leadId: z.number().int().positive(), stage: z.string().min(1).max(40) }).parse,
   )
@@ -185,7 +186,7 @@ export const setLeadStage = createServerFn({ method: "POST" })
   );
 
 export const approveDraft = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       draftId: z.number().int().positive(),
@@ -202,7 +203,7 @@ export const approveDraft = createServerFn({ method: "POST" })
   );
 
 export const rejectDraft = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       draftId: z.number().int().positive(),
@@ -220,7 +221,7 @@ export const rejectDraft = createServerFn({ method: "POST" })
 
 /** Broker wkleja to, co klient odpisał na WhatsAppie. Agent proponuje odpowiedź. */
 export const recordClientReply = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       leadId: z.number().int().positive(),
@@ -265,7 +266,7 @@ export type LeadCandidate = {
  * i trwa minuty, więc postęp czyta się przez `getLeadCandidates`.
  */
 export const startLeadSearch = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
   .handler(
     async ({ data }): Promise<{ started: boolean; warnings: string[] }> =>
@@ -273,7 +274,7 @@ export const startLeadSearch = createServerFn({ method: "POST" })
   );
 
 export const getLeadCandidates = createServerFn({ method: "GET" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
   .handler(
     async ({
@@ -287,7 +288,7 @@ export const getLeadCandidates = createServerFn({ method: "GET" })
   );
 
 export const regenerateDraft = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
   .handler(
     async ({ data }): Promise<{ draft: InboxItem | null; reason?: string }> =>
@@ -307,7 +308,7 @@ export const regenerateDraft = createServerFn({ method: "POST" })
  *  „nie pytaliśmy", a nie „klient odmawia auta po szkodzie".
  */
 export const patchLead = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       leadId: z.number().int().positive(),
@@ -364,7 +365,7 @@ export const patchLead = createServerFn({ method: "POST" })
  *  Idempotentne — drugie kliknięcie nie zakłada duplikatu.
  */
 export const promoteLead = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
   .handler(
     async ({ data }): Promise<{ client_id: number; created: boolean; message: string }> =>

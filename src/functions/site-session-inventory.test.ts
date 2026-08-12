@@ -74,7 +74,9 @@ describe("site session protection inventory", () => {
     const definitions = source.match(/createServerFn\(\{ method: "(?:GET|POST)" \}\)/g) ?? [];
     const protectedDefinitions =
       source.match(
-        /createServerFn\(\{ method: "(?:GET|POST)" \}\)\s*\.middleware\(\[siteSessionMiddleware\]\)/g,
+        // siteSessionMiddleware musi być w tablicy, ale nie musi być sam —
+        // telemetria (devRequestLogger) dokłada się obok i nie jest bramką.
+        /createServerFn\(\{ method: "(?:GET|POST)" \}\)\s*\.middleware\(\[[^\]]*\bsiteSessionMiddleware\b[^\]]*\]\)/g,
       ) ?? [];
     expect(definitions.length).toBeGreaterThan(0);
     expect(protectedDefinitions).toHaveLength(definitions.length);

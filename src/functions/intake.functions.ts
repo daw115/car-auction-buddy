@@ -10,6 +10,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
+import { devRequestLogger } from "@/functions/dev-logging-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
 import type { ClientCriteria } from "@/lib/types";
 
@@ -31,7 +32,7 @@ export type IntakeResult = {
 
 /** Czyta rozmowę OTWARTĄ w oknie operatora. Nie przegląda listy czatów. */
 export const readWhatsappConversation = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .handler(
     async (): Promise<IntakeResult> =>
       backendRequest<IntakeResult>({

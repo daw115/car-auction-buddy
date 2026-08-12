@@ -12,6 +12,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { siteSessionMiddleware } from "@/functions/site-session-middleware.functions";
+import { devRequestLogger } from "@/functions/dev-logging-middleware.functions";
 import { backendRequest } from "@/lib/backend-transport.server";
 import type { CarLot, ClientCriteria } from "@/lib/types";
 import { criteriaShape } from "@/functions/backend.functions";
@@ -31,14 +32,14 @@ export type Watch = {
 };
 
 export const listWatches = createServerFn({ method: "GET" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .handler(
     async (): Promise<{ watches: Watch[] }> =>
       backendRequest({ path: "/api/watches", method: "GET" }),
   );
 
 export const createWatch = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       criteria: criteriaShape,
@@ -55,7 +56,7 @@ export const createWatch = createServerFn({ method: "POST" })
   );
 
 export const deleteWatch = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ id: z.number().int().positive() }).parse)
   .handler(async ({ data }) =>
     backendRequest<{ status: string; id: number }>({
@@ -65,7 +66,7 @@ export const deleteWatch = createServerFn({ method: "POST" })
   );
 
 export const setWatchActive = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ id: z.number().int().positive(), active: z.boolean() }).parse)
   .handler(
     async ({ data }): Promise<Watch> =>
@@ -83,7 +84,7 @@ export type WatchHit = {
 
 /** Co nasłuchy faktycznie znalazły — powiadomienie z Telegrama znika, to zostaje. */
 export const listWatchHits = createServerFn({ method: "GET" })
-  .middleware([siteSessionMiddleware])
+  .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       watchId: z.number().int().positive().optional(),
