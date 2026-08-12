@@ -81,8 +81,16 @@ export function WatchesPanel({ criteria, clientName, clientPhone }: Props) {
     refetchInterval: 120_000,
   });
 
-  const watches = data?.watches ?? [];
-  const hits = znaleziska?.hits ?? [];
+  // Na karcie klienta pokazujemy JEGO nasłuchy. Bez tego broker widziałby tam
+  // nasłuchy założone dla innych osób — i mógłby je stąd wyłączyć w przekonaniu,
+  // że dotyczą klienta, którego ma przed sobą.
+  const wszystkie = data?.watches ?? [];
+  const dlaKlienta = clientName || clientPhone;
+  const watches = dlaKlienta
+    ? wszystkie.filter((w) => w.clientName === clientName || w.clientPhone === clientPhone)
+    : wszystkie;
+  const moje = new Set(watches.map((w) => w.id));
+  const hits = (znaleziska?.hits ?? []).filter((h) => !dlaKlienta || moje.has(h.watchId));
 
   return (
     <Card className="p-4">
@@ -122,8 +130,9 @@ export function WatchesPanel({ criteria, clientName, clientPhone }: Props) {
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       ) : watches.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Żaden nasłuch nie działa. Przy wąskich kryteriach — rocznik, wersja, stan — auta wjeżdżają
-          pojedynczo i ręczne sprawdzanie co rano jest stratą czasu.
+          {dlaKlienta
+            ? "Ten klient nie ma jeszcze nasłuchu. Przy wąskich kryteriach auta wjeżdżają pojedynczo, więc warto go założyć."
+            : "Żaden nasłuch nie działa. Przy wąskich kryteriach — rocznik, wersja, stan — auta wjeżdżają pojedynczo i ręczne sprawdzanie co rano jest stratą czasu."}
         </p>
       ) : (
         <div className="space-y-2">
