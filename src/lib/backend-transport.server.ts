@@ -28,8 +28,6 @@ import {
   UbuntuApiError,
   canonicalizeBaseUrl,
 } from "./ubuntu-api.server";
-// Plik jest server-only (*.server.ts), więc import loggera nie trafia do bundla klienta.
-import { devLog } from "../server/dev-logger.server";
 
 export type BackendMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 export type BackendResponseType = "json" | "text";
@@ -264,29 +262,8 @@ async function requestUbuntu<T>(req: BackendRequest): Promise<T> {
  */
 export async function backendRequest<T = unknown>(req: BackendRequest): Promise<T> {
   const transport = selectBackendTransport();
-  // Jedyne miejsce, przez które przechodzi KAŻDE wywołanie backendu — stąd logi
-  // do panelu /dev/logs. Producent bufora istniał, ale nikt go nie wołał, więc
-  // strumień byłby pusty. Podpinamy tutaj, a nie w sześćdziesięciu server
-  // functions, bo jedno miejsce nie rozjedzie się z resztą.
-  const start = Date.now();
-  try {
-    const wynik =
-      transport === "ubuntu" ? await requestUbuntu<T>(req) : await requestLegacy<T>(req);
-    devLog("info", "backend", `${req.method ?? "GET"} ${req.path}`, {
-      transport,
-      ms: Date.now() - start,
-    });
-    return wynik;
-  } catch (error) {
-    const e = error as { status?: number; message?: string };
-    devLog("error", "backend", `${req.method ?? "GET"} ${req.path} — ${e?.status ?? "błąd"}`, {
-      transport,
-      ms: Date.now() - start,
-      // Bez treści odpowiedzi: backend potrafi zwrócić dane klienta w błędzie.
-      message: e?.message?.slice(0, 200),
-    });
-    throw error;
-  }
+  if (transport === "ubuntu") return requestUbuntu<T>(req);
+  return requestLegacy<T>(req);
 }
 
 /** Non-throwing variant with a caller-provided fallback (list/health flows). */
