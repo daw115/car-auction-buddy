@@ -33,3 +33,22 @@ def test_engine_hint_catches_the_spoken_form():
     assert _detect_engine_hint(ROZMOWA) == "2.0"
     assert _detect_engine_hint("chciałbym 3.0") == "3.0"
     assert _detect_engine_hint("Szukam BMW") is None
+
+
+def test_blocker_is_a_trigger_not_a_deadline():
+    """„Najpierw muszę sprzedać Octavię" nie ma daty, a decyduje o wszystkim.
+
+    Bez tego lead ląduje na parkingu bez powodu powrotu, a broker nie wie,
+    o co zapytać przy następnym kontakcie.
+    """
+    from sales.intake import _detect_blocker
+
+    assert _detect_blocker(ROZMOWA) == "sprzedaż obecnego auta"
+    assert _detect_blocker("teraz jestem w trakcie kupna domu") == "zakup domu"
+    assert _detect_blocker("czekam na premię roczną") == "premię roczną"
+
+
+def test_a_client_who_is_ready_has_no_blocker():
+    from sales.intake import _detect_blocker
+
+    assert _detect_blocker("Szukam BMW G30, budżet 90 tysięcy, mogę od razu") is None

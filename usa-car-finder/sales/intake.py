@@ -341,6 +341,34 @@ def _detect_engine_hint(text: str) -> Optional[str]:
     return f"{dopasowanie.group(1)}.{dopasowanie.group(2)}" if dopasowanie else None
 
 
+# Zwroty, po których klient mówi, CZEGO czeka. Kolejność ma znaczenie: bardziej
+# konkretne pierwsze, bo „jak sprzedam auto" niesie więcej niż samo „na razie nie".
+_BLOKADY = (
+    (re.compile(r"(?:jak|gdy|kiedy|jeśli|jesli)\s+(?:już\s+)?sprzedam\b", re.I), "sprzedaż obecnego auta"),
+    (re.compile(r"(?:najpierw|zanim)\s+musz[eę]\s+sprzeda", re.I), "sprzedaż obecnego auta"),
+    (re.compile(r"\bpogoni[cć]\b", re.I), "sprzedaż obecnego auta"),
+    (re.compile(r"kupn[ao]\s+domu|kupuj[eę]\s+dom|kredyt\w*\s+hipoteczn", re.I), "zakup domu"),
+    (re.compile(r"czekam\s+na\s+(\w[\w\s]{2,30})", re.I), None),
+)
+
+
+def _detect_blocker(text: str) -> Optional[str]:
+    """Na co klient czeka, zanim kupi.
+
+    To nie jest termin, tylko wyzwalacz — „najpierw muszę sprzedać Octavię" nie ma
+    daty, a decyduje o wszystkim. Bez tego lead ląduje na parkingu bez powodu
+    powrotu, a broker nie wie, o co zapytać przy następnym kontakcie.
+    """
+    for wzorzec, etykieta in _BLOKADY:
+        dopasowanie = wzorzec.search(text or "")
+        if not dopasowanie:
+            continue
+        if etykieta:
+            return etykieta
+        return dopasowanie.group(1).strip()[:60]
+    return None
+
+
 def _detect_timeline_days(text: str) -> Optional[int]:
     lowered = (text or "").lower()
     if any(w in lowered for w in _URGENT):
@@ -470,6 +498,8 @@ def submit(
         lead.trade_in_model, lead.trade_in_year, lead.trade_in_value_pln = _detect_trade_in(tresc)
     if lead.engine_hint is None:
         lead.engine_hint = _detect_engine_hint(tresc)
+    if lead.blocked_by is None:
+        lead.blocked_by = _detect_blocker(tresc)
 
     if is_new:
         lead.raw_request = tresc
