@@ -11,7 +11,12 @@ const EXCLUDE_DIRS = ["src/routes/api"];
 // więc nic z nich nie trafia do bundla klienta. `/artifacts/*` musi stać poza
 // api/, bo backend skleja odnośniki do raportów jako /artifacts/... i mają je
 // zapisane istniejące rekordy; przeniesienie zepsułoby historię.
-const EXCLUDE_FILES = new Set(["src/routes/artifacts.$filename.ts"]);
+const EXCLUDE_FILES = new Set([
+  "src/routes/artifacts.$filename.ts",
+  // Moduł server-only mimo katalogu src/lib — nazwa *.server.ts trzyma go
+  // poza bundlem klienta. Loguje każde wywołanie backendu do /dev/logs.
+  "src/lib/backend-transport.server.ts",
+]);
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 
 const IMPORT_PATTERNS = [

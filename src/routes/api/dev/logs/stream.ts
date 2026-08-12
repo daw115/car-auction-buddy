@@ -1,190 +1,88 @@
-// SSE dla panelu /dev/logs. Route brakowało — UI od początku wołał ten adres
-// (EventSource w dev.logs.tsx), a serwer odpowiadał 404, więc panel świecił pustką
-// i wyglądało to jak "brak logów", a nie jak brak endpointu.
+// SSE ze strumieniem logów serwera dla panelu /dev/logs.
 //
-// Stream łączy DWA źródła, bo w panelu chodzi o jedno okno na całość:
-//   1. bufor dashboardu (log-stream.server.ts) — żądania HTTP, błędy renderowania;
-//   2. log backendu FastAPI — i to jest to, czego brakowało najbardziej: przebieg
-//      wyszukiwania ([Scraper], [AI], [claude-code]) dzieje się w Pythonie, nie tutaj,
-//      więc bufor dashboardu nie mógł go pokazać choćby działał idealnie.
+// Ta trasa nigdy nie powstała, mimo że wszystko po obu jej stronach istniało:
+// `src/server/log-stream.server.ts` wypełniał bufor, a `dev.logs.tsx` łączył się
+// z `/api/dev/logs/stream` i dostawał 404. Pozycja w menu prowadziła do pustej
+// tabeli z napisem o endpoincie, którego nie było.
 //
-// Token backendu zostaje na serwerze. Przeglądarka rozmawia tylko z tym route'em —
-// inaczej klucz do API musiałby trafić do JS-a w kliencie.
+// Brama jest ta sama co przy logowaniu do panelu (`checkDevAuth`) — logi potrafią
+// zawierać ścieżki, nazwy tabel i fragmenty zapytań, więc nie mogą wisieć otwarte.
+
 import { createFileRoute } from "@tanstack/react-router";
-
 import { checkDevAuth } from "@/server/dev-auth.server";
-import { getRecentLogs, subscribe, type LogStreamEntry } from "@/server/log-stream.server";
+import { getRecentLogs, subscribe } from "@/server/log-stream.server";
 
-const KEEP_ALIVE_MS = 15_000;
-
-/** Poziom z treści linii backendu. Python nie wysyła pola level, więc czytamy tekst. */
-function levelOf(line: string): LogStreamEntry["level"] {
-  if (/\bERROR\b|Traceback|CRITICAL/.test(line)) return "error";
-  if (/\bWARN(ING)?\b|⚠/.test(line)) return "warn";
-  if (/^INFO: {5}\d|HTTP\/1\.1" \d{3}/.test(line)) return "http";
-  return "info";
-}
-
-/** "2026-08-11 09:40:13,684 INFO report.llm_cache | treść" → scope + message. */
-function parseBackendLine(line: string, id: number): LogStreamEntry {
-  const match = line.match(
-    /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})[.,]\d+\s+(\w+)\s+([\w.]+)\s*\|\s*(.*)$/,
-  );
-  if (match) {
-    return {
-      id,
-      ts: match[1].replace(" ", "T"),
-      level: levelOf(match[2]),
-      scope: match[3],
-      message: match[4],
-    };
-  }
-  return { id, ts: new Date().toISOString(), level: levelOf(line), scope: "api", message: line };
-}
-
-function backendBase(): string | null {
-  const base = (process.env.UBUNTU_API_BASE_URL ?? process.env.API_BASE_URL ?? "").trim();
-  return base ? base.replace(/\/$/, "") : null;
-}
-
-function backendHeaders(): HeadersInit {
-  const headers: Record<string, string> = { Accept: "text/event-stream" };
-  const token = (
-    process.env.UBUNTU_API_BEARER_TOKEN ??
-    process.env.SCRAPER_API_TOKEN ??
-    process.env.API_BEARER_TOKEN ??
-    ""
-  ).trim();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const cfId = process.env.CF_ACCESS_CLIENT_ID?.trim();
-  const cfSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
-  if (cfId && cfSecret) {
-    headers["CF-Access-Client-Id"] = cfId;
-    headers["CF-Access-Client-Secret"] = cfSecret;
-  }
-  return headers;
-}
+/** Co ile wysyłamy komentarz podtrzymujący. Proxy i przeglądarki zrywają
+ *  bezczynne połączenia SSE po ok. minucie, a cisza w logach jest normalna. */
+const KEEPALIVE_MS = 25_000;
 
 export const Route = createFileRoute("/api/dev/logs/stream")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const auth = checkDevAuth(request);
-        if (!auth.ok) {
-          return Response.json({ ok: false, reason: auth.reason }, { status: auth.status ?? 401 });
+        if (!checkDevAuth(request).ok) {
+          return new Response("Nieautoryzowane", { status: 401 });
         }
 
-        const since = Number(new URL(request.url).searchParams.get("since") ?? 0);
+        // Klient podaje ostatnie widziane id, żeby po zerwaniu połączenia nie
+        // dostać drugi raz tego samego — EventSource wznawia sam.
+        const url = new URL(request.url);
+        const sinceId = Number(url.searchParams.get("sinceId") ?? 0) || 0;
+
         const encoder = new TextEncoder();
-        let nextId = -1; // ujemne id dla wpisów backendu, żeby nie zderzały się z buforem
+        let odsubskrybuj: (() => void) | undefined;
+        let keepalive: ReturnType<typeof setInterval> | undefined;
 
         const stream = new ReadableStream({
           start(controller) {
-            let closed = false;
-            const send = (entry: LogStreamEntry) => {
-              if (closed) return;
+            const wyslij = (data: unknown) => {
               try {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(entry)}\n\n`));
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
               } catch {
-                closed = true;
+                // Klient zamknął kartę w trakcie zapisu — sprzątamy i milkniemy.
+                zamknij();
               }
             };
 
-            for (const entry of getRecentLogs(Number.isFinite(since) ? since : 0)) {
-              send(entry);
-            }
-            const unsubscribe = subscribe(send);
+            const zamknij = () => {
+              odsubskrybuj?.();
+              odsubskrybuj = undefined;
+              if (keepalive) clearInterval(keepalive);
+              keepalive = undefined;
+            };
 
-            // Backend: doklejamy jego log do tego samego strumienia.
-            const backendAbort = new AbortController();
-            const base = backendBase();
-            if (base) {
-              void (async () => {
-                try {
-                  const upstream = await fetch(`${base}/api/logs/stream`, {
-                    headers: backendHeaders(),
-                    signal: backendAbort.signal,
-                  });
-                  if (!upstream.ok || !upstream.body) {
-                    send({
-                      id: nextId--,
-                      ts: new Date().toISOString(),
-                      level: "warn",
-                      scope: "dev-logs",
-                      message: `Log backendu niedostępny (HTTP ${upstream.status}) — widać tylko logi dashboardu.`,
-                    });
-                    return;
-                  }
-                  const reader = upstream.body.getReader();
-                  const decoder = new TextDecoder();
-                  let buffer = "";
-                  for (;;) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const chunks = buffer.split("\n\n");
-                    buffer = chunks.pop() ?? "";
-                    for (const chunk of chunks) {
-                      // Backend wysyła "event: line\ndata: <tekst>" — bierzemy sam tekst.
-                      const text = chunk
-                        .split("\n")
-                        .filter((l) => l.startsWith("data:"))
-                        .map((l) => l.slice(5).trimStart())
-                        .join("\n");
-                      if (text) send(parseBackendLine(text, nextId--));
-                    }
-                  }
-                } catch (error) {
-                  if (backendAbort.signal.aborted) return;
-                  send({
-                    id: nextId--,
-                    ts: new Date().toISOString(),
-                    level: "error",
-                    scope: "dev-logs",
-                    message: `Stream backendu przerwany: ${(error as Error).message}`,
-                  });
-                }
-              })();
-            } else {
-              send({
-                id: nextId--,
-                ts: new Date().toISOString(),
-                level: "warn",
-                scope: "dev-logs",
-                message:
-                  "Brak UBUNTU_API_BASE_URL/API_BASE_URL — logi backendu (przebieg wyszukiwania) nie będą widoczne.",
-              });
-            }
+            for (const entry of getRecentLogs(sinceId)) wyslij(entry);
+            odsubskrybuj = subscribe(wyslij);
 
-            // Cloudflare zrywa bezruch na tunelu, więc komentarz co 15 s trzyma połączenie.
-            const keepAlive = setInterval(() => {
-              if (closed) return;
+            keepalive = setInterval(() => {
               try {
-                controller.enqueue(encoder.encode(": keep-alive\n\n"));
+                controller.enqueue(encoder.encode(": keepalive\n\n"));
               } catch {
-                closed = true;
+                zamknij();
               }
-            }, KEEP_ALIVE_MS);
+            }, KEEPALIVE_MS);
 
-            request.signal.addEventListener("abort", () => {
-              closed = true;
-              clearInterval(keepAlive);
-              unsubscribe();
-              backendAbort.abort();
+            request.signal?.addEventListener("abort", () => {
+              zamknij();
               try {
                 controller.close();
               } catch {
-                /* już zamknięty */
+                // już zamknięty
               }
             });
+          },
+          cancel() {
+            odsubskrybuj?.();
+            if (keepalive) clearInterval(keepalive);
           },
         });
 
         return new Response(stream, {
           headers: {
             "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-store",
+            "Cache-Control": "no-cache, no-transform",
             Connection: "keep-alive",
+            // Bez tego nginx buforuje SSE i logi przychodzą paczkami po minucie.
             "X-Accel-Buffering": "no",
           },
         });
