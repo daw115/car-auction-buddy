@@ -454,6 +454,49 @@ function KartaKlienta() {
             </div>
           </Card>
 
+          {/* Auto w rozliczeniu bywa CAŁYM budżetem klienta — pieniądze są zamrożone
+              w aucie, które dopiero trzeba sprzedać. Bez tego lead z segmentu A
+              wygląda jak lead bez pieniędzy. */}
+          {lead.trade_in_model && (
+            <Card className="p-4">
+              <h3 className="mb-2 text-sm font-semibold">🔁 Ma do sprzedania</h3>
+              <div className="text-sm">
+                {[lead.trade_in_year, lead.trade_in_model].filter(Boolean).join(" ")}
+                {lead.trade_in_value_pln
+                  ? ` — ok. ${lead.trade_in_value_pln.toLocaleString("pl-PL")} zł`
+                  : ""}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Badge variant={lead.trade_in_sold ? "default" : "secondary"}>
+                  {lead.trade_in_sold ? "sprzedane" : "jeszcze nie sprzedane"}
+                </Badge>
+                {!lead.trade_in_sold && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={zajety !== null}
+                    title="Klient sprzedał auto — odblokowuje budżet"
+                    onClick={() =>
+                      zrob(
+                        "patch",
+                        () =>
+                          fnPatch({ data: { leadId: id, changes: { trade_in_sold: true } } }),
+                        "Zapisane — budżet klienta jest wolny.",
+                      )
+                    }
+                  >
+                    Sprzedał
+                  </Button>
+                )}
+              </div>
+              {lead.blocked_by && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Czeka na: {lead.blocked_by}
+                </p>
+              )}
+            </Card>
+          )}
+
           <Card className="p-4">
             <h3 className="mb-2 text-sm font-semibold">🔎 Czego szuka</h3>
             {kryteria ? (
@@ -462,6 +505,11 @@ function KartaKlienta() {
                   {[kryteria.make, kryteria.model].filter(Boolean).join(" ")}
                   {kryteria.year_from ? `, ${kryteria.year_from}–${kryteria.year_to ?? ""}` : ""}
                 </div>
+                {(lead.engine_hint || lead.trim_hint) && (
+                  <div className="text-xs text-muted-foreground">
+                    {[lead.engine_hint, lead.trim_hint].filter(Boolean).join(" · ")}
+                  </div>
+                )}
                 <div className="text-xs text-muted-foreground">
                   {lead.budget_pln
                     ? `budżet ${lead.budget_pln.toLocaleString("pl-PL")} zł pod klucz`

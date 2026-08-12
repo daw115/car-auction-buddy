@@ -55,6 +55,15 @@ export type Lead = {
   budget_pln: number | null;
   settlement: string;
   timeline_days: number | null;
+  /** Warunek wznowienia — „najpierw muszę sprzedać auto" to wyzwalacz, nie termin. */
+  blocked_by: string | null;
+  /** Auto w rozliczeniu. Dla wielu klientów TO JEST budżet. */
+  trade_in_model: string | null;
+  trade_in_year: number | null;
+  trade_in_value_pln: number | null;
+  trade_in_sold: boolean;
+  engine_hint: string | null;
+  trim_hint: string | null;
   /** Sufit przebiegu z rozmowy. Backend go zwraca, typ o nim milczał. */
   max_odometer_mi: number | null;
   damage_ok: boolean | null;
@@ -297,6 +306,7 @@ export const patchLead = createServerFn({ method: "POST" })
           max_odometer_mi: z.number().int().min(0).max(1_000_000).nullable().optional(),
           damage_ok: z.boolean().nullable().optional(),
           notes: z.string().max(4000).optional(),
+          trade_in_sold: z.boolean().optional(),
           phone: z.string().max(40).optional(),
         })
         .refine((c) => Object.keys(c).length > 0, "Nie ma czego zapisać."),
