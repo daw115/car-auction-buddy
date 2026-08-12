@@ -64,6 +64,27 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+# Kolumny dodane po tym, jak tabela `leads` już istniała w produkcji.
+# `CREATE TABLE IF NOT EXISTS` ich nie doda, a brak choćby jednej wywraca odczyt
+# każdego leada — stąd jawna migracja przy każdym starcie.
+_DOKLADANE_KOLUMNY = (
+    ("blocked_by", "TEXT"),
+    ("trade_in_model", "TEXT"),
+    ("trade_in_year", "INTEGER"),
+    ("trade_in_value_pln", "REAL"),
+    ("trade_in_sold", "INTEGER NOT NULL DEFAULT 0"),
+    ("engine_hint", "TEXT"),
+    ("trim_hint", "TEXT"),
+)
+
+
+def _migrate_leads(conn) -> None:
+    istniejace = {row["name"] for row in conn.execute("PRAGMA table_info(leads)")}
+    for nazwa, typ in _DOKLADANE_KOLUMNY:
+        if nazwa not in istniejace:
+            conn.execute(f"ALTER TABLE leads ADD COLUMN {nazwa} {typ}")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(
@@ -84,6 +105,13 @@ def init_db() -> None:
                 settlement TEXT NOT NULL DEFAULT 'private',
                 max_odometer_mi INTEGER,
                 timeline_days INTEGER,
+                blocked_by TEXT,
+                trade_in_model TEXT,
+                trade_in_year INTEGER,
+                trade_in_value_pln REAL,
+                trade_in_sold INTEGER NOT NULL DEFAULT 0,
+                engine_hint TEXT,
+                trim_hint TEXT,
                 damage_ok INTEGER,
                 bought_before INTEGER NOT NULL DEFAULT 0,
                 referred_by TEXT,
@@ -146,6 +174,7 @@ def init_db() -> None:
                 ON lead_searches(lead_id, created_at DESC);
             """
         )
+        _migrate_leads(conn)
 
 
 # ─────────────────────────────────────────────────────────────────────── leady
@@ -153,7 +182,9 @@ def init_db() -> None:
 _LEAD_COLUMNS = (
     "name", "phone", "email", "channel", "stage", "raw_request", "make", "model",
     "year_from", "year_to", "budget_pln", "settlement", "max_odometer_mi",
-    "timeline_days", "damage_ok", "bought_before", "referred_by", "notes",
+    "timeline_days", "blocked_by", "trade_in_model", "trade_in_year",
+    "trade_in_value_pln", "trade_in_sold", "engine_hint", "trim_hint",
+    "damage_ok", "bought_before", "referred_by", "notes",
     "client_id", "last_client_message_at",
 )
 
@@ -175,6 +206,13 @@ def _row_to_lead(row: sqlite3.Row) -> Lead:
         settlement=row["settlement"] or "private",
         max_odometer_mi=row["max_odometer_mi"],
         timeline_days=row["timeline_days"],
+        blocked_by=row["blocked_by"],
+        trade_in_model=row["trade_in_model"],
+        trade_in_year=row["trade_in_year"],
+        trade_in_value_pln=row["trade_in_value_pln"],
+        trade_in_sold=bool(row["trade_in_sold"]),
+        engine_hint=row["engine_hint"],
+        trim_hint=row["trim_hint"],
         # SQLite nie ma boola: 0/1 to odpowiedź, NULL to "jeszcze nie pytaliśmy".
         # Te trzy stany są tu istotne, bo od nich zależy waga składowej w ocenie.
         damage_ok=None if row["damage_ok"] is None else bool(row["damage_ok"]),
@@ -204,6 +242,13 @@ def _lead_values(lead: Lead) -> dict[str, Any]:
         "settlement": lead.settlement,
         "max_odometer_mi": lead.max_odometer_mi,
         "timeline_days": lead.timeline_days,
+        "blocked_by": lead.blocked_by,
+        "trade_in_model": lead.trade_in_model,
+        "trade_in_year": lead.trade_in_year,
+        "trade_in_value_pln": lead.trade_in_value_pln,
+        "trade_in_sold": 1 if lead.trade_in_sold else 0,
+        "engine_hint": lead.engine_hint,
+        "trim_hint": lead.trim_hint,
         "damage_ok": None if lead.damage_ok is None else int(lead.damage_ok),
         "bought_before": int(lead.bought_before),
         "referred_by": lead.referred_by,

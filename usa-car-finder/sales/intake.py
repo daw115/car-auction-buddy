@@ -279,6 +279,68 @@ def _detect_damage_ok(text: str) -> Optional[bool]:
     return None
 
 
+# Marki, które realnie pojawiają się w rozliczeniu. Lista zamknięta świadomie:
+# szukanie „dowolnej marki przed słowem sprzedać" łapie markę, której klient SZUKA.
+# Rdzenie, nie pełne nazwy: polski odmienia je bez litości („Octavię", „Golfa",
+# „Passatem"). Ten sam wzorzec, co przy markach szukanych w tym module.
+_MARKI_ROZLICZENIA = (
+    ("octavi", "Octavia"), ("golf", "Golf"), ("passat", "Passat"), ("astr", "Astra"),
+    ("focus", "Focus"), ("mondeo", "Mondeo"), ("cors", "Corsa"), ("civic", "Civic"),
+    ("megan", "Megane"), ("insigni", "Insignia"), ("superb", "Superb"),
+    ("fabi", "Fabia"), ("yaris", "Yaris"), ("coroll", "Corolla"), ("auris", "Auris"),
+)
+
+_ROZLICZENIE = re.compile(
+    r"(?:mam|jeżdżę|jezdze|posiadam|sprzedaję|sprzedaje|sprzedam|pogonić|pogonic)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_trade_in(text: str) -> tuple[Optional[str], Optional[int], Optional[float]]:
+    """Auto w rozliczeniu: model, rocznik, wartość.
+
+    Dla wielu klientów to JEST budżet — pieniądze są zamrożone w aucie, które
+    dopiero trzeba sprzedać. Bez tego lead z pełnym budżetem wygląda w kwalifikacji
+    jak lead bez pieniędzy, a broker traci najlepszy powód do kontaktu.
+
+    Świadomie ostrożne: szukamy modelu tylko w zdaniach o sprzedaży/posiadaniu,
+    bo inaczej złapiemy markę, której klient SZUKA.
+    """
+    if not _ROZLICZENIE.search(text or ""):
+        return None, None, None
+
+    dolny = (text or "").lower()
+    model = next((nazwa for rdzen, nazwa in _MARKI_ROZLICZENIA if rdzen in dolny), None)
+    if not model:
+        return None, None, None
+
+    rocznik = None
+    dopasowanie = re.search(r"\b(?:z\s*)?'?((?:19|20)?\d{2})\s*roku", dolny)
+    if dopasowanie:
+        rok = int(dopasowanie.group(1))
+        rocznik = rok if rok > 1900 else (2000 + rok if rok < 50 else 1900 + rok)
+
+    # „między 65 a 70 tysięcy" — bierzemy dolną granicę, bo wycena właściciela
+    # bywa optymistyczna, a zaniżony budżet nie obieca klientowi za dużo.
+    wartosc = None
+    zakres = re.search(r"(\d{2,3})\s*(?:a|do|-)\s*(\d{2,3})\s*tys", dolny)
+    if zakres:
+        wartosc = float(min(int(zakres.group(1)), int(zakres.group(2)))) * 1000
+    return model, rocznik, wartosc
+
+
+def _detect_engine_hint(text: str) -> Optional[str]:
+    """Pojemność podana przez klienta. Przy 2.0 akcyza to 3,1% zamiast 18,6%,
+    więc to bywa warunek zakupu, nie preferencja."""
+    dolny = (text or "").lower()
+    if re.search(r"dwulitr|2[.,]0\b|2\s*litr", dolny):
+        return "2.0"
+    # Jednostka opcjonalna: w mowie pada samo „3.0". Zakres 1-6 z jedną cyfrą po
+    # kropce i granicami słowa — żeby nie złapać ceny ani rocznika.
+    dopasowanie = re.search(r"(?<!\d)([1-6])[.,](\d)(?!\d)\s*(?:l\b|litr\w*)?", dolny)
+    return f"{dopasowanie.group(1)}.{dopasowanie.group(2)}" if dopasowanie else None
+
+
 def _detect_timeline_days(text: str) -> Optional[int]:
     lowered = (text or "").lower()
     if any(w in lowered for w in _URGENT):
@@ -404,6 +466,10 @@ def submit(
         lead.damage_ok = _detect_damage_ok(tresc)
     if lead.timeline_days is None:
         lead.timeline_days = _detect_timeline_days(tresc)
+    if lead.trade_in_model is None:
+        lead.trade_in_model, lead.trade_in_year, lead.trade_in_value_pln = _detect_trade_in(tresc)
+    if lead.engine_hint is None:
+        lead.engine_hint = _detect_engine_hint(tresc)
 
     if is_new:
         lead.raw_request = tresc

@@ -160,6 +160,20 @@ class Lead:
 
     # Sygnały jakościowe wyciągnięte z rozmowy.
     timeline_days: Optional[int] = None        # za ile chce mieć auto
+    # Warunek wznowienia, nie liczba dni. „Najpierw muszę sprzedać Octavię" to nie
+    # jest termin — to wyzwalacz. Bez tego lead ląduje na parkingu bez powodu powrotu.
+    blocked_by: Optional[str] = None
+    # Auto w rozliczeniu. Dla wielu klientów TO JEST budżet: pieniądze są zamrożone
+    # w aucie, które dopiero trzeba sprzedać. Bez tych pól lead z pełnym budżetem
+    # wygląda w kwalifikacji jak lead bez pieniędzy.
+    trade_in_model: Optional[str] = None
+    trade_in_year: Optional[int] = None
+    trade_in_value_pln: Optional[float] = None
+    trade_in_sold: bool = False
+    # Podpowiedzi, nie filtry. Klient mówi „dwulitrówka, 248 koni" — pojemność bywa
+    # warunkiem, bo przy 2.0 akcyza to 3,1% zamiast 18,6%.
+    engine_hint: Optional[str] = None
+    trim_hint: Optional[str] = None
     damage_ok: Optional[bool] = None           # czy godzi się na auto powypadkowe
     bought_before: bool = False
     referred_by: Optional[str] = None
