@@ -70,7 +70,7 @@ function ClientsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Klienci"
-        description="Baza klientów i ich sprawy. Każda sprawa spina wyszukiwania i może być monitorowana cyklicznie."
+        description="Baza klientów i ich sprawy. Każda sprawa spina wyszukiwania jednego zlecenia."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -87,15 +87,24 @@ function ClientsPage() {
               <div className="space-y-3">
                 <div>
                   <Label>Imię / nazwa *</Label>
-                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  />
                 </div>
                 <div>
                   <Label>Email</Label>
-                  <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                  <Input
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  />
                 </div>
                 <div>
                   <Label>Telefon</Label>
-                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  <Input
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  />
                 </div>
                 <div>
                   <Label>Notatki</Label>
@@ -133,12 +142,7 @@ function ClientsPage() {
       ) : (
         <div className="grid gap-2">
           {filtered.map((c) => (
-            <Link
-              key={c.id}
-              to="/clients/$clientId"
-              params={{ clientId: c.id }}
-              className="block"
-            >
+            <Link key={c.id} to="/clients/$clientId" params={{ clientId: c.id }} className="block">
               <Card className="p-4 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">

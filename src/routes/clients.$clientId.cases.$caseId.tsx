@@ -197,7 +197,8 @@ function CaseDetailPage() {
               placeholder='{"make":"Tesla","model":"Model 3","budget_usd":20000}'
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Używane przy „Uruchom teraz" oraz w cyklicznym auto-refresh.
+              Używane przy „Uruchom teraz". Zapisz przed uruchomieniem — przycisk bierze kryteria z
+              bazy, nie z ekranu.
             </p>
           </div>
           <Button onClick={saveMeta} variant="outline">
