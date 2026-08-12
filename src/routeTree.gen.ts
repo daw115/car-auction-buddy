@@ -30,11 +30,9 @@ import { Route as DevLogsRouteImport } from './routes/dev.logs'
 import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as ArtifactsFilenameRouteImport } from './routes/artifacts.$filename'
 import { Route as ApiVersionRouteImport } from './routes/api/version'
-import { Route as ApiRecordsRouteImport } from './routes/api/records'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
-import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
@@ -145,11 +143,6 @@ const ApiVersionRoute = ApiVersionRouteImport.update({
   path: '/api/version',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiRecordsRoute = ApiRecordsRouteImport.update({
-  id: '/api/records',
-  path: '/api/records',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
   path: '/api/health',
@@ -163,11 +156,6 @@ const ApiDiagnosticsRoute = ApiDiagnosticsRouteImport.update({
 const ApiConfigRoute = ApiConfigRouteImport.update({
   id: '/api/config',
   path: '/api/config',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
-  id: '/api/reports/pdf',
-  path: '/api/reports/pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDevAuthRoute = ApiDevAuthRouteImport.update({
@@ -208,7 +196,6 @@ export interface FileRoutesByFullPath {
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
@@ -220,7 +207,6 @@ export interface FileRoutesByFullPath {
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
-  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -239,7 +225,6 @@ export interface FileRoutesByTo {
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
@@ -251,7 +236,6 @@ export interface FileRoutesByTo {
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
-  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -272,7 +256,6 @@ export interface FileRoutesById {
   '/api/config': typeof ApiConfigRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/records': typeof ApiRecordsRoute
   '/api/version': typeof ApiVersionRoute
   '/artifacts/$filename': typeof ArtifactsFilenameRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
@@ -284,7 +267,6 @@ export interface FileRoutesById {
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
-  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -306,7 +288,6 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/diagnostics'
     | '/api/health'
-    | '/api/records'
     | '/api/version'
     | '/artifacts/$filename'
     | '/clients/$clientId'
@@ -318,7 +299,6 @@ export interface FileRouteTypes {
     | '/settings/filters'
     | '/settings/'
     | '/api/dev/auth'
-    | '/api/reports/pdf'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -337,7 +317,6 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/diagnostics'
     | '/api/health'
-    | '/api/records'
     | '/api/version'
     | '/artifacts/$filename'
     | '/clients/$clientId'
@@ -349,7 +328,6 @@ export interface FileRouteTypes {
     | '/settings/filters'
     | '/settings'
     | '/api/dev/auth'
-    | '/api/reports/pdf'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -369,7 +347,6 @@ export interface FileRouteTypes {
     | '/api/config'
     | '/api/diagnostics'
     | '/api/health'
-    | '/api/records'
     | '/api/version'
     | '/artifacts/$filename'
     | '/clients/$clientId'
@@ -381,7 +358,6 @@ export interface FileRouteTypes {
     | '/settings/filters'
     | '/settings/'
     | '/api/dev/auth'
-    | '/api/reports/pdf'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -402,13 +378,11 @@ export interface RootRouteChildren {
   ApiConfigRoute: typeof ApiConfigRoute
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
-  ApiRecordsRoute: typeof ApiRecordsRoute
   ApiVersionRoute: typeof ApiVersionRoute
   ArtifactsFilenameRoute: typeof ArtifactsFilenameRoute
   DevLogsRoute: typeof DevLogsRoute
   KlientLeadIdRoute: typeof KlientLeadIdRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
-  ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiDevLogsStreamRoute: typeof ApiDevLogsStreamRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
@@ -562,13 +536,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVersionRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/records': {
-      id: '/api/records'
-      path: '/api/records'
-      fullPath: '/api/records'
-      preLoaderRoute: typeof ApiRecordsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/health': {
       id: '/api/health'
       path: '/api/health'
@@ -588,13 +555,6 @@ declare module '@tanstack/react-router' {
       path: '/api/config'
       fullPath: '/api/config'
       preLoaderRoute: typeof ApiConfigRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/reports/pdf': {
-      id: '/api/reports/pdf'
-      path: '/api/reports/pdf'
-      fullPath: '/api/reports/pdf'
-      preLoaderRoute: typeof ApiReportsPdfRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/dev/auth': {
@@ -686,13 +646,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConfigRoute: ApiConfigRoute,
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,
-  ApiRecordsRoute: ApiRecordsRoute,
   ApiVersionRoute: ApiVersionRoute,
   ArtifactsFilenameRoute: ArtifactsFilenameRoute,
   DevLogsRoute: DevLogsRoute,
   KlientLeadIdRoute: KlientLeadIdRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
-  ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiDevLogsStreamRoute: ApiDevLogsStreamRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
