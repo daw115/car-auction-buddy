@@ -130,12 +130,17 @@ function ClientDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link to="/clients" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+      <Link
+        to="/clients"
+        className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+      >
         <ArrowLeft className="h-3 w-3" /> Wszyscy klienci
       </Link>
       <PageHeader
         title={client.name}
-        description={[client.email, client.phone].filter(Boolean).join(" • ") || "Brak danych kontaktowych"}
+        description={
+          [client.email, client.phone].filter(Boolean).join(" • ") || "Brak danych kontaktowych"
+        }
         actions={
           <div className="flex gap-2">
             {!editing && (
@@ -159,15 +164,24 @@ function ClientDetailPage() {
           </div>
           <div>
             <Label>Email</Label>
-            <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <Input
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
           </div>
           <div>
             <Label>Telefon</Label>
-            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <Input
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
           </div>
           <div>
             <Label>Notatki</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            <Textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
           </div>
           <div className="flex gap-2">
             <Button onClick={saveEdit}>Zapisz</Button>
@@ -244,11 +258,6 @@ function ClientDetailPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={c.status === "open" ? "default" : "outline"}>{c.status}</Badge>
-                    {c.auto_refresh_enabled && (
-                      <Badge variant="outline" className="text-xs">
-                        🔄 {c.auto_refresh_interval_hours}h
-                      </Badge>
-                    )}
                   </div>
                 </div>
               </Card>

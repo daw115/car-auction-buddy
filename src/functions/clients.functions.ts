@@ -28,10 +28,6 @@ export type ClientCase = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default_criteria: Record<string, any> | null;
   status: "open" | "paused" | "closed";
-  auto_refresh_enabled: boolean;
-  auto_refresh_interval_hours: number;
-  last_auto_run_at: string | null;
-  next_auto_run_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -222,37 +218,6 @@ export const deleteCase = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const toggleCaseAutoRefresh = createServerFn({ method: "POST" })
-  .middleware([siteSessionMiddleware])
-  .inputValidator(
-    z.object({
-      id: z.string().uuid(),
-      enabled: z.boolean(),
-      intervalHours: z.number().int().min(1).max(168).optional(),
-    }).parse,
-  )
-  .handler(async ({ data }): Promise<ClientCase> => {
-    const now = new Date();
-    const interval = data.intervalHours ?? 24;
-    const patch: Record<string, unknown> = {
-      auto_refresh_enabled: data.enabled,
-      auto_refresh_interval_hours: interval,
-    };
-    if (data.enabled) {
-      patch.next_auto_run_at = new Date(now.getTime() + interval * 60 * 60 * 1000).toISOString();
-    } else {
-      patch.next_auto_run_at = null;
-    }
-    const { data: row, error } = await supabaseAdmin
-      .from("client_cases")
-      .update(patch as never)
-      .eq("id", data.id)
-      .select("*")
-      .single();
-    if (error) throw new Error(error.message);
-    return row as ClientCase;
-  });
-
 // ---------- powiązania sprawy z wyszukiwaniem ----------
 
 export const listCaseSearches = createServerFn({ method: "GET" })
@@ -371,27 +336,24 @@ export const runCaseNow = createServerFn({ method: "POST" })
     const newLotIds = currentLotIds.filter((id) => !seenLotIds.has(id));
 
     // Attach — record_id = job_id (backend indeksuje po job_id w /api/records).
-    await supabaseAdmin
-      .from("case_searches")
-      .upsert(
-        {
-          case_id: data.caseId,
-          record_id: resp.job_id,
-          searched_by: context.siteUser,
-          new_lot_ids: newLotIds,
-          triggered_by: "manual",
-        },
-        { onConflict: "case_id,record_id" },
-      );
+    await supabaseAdmin.from("case_searches").upsert(
+      {
+        case_id: data.caseId,
+        record_id: resp.job_id,
+        searched_by: context.siteUser,
+        new_lot_ids: newLotIds,
+        triggered_by: "manual",
+      },
+      { onConflict: "case_id,record_id" },
+    );
 
-    // Update last_auto_run_at + next_auto_run_at gdy auto-refresh włączone.
-    const patch: Record<string, unknown> = { last_auto_run_at: new Date().toISOString() };
-    if (kase.auto_refresh_enabled) {
-      patch.next_auto_run_at = new Date(
-        Date.now() + kase.auto_refresh_interval_hours * 60 * 60 * 1000,
-      ).toISOString();
-    }
-    await supabaseAdmin.from("client_cases").update(patch as never).eq("id", data.caseId);
+    // Znacznik ostatniego przebiegu zostaje — broker widzi, kiedy sprawa była
+    // ostatnio sprawdzana. Terminu następnego przebiegu już nie planujemy:
+    // cykliczne wyszukiwanie robi timer systemd po stronie Ubuntu.
+    await supabaseAdmin
+      .from("client_cases")
+      .update({ last_auto_run_at: new Date().toISOString() } as never)
+      .eq("id", data.caseId);
 
     return {
       job_id: resp.job_id,

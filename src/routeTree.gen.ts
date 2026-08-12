@@ -38,7 +38,6 @@ import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
-import { Route as ApiPublicHooksCasesRefreshRouteImport } from './routes/api/public/hooks/cases-refresh'
 import { Route as ApiDevLogsStreamRouteImport } from './routes/api/dev/logs/stream'
 
 const WatchlistRoute = WatchlistRouteImport.update({
@@ -188,12 +187,6 @@ const ApiPublicHooksCleanupLogsRoute =
     path: '/api/public/hooks/cleanup-logs',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicHooksCasesRefreshRoute =
-  ApiPublicHooksCasesRefreshRouteImport.update({
-    id: '/api/public/hooks/cases-refresh',
-    path: '/api/public/hooks/cases-refresh',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiDevLogsStreamRoute = ApiDevLogsStreamRouteImport.update({
   id: '/api/dev/logs/stream',
   path: '/api/dev/logs/stream',
@@ -229,7 +222,6 @@ export interface FileRoutesByFullPath {
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
-  '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
 }
@@ -261,7 +253,6 @@ export interface FileRoutesByTo {
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
-  '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
 }
@@ -295,7 +286,6 @@ export interface FileRoutesById {
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
-  '/api/public/hooks/cases-refresh': typeof ApiPublicHooksCasesRefreshRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
 }
@@ -330,7 +320,6 @@ export interface FileRouteTypes {
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/dev/logs/stream'
-    | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
   fileRoutesByTo: FileRoutesByTo
@@ -362,7 +351,6 @@ export interface FileRouteTypes {
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/dev/logs/stream'
-    | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
   id:
@@ -395,7 +383,6 @@ export interface FileRouteTypes {
     | '/api/dev/auth'
     | '/api/reports/pdf'
     | '/api/dev/logs/stream'
-    | '/api/public/hooks/cases-refresh'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
   fileRoutesById: FileRoutesById
@@ -423,7 +410,6 @@ export interface RootRouteChildren {
   ApiDevAuthRoute: typeof ApiDevAuthRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiDevLogsStreamRoute: typeof ApiDevLogsStreamRoute
-  ApiPublicHooksCasesRefreshRoute: typeof ApiPublicHooksCasesRefreshRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
 
@@ -632,13 +618,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksCleanupLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/cases-refresh': {
-      id: '/api/public/hooks/cases-refresh'
-      path: '/api/public/hooks/cases-refresh'
-      fullPath: '/api/public/hooks/cases-refresh'
-      preLoaderRoute: typeof ApiPublicHooksCasesRefreshRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/dev/logs/stream': {
       id: '/api/dev/logs/stream'
       path: '/api/dev/logs/stream'
@@ -715,7 +694,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDevAuthRoute: ApiDevAuthRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiDevLogsStreamRoute: ApiDevLogsStreamRoute,
-  ApiPublicHooksCasesRefreshRoute: ApiPublicHooksCasesRefreshRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,3 +1,8 @@
+// Cykliczne odświeżanie usunięte świadomie: stało na publicznym hooku
+// /api/public/hooks/cases-refresh, wołanym przez pg_cron i autoryzowanym kluczem
+// *publishable* — czyli nie sekretem. Dashboard jest jedyną maszyną wystawioną do
+// internetu, więc był to publicznie osiągalny wyzwalacz scrape'u. Cykliczne
+// wyszukiwanie robi teraz nasłuch po stronie Ubuntu (timer systemd, watch/runner.py).
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -16,7 +21,6 @@ import {
   getCase,
   updateCase,
   deleteCase,
-  toggleCaseAutoRefresh,
   listCaseSearches,
   getCaseOperators,
   attachSearchToCase,
@@ -35,7 +39,6 @@ function CaseDetailPage() {
   const fnGet = useServerFn(getCase);
   const fnUpdate = useServerFn(updateCase);
   const fnDelete = useServerFn(deleteCase);
-  const fnToggle = useServerFn(toggleCaseAutoRefresh);
   const fnListSearches = useServerFn(listCaseSearches);
   const fnOps = useServerFn(getCaseOperators);
   const fnAttach = useServerFn(attachSearchToCase);
@@ -58,7 +61,6 @@ function CaseDetailPage() {
   const [criteriaText, setCriteriaText] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [interval, setInterval] = useState(24);
   const [attachId, setAttachId] = useState("");
   const [running, setRunning] = useState(false);
 
@@ -66,10 +68,7 @@ function CaseDetailPage() {
     if (kase) {
       setTitle(kase.title);
       setDescription(kase.description ?? "");
-      setCriteriaText(
-        kase.default_criteria ? JSON.stringify(kase.default_criteria, null, 2) : "",
-      );
-      setInterval(kase.auto_refresh_interval_hours);
+      setCriteriaText(kase.default_criteria ? JSON.stringify(kase.default_criteria, null, 2) : "");
     }
   }, [kase]);
 
@@ -93,16 +92,6 @@ function CaseDetailPage() {
         },
       });
       toast.success("Zapisano");
-      qc.invalidateQueries({ queryKey: ["case", caseId] });
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
-  const toggleAuto = async (enabled: boolean) => {
-    try {
-      await fnToggle({ data: { id: caseId, enabled, intervalHours: interval } });
-      toast.success(enabled ? "Auto-refresh włączony" : "Auto-refresh wyłączony");
       qc.invalidateQueries({ queryKey: ["case", caseId] });
     } catch (e) {
       toast.error((e as Error).message);
@@ -135,9 +124,7 @@ function CaseDetailPage() {
     setRunning(true);
     try {
       const res = await fnRun({ data: { caseId } });
-      toast.success(
-        `Uruchomiono: ${res.total_lots} lotów, ${res.new_lots} nowych`,
-      );
+      toast.success(`Uruchomiono: ${res.total_lots} lotów, ${res.new_lots} nowych`);
       qc.invalidateQueries({ queryKey: ["case-searches", caseId] });
       qc.invalidateQueries({ queryKey: ["case", caseId] });
     } catch (e) {
@@ -194,7 +181,11 @@ function CaseDetailPage() {
           </div>
           <div>
             <Label>Opis</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
           </div>
           <div>
             <Label>Domyślne kryteria (JSON)</Label>
@@ -212,58 +203,6 @@ function CaseDetailPage() {
           <Button onClick={saveMeta} variant="outline">
             Zapisz
           </Button>
-        </Card>
-
-        <Card className="p-4 space-y-3">
-          <h3 className="font-semibold">Cykliczne odświeżanie</h3>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm">Włączone</div>
-              <div className="text-xs text-muted-foreground">
-                {kase.auto_refresh_enabled
-                  ? `Co ${kase.auto_refresh_interval_hours}h. Następne: ${
-                      kase.next_auto_run_at
-                        ? new Date(kase.next_auto_run_at).toLocaleString("pl-PL")
-                        : "—"
-                    }`
-                  : "Wyłączone — użyj przełącznika, żeby uruchamiać automatycznie."}
-              </div>
-            </div>
-            <Switch checked={kase.auto_refresh_enabled} onCheckedChange={toggleAuto} />
-          </div>
-          <div>
-            <Label>Interwał (godziny, 1–168)</Label>
-            <Input
-              type="number"
-              min={1}
-              max={168}
-              value={interval}
-              onChange={(e) => setInterval(Math.max(1, Math.min(168, Number(e.target.value) || 24)))}
-              onBlur={() => {
-                if (kase.auto_refresh_enabled) toggleAuto(true);
-              }}
-            />
-          </div>
-          {kase.last_auto_run_at && (
-            <div className="text-xs text-muted-foreground">
-              Ostatnie uruchomienie: {new Date(kase.last_auto_run_at).toLocaleString("pl-PL")}
-            </div>
-          )}
-
-          <div className="pt-3 border-t">
-            <h4 className="font-semibold text-sm mb-2">Operatorzy ({operators.length})</h4>
-            {operators.length === 0 ? (
-              <div className="text-xs text-muted-foreground">Nikt jeszcze nie uruchamiał tej sprawy.</div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {operators.map((o) => (
-                  <Badge key={o.user} variant="outline" className="text-xs">
-                    {o.user} · {o.count}× · {new Date(o.last_at).toLocaleDateString("pl-PL")}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
         </Card>
       </div>
 
