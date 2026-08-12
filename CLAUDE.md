@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Przewodnik dla Claude Code (i innych asystentów AI) pracujących w tym repo.
-Czytaj **w całości** przed pierwszą zmianą — pomija się tu rzeczy oczywiste z kodu, ale zawiera reguły, których złamanie psuje build / sync z Lovable.
+Czytaj **w całości** przed pierwszą zmianą — pomija się tu rzeczy oczywiste z kodu, ale zawiera reguły, których złamanie psuje build albo wdrożenie na serwer.
 
 ---
 
@@ -23,13 +23,13 @@ Kluczowe funkcje:
 ## 2. Stack
 
 - **Framework**: TanStack Start v1 (React 19 + SSR) na Vite 7
-- **Runtime serwerowy**: Cloudflare Workers (`nodejs_compat`) — patrz sekcja 7
+- **Runtime serwerowy**: Node 22 (Nitro `node-server`) pod systemd na własnym Ubuntu — patrz sekcja 7
 - **Routing**: file-based w `src/routes/` (flat dot convention)
 - **Styling**: Tailwind CSS v4 (przez `@tailwindcss/vite`, tokeny w `src/styles.css`, format `oklch`)
 - **UI**: shadcn/ui + Radix
-- **Backend**: Lovable Cloud (= managed Supabase) — auth, DB, storage, edge functions
+- **Backend**: FastAPI na tym samym Ubuntu (`API_BASE_URL`) + Postgres/PostgREST w dockerze (`usacar-db`)
 - **Package manager**: **bun** (nie npm/yarn/pnpm)
-- **Hosting**: Lovable platform (preview + published), kod synchronizowany z GitHub dwukierunkowo
+- **Hosting**: własny serwer, wdrożenie skryptem `usacar-deploy-dashboard.sh` (sekcja 7)
 
 ---
 
@@ -38,7 +38,7 @@ Kluczowe funkcje:
 ```bash
 bun install          # instalacja zależności
 bun dev              # dev server z HMR (Vite + SSR)
-bun run build        # production build (uruchamia się automatycznie w Lovable — NIE odpalaj ręcznie podczas pracy z Lovable)
+bun run build        # production build — bramka przed wdrożeniem, odpalaj sam
 bun run preview      # podgląd builda
 bun run lint         # ESLint
 bun run format       # Prettier --write
@@ -106,9 +106,8 @@ supabase/
 ├── config.toml                   # project_id + per-function config. NIE zmieniaj project-level.
 └── migrations/                   # SQL migracje (kolejność po nazwie pliku)
 
-.env                              # Auto-zarządzany przez Lovable Cloud. NIE EDYTOWAĆ.
+.env                              # Lokalny dev. Produkcja: /etc/usacar/dashboard.env na serwerze (0600 root)
 vite.config.ts                    # Używa @lovable.dev/vite-tanstack-config — NIE dodawać duplikatów pluginów
-wrangler.jsonc                    # Cloudflare Workers config
 ```
 
 ---
@@ -140,18 +139,19 @@ wrangler.jsonc                    # Cloudflare Workers config
 - Helpery server-only nazywaj `*.server.ts` — Vite blokuje ich import z bundla klienta.
 - Komponenty importują z `*.functions.ts`, nigdy z `*.server.ts`.
 
-### Cloudflare Workers runtime (server functions + SSR)
+### Runtime serwerowy (server functions + SSR)
 
-**Nie używaj**: `child_process` (spawn/exec), `sharp`, `canvas`, `puppeteer`, `fs.watch`, `os.cpus()`.
-**OK**: `fs`, `path`, `crypto`, `Buffer`, `stream`, `fetch`, `zlib`.
-Wszystkie paczki muszą być bundlowalne — nie ustawiaj `ssr.external` w `vite.config.ts`.
+Zwykły Node 22 na Ubuntu — ograniczeń edge już nie ma. Zostaje jedno: build musi
+zbundlować wszystko, co server functions importują, więc **nie ustawiaj `ssr.external`**
+w `vite.config.ts`. Paczki natywne (`sharp`, `canvas`) i tak dokładaj z rozmysłem —
+każdą trzeba zbudować na serwerze przy wdrożeniu.
 
-### Supabase / Lovable Cloud
+### Supabase (Postgres w dockerze na serwerze)
 
 - **Role użytkowników**: ZAWSZE w osobnej tabeli `user_roles` + funkcja `has_role()` `SECURITY DEFINER`. **Nigdy** nie trzymaj roli w `profiles`/`users` (privilege escalation).
 - **Foreign keys do `auth.users`**: NIE rób ich. Twórz `profiles` w `public` i referencjonuj tam.
 - **RLS**: każda nowa tabela musi mieć włączone RLS + polityki.
-- **Migracje**: zawsze przez tool migracji (w Lovable) lub plik w `supabase/migrations/` z timestampem. Nigdy `ALTER DATABASE postgres`.
+- **Migracje**: plik w `supabase/migrations/` z timestampem, aplikowany ręcznie (`docker exec -it usacar-db-postgres-1 psql -U postgres`). Nie ma automatu. Nigdy `ALTER DATABASE postgres`.
 - **Walidacja czasowa**: triggery, nie `CHECK (expire_at > now())` (CHECK musi być immutable).
 - **Schematy zarezerwowane** (`auth`, `storage`, `realtime`, `supabase_functions`, `vault`) — nie modyfikuj.
 - **Limit zapytań**: 1000 wierszy domyślnie — paginuj jeśli potrzeba więcej.
@@ -160,7 +160,7 @@ Wszystkie paczki muszą być bundlowalne — nie ustawiaj `ssr.external` w `vite
 ### Sekrety / logi
 
 - **Nigdy** nie loguj sekretów. `src/server/logger.server.ts` ma `sanitizeDetails()` — używaj go (helpery `makeLogger(ctx)`).
-- Sekrety dodawaj przez Lovable Cloud secrets (env vars w Worker). Klucze publishable/anon mogą być w kodzie.
+- Sekrety wpisuje się w `/etc/usacar/dashboard.env` na serwerze, po zmianie `sudo systemctl restart usacar-dashboard`. Klucze publishable/anon mogą być w kodzie — ale **nie wolno na nich opierać autoryzacji**.
 
 ### Design system
 
@@ -232,7 +232,7 @@ Claude Code MUSI po zakończeniu zadania (gdy build/typecheck przechodzi):
 - Jeden logiczny zestaw zmian = jeden commit. Nie kumuluj kilku featurów w jednym commicie.
 - Jeśli zadanie obejmuje migrację SQL + kod aplikacji — dwa commity (`db(...)` najpierw, potem `feat(...)`).
 - Nigdy nie commituj `node_modules/`, `.env`, `dist/`, `.lovable/` (są w `.gitignore`).
-- Przed pushem: `git pull --rebase origin main` (Lovable mógł dopisać commit w międzyczasie — patrz sekcja 7).
+- Przed pushem: `git pull --rebase` (w repo bywa druga równoległa sesja).
 - Jeśli `git push` odrzucony (non-fast-forward) → `git pull --rebase` → rozwiąż konflikty → push ponownie.
 - Nie używaj `git push --force` na `main`.
 
@@ -272,8 +272,8 @@ na poprzedni release.
 
 ## 8. Debugging
 
-- **Logi dev-server**: `tail -n 200 /tmp/dev-server-logs/dev-server.log` (sandbox Lovable) lub terminal lokalnie.
-- **Logi Worker (production)**: w Lovable → Cloud → Edge Function Logs.
+- **Logi dev-server**: terminal, w którym stoi `bun dev`.
+- **Logi produkcyjne**: `journalctl -u usacar-dashboard -f` na serwerze, albo panel `/dev/logs`.
 - **Logi aplikacji**: tabela `operation_logs` (zapisywane przez `makeLogger`).
 - **Browser**: F12 → Console / Network.
 - **Status Cloud backendu**: jeśli DB/auth zachowuje się dziwnie — sprawdź czy instancja nie jest w trakcie `RESTARTING` / `UPGRADING`.
@@ -290,7 +290,7 @@ na poprzedni release.
 | `[unenv] X is not implemented`           | Używasz Node-only API w Worker                  | Zamień na fetch / Web API / paczkę edge-compatible                                              |
 | Duplikat route `/`                       | Stworzyłeś `_app/index.tsx` obok `index.tsx`    | Usuń `_app/`                                                                                    |
 | RLS blokuje zapytanie                    | Brak polityki dla użytkownika                   | Dodaj policy z `has_role(auth.uid(), 'admin')` lub `auth.uid() = user_id`                       |
-| Build działa lokalnie, crashuje na prod  | Paczka Node-only                                | Zamień na edge-compatible (sekcja 5: Cloudflare Workers)                                        |
+| Build działa lokalnie, crashuje na prod  | Paczka natywna, niezbudowana na serwerze        | Sprawdź `journalctl -u usacar-dashboard`; deploy sam cofa się na poprzedni release              |
 
 ---
 

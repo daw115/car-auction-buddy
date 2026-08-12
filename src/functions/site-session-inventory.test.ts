@@ -62,11 +62,10 @@ describe("każdy moduł funkcji serwerowych jest sklasyfikowany", () => {
   });
 });
 
-const PRIVATE_RAW_ROUTES = [
-  "src/routes/api/config.ts",
-  "src/routes/api/records.ts",
-  "src/routes/api/reports/pdf.ts",
-];
+// Zostaje jedna. /api/records i /api/reports/pdf szły jeszcze prosto do Supabase
+// z czasów Lovable — panel od dawna czyta rekordy i raporty z backendu na Ubuntu,
+// więc obie trasy usunięto zamiast pilnować ich strażnika.
+const PRIVATE_RAW_ROUTES = ["src/routes/api/config.ts"];
 
 describe("site session protection inventory", () => {
   it.each(PRIVATE_FUNCTION_MODULES)("protects every server function in %s", (filename) => {
