@@ -211,3 +211,32 @@ def test_budget_line_falls_back_to_usd_only_when_pln_is_missing():
 
     assert "USD" in _budget_line(ClientCriteria(make="Toyota", budget_usd=9_000))
     assert "bez limitu" in _budget_line(ClientCriteria(make="Toyota"))
+
+
+def test_opening_bid_is_not_a_bargain():
+    """Lot ze stawką 100 USD dostawał 8,8/10 i stawał na szczycie listy.
+
+    Składowa „cena wobec rynku" widziała okazję życia tam, gdzie po prostu nikt
+    jeszcze nie licytował. To przekłamywało ranking pokazywany klientowi.
+    """
+    from scoring.unified import _lot_price
+
+    assert _lot_price(manheim_lot(current_bid_usd=100)) is None
+    assert _lot_price(manheim_lot(current_bid_usd=0)) is None
+    assert _lot_price(manheim_lot(current_bid_usd=6_000)) == 6_000
+
+
+def test_lot_without_a_price_scores_on_everything_else():
+    """Brak ceny pomija składową cenową, a jej waga idzie na pozostałe —
+    nie zeruje lota i nie wynosi go na szczyt."""
+    bez_ceny = score_lot(manheim_lot(current_bid_usd=0), CRITERIA)
+
+    assert bez_ceny.score > 0, "auto bez otwartej licytacji nadal da się ocenić"
+    assert any("cena" in s.lower() for s in bez_ceny.skipped), "składowa cenowa pominięta"
+
+
+def test_a_lot_without_a_price_is_never_over_budget():
+    """Bez ceny nie ma jak stwierdzić, że przekracza budżet — i nie zgadujemy."""
+    profile = ClientProfile(budget=max_bid_for_budget(60_000, state="FL"))
+
+    assert not score_lot(manheim_lot(current_bid_usd=0), CRITERIA, profile).over_budget

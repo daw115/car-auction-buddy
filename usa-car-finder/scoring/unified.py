@@ -27,6 +27,8 @@ Dwie zasady, na których stoi porównywalność między giełdami:
 """
 from __future__ import annotations
 
+import os
+
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -233,9 +235,30 @@ def profile_from_criteria(criteria: ClientCriteria, **over) -> "ClientProfile":
     return ClientProfile(**values)
 
 
+# Poniżej tej kwoty stawka nie jest ceną, tylko otwarciem licytacji. Zmierzone:
+# lot ze stawką 100 USD dostał 8,8/10 i stanął na szczycie listy, bo składowa
+# „cena wobec rynku" zobaczyła okazję życia tam, gdzie po prostu nikt jeszcze
+# nie licytował.
+MIN_REAL_PRICE_USD = float(os.getenv("MIN_REAL_PRICE_USD", "500"))
+
+
+def has_real_price(lot: CarLot) -> bool:
+    """Czy licytacja tego lota już ruszyła na tyle, żeby cena coś znaczyła."""
+    return _lot_price(lot) is not None
+
+
 def _lot_price(lot: CarLot) -> Optional[float]:
-    """Cena, po której realnie da się kupić — bid gdy trwa licytacja, inaczej buy now."""
-    return lot.current_bid_usd or lot.buy_now_price_usd
+    """Cena, po której realnie da się kupić — bid gdy trwa licytacja, inaczej buy now.
+
+    Zwraca None, gdy licytacja jeszcze nie ruszyła. To NIE jest to samo co „tanio":
+    lot bez ceny nie ma się do czego porównać, więc składowa cenowa jest pomijana,
+    a jej waga rozkłada się na pozostałe. Traktowanie zera jak okazji wywracało
+    ranking pokazywany klientowi.
+    """
+    cena = lot.current_bid_usd or lot.buy_now_price_usd
+    if not cena or cena < MIN_REAL_PRICE_USD:
+        return None
+    return cena
 
 
 def _damage_text(lot: CarLot) -> str:
