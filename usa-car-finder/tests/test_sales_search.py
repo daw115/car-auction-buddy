@@ -180,7 +180,7 @@ def test_brak_budzetu_przechodzi_ale_z_ostrzezeniem(client, auth):
     zapisany = db.create_lead(lead(budget_pln=None))
     r = client.post(f"/api/sales/leads/{zapisany.id}/search", headers=auth)
     assert r.status_code == 200
-    assert "budżet pod klucz" in r.json()["warnings"]
+    assert any("budżet pod klucz" in w for w in r.json()["warnings"])
 
 
 def test_drugi_scrape_dla_tego_samego_leada_jest_odrzucany(client, auth):
@@ -413,3 +413,114 @@ def test_client_id_jest_widoczny_w_karcie_leada(client, auth):
 
 def test_promote_nieistniejacego_leada_to_404(client, auth):
     assert client.post("/api/sales/leads/9999/promote", headers=auth).status_code == 404
+
+
+# ─────────────── auto w rozliczeniu i warunek wznowienia — dwa różne budżety
+
+
+def test_dwa_budzety_to_dwie_rozne_kwoty():
+    """Klient z setką i Audi wartym 85 tysięcy ma dziś sto, a po sprzedaży 185.
+
+    Mylenie ich kosztuje w obie strony: sito liczące gotówkę wyrzuci klienta na 185
+    tysięcy, a wyszukiwanie liczące niesprzedane auto pokaże mu auta, na które
+    dziś go nie stać.
+    """
+    l = lead(budget_pln=100_000.0, trade_in_value_pln=85_000.0, trade_in_sold=False)
+    assert l.confirmed_budget_pln == 100_000.0
+    assert l.potential_budget_pln == 185_000.0
+
+
+def test_sprzedane_auto_wchodzi_do_budzetu_potwierdzonego():
+    l = lead(budget_pln=100_000.0, trade_in_value_pln=85_000.0, trade_in_sold=True)
+    assert l.confirmed_budget_pln == 185_000.0
+    assert l.potential_budget_pln == 185_000.0
+
+
+def test_sito_liczy_potencjal_a_nie_gotowke():
+    """Klient na 185 tysięcy nie może lądować na parkingu, bo dziś ma w kieszeni sto."""
+    from sales.gate import check
+    from sales.qualification import score_lead
+
+    l = lead(budget_pln=100_000.0, trade_in_value_pln=85_000.0, trade_in_sold=False)
+    assert check(l, score_lead(l)).passes
+
+    bez_auta = lead(budget_pln=100_000.0, trade_in_value_pln=None)
+    assert not check(bez_auta, score_lead(bez_auta)).passes
+
+
+def test_wyszukiwanie_liczy_sufit_z_budzetu_potwierdzonego():
+    """Pokazanie aut za kwotę, której klient jeszcze nie ma, kończy się wycofaniem."""
+    l = lead(budget_pln=100_000.0, trade_in_value_pln=85_000.0, trade_in_sold=False)
+    assert criteria_from_lead(l).budget_pln_to == 100_000.0
+
+    l.trade_in_sold = True
+    assert criteria_from_lead(l).budget_pln_to == 185_000.0
+
+
+def test_niesprzedane_auto_daje_ostrzezenie_przy_wyszukiwaniu():
+    """Broker musi wiedzieć, że lista jest węższa, niż na jaką klienta ostatecznie stać."""
+    l = lead(trade_in_value_pln=85_000.0, trade_in_sold=False)
+    ostrzezenia = readiness(l).warnings
+    assert any("niesprzedanego auta" in w for w in ostrzezenia)
+
+
+def test_warunek_wznowienia_wyprzedza_dopytywanie(client, auth):
+    """„Najpierw muszę sprzedać Octavię" to wyzwalacz, nie termin — i to jest
+    ważniejsze niż kolejne pytanie o rocznik."""
+    from sales.qualification import score_lead
+
+    l = lead(blocked_by="musi sprzedać obecne auto")
+    wynik = score_lead(l)
+    assert "Czeka na" in wynik.next_action
+    assert any("Czeka na" in f for f in wynik.red_flags)
+
+
+def test_niesprzedane_auto_jest_warunkiem_samo_w_sobie():
+    """Pieniądze zamrożone w blasze to warunek, nawet gdy nikt go nie wpisał."""
+    l = lead(trade_in_model="Audi A6", trade_in_value_pln=85_000.0, trade_in_sold=False)
+    assert l.waiting_on == "sprzedaż: Audi A6"
+
+    l.trade_in_sold = True
+    assert l.waiting_on is None
+
+
+# ──────────────────────────── nowe pola przez API (były niewidoczne i nie do zapisu)
+
+
+@pytest.mark.parametrize(
+    "pole, wartosc",
+    [
+        ("blocked_by", "czeka na kredyt"),
+        ("trade_in_model", "Audi A6"),
+        ("trade_in_year", 2019),
+        ("trade_in_value_pln", 85_000),
+        ("trade_in_sold", True),
+        ("engine_hint", "3.0 diesel"),
+        ("trim_hint", "M Sport"),
+    ],
+)
+def test_patch_przyjmuje_nowe_pola(client, auth, pole, wartosc):
+    """`extra="forbid"` odrzucał je z 422 — pola istniały w modelu i w bazie,
+    a jedyna droga zapisu ich nie znała."""
+    zapisany = db.create_lead(lead())
+    r = client.patch(f"/api/sales/leads/{zapisany.id}", json={pole: wartosc}, headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["lead"][pole] == wartosc
+
+
+def test_api_zwraca_nowe_pola_i_oba_budzety(client, auth):
+    """Front deklarował te pola w typie, a backend ich nie wysyłał — wszystkie
+    wychodziły jako undefined."""
+    zapisany = db.create_lead(
+        lead(budget_pln=100_000.0, trade_in_model="Audi A6",
+             trade_in_value_pln=85_000.0, trade_in_sold=False,
+             blocked_by="musi sprzedać obecne auto", engine_hint="3.0d")
+    )
+    d = client.get(f"/api/sales/leads/{zapisany.id}", headers=auth).json()
+
+    assert d["trade_in_model"] == "Audi A6"
+    assert d["blocked_by"] == "musi sprzedać obecne auto"
+    assert d["engine_hint"] == "3.0d"
+    assert d["confirmed_budget_pln"] == 100_000.0
+    assert d["potential_budget_pln"] == 185_000.0
+    assert d["waiting_on"] == "musi sprzedać obecne auto"

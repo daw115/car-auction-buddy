@@ -119,16 +119,19 @@ def _budget(lead: Lead) -> Optional[tuple[float, str]]:
     skalują się z ceną auta, więc przy niskim budżecie zjadają go prawie w całości
     i naiwne przeliczenie pokazuje auta, których nie ma.
     """
-    if not lead.budget_pln:
+    budzet = lead.potential_budget_pln
+    if not budzet:
         return None
 
     from scoring.budget import max_bid_for_budget
 
-    sufit = max_bid_for_budget(lead.budget_pln, settlement=lead.settlement).max_bid_usd
+    # POTENCJAŁ, nie gotówka. Klient z setką i Audi wartym 85 tysięcy jest klientem
+    # na 185, a nie na 100 — składowa mierzy, czy go stać, a nie co mu dziś pokazać.
+    sufit = max_bid_for_budget(budzet, settlement=lead.settlement).max_bid_usd
 
     if sufit < MIN_SENSIBLE_BID_USD:
         return 0.1, (
-            f"budżet {_num(lead.budget_pln)} zł daje stawkę ok. {_num(sufit)} USD — "
+            f"budżet {_num(budzet)} zł daje stawkę ok. {_num(sufit)} USD — "
             f"poniżej progu, od którego zaczynają się auta na chodzie"
         )
 
@@ -251,6 +254,19 @@ def _red_flags(lead: Lead, sufit_usd: Optional[float]) -> list[str]:
     if not lead.contactable:
         flagi.append("Brak telefonu i maila — nie ma jak odpowiedzieć.")
 
+    # Lead czekający na sprzedaż swojego auta nie kupi w tym tygodniu, choćby miał
+    # komplet danych i wysoką ocenę. To nie jest wada — to inne tempo rozmowy,
+    # a naciskanie na decyzję psuje ją szybciej niż cisza.
+    if lead.waiting_on:
+        flagi.append(
+            f"Czeka na: {lead.waiting_on}. Nie naciskaj na decyzję — ustal termin powrotu."
+        )
+    if lead.trade_in_value_pln and not lead.trade_in_sold:
+        flagi.append(
+            f"Budżet zawiera {_num(lead.trade_in_value_pln)} zł z auta, które nie jest "
+            f"jeszcze sprzedane. Wyszukiwanie liczy sufit bez tej kwoty."
+        )
+
     dni = _days_since(lead.last_client_message_at)
     if dni is not None and dni > SILENCE_DEAD_DAYS and lead.stage.open:
         flagi.append(f"Cisza od {dni} dni przy otwartej sprawie — czas domknąć albo odpuścić.")
@@ -263,7 +279,7 @@ def _missing(lead: Lead) -> list[str]:
     braki: list[str] = []
     if lead.damage_ok is None:
         braki.append("czy godzi się na auto po szkodzie")
-    if not lead.budget_pln:
+    if not lead.potential_budget_pln:
         braki.append("budżet pod klucz w złotówkach")
     if not lead.make:
         braki.append("marka i model")
@@ -293,9 +309,12 @@ def _next_action(
     # jest stratą czasu obu stron. Najpierw kwota, dopiero potem reszta.
     if sufit_usd is not None and sufit_usd < MIN_SENSIBLE_BID_USD:
         return (
-            f"Powiedz wprost, że przy {_num(lead.budget_pln or 0)} zł nie ma auta na chodzie — "
+            f"Powiedz wprost, że przy {_num(lead.potential_budget_pln or 0)} zł nie ma auta na chodzie — "
             "zapytaj, czy budżet da się podnieść."
         )
+
+    if lead.waiting_on:
+        return f"Czeka na: {lead.waiting_on}. Umów się na konkretny termin powrotu."
 
     if braki:
         return f"Dopytaj: {', '.join(braki[:3])}."
@@ -376,10 +395,12 @@ def score_lead(lead: Lead) -> LeadScore:
     score = sum(c.points for c in components) * 100
 
     sufit = None
-    if lead.budget_pln:
+    if lead.potential_budget_pln:
         from scoring.budget import max_bid_for_budget
 
-        sufit = max_bid_for_budget(lead.budget_pln, settlement=lead.settlement).max_bid_usd
+        sufit = max_bid_for_budget(
+            lead.potential_budget_pln, settlement=lead.settlement
+        ).max_bid_usd
 
     flagi = _red_flags(lead, sufit)
 

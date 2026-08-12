@@ -83,9 +83,14 @@ def check(lead: Lead, score: LeadScore) -> Verdict:
 
     uprzywilejowany = bool(lead.referred_by) or lead.bought_before
     if not uprzywilejowany:
-        if lead.budget_pln is not None and lead.budget_pln < MIN_BUDGET_PLN:
+        # POTENCJAŁ, nie gotówka: sito decyduje, czy warto poświęcić czas, a klient
+        # z autem do sprzedania jest go wart — tylko rozmowa toczy się wolniej.
+        # Liczenie samej gotówki wyrzucałoby na parking klientów na 185 tysięcy,
+        # bo dziś mają w kieszeni sto.
+        budzet = lead.potential_budget_pln
+        if budzet is not None and budzet < MIN_BUDGET_PLN:
             powody.append(
-                f"budżet {lead.budget_pln / 1000:.0f} tys. zł poniżej progu "
+                f"budżet {budzet / 1000:.0f} tys. zł poniżej progu "
                 f"{MIN_BUDGET_PLN / 1000:.0f} tys."
             )
             odblokowanie.append("podnieść budżet albo przejść na wariant premium")

@@ -151,6 +151,16 @@ class LeadPatch(BaseModel):
     damage_ok: Optional[bool] = None
     timeline_days: Optional[int] = Field(default=None, ge=0, le=3650)
     notes: Optional[str] = Field(default=None, max_length=4000)
+    # Warunek wznowienia i auto w rozliczeniu. Bez nich `extra="forbid"` odrzucał
+    # z 422 formularz, który te pola wyświetla — pola istniały w modelu i w bazie,
+    # a jedyna droga zapisu ich nie znała.
+    blocked_by: Optional[str] = Field(default=None, max_length=200)
+    trade_in_model: Optional[str] = Field(default=None, max_length=120)
+    trade_in_year: Optional[int] = Field(default=None, ge=1980, le=2100)
+    trade_in_value_pln: Optional[float] = Field(default=None, gt=0, le=10_000_000)
+    trade_in_sold: Optional[bool] = None
+    engine_hint: Optional[str] = Field(default=None, max_length=60)
+    trim_hint: Optional[str] = Field(default=None, max_length=120)
 
 
 # ───────────────────────────────────────────────────────────── serializacja
@@ -196,6 +206,19 @@ def _lead_json(lead: Lead) -> dict[str, Any]:
         "budget_pln": lead.budget_pln,
         "settlement": lead.settlement,
         "timeline_days": lead.timeline_days,
+        "blocked_by": lead.blocked_by,
+        "trade_in_model": lead.trade_in_model,
+        "trade_in_year": lead.trade_in_year,
+        "trade_in_value_pln": lead.trade_in_value_pln,
+        "trade_in_sold": lead.trade_in_sold,
+        "engine_hint": lead.engine_hint,
+        "trim_hint": lead.trim_hint,
+        # Dwa budżety liczone, nie przechowywane — patrz `sales/models.Lead`.
+        # Panel pokazuje oba, bo różnica między nimi jest treścią rozmowy
+        # („mam sto, będę miał sto osiemdziesiąt pięć po sprzedaży Audi").
+        "confirmed_budget_pln": lead.confirmed_budget_pln,
+        "potential_budget_pln": lead.potential_budget_pln,
+        "waiting_on": lead.waiting_on,
         "damage_ok": lead.damage_ok,
         "bought_before": lead.bought_before,
         "referred_by": lead.referred_by,
@@ -625,7 +648,7 @@ async def start_lead_search(lead_id: int, background: BackgroundTasks) -> dict[s
     return {
         "started": True,
         "lead_id": lead_id,
-        "warnings": gotowosc.missing,
+        "warnings": gotowosc.notes(),
     }
 
 

@@ -188,6 +188,58 @@ class Lead:
     def contactable(self) -> bool:
         return bool(self.phone or self.email)
 
+    # DWA BUDŻETY, BO KLIENT MA DWIE RÓŻNE KWOTY I MYLENIE ICH KOSZTUJE W OBIE STRONY.
+    #
+    # Klient z setką w gotówce i Audi wartym 85 tysięcy ma dziś sto, a po sprzedaży
+    # sto osiemdziesiąt pięć. Użycie jednej liczby do wszystkiego psuje albo jedno,
+    # albo drugie:
+    #
+    #   * sito liczące tylko gotówkę odrzuci go jako leada poniżej progu, choć jest
+    #     klientem na 185 tysięcy — i to jest strata, której nikt nie zauważy,
+    #   * wyszukiwanie liczące razem z niesprzedanym autem pokaże mu auta za 185,
+    #     wyceni je i zaproponuje, a klient nie ma dziś czym zapłacić. To jest ta
+    #     dopłata po drodze, której obiecujemy nie robić.
+    #
+    # Stąd rozdział: sito patrzy na potencjał, wycena i wyszukiwanie na potwierdzone.
+
+    @property
+    def confirmed_budget_pln(self) -> Optional[float]:
+        """Pieniądze, które klient MA dzisiaj. Do sufitu wyszukiwania i do wyceny.
+
+        Auto w rozliczeniu wchodzi dopiero jako sprzedane — deklarowana wartość
+        niesprzedanego auta to nadzieja, nie środki.
+        """
+        czesci = [self.budget_pln or 0.0]
+        if self.trade_in_sold and self.trade_in_value_pln:
+            czesci.append(self.trade_in_value_pln)
+        suma = sum(czesci)
+        return suma or None
+
+    @property
+    def potential_budget_pln(self) -> Optional[float]:
+        """Pieniądze, które klient BĘDZIE MIAŁ po sprzedaży auta. Do sita.
+
+        Sito odpowiada na pytanie „czy warto poświęcić temu człowiekowi czas", a nie
+        „co mu dziś pokazać". Klient z autem do sprzedania jest wart czasu — tylko
+        rozmowa z nim toczy się w innym tempie.
+        """
+        suma = (self.budget_pln or 0.0) + (self.trade_in_value_pln or 0.0)
+        return suma or None
+
+    @property
+    def waiting_on(self) -> Optional[str]:
+        """Na co lead czeka, zanim będzie mógł kupić. None = na nic.
+
+        Niesprzedane auto w rozliczeniu jest warunkiem samo w sobie, nawet gdy nikt
+        nie wpisał go w `blocked_by` — pieniądze są zamrożone w blasze.
+        """
+        if self.blocked_by:
+            return self.blocked_by
+        if self.trade_in_value_pln and not self.trade_in_sold:
+            nazwa = self.trade_in_model or "obecne auto"
+            return f"sprzedaż: {nazwa}"
+        return None
+
     def display_name(self) -> str:
         return self.name or self.phone or self.email or f"lead #{self.id}"
 

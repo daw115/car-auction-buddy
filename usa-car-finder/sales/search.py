@@ -29,7 +29,7 @@ wiadomości w skrzynce brokera, tak jak przy każdym innym etapie.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from sales.models import Lead, Stage
@@ -52,10 +52,18 @@ class Readiness:
     """Czy da się z tego leada zbudować wyszukiwanie."""
 
     ready: bool
+    #: Dane, których nie mamy. Odpowiedź na pytanie „czego brakuje".
     missing: list[str]
+    #: Rzeczy, o których broker ma wiedzieć, choć wyszukiwania nie blokują.
+    #: Osobno od `missing`, bo „brakuje: czeka na sprzedaż Audi" to nie jest brak
+    #: danych, tylko stan klienta — i czyta się jak pomyłka.
+    warnings: list[str] = field(default_factory=list)
 
     def reason(self) -> str:
         return "brakuje: " + ", ".join(self.missing) if self.missing else "gotowe"
+
+    def notes(self) -> list[str]:
+        return [*(f"brakuje: {m}" for m in self.missing), *self.warnings]
 
 
 def readiness(lead: Lead) -> Readiness:
@@ -67,11 +75,26 @@ def readiness(lead: Lead) -> Readiness:
     dwa razy za drogiego. Dlatego jest na liście braków, choć nie blokuje.
     """
     missing: list[str] = []
+    warnings: list[str] = []
+
     if not lead.make:
         missing.append("marka")
-    if not lead.budget_pln:
+    if not lead.confirmed_budget_pln:
         missing.append("budżet pod klucz")
-    return Readiness(ready=bool(lead.make), missing=missing)
+
+    # Sufit liczymy z budżetu POTWIERDZONEGO, więc klient z autem do sprzedania
+    # zobaczy węższą listę, niż na jaką go ostatecznie stać. To jest zamierzone,
+    # ale broker musi o tym wiedzieć, zanim wyśle ofertę.
+    if lead.waiting_on:
+        warnings.append(f"czeka na: {lead.waiting_on}")
+    if lead.trade_in_value_pln and not lead.trade_in_sold:
+        warnings.append(
+            f"sufit liczony bez {lead.trade_in_value_pln:,.0f} zł z niesprzedanego auta".replace(
+                ",", " "
+            )
+        )
+
+    return Readiness(ready=bool(lead.make), missing=missing, warnings=warnings)
 
 
 def criteria_from_lead(lead: Lead, *, max_results: int = MAX_CANDIDATES):
@@ -94,7 +117,10 @@ def criteria_from_lead(lead: Lead, *, max_results: int = MAX_CANDIDATES):
         year_from=lead.year_from,
         year_to=lead.year_to,
         max_odometer_mi=lead.max_odometer_mi,
-        budget_pln_to=lead.budget_pln,
+        # POTWIERDZONY, nie potencjalny. Wyszukiwanie decyduje, co klient zobaczy
+        # w ofercie — pokazanie mu aut za kwotę, której jeszcze nie ma, kończy się
+        # dopłatą po drodze albo wycofaniem się przy podpisaniu.
+        budget_pln_to=lead.confirmed_budget_pln,
         settlement=lead.settlement,
         max_results=max_results,
     )
