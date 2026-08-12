@@ -29,14 +29,11 @@ venv/bin/python3 -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 # Local-only mode (no scraping, no AI keys needed)
 USE_MOCK_DATA=true AI_ANALYSIS_MODE=local python -m api.main
 
-# Full email→scrape→AI→Telegram→mail pipeline
-python main_automation.py
-
 # Scraper smoke test (Copart + IAAI completeness check)
 python test_scrapers.py
 
-# One-off targeted search script
-python search_audi_a5_report.py
+# Recurring per-client watches (what the systemd timer runs)
+python -m watch.runner
 ```
 
 Tests are of two kinds. `tests/` is a pytest suite and is the gate before every deploy:
@@ -59,7 +56,7 @@ ClientCriteria → AutomatedScraper (Playwright) → HTML cache + parsed CarLot[
 
 - **Entry points**
   - `api/main.py` — FastAPI app. Key routes: `POST /search`, `POST /report`, `POST /report/offer-email-html`, `GET /artifacts/{filename}`, `GET /config`, `POST /browser/close`, `GET /health`. Serves the UI from `api/static/`.
-  - `main_automation.py` — `AutomationOrchestrator` that wires Gmail → `email_parser` → scraper → analyzer → `offer_agent` → Telegram approval → outbound mail. Used for the unattended flow.
+  - `watch/runner.py` — recurring per-client searches behind the `usacar-watch` systemd timer. Notifies the broker; nothing reaches the client without a human click.
 
 - **Scraping (`scraper/`)** — `AutomatedScraper` is the facade over `copart.py`, `iaai.py` and `manheim.py`, all built on `base.py` + `browser_context.py`. Manheim is opt-in (`MANHEIM_BACKEND_ENABLED`), returns only the top 3 lots, and cannot be driven directly: the BidWise extension occupies the single `chrome.debugger` slot on its tab. Instead the backend leaves jobs (`api/manheim_jobs.py`) that our own `manheim-collector` extension polls from inside the logged-in page and answers by replaying the GraphQL chain into `POST /api/manheim/ingest`. `scraper/manheim_session.py` holds the dependency-free readiness check used by `/api/capabilities`. When `USE_EXTENSIONS=true`, `extension_enricher.py` reads the AuctionGate/AutoHelperBot iframes directly from the detail page (full VIN, reserve price, seller type) — the extensions only work in Playwright's bundled Chromium, not Google Chrome. `storage_state.py` and `*_login_helper.py` persist auth in `data/chrome_profile/` and the `playwright_profiles/*.json` files.
 
@@ -104,7 +101,7 @@ ClientCriteria → AutomatedScraper (Playwright) → HTML cache + parsed CarLot[
   - A parked lead is **never hidden**. `/api/sales/inbox` returns `items` (passed) and `parked` (with `parked_reasons` and `unlock`), both carrying `lead_id`. Hiding rejects would turn a filter into silent customer loss. `worth_model_call()` also stops the model burning tokens on parked leads — except when the client refused a damaged car, where one good message flips the single most common loss reason.
   - `POST /api/public/vin-check` is deliberately **ungated**: VIN in, duty/excise/landed price out, no contact required. It filters by self-selection instead of harvesting phone numbers, and it is the only public calculator on the Polish market that can be right — the eight competitor calculators ask for price and engine size, never VIN, so none of them knows whether duty is 0% or 10% (175 of 307 lots in our sample were US-assembled). **The one dangerous direction is an unidentified EV**: not knowing the drivetrain gives 0% instead of 10% duty, so `tariff.rates_for` emits an explicit assumption whenever preferential duty is applied without a confident drivetrain. Always pass `make` and `model` when you have them — with only a trim string, "Long Range" reads as combustion and a Tesla silently loses both its 10% duty and its 0% excise.
 
-- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` and `offer_html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief for the automation pipeline — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `<slug>_analysis.json` and `<slug>_client_report.md` into `data/client_searches/` and exposes them via `/artifacts/{filename}`), `whatsapp.py` (short client message + wa.me link — **generates only, never sends**; the broker approves and sends it). Mail HTML structure must follow `przyklady_maili_README.md`.
+- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `<slug>_analysis.json` and `<slug>_client_report.md` into `data/client_searches/` and exposes them via `/artifacts/{filename}`), `whatsapp.py` (short client message + wa.me link — **generates only, never sends**; the broker approves and sends it). Mail HTML structure must follow `przyklady_maili_README.md`.
 
 ## Configuration knobs that change behavior significantly
 

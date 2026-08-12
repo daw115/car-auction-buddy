@@ -30,7 +30,7 @@ Założenia biznesowe, na których stoi treść — opisane szerzej w agent-ofer
     zasada co w report/whatsapp.py).
   * Cena z aukcji to STAWKA, nie cena. Aukcja może pójść wyżej, więc mówimy "przy tej
     stawce", a nie "cena tego auta".
-  * Klient widzi 3-4 auta. Więcej paraliżuje wybór (main_automation.CLIENT_OFFERS_COUNT).
+  * Klient widzi 3-4 auta. Więcej paraliżuje wybór.
   * Wewnętrzna ocena 0-10 nigdy nie opuszcza firmy.
 """
 from __future__ import annotations
@@ -1114,7 +1114,7 @@ def generate_offers_with_agent(
     *,
     criteria: Optional[ClientCriteria] = None,
 ) -> tuple[str, str]:
-    """Zgodność z main_automation.py: (brief dla brokera, mail dla klienta).
+    """Zwraca parę: (brief dla brokera, mail dla klienta).
 
     Kolejność zwracanych dokumentów jest jak w poprzedniej wersji ("pełna, skrócona"),
     ale znaczenie się zmieniło: pierwszy dokument to brief wewnętrzny, nie druga wersja
