@@ -49,11 +49,48 @@ def _embedded_record(soup: BeautifulSoup) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+# Klucze, pod ktorymi Manheim trzyma adres zdjecia w obiekcie `mainImage`.
+# Kolejnosc ma znaczenie: `smallUrl` to miniatura 86x64 px, bezuzyteczna w raporcie.
+_KLUCZE_ZDJEC = ("largeUrl", "url", "href", "dziUrl", "smallUrl")
+
+
+def _zdjecia_z_rekordu(wezel: Any, zebrane: list[str]) -> None:
+    """Schodzi w glab rekordu i zbiera adresy zdjec z zagniezdzonych obiektow.
+
+    `_pick` tu nie wystarcza: splaszcza wartosc do skalara przez `unwrap_scalar`,
+    ktory szuka wylacznie kluczy pienieznych ('amount', 'value', 'price', 'number').
+    Manheim podaje zdjecie jako obiekt `mainImage` z kluczem `largeUrl`, wiec
+    `_pick(record, "image")` zwracalo None i lot wychodzil bez ani jednego zdjecia —
+    mimo ze adres byl w danych. Broker widzial w raporcie napis zastepczy.
+    """
+    if isinstance(wezel, dict):
+        for klucz, wartosc in wezel.items():
+            nazwa = str(klucz).lower()
+            if isinstance(wartosc, str) and wartosc.startswith("http"):
+                pasuje_klucz = (
+                    any(k.lower() == nazwa for k in _KLUCZE_ZDJEC)
+                    or "image" in nazwa
+                    or "photo" in nazwa
+                )
+                # Sama nazwa klucza nie wystarcza: pod `designatedDescription`
+                # siedzi adres API opisu, nie obrazek. Wymagamy rozszerzenia pliku,
+                # tak samo jak filtr DOM nizej w tej funkcji.
+                sciezka = wartosc.split("?", 1)[0].lower()
+                if pasuje_klucz and sciezka.endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    zebrane.append(wartosc)
+            elif isinstance(wartosc, (dict, list)):
+                _zdjecia_z_rekordu(wartosc, zebrane)
+    elif isinstance(wezel, list):
+        for element in wezel:
+            _zdjecia_z_rekordu(element, zebrane)
+
+
 def _extract_images(soup: BeautifulSoup, record: dict) -> list[str]:
     images: list[str] = []
-    primary = _pick(record, "image")
-    if isinstance(primary, str) and primary.startswith("http"):
-        images.append(primary)
+    _zdjecia_z_rekordu(record, images)
+    # Miniatury na koniec: dedup nizej kluczuje po adresie bez parametrow, wiec
+    # gdy largeUrl i smallUrl wskazuja ten sam plik, zostaje ten wczesniejszy.
+    images.sort(key=lambda u: 1 if "size=w" in u else 0)
 
     for img in soup.select("img[src], img[data-src]"):
         src = (img.get("src") or img.get("data-src") or "").strip()

@@ -497,8 +497,18 @@ class AutomatedScraper:
                     lot.buy_now_price_usd = float(buy_now)
                 except (TypeError, ValueError):
                     pass
+            # `tims` to klucz z wyszukiwarki Coparta. Manheim podaje zdjecie jako
+            # obiekt `mainImage`, wiec ta sciezka milczkiem omijala jego loty.
             image_url = listing_raw.get("tims")
-            if image_url and not lot.images:
+            if not isinstance(image_url, str):
+                glowne = listing_raw.get("mainImage")
+                if isinstance(glowne, dict):
+                    for klucz in ("largeUrl", "url", "smallUrl"):
+                        kandydat = glowne.get(klucz)
+                        if isinstance(kandydat, str) and kandydat.startswith("http"):
+                            image_url = kandydat
+                            break
+            if isinstance(image_url, str) and image_url and not lot.images:
                 lot.images = [image_url]
         if metadata.get("listing_row_text"):
             lot.raw_data["listing_row_text"] = metadata["listing_row_text"]

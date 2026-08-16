@@ -550,6 +550,10 @@ def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "cost_total_optimistic_pln": format_pln(total_opt_pln),
         "cost_total_pessimistic_pln": format_pln(total_pes_pln),
         "usd_pln_rate": str(costs.get("usd_rate", DEFAULT_USD_RATE)) if costs else str(DEFAULT_USD_RATE),
+        # Raport brokera nie mial ani jednego znacznika obrazu, mimo ze lot niesie
+        # adresy zdjec. Broker ogladal auto po opisie, a zdjecie sprawdzal osobno
+        # na aukcji — a to wlasnie na nim widac, czy uszkodzenie jest tym, co pisze AI.
+        "photos": list(lot.images or [])[:6],
         "red_flags": _build_red_flags(item),
         "raw_api_fields": raw_fields,
         "bid_max_suggested": format_usd(bid_max),

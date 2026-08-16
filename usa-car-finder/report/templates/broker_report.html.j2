@@ -60,6 +60,9 @@
   .section { background: #fff; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 16px; overflow: hidden; }
   .section-head { background: var(--navy); color: #fff; padding: 12px 20px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
   .section-body { padding: 16px 20px; }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .photo-grid img { width: 100%; height: 150px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; }
+  .photo-note { margin: 10px 0 0; font-size: 11px; color: #6b7280; }
   .pill { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: rgba(26,86,160,.1); color: var(--blue); margin-bottom: 12px; }
   .pill.amber { background: var(--amber-bg); color: var(--amber); }
 
@@ -225,6 +228,26 @@
       <div class="card-sub">USD</div>
     </div>
   </div>
+
+  <!-- SECTION: ZDJECIA -->
+  {% if photos %}
+  <div class="section">
+    <div class="section-head">&#128247; Zdjęcia z aukcji ({{ photos | length }})</div>
+    <div class="section-body">
+      <div class="photo-grid">
+        {% for zdjecie in photos %}
+        <a href="{{ zdjecie }}" target="_blank" rel="noreferrer">
+          <img src="{{ zdjecie }}" alt="Zdjęcie {{ loop.index }} z aukcji" loading="lazy">
+        </a>
+        {% endfor %}
+      </div>
+      <p class="photo-note">
+        Zdjęcia ładują się wprost z serwera aukcji. Jeśli któreś się nie wyświetli,
+        aukcja je zdjęła — kliknij, żeby sprawdzić w źródle.
+      </p>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- SECTION 0: DECISION REASON -->
   <div class="section decision-section decision-{{ recommendation_css }}">

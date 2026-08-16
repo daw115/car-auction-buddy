@@ -26,7 +26,14 @@ LISTING = {
     "locationCity": "Atlanta",
     "stateAbbreviation": "GA",
     "saleDate": 1786400000000,
-    "imageUrl": "https://images.manheim.com/vehicle/front.jpg",
+    # Ksztalt zaobserwowany na zywo: Manheim podaje OBIEKT, nie string.
+    # Wczesniej fixture mial tu plaski "imageUrl" i test przechodzil na zielono,
+    # podczas gdy produkcja oddawala loty bez ani jednego zdjecia.
+    "mainImage": {
+        "largeUrl": "https://images.cdn.manheim.com/vehicle/front.jpg",
+        "smallUrl": "https://images.cdn.manheim.com/vehicle/front.jpg?size=w86h64",
+        "sequence": 1,
+    },
 }
 
 
@@ -169,7 +176,7 @@ def test_parser_reads_injected_listing_and_normalizes_units(tmp_path):
     assert lot.seller_type == "dealer"
     assert lot.damage_primary == "Condition grade 4.1"
     assert lot.auction_date.startswith("2026-")
-    assert lot.images == ["https://images.manheim.com/vehicle/front.jpg"]
+    assert lot.images == ["https://images.cdn.manheim.com/vehicle/front.jpg"]
 
 
 def test_parser_falls_back_to_vin_from_page_when_listing_block_missing(tmp_path):
@@ -614,3 +621,27 @@ def test_copart_parser_keeps_the_trim_that_tells_engines_apart(tmp_path):
     assert lot is not None
     assert lot.model == "6", "model zostaje surowy — po nim filtrujemy"
     assert lot.trim == "GRAND TOURING RESERVE"
+
+
+def test_zdjecie_wychodzi_z_prawdziwego_rekordu_manheima():
+    """Regresja na realnym pliku, nie na wymyslonym ksztalcie.
+
+    Poprzedni fixture podawal `imageUrl` jako plaski string. Prawdziwe API oddaje
+    obiekt `mainImage`, wiec test byl zielony, a broker dostawal raport z napisem
+    "Zdjecia dostepne po kontakcie". Ten test czyta plik z cache produkcyjnego,
+    wiec rozjedzie sie dopiero wtedy, gdy naprawde zmieni sie ksztalt danych.
+    """
+    from pathlib import Path
+
+    from parser.manheim_parser import parse_manheim_html
+
+    plik = Path(__file__).resolve().parents[1] / "data/html_cache/manheim/ea068148af.html"
+    if not plik.exists():
+        pytest.skip("brak pliku z cache produkcyjnego")
+
+    lot = parse_manheim_html(plik)
+    assert lot is not None
+    assert lot.images, "rekord Manheima ma mainImage.largeUrl — lot nie moze wyjsc bez zdjec"
+    assert all(u.startswith("http") for u in lot.images)
+    # Miniatura 86x64 px nie nadaje sie do raportu i nie moze wyprzedzic pelnego zdjecia.
+    assert "size=w86h64" not in lot.images[0]
