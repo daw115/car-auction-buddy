@@ -365,6 +365,9 @@ function DraftCard({ item, onDone }: { item: InboxItem; onDone: () => void }) {
 }
 
 function InboxPage() {
+  // Domyslnie zwiniete: to jest lista do przejrzenia raz na jakis czas,
+  // a nie robota na dzis. Ale musi byc widoczna, ze w ogole istnieje.
+  const [parkingOtwarty, setParkingOtwarty] = useState(false);
   const fetchInbox = useServerFn(getSalesInbox);
   const regenerate = useServerFn(regenerateDraft);
   const [data, setData] = useState<Inbox | null>(null);
@@ -460,6 +463,62 @@ function InboxPage() {
               ) : null}
             </div>
           ))}
+        </Card>
+      ) : null}
+
+      {data && (data.parked?.length ?? 0) > 0 ? (
+        <Card className="p-4">
+          <button
+            type="button"
+            onClick={() => setParkingOtwarty((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <span>
+              <span className="text-sm font-medium">Parking ({data.parked!.length})</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                odsiane przez sito — nie zniknęły, czekają na warunek
+              </span>
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {parkingOtwarty ? "zwiń" : "rozwiń"}
+            </span>
+          </button>
+
+          {parkingOtwarty ? (
+            <div className="mt-3 space-y-2">
+              {data.gate ? (
+                <p className="text-xs text-muted-foreground">
+                  Sito przepuszcza od {data.gate.min_budget_pln.toLocaleString("pl-PL")} zł budżetu
+                  i {data.gate.min_score} punktów oceny.
+                </p>
+              ) : null}
+              {data.parked!.map((pozycja) => (
+                <div key={pozycja.id} className="space-y-1 rounded border border-dashed p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Link
+                      to="/klient/$leadId"
+                      params={{ leadId: String(pozycja.lead_id) }}
+                      className="font-medium hover:underline"
+                    >
+                      {pozycja.lead?.display_name ?? `lead #${pozycja.lead_id}`}
+                    </Link>
+                    <ScoreBadge score={pozycja.score} />
+                  </div>
+                  {pozycja.parked_reasons.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Dlaczego: {pozycja.parked_reasons.join(" · ")}
+                    </p>
+                  ) : null}
+                  {pozycja.unlock.length > 0 ? (
+                    <p className="text-xs">
+                      <span className="text-muted-foreground">Wróci, gdy:</span>{" "}
+                      {pozycja.unlock.join(" albo ")}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </Card>
       ) : null}
     </div>

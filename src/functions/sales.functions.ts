@@ -115,6 +115,14 @@ export type Inbox = {
   needs_attention: Array<
     Lead & { score: LeadScore; waiting_since: string | null; last_client_message: string | null }
   >;
+  /**
+   * Odrzuceni przez sito — z powodem i warunkiem powrotu. Backend świadomie ich
+   * ZWRACA zamiast ukrywać: filtr, który chowa leada bez śladu, jest nie do
+   * odróżnienia od cichej utraty klienta. Panel musi ich pokazać, choćby zwiniętych.
+   */
+  parked?: Array<InboxItem & { parked_reasons: string[]; unlock: string[] }>;
+  /** Progi sita — żeby napisać brokerowi, czego brakuje, a nie samo „odrzucony". */
+  gate?: { min_budget_pln: number; min_score: number };
 };
 
 export type ConversationMessage = {

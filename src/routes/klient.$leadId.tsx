@@ -440,6 +440,16 @@ function KartaKlienta() {
                       toast.info(
                         `Ocena po zmianie: ${wynik.score.score}/100 (${wynik.score.segment})`,
                       );
+                      // Budżet edytuje się zwykle właśnie po to, żeby lead wyszedł
+                      // z parkingu. Bez tego broker musiałby wrócić do skrzynki
+                      // i zgadywać, czy zmiana wystarczyła.
+                      if (wynik.gate.passes) {
+                        toast.success("Lead przechodzi sito — wraca do skrzynki.");
+                      } else if (wynik.gate.unlock.length > 0) {
+                        toast.warning(
+                          `Nadal na parkingu. Wróci, gdy: ${wynik.gate.unlock.join(" albo ")}`,
+                        );
+                      }
                     },
                     "Zapisane.",
                   )
@@ -513,6 +523,33 @@ function KartaKlienta() {
                     ? `budżet ${lead.budget_pln.toLocaleString("pl-PL")} zł pod klucz`
                     : "budżet niepodany — bez niego nie policzymy ceny końcowej"}
                 </div>
+                {/* Różnica między tym, co klient MA, a tym, co BĘDZIE miał po sprzedaży
+                    swojego auta, jest treścią rozmowy — nie szczegółem technicznym.
+                    Backend liczy oba i podaje, na co czekamy; wcześniej nikt tego nie
+                    renderował, więc broker nie wiedział, że wie. */}
+                {lead.potential_budget_pln &&
+                lead.potential_budget_pln !== lead.confirmed_budget_pln ? (
+                  <div className="text-xs">
+                    <span className="text-muted-foreground">po sprzedaży auta klienta: </span>
+                    <b>{lead.potential_budget_pln.toLocaleString("pl-PL")} zł</b>
+                    {lead.confirmed_budget_pln ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        (pewne dziś: {lead.confirmed_budget_pln.toLocaleString("pl-PL")} zł)
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {lead.waiting_on ? (
+                  <div className="text-xs text-amber-700 dark:text-amber-500">
+                    Czeka na: {lead.waiting_on}
+                  </div>
+                ) : null}
+                {typeof lead.max_odometer_mi === "number" ? (
+                  <div className="text-xs text-muted-foreground">
+                    sufit przebiegu {lead.max_odometer_mi.toLocaleString("pl-PL")} mi
+                  </div>
+                ) : null}
                 <Button
                   size="sm"
                   className="mt-3"
