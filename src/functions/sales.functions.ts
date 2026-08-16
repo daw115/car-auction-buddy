@@ -287,6 +287,37 @@ export const getLeadCandidates = createServerFn({ method: "GET" })
     }> => backendRequest({ path: `/api/sales/leads/${data.leadId}/candidates`, method: "GET" }),
   );
 
+/**
+ * Propozycja wiadomości, która ZNA auta wybrane przez brokera.
+ *
+ * Bez tego wywołania agent dostawał puste pole `offers` i pisał ogólniki —
+ * backend liczył ceny pod klucz do szuflady. Kolejności zaznaczonych aut nie
+ * zmieniamy: broker wybrał je w takiej i taką zobaczy klient.
+ */
+export const proposeOffer = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      // Backend i tak bierze z tego 3-4 auta; limit chroni przed wysłaniem
+      // całej listy wyników w ciele żądania.
+      lots: z.array(z.record(z.string(), z.unknown())).min(1).max(10),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ draft: InboxItem | null; reason?: string }> =>
+      // Backend zwraca tez `offers` (wyliczone ceny pod klucz), ale panel ich nie
+      // renderuje — kwoty sa juz w tresci propozycji. Nie deklarujemy ich w typie,
+      // zeby nie obiecywac ksztaltu, ktorego nikt nie czyta.
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/offer`,
+        method: "POST",
+        body: { lots: data.lots },
+        // Agent liczy kilkadziesiąt sekund — domyślny timeout uciąłby go w połowie.
+        timeoutMs: 180_000,
+      }),
+  );
+
 export const regenerateDraft = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)

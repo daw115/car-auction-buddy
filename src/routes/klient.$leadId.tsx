@@ -14,9 +14,10 @@ import {
   patchLead,
   promoteLead,
   setLeadStage,
+  startLeadSearch,
 } from "@/functions/sales.functions";
 import { readWhatsappConversation } from "@/functions/intake.functions";
-import { backendSearch } from "@/functions/backend.functions";
+import { KandydaciPanel } from "@/components/panels/kandydaci-panel";
 import { WatchesPanel } from "@/components/panels/watches-panel";
 import type { ClientCriteria } from "@/lib/types";
 
@@ -88,9 +89,9 @@ function KartaKlienta() {
   const fnReply = useServerFn(recordClientReply);
   const fnStage = useServerFn(setLeadStage);
   const fnPatch = useServerFn(patchLead);
+  const fnStartSearch = useServerFn(startLeadSearch);
   const fnPromote = useServerFn(promoteLead);
   const fnReadWhatsapp = useServerFn(readWhatsappConversation);
-  const fnSearch = useServerFn(backendSearch);
 
   const [odpowiedz, setOdpowiedz] = useState("");
   const [tresc, setTresc] = useState<string | null>(null);
@@ -479,8 +480,7 @@ function KartaKlienta() {
                     onClick={() =>
                       zrob(
                         "patch",
-                        () =>
-                          fnPatch({ data: { leadId: id, changes: { trade_in_sold: true } } }),
+                        () => fnPatch({ data: { leadId: id, changes: { trade_in_sold: true } } }),
                         "Zapisane — budżet klienta jest wolny.",
                       )
                     }
@@ -490,9 +490,7 @@ function KartaKlienta() {
                 )}
               </div>
               {lead.blocked_by && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Czeka na: {lead.blocked_by}
-                </p>
+                <p className="mt-2 text-xs text-muted-foreground">Czeka na: {lead.blocked_by}</p>
               )}
             </Card>
           )}
@@ -520,12 +518,18 @@ function KartaKlienta() {
                   className="mt-3"
                   disabled={zajety !== null}
                   onClick={() =>
+                    // Wcześniej szło to w ogólne /api/search, które nie wie nic
+                    // o leadzie — wyniki lądowały w toaście i przepadały. Teraz
+                    // scrape zapisuje kandydatów przy kliencie i widać ich niżej.
                     zrob("search", async () => {
-                      const res = await fnSearch({ data: { criteria: kryteria } });
-                      const ile = res.listings?.length ?? 0;
+                      const res = await fnStartSearch({ data: { leadId: id } });
+                      for (const ostrzezenie of res.warnings ?? []) toast.warning(ostrzezenie);
                       toast.info(
-                        ile > 0 ? `Znaleziono ${ile} aut.` : "Nic nie pasuje do tych kryteriów.",
+                        res.started
+                          ? "Szukam. To potrwa kilka minut — auta pojawią się w „Znalezione auta”."
+                          : "Wyszukiwanie już trwa.",
                       );
+                      queryClient.invalidateQueries({ queryKey: ["kandydaci", id] });
                     })
                   }
                 >
@@ -543,6 +547,8 @@ function KartaKlienta() {
               </p>
             )}
           </Card>
+
+          <KandydaciPanel leadId={id} budzetPln={lead.budget_pln ?? null} />
 
           <WatchesPanel
             criteria={kryteria}
