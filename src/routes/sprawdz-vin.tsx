@@ -14,7 +14,6 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Loader2, Search } from "lucide-react";
 
@@ -24,7 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { checkVin, submitPublicLead, type VinCheckResult } from "@/functions/vin-check.functions";
+import { sprawdzVin, zglosLead, type VinCheckResult } from "@/lib/vin-check";
 
 export const Route = createFileRoute("/sprawdz-vin")({
   head: () => ({
@@ -126,7 +125,6 @@ function ResultCard({ wynik }: { wynik: VinCheckResult }) {
 }
 
 function LeadForm({ wynik }: { wynik: VinCheckResult }) {
-  const wyslij = useServerFn(submitPublicLead);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -139,15 +137,13 @@ function LeadForm({ wynik }: { wynik: VinCheckResult }) {
     if (!phone.trim()) return;
     setBusy(true);
     try {
-      await wyslij({
-        data: {
-          name: name.trim() || undefined,
-          phone: phone.trim(),
-          website,
-          message:
-            `Pełna kalkulacja dla VIN ${wynik.vin} (${wynik.assembly_country}, ` +
-            `cło ${wynik.duty_rate_pct}%). ${note.trim()}`.trim(),
-        },
+      await zglosLead({
+        name: name.trim() || undefined,
+        phone: phone.trim(),
+        website,
+        message:
+          `Pełna kalkulacja dla VIN ${wynik.vin} (${wynik.assembly_country}, ` +
+          `cło ${wynik.duty_rate_pct}%). ${note.trim()}`.trim(),
       });
       setDone(true);
     } catch (error) {
@@ -229,7 +225,6 @@ function LeadForm({ wynik }: { wynik: VinCheckResult }) {
 }
 
 function VinCheckPage() {
-  const sprawdz = useServerFn(checkVin);
   const [vin, setVin] = useState("");
   const [bid, setBid] = useState("");
   const [state, setState] = useState("");
@@ -251,14 +246,12 @@ function VinCheckPage() {
     try {
       const stawka = Number.parseFloat(bid.replace(/[^\d.]/g, ""));
       setWynik(
-        await sprawdz({
-          data: {
-            vin: numer,
-            bid_usd: Number.isFinite(stawka) && stawka > 0 ? stawka : undefined,
-            state: state.trim().toUpperCase() || undefined,
-            make: make.trim() || undefined,
-            model: model.trim() || undefined,
-          },
+        await sprawdzVin({
+          vin: numer,
+          bid_usd: Number.isFinite(stawka) && stawka > 0 ? stawka : undefined,
+          state: state.trim().toUpperCase() || undefined,
+          make: make.trim() || undefined,
+          model: model.trim() || undefined,
         }),
       );
     } catch (error) {

@@ -33,6 +33,8 @@ import { Route as ApiVersionRouteImport } from './routes/api/version'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
+import { Route as ApiPublicVinCheckRouteImport } from './routes/api/public/vin-check'
+import { Route as ApiPublicLeadRouteImport } from './routes/api/public/lead'
 import { Route as ApiDevAuthRouteImport } from './routes/api/dev/auth'
 import { Route as ClientsClientIdCasesCaseIdRouteImport } from './routes/clients.$clientId.cases.$caseId'
 import { Route as ApiPublicHooksCleanupLogsRouteImport } from './routes/api/public/hooks/cleanup-logs'
@@ -158,6 +160,16 @@ const ApiConfigRoute = ApiConfigRouteImport.update({
   path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicVinCheckRoute = ApiPublicVinCheckRouteImport.update({
+  id: '/api/public/vin-check',
+  path: '/api/public/vin-check',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicLeadRoute = ApiPublicLeadRouteImport.update({
+  id: '/api/public/lead',
+  path: '/api/public/lead',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDevAuthRoute = ApiDevAuthRouteImport.update({
   id: '/api/dev/auth',
   path: '/api/dev/auth',
@@ -207,6 +219,8 @@ export interface FileRoutesByFullPath {
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
+  '/api/public/lead': typeof ApiPublicLeadRoute
+  '/api/public/vin-check': typeof ApiPublicVinCheckRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -236,6 +250,8 @@ export interface FileRoutesByTo {
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
+  '/api/public/lead': typeof ApiPublicLeadRoute
+  '/api/public/vin-check': typeof ApiPublicVinCheckRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -267,6 +283,8 @@ export interface FileRoutesById {
   '/settings/filters': typeof SettingsFiltersRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
+  '/api/public/lead': typeof ApiPublicLeadRoute
+  '/api/public/vin-check': typeof ApiPublicVinCheckRoute
   '/api/dev/logs/stream': typeof ApiDevLogsStreamRoute
   '/api/public/hooks/cleanup-logs': typeof ApiPublicHooksCleanupLogsRoute
   '/clients/$clientId/cases/$caseId': typeof ClientsClientIdCasesCaseIdRoute
@@ -299,6 +317,8 @@ export interface FileRouteTypes {
     | '/settings/filters'
     | '/settings/'
     | '/api/dev/auth'
+    | '/api/public/lead'
+    | '/api/public/vin-check'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -328,6 +348,8 @@ export interface FileRouteTypes {
     | '/settings/filters'
     | '/settings'
     | '/api/dev/auth'
+    | '/api/public/lead'
+    | '/api/public/vin-check'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -358,6 +380,8 @@ export interface FileRouteTypes {
     | '/settings/filters'
     | '/settings/'
     | '/api/dev/auth'
+    | '/api/public/lead'
+    | '/api/public/vin-check'
     | '/api/dev/logs/stream'
     | '/api/public/hooks/cleanup-logs'
     | '/clients/$clientId/cases/$caseId'
@@ -383,6 +407,8 @@ export interface RootRouteChildren {
   DevLogsRoute: typeof DevLogsRoute
   KlientLeadIdRoute: typeof KlientLeadIdRoute
   ApiDevAuthRoute: typeof ApiDevAuthRoute
+  ApiPublicLeadRoute: typeof ApiPublicLeadRoute
+  ApiPublicVinCheckRoute: typeof ApiPublicVinCheckRoute
   ApiDevLogsStreamRoute: typeof ApiDevLogsStreamRoute
   ApiPublicHooksCleanupLogsRoute: typeof ApiPublicHooksCleanupLogsRoute
 }
@@ -557,6 +583,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/vin-check': {
+      id: '/api/public/vin-check'
+      path: '/api/public/vin-check'
+      fullPath: '/api/public/vin-check'
+      preLoaderRoute: typeof ApiPublicVinCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/lead': {
+      id: '/api/public/lead'
+      path: '/api/public/lead'
+      fullPath: '/api/public/lead'
+      preLoaderRoute: typeof ApiPublicLeadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/dev/auth': {
       id: '/api/dev/auth'
       path: '/api/dev/auth'
@@ -651,6 +691,8 @@ const rootRouteChildren: RootRouteChildren = {
   DevLogsRoute: DevLogsRoute,
   KlientLeadIdRoute: KlientLeadIdRoute,
   ApiDevAuthRoute: ApiDevAuthRoute,
+  ApiPublicLeadRoute: ApiPublicLeadRoute,
+  ApiPublicVinCheckRoute: ApiPublicVinCheckRoute,
   ApiDevLogsStreamRoute: ApiDevLogsStreamRoute,
   ApiPublicHooksCleanupLogsRoute: ApiPublicHooksCleanupLogsRoute,
 }

@@ -15,12 +15,14 @@ const PRIVATE_FUNCTION_MODULES = [
   "watchlist.functions.ts",
 ];
 
-// Moduły celowo BEZ bramki sesji. Każdy musi mieć powód wpisany tutaj, bo brak
-// middleware znaczy dostęp bez logowania.
-//
-// vin-check: darmowy checker VIN z landing page'a. Proxy'uje wyłącznie do
-// `/api/public/*` backendu, który sam nie wymaga tokena i nie zna żadnego klienta.
-const PUBLIC_FUNCTION_MODULES = ["vin-check.functions.ts"];
+// Pusto — i tak ma zostać. Publiczny checker VIN był tu do sierpnia 2026 jako
+// `vin-check.functions.ts`; przeniósł się na własne trasy `/api/public/vin-check`
+// i `/api/public/lead`, bo przed panelem stanął Cloudflare Access, a wyjątek robi
+// się po ścieżce. Wszystkie server functions dzielą adres `/_serverFn/`, więc
+// otwarcie go dla checkera otworzyłoby z powrotem także logowanie do panelu.
+// Reguła „publiczne sięga tylko po /api/public/" przeniosła się niżej, do testu
+// tras publicznych — nie zniknęła.
+const PUBLIC_FUNCTION_MODULES: string[] = [];
 
 // Moduły bez ani jednej funkcji serwerowej — same middleware i helpery.
 const INFRASTRUCTURE_MODULES = [
@@ -59,6 +61,34 @@ describe("każdy moduł funkcji serwerowych jest sklasyfikowany", () => {
     for (const sciezka of sciezki) {
       expect(sciezka).toContain("/api/public/");
     }
+  });
+});
+
+// Trasy, które Cloudflare Access przepuszcza bez pytania o tożsamość. Każda nowa
+// pozycja w katalogu jest tu wykrywana automatycznie — lista pisana ręcznie nie
+// zauważyłaby pliku dołożonego obok, a to jest dokładnie ta pomyłka, która kosztuje
+// najwięcej: trasa bez logowania sięgająca po dane panelu.
+describe("publiczne trasy nie sięgają poza /api/public/ backendu", () => {
+  const katalog = resolve("src/routes/api/public");
+  // Bez podkatalogu hooks/ — te trasy broni własny sekret w nagłówku i NIE ma ich
+  // na liście wyjątków Cloudflare Access, więc z internetu i tak są nieosiągalne.
+  // Tutaj chodzi wyłącznie o trasy, które Access przepuszcza anonimowo.
+  const publiczne = readdirSync(katalog, { recursive: true, encoding: "utf8" }).filter(
+    (f) => f.endsWith(".ts") && !f.includes(".test.") && !f.includes("hooks"),
+  );
+
+  it("katalog nie jest pusty", () => {
+    expect(publiczne.length).toBeGreaterThan(0);
+  });
+
+  it.each(publiczne)("%s woła backend wyłącznie pod /api/public/", (plik) => {
+    const source = readFileSync(resolve(katalog, plik), "utf8");
+    for (const sciezka of source.match(/path:\s*["'`]([^"'`]+)/g) ?? []) {
+      expect(sciezka).toContain("/api/public/");
+    }
+    // Bramka sesji na trasie publicznej byłaby sprzecznością — ale bramka na dane
+    // panelu już nie. Pilnujemy, żeby nikt nie sięgnął stąd po supabaseAdmin.
+    expect(source).not.toContain("supabaseAdmin");
   });
 });
 
