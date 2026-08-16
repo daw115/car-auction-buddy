@@ -81,7 +81,7 @@ function recommendationTone(r?: string) {
   if (v === "ODRZUĆ" || v === "ODRZUC") return "bg-rose-500/15 text-rose-500 border-rose-500/30";
   // Karta ponad budżet jest już wyszarzona, więc szary badge znikałby na szarym tle —
   // a to jedyne miejsce, gdzie widać, że auto dostało dobrą ocenę.
-  if (v === "PONAD BUDŻET") return "bg-amber-500/20 text-amber-600 border-amber-500/40";
+  if (v === "PONAD BUDŻET") return "bg-amber-500/20 text-warning border-amber-500/40";
   return "bg-muted text-muted-foreground border-border";
 }
 
@@ -1116,7 +1116,7 @@ function HomePage() {
                           {overBudget && budget && (
                             <Badge
                               variant="outline"
-                              className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600"
+                              className="border-amber-500/40 bg-amber-500/10 text-[10px] text-warning"
                             >
                               {overBudgetLabel(budget)}
                             </Badge>

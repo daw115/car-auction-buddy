@@ -240,9 +240,7 @@ export function CriteriaForm({
                   <span
                     id={`source-${source.id}-status`}
                     className={`rounded px-1.5 py-0.5 text-[10px] ${
-                      available
-                        ? "bg-emerald-500/10 text-emerald-600"
-                        : "bg-amber-500/10 text-amber-600"
+                      available ? "bg-emerald-500/10 text-success" : "bg-amber-500/10 text-warning"
                     }`}
                   >
                     {capabilitiesLoading

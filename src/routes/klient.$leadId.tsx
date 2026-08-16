@@ -49,9 +49,9 @@ const ETAPY = [
 ];
 
 const TON_SEGMENTU: Record<string, string> = {
-  A: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+  A: "bg-emerald-500/15 text-success border-emerald-500/30",
   B: "bg-sky-500/15 text-sky-600 border-sky-500/30",
-  C: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+  C: "bg-amber-500/15 text-warning border-amber-500/30",
   D: "bg-muted text-muted-foreground border-border",
 };
 
@@ -394,7 +394,7 @@ function KartaKlienta() {
                   </p>
                 ) : null}
                 {rozpoznane.assumed.length > 0 ? (
-                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-500">
+                  <p className="mt-1 text-xs text-warning">
                     Klient tego NIE potwierdził: {rozpoznane.assumed.join(", ")}
                   </p>
                 ) : null}
@@ -452,7 +452,7 @@ function KartaKlienta() {
             )}
             {lead.score.red_flags.length > 0 && (
               <div className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 p-2">
-                <div className="text-xs font-medium text-amber-600">Uwaga</div>
+                <div className="text-xs font-medium text-warning">Uwaga</div>
                 <ul className="mt-1 list-inside list-disc text-sm">
                   {lead.score.red_flags.map((f) => (
                     <li key={f}>{f}</li>
@@ -634,9 +634,7 @@ function KartaKlienta() {
                   </div>
                 ) : null}
                 {lead.waiting_on ? (
-                  <div className="text-xs text-amber-700 dark:text-amber-500">
-                    Czeka na: {lead.waiting_on}
-                  </div>
+                  <div className="text-xs text-warning">Czeka na: {lead.waiting_on}</div>
                 ) : null}
                 {typeof lead.max_odometer_mi === "number" ? (
                   <div className="text-xs text-muted-foreground">

@@ -380,8 +380,8 @@ function DefaultCriteriaPage() {
                         id={`source-${source.id}-settings-status`}
                         className={`rounded px-1.5 py-0.5 text-[10px] ${
                           available
-                            ? "bg-emerald-500/10 text-emerald-600"
-                            : "bg-amber-500/10 text-amber-600"
+                            ? "bg-emerald-500/10 text-success"
+                            : "bg-amber-500/10 text-warning"
                         }`}
                       >
                         {available ? "sesja aktywna" : `niedostępne: ${reason}`}

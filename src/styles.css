@@ -59,6 +59,15 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Te cztery byly zdefiniowane w obu motywach i NIEZAREJESTROWANE, wiec klasy
+     bg-success / text-warning nie dzialaly i kod obchodzil to wartosciami
+     arbitralnymi albo twardym kolorem Tailwinda. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-muted: var(--surface-muted);
 }
 
 :root {
@@ -77,7 +86,7 @@
   --muted: oklch(0.95 0.005 100);
   --muted-foreground: oklch(0.45 0.012 140);
   --accent: oklch(0.93 0.012 250);
-  --accent-foreground: oklch(0.30 0.10 260);
+  --accent-foreground: oklch(0.3 0.1 260);
   --destructive: oklch(0.55 0.18 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.88 0.008 130);
@@ -88,7 +97,9 @@
   --chart-3: oklch(0.55 0.18 25);
   --chart-4: oklch(0.45 0.15 260);
   --chart-5: oklch(0.55 0.05 250);
-  --sidebar: oklch(0.97 0.005 100);
+  /* Odcien chlodniejszy i ciemniejszy od tla tresci: szkielet ma byc widoczny
+     jako rama, a nie zlewac sie z kartami. */
+  --sidebar: oklch(0.945 0.008 250);
   --sidebar-foreground: oklch(0.22 0.012 140);
   --sidebar-primary: oklch(0.45 0.15 260);
   --sidebar-primary-foreground: oklch(0.99 0 0);
@@ -108,51 +119,53 @@
   --shadow-card-hover: 0 4px 12px -2px oklch(0.22 0.012 140 / 0.12);
 }
 
-
 .dark {
-  --background: oklch(0.129 0.042 264.695);
+  /* Wlasna ciemnosc, nie stockowy shadcn: chlodny grafit z nuta granatu,
+     zeby panel w nocy nadal wygladal jak ten sam produkt co w dzien. */
+  --background: oklch(0.17 0.018 255);
   --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
+  --card: oklch(0.215 0.02 255);
   --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
+  --popover: oklch(0.215 0.02 255);
   --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
+  /* Bylo prawie-biale — granat aukcyjny znikal po zmroku razem z tozsamoscia. */
+  --primary: oklch(0.62 0.17 260);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.27 0.02 255);
   --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
+  --muted: oklch(0.26 0.018 255);
+  --muted-foreground: oklch(0.72 0.022 255);
+  --accent: oklch(0.3 0.045 260);
+  --accent-foreground: oklch(0.9 0.05 260);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
+  --ring: oklch(0.62 0.17 260);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
+  /* Panel boczny ciemniejszy od tresci — szkielet ma byc tlem, nie plama. */
+  --sidebar: oklch(0.145 0.018 255);
   --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.62 0.17 260);
   --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
+  --sidebar-accent: oklch(0.24 0.02 255);
   --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --sidebar-ring: oklch(0.62 0.17 260);
 
-  --surface-elevated: oklch(0.23 0.042 265.755);
-  --surface-muted: oklch(0.18 0.042 265.755);
-  --success: oklch(0.70 0.17 160);
+  --surface-elevated: oklch(0.245 0.02 255);
+  --surface-muted: oklch(0.2 0.018 255);
+  --success: oklch(0.7 0.17 160);
   --success-foreground: oklch(0.129 0.042 264.695);
-  --warning: oklch(0.80 0.17 80);
+  --warning: oklch(0.8 0.17 80);
   --warning-foreground: oklch(0.129 0.042 264.695);
   --shadow-card: 0 1px 2px 0 oklch(0 0 0 / 0.3), 0 1px 3px 0 oklch(0 0 0 / 0.4);
   --shadow-card-hover: 0 4px 12px -2px oklch(0 0 0 / 0.5);
 }
-
 
 @layer base {
   * {
@@ -180,4 +193,3 @@ div[style*="Edit with Lovable"],
   position: absolute !important;
   z-index: -9999 !important;
 }
-

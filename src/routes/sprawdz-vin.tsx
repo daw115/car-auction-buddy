@@ -64,9 +64,7 @@ function ResultCard({ wynik }: { wynik: VinCheckResult }) {
       {wynik.saving_pln !== undefined && wynik.saving_pln > 0 ? (
         <div className="rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-4">
           <p className="text-sm text-muted-foreground">Na tym aucie zerowe cło oszczędza</p>
-          <p className="text-3xl font-semibold text-emerald-700 dark:text-emerald-400">
-            {pln(wynik.saving_pln)}
-          </p>
+          <p className="text-3xl font-semibold text-success">{pln(wynik.saving_pln)}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Różnica wobec kwoty liczonej po dawnej stawce 10%.
           </p>
@@ -156,7 +154,7 @@ function LeadForm({ wynik }: { wynik: VinCheckResult }) {
   if (done) {
     return (
       <Card className="flex items-start gap-3 p-6">
-        <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+        <Check className="mt-0.5 h-5 w-5 shrink-0 text-success" />
         <div>
           <p className="font-medium">Zapisane.</p>
           <p className="text-sm text-muted-foreground">

@@ -11,15 +11,16 @@ type Props = {
   collapseDepth?: number;
 };
 
-export function JsonDetails({
-  data,
-  stringLimit = 200,
-  itemLimit = 10,
-  collapseDepth = 2,
-}: Props) {
+export function JsonDetails({ data, stringLimit = 200, itemLimit = 10, collapseDepth = 2 }: Props) {
   return (
     <div className="border-t border-border/50 bg-muted/30 px-2 py-1.5 font-mono text-[10px] leading-tight">
-      <Node value={data} depth={0} stringLimit={stringLimit} itemLimit={itemLimit} collapseDepth={collapseDepth} />
+      <Node
+        value={data}
+        depth={0}
+        stringLimit={stringLimit}
+        itemLimit={itemLimit}
+        collapseDepth={collapseDepth}
+      />
     </div>
   );
 }
@@ -39,11 +40,22 @@ function Node({
   collapseDepth: number;
   keyLabel?: string;
 }) {
-  if (value === null) return <Line keyLabel={keyLabel}><span className="text-muted-foreground">null</span></Line>;
-  if (value === undefined) return <Line keyLabel={keyLabel}><span className="text-muted-foreground">undefined</span></Line>;
+  if (value === null)
+    return (
+      <Line keyLabel={keyLabel}>
+        <span className="text-muted-foreground">null</span>
+      </Line>
+    );
+  if (value === undefined)
+    return (
+      <Line keyLabel={keyLabel}>
+        <span className="text-muted-foreground">undefined</span>
+      </Line>
+    );
 
   const t = typeof value;
-  if (t === "string") return <StringNode keyLabel={keyLabel} value={value as string} limit={stringLimit} />;
+  if (t === "string")
+    return <StringNode keyLabel={keyLabel} value={value as string} limit={stringLimit} />;
   if (t === "number" || t === "boolean" || t === "bigint")
     return (
       <Line keyLabel={keyLabel}>
@@ -99,14 +111,25 @@ function Line({ keyLabel, children }: { keyLabel?: string; children: React.React
   );
 }
 
-function StringNode({ keyLabel, value, limit }: { keyLabel?: string; value: string; limit: number }) {
+function StringNode({
+  keyLabel,
+  value,
+  limit,
+}: {
+  keyLabel?: string;
+  value: string;
+  limit: number;
+}) {
   const [expanded, setExpanded] = useState(false);
   const tooLong = value.length > limit;
   const shown = !tooLong || expanded ? value : value.slice(0, limit);
   return (
     <div className="whitespace-pre-wrap break-words pl-4">
       {keyLabel !== undefined && <span className="text-primary">{keyLabel}: </span>}
-      <span className="text-emerald-600 dark:text-emerald-400">"{shown}{tooLong && !expanded ? "…" : ""}"</span>
+      <span className="text-success dark:text-emerald-400">
+        "{shown}
+        {tooLong && !expanded ? "…" : ""}"
+      </span>
       {tooLong && (
         <button
           type="button"

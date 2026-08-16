@@ -369,7 +369,7 @@ function BackendRecordRow({
         )}
       </div>
       {record.analysis_notice && (
-        <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 truncate">
+        <div className="mt-1 text-[10px] text-warning dark:text-amber-400 truncate">
           {record.analysis_notice}
         </div>
       )}
@@ -831,7 +831,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                             auctionInfo.variant === "danger"
                               ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40"
                               : auctionInfo.variant === "warning"
-                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/40"
+                                ? "bg-amber-500/15 text-warning dark:text-amber-400 border-amber-500/40"
                                 : "text-muted-foreground"
                           }
                         >
@@ -851,7 +851,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                           }
                           className={`text-xs shrink-0 ml-auto ${
                             ai.recommendation === "PONAD BUDŻET"
-                              ? "border-amber-500/40 bg-amber-500/10 text-amber-600"
+                              ? "border-amber-500/40 bg-amber-500/10 text-warning"
                               : ""
                           }`}
                         >
@@ -875,7 +875,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                       {overBudget && budget && (
                         <Badge
                           variant="outline"
-                          className="border-amber-500/40 bg-amber-500/10 text-xs text-amber-600"
+                          className="border-amber-500/40 bg-amber-500/10 text-xs text-warning"
                         >
                           {overBudgetLabel(budget)}
                         </Badge>
@@ -894,9 +894,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                     )}
 
                     {ai?.red_flags && ai.red_flags.length > 0 && (
-                      <div className="text-xs mt-1 text-amber-600">
-                        ⚠️ {ai.red_flags.join(" · ")}
-                      </div>
+                      <div className="text-xs mt-1 text-warning">⚠️ {ai.red_flags.join(" · ")}</div>
                     )}
 
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -925,7 +923,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                           href={reports.client_short_url}
                           target="_blank"
                           rel="noopener"
-                          className="text-xs px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                          className="text-xs px-2 py-1 rounded bg-success/10 hover:bg-success/20 text-success"
                           title="Krótki — szybki Jinja2, podstawowe dane"
                         >
                           📄 Auto-raport krótki klient

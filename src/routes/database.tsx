@@ -128,7 +128,7 @@ function formatDuration(seconds: number | null | undefined): string {
 
 function durationColorClass(seconds: number | null | undefined): string {
   if (seconds == null) return "text-muted-foreground italic";
-  if (seconds < 300) return "text-emerald-600 dark:text-emerald-400";
+  if (seconds < 300) return "text-success dark:text-emerald-400";
   if (seconds < 900) return "text-blue-600 dark:text-blue-400";
   return "text-orange-600 dark:text-orange-400";
 }
@@ -1416,7 +1416,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 text-xs">
         <Badge variant="outline">Lotów: {lots.length}</Badge>
-        <Badge variant="outline" className="text-emerald-600">
+        <Badge variant="outline" className="text-success">
           👍 {upCount}
         </Badge>
         <Badge variant="outline" className="text-red-600">
@@ -1480,7 +1480,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
                 <Button
                   variant={fb?.vote === "up" ? "default" : "ghost"}
                   size="icon"
-                  className={`h-7 w-7 ${fb?.vote === "up" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-muted-foreground hover:text-emerald-600"}`}
+                  className={`h-7 w-7 ${fb?.vote === "up" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-muted-foreground hover:text-success"}`}
                   disabled={busy}
                   onClick={() => handleUp(lot)}
                   title={fb?.vote === "up" ? "Cofnij polubienie" : "Polub"}
@@ -1636,7 +1636,7 @@ function AnalyzeFeedbackDialog({
             <section>
               <h3 className="font-semibold mb-2">Statystyki</h3>
               <div className="flex flex-wrap gap-3 text-xs">
-                <Badge variant="outline" className="text-emerald-600">
+                <Badge variant="outline" className="text-success">
                   👍 {stats.up ?? 0}
                 </Badge>
                 <Badge variant="outline" className="text-red-600">
