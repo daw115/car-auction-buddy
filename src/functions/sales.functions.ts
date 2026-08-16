@@ -403,10 +403,90 @@ export const patchLead = createServerFn({ method: "POST" })
  *  przejściu na „wygrana" zaśmieciłby bazę przy pierwszym błędnym kliknięciu w select.
  *  Idempotentne — drugie kliknięcie nie zakłada duplikatu.
  */
+/**
+ * Awans leada na klienta — i jedyne miejsce, gdzie schodzą się dwa zbiory danych.
+ *
+ * Backend prowadzi leady w swoim SQLite i tam zapisuje `client_id`. Kartoteka
+ * klientów, którą broker ogląda pod /clients, żyje w Postgresie (`clients_v2`)
+ * razem ze sprawami i przypiętymi wyszukiwaniami. Do sierpnia 2026 awans pisał
+ * WYŁĄCZNIE do SQLite, więc wygrana sprzedaż nie zostawiała śladu tam, gdzie
+ * broker patrzy — ostatnie ogniwo lejka kończyło się w niewidocznej tabeli.
+ *
+ * Rozstrzygnięcie: kartoteka w Postgresie jest źródłem prawdy o kliencie, bo to
+ * ona ma sprawy i historię wyszukiwań. Awans zapisuje więc w obu miejscach —
+ * backend odnotowuje fakt przy leadzie, a panel zakłada (lub odnajduje) klienta.
+ *
+ * Dopasowanie po telefonie, nie po nazwisku: nazwiska się powtarzają, a numer
+ * jest tym, czym broker i tak posługuje się w WhatsAppie.
+ */
 export const promoteLead = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
   .handler(
-    async ({ data }): Promise<{ client_id: number; created: boolean; message: string }> =>
-      backendRequest({ path: `/api/sales/leads/${data.leadId}/promote`, method: "POST" }),
+    async ({
+      data,
+      context,
+    }): Promise<{
+      client_id: number;
+      created: boolean;
+      message: string;
+      /** UUID w kartotece Postgresa — tam prowadzi przycisk po awansie. */
+      crm_client_id: string | null;
+    }> => {
+      const wynik = await backendRequest<{
+        client_id: number;
+        created: boolean;
+        message: string;
+        lead?: Lead;
+      }>({ path: `/api/sales/leads/${data.leadId}/promote`, method: "POST" });
+
+      // LeadDetail rozszerza Lead wprost, wiec pola kontaktowe sa na wierzchu.
+      const lead: Lead =
+        wynik.lead ??
+        (await backendRequest<LeadDetail>({
+          path: `/api/sales/leads/${data.leadId}`,
+          method: "GET",
+        }));
+
+      const nazwa = lead?.display_name?.trim() || `Lead #${data.leadId}`;
+      const telefon = lead?.phone?.trim() || null;
+
+      // Awans nie może się wywrócić przez kartotekę: lead jest już awansowany po
+      // stronie backendu, a broker ma dostać potwierdzenie, nie czerwony błąd.
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+        let istniejacy: { id: string } | null = null;
+        if (telefon) {
+          const { data: znaleziony } = await supabaseAdmin
+            .from("clients_v2")
+            .select("id")
+            .eq("phone", telefon)
+            .limit(1)
+            .maybeSingle();
+          istniejacy = znaleziony ?? null;
+        }
+
+        if (istniejacy) {
+          return { ...wynik, crm_client_id: istniejacy.id };
+        }
+
+        const { data: nowy, error } = await supabaseAdmin
+          .from("clients_v2")
+          .insert({
+            name: nazwa,
+            phone: telefon,
+            email: lead?.email ?? null,
+            notes: `Awansowany z leada #${data.leadId}.`,
+            created_by: context.siteUser,
+          })
+          .select("id")
+          .single();
+        if (error) throw new Error(error.message);
+        return { ...wynik, crm_client_id: nowy?.id ?? null };
+      } catch (blad) {
+        console.error("[promote] lead awansowany, ale kartoteka nie zapisana:", blad);
+        return { ...wynik, crm_client_id: null };
+      }
+    },
   );

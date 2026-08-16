@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { useNavigate, createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -78,6 +78,13 @@ function BladKarty({ error }: { error: Error }) {
  *  rekordy, klienci), a broker składał je w głowie.
  */
 function KartaKlienta() {
+  const navigate = useNavigate();
+  // Co system zrozumiał z rozmowy — pokazujemy do zatwierdzenia, nie zapisujemy sami.
+  const [rozpoznane, setRozpoznane] = useState<{
+    criteria: ClientCriteria | null;
+    assumed: string[];
+    summary: string;
+  } | null>(null);
   const { leadId } = Route.useParams();
   const id = Number(leadId);
   const queryClient = useQueryClient();
@@ -187,6 +194,18 @@ function KartaKlienta() {
               zrob("promote", async () => {
                 const wynik = await fnPromote({ data: { leadId: id } });
                 toast.success(wynik.message);
+                // Awans kończy się w kartotece, nie w komunikacie — broker ma
+                // wylądować na karcie klienta, żeby od razu założyć sprawę.
+                if (wynik.crm_client_id) {
+                  navigate({
+                    to: "/clients/$clientId",
+                    params: { clientId: wynik.crm_client_id },
+                  });
+                } else {
+                  toast.warning(
+                    "Lead awansowany, ale nie zapisałem go w kartotece — sprawdź ekran Klienci.",
+                  );
+                }
               })
             }
           >
@@ -331,6 +350,18 @@ function KartaKlienta() {
                       if (!ostatnia)
                         throw new Error("W tej rozmowie nie ma wiadomości od klienta.");
                       setOdpowiedz(ostatnia.tekst);
+                      // Backend przy tym odczycie rozpoznaje TEŻ kryteria i listę pól,
+                      // których klient nie potwierdził. Panel to wyrzucał, więc broker
+                      // przepisywał je ręcznie z rozmowy, którą system już zrozumiał.
+                      setRozpoznane(
+                        wynik.criteria || wynik.summary || (wynik.assumed?.length ?? 0) > 0
+                          ? {
+                              criteria: wynik.criteria ?? null,
+                              assumed: wynik.assumed ?? [],
+                              summary: wynik.summary ?? "",
+                            }
+                          : null,
+                      );
                     },
                     "Wczytane z WhatsAppa — sprawdź i zapisz.",
                   )
@@ -339,6 +370,68 @@ function KartaKlienta() {
                 Wczytaj z WhatsAppa
               </Button>
             </div>
+
+            {rozpoznane ? (
+              <div className="mt-3 rounded border border-dashed p-3">
+                <div className="mb-1 text-xs font-medium">Co zrozumiałem z rozmowy</div>
+                {rozpoznane.summary ? (
+                  <p className="mb-2 text-xs text-muted-foreground">{rozpoznane.summary}</p>
+                ) : null}
+                {rozpoznane.criteria ? (
+                  <p className="text-sm">
+                    {[
+                      rozpoznane.criteria.make,
+                      rozpoznane.criteria.model,
+                      rozpoznane.criteria.year_from
+                        ? `${rozpoznane.criteria.year_from}–${rozpoznane.criteria.year_to ?? ""}`
+                        : null,
+                      rozpoznane.criteria.budget_pln_to
+                        ? `${rozpoznane.criteria.budget_pln_to.toLocaleString("pl-PL")} zł`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+                {rozpoznane.assumed.length > 0 ? (
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-500">
+                    Klient tego NIE potwierdził: {rozpoznane.assumed.join(", ")}
+                  </p>
+                ) : null}
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={!rozpoznane.criteria || zajety !== null}
+                    onClick={() =>
+                      zrob(
+                        "patch",
+                        async () => {
+                          const k = rozpoznane.criteria;
+                          if (!k) return;
+                          const changes: Record<string, unknown> = {};
+                          if (k.make) changes.make = k.make;
+                          if (k.model) changes.model = k.model;
+                          if (k.year_from) changes.year_from = k.year_from;
+                          if (k.year_to) changes.year_to = k.year_to;
+                          if (k.budget_pln_to) changes.budget_pln = k.budget_pln_to;
+                          if (k.max_odometer_mi) changes.max_odometer_mi = k.max_odometer_mi;
+                          if (!Object.keys(changes).length)
+                            throw new Error("Nie ma czego zapisać z tej rozmowy.");
+                          await fnPatch({ data: { leadId: id, changes } });
+                          setRozpoznane(null);
+                        },
+                        "Kryteria zapisane na leadzie.",
+                      )
+                    }
+                  >
+                    Zapisz kryteria na leadzie
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRozpoznane(null)}>
+                    Odrzuć
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </Card>
         </div>
 
