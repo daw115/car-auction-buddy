@@ -13,6 +13,7 @@ import {
   Cpu,
   Filter,
   Users,
+  UserSquare2,
   Inbox,
 } from "lucide-react";
 
@@ -42,6 +43,9 @@ const workItems: NavItem[] = [
   // Skrzynka jest ekranem startowym brokera: karty klientów otwiera się z niej,
   // bo do klienta wchodzi się przez sprawę, a nie przez listę nazwisk.
   { title: "Skrzynka", url: "/inbox", icon: Inbox },
+  // Skrzynka pokazuje tylko to, co czeka na zgode. Leady w toku — te, gdzie
+  // ostatnie slowo nalezy do brokera — nie miescily sie nigdzie i znikaly z panelu.
+  { title: "Leady", url: "/leady", icon: UserSquare2 },
   { title: "Aktywne joby", url: "/jobs", icon: Activity },
   { title: "Rekordy", url: "/records", icon: Database },
   { title: "Klienci", url: "/clients", icon: Users },

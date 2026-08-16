@@ -15,6 +15,7 @@ import {
   backendSearch,
 } from "@/functions/backend.functions";
 import type { BackendRecord, SearchAuditEntry } from "@/functions/backend.functions";
+import { addToWatchlist } from "@/functions/watchlist.functions";
 import { SITE_USERS } from "@/lib/site-user";
 import { normalizeAuctionSources } from "@/lib/auction-sources";
 import type { ClientCriteria } from "@/lib/types";
@@ -377,6 +378,35 @@ function BackendRecordRow({
 }
 
 export function RecordDetailView({ recordId, onClose }: { recordId: number; onClose: () => void }) {
+  const fnObserwuj = useServerFn(addToWatchlist);
+
+  /** Odklada lota na obserwowane. Wczesniej `addToWatchlist` nie mialo ani jednego
+   *  wywolania, wiec ekran Watchlisty listowal, edytowal i kasowal cos, czego nie
+   *  dalo sie tam dodac. */
+  const obserwuj = async (lot: any, score: number | null) => {
+    try {
+      await fnObserwuj({
+        data: {
+          source: lot.source ?? null,
+          lot_id: lot.lot_id ?? null,
+          url: lot.url ?? null,
+          title: [lot.year, lot.make, lot.model].filter(Boolean).join(" ") || null,
+          make: lot.make ?? null,
+          model: lot.model ?? null,
+          year: typeof lot.year === "number" ? lot.year : null,
+          vin: lot.vin ?? null,
+          current_bid_usd: typeof lot.current_bid_usd === "number" ? lot.current_bid_usd : null,
+          buy_now_usd: typeof lot.buy_now_price_usd === "number" ? lot.buy_now_price_usd : null,
+          score,
+          snapshot: lot,
+        },
+      });
+      toast.success("Odłożone na obserwowane.");
+    } catch (e) {
+      toast.error((e as Error).message || "Nie udało się odłożyć.");
+    }
+  };
+
   const fnDetailBackend = useServerFn(backendGetRecord);
   const fnRegenerateBundles = useServerFn(backendRegenerateBundles);
   const fnSearch = useServerFn(backendSearch);
@@ -870,6 +900,16 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                     )}
 
                     <div className="flex flex-wrap gap-2 mt-2">
+                      {/* Bez tego przycisku ekran Watchlisty nie mial jak sie zapelnic:
+                          addToWatchlist istnialo, ale nikt go nie wolal. */}
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80"
+                        title="Odłóż na obserwowane"
+                        onClick={() => void obserwuj(lot, ai?.score ?? null)}
+                      >
+                        🔖 Obserwuj
+                      </button>
                       {lot.url && (
                         <a
                           href={lot.url}

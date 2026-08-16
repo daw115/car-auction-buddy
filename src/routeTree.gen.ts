@@ -13,6 +13,7 @@ import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SprawdzVinRouteImport } from './routes/sprawdz-vin'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RecordsRouteImport } from './routes/records'
+import { Route as LeadyRouteImport } from './routes/leady'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DatabaseRouteImport } from './routes/database'
@@ -58,6 +59,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const RecordsRoute = RecordsRouteImport.update({
   id: '/records',
   path: '/records',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeadyRoute = LeadyRouteImport.update({
+  id: '/leady',
+  path: '/leady',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JobsRoute = JobsRouteImport.update({
@@ -201,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/database': typeof DatabaseRoute
   '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
+  '/leady': typeof LeadyRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/sprawdz-vin': typeof SprawdzVinRoute
@@ -233,6 +240,7 @@ export interface FileRoutesByTo {
   '/database': typeof DatabaseRoute
   '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
+  '/leady': typeof LeadyRoute
   '/records': typeof RecordsRoute
   '/sprawdz-vin': typeof SprawdzVinRoute
   '/watchlist': typeof WatchlistRoute
@@ -265,6 +273,7 @@ export interface FileRoutesById {
   '/database': typeof DatabaseRoute
   '/inbox': typeof InboxRoute
   '/jobs': typeof JobsRoute
+  '/leady': typeof LeadyRoute
   '/records': typeof RecordsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/sprawdz-vin': typeof SprawdzVinRoute
@@ -299,6 +308,7 @@ export interface FileRouteTypes {
     | '/database'
     | '/inbox'
     | '/jobs'
+    | '/leady'
     | '/records'
     | '/settings'
     | '/sprawdz-vin'
@@ -331,6 +341,7 @@ export interface FileRouteTypes {
     | '/database'
     | '/inbox'
     | '/jobs'
+    | '/leady'
     | '/records'
     | '/sprawdz-vin'
     | '/watchlist'
@@ -362,6 +373,7 @@ export interface FileRouteTypes {
     | '/database'
     | '/inbox'
     | '/jobs'
+    | '/leady'
     | '/records'
     | '/settings'
     | '/sprawdz-vin'
@@ -395,6 +407,7 @@ export interface RootRouteChildren {
   DatabaseRoute: typeof DatabaseRoute
   InboxRoute: typeof InboxRoute
   JobsRoute: typeof JobsRoute
+  LeadyRoute: typeof LeadyRoute
   RecordsRoute: typeof RecordsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SprawdzVinRoute: typeof SprawdzVinRoute
@@ -441,6 +454,13 @@ declare module '@tanstack/react-router' {
       path: '/records'
       fullPath: '/records'
       preLoaderRoute: typeof RecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leady': {
+      id: '/leady'
+      path: '/leady'
+      fullPath: '/leady'
+      preLoaderRoute: typeof LeadyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/jobs': {
@@ -679,6 +699,7 @@ const rootRouteChildren: RootRouteChildren = {
   DatabaseRoute: DatabaseRoute,
   InboxRoute: InboxRoute,
   JobsRoute: JobsRoute,
+  LeadyRoute: LeadyRoute,
   RecordsRoute: RecordsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SprawdzVinRoute: SprawdzVinRoute,
