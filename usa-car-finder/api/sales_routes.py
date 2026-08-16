@@ -204,6 +204,9 @@ def _lead_json(lead: Lead) -> dict[str, Any]:
         "year_from": lead.year_from,
         "year_to": lead.year_to,
         "budget_pln": lead.budget_pln,
+        # PATCH go przyjmował i wyszukiwarka go używała, ale _lead_json go nie oddawał —
+        # więc karta klienta po zapisaniu sufitu przebiegu i tak pokazywała „bez limitu".
+        "max_odometer_mi": lead.max_odometer_mi,
         "settlement": lead.settlement,
         "timeline_days": lead.timeline_days,
         "blocked_by": lead.blocked_by,
