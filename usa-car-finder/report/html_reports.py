@@ -380,6 +380,9 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "auction_date": lot.auction_date or "",
         "pills": _build_pills(item),
         "photo_url": lot.images[0] if lot.images else None,
+        # Galeria, nie jedno zdjecie: klient decyduje o wydatku rzedu 100 tys. zl
+        # i pierwsze, o co pyta, to „a jak to wyglada z drugiej strony".
+        "photos": list(lot.images or [])[:6],
         "headline_text": ai.client_description_pl or f"Sprawdzony {lot.year} {lot.make} {lot.model} z aukcji USA",
         "subhead_text": f"Szacowany koszt w Polsce: {total_cost_pln}",
         "story_paragraphs": [
