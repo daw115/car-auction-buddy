@@ -48,12 +48,14 @@
        margin-top: 6px; letter-spacing: -.01em; }
   .sub { color: var(--ink-2); margin-top: 3px; }
 
-  .gallery { display: grid; gap: 4px; grid-template-columns: repeat(3, 1fr);
+  /* Cztery w rzędzie i niższe kafelki: zdjęć jest do dwunastu, więc siatka ma je
+     pokazać naraz, a nie zmusić klienta do przewijania przez pół strony. */
+  .gallery { display: grid; gap: 4px; grid-template-columns: repeat(4, 1fr);
              margin: 6mm 16mm 0; }
-  .gallery a:first-child { grid-column: 1 / -1; }
-  .gallery img { width: 100%; height: 130px; object-fit: cover; display: block;
+  .gallery > :first-child { grid-column: 1 / -1; }
+  .gallery img { width: 100%; height: 104px; object-fit: cover; display: block;
                  border: 1px solid var(--line); }
-  .gallery a:first-child img { height: 320px; }
+  .gallery > :first-child img, .gallery > img:first-child { height: 300px; }
   .no-photo { margin: 6mm 16mm 0; padding: 24px; text-align: center;
               border: 1px dashed var(--line); color: var(--muted); }
 
@@ -102,8 +104,8 @@
     header { padding: 0 0 5mm; }
     .pad, .gallery, .cena, footer { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
     .cena { padding: 10px 14px; }
-    .gallery img { height: 30mm; }
-    .gallery a:first-child img { height: 62mm; }
+    .gallery img { height: 24mm; }
+    .gallery > :first-child img, .gallery > img:first-child { height: 62mm; }
     a { color: inherit; text-decoration: none; }
   }
 </style>
@@ -120,9 +122,15 @@
   {% if photos %}
   <div class="gallery">
     {% for zdjecie in photos %}
+    {% if zdjecie.startswith("data:") %}
+    {# Wklejone zdjęcie: BEZ odnośnika. Ten sam base64 w href i w src podwajał
+       rozmiar pliku, a kliknięcie w „data:" i tak nic sensownego nie otwiera. #}
+    <img src="{{ zdjecie }}" alt="{{ make }} {{ model }}" loading="lazy">
+    {% else %}
     <a href="{{ zdjecie }}" target="_blank" rel="noreferrer">
       <img src="{{ zdjecie }}" alt="{{ make }} {{ model }}" loading="lazy">
     </a>
+    {% endif %}
     {% endfor %}
   </div>
   {% elif photo_url %}

@@ -219,6 +219,17 @@ def _wyposazenie(lot) -> list[str]:
             return KOLORY.get(str(nazwa).lower(), nazwa) if nazwa else None
         return None
 
+    # Dane z VIN-u uzupełniają to, czego nie ma w rekordzie aukcji. Manheim podaje
+    # komplet, Copart i IAAI prawie nic — bez tego ich loty szły do klienta bez
+    # ani jednej informacji o wyposażeniu. Dokładamy tylko punkty o etykietach,
+    # których jeszcze nie ma, żeby silnik nie pojawił się dwa razy w dwóch wersjach.
+    from report.vin_equipment import wyposazenie_z_vin
+
+    obecne = {punkt.split(":")[0] for punkt in punkty}
+    for punkt in wyposazenie_z_vin(lot.vin or lot.full_vin):
+        if punkt.split(":")[0] not in obecne:
+            punkty.append(punkt)
+
     zewnatrz, wewnatrz = kolor("exterior"), kolor("interior")
     if zewnatrz or wewnatrz:
         czesci = []
@@ -292,12 +303,42 @@ def _informacje_o_samochodzie(item: AnalyzedLot, koszty: Optional[dict] = None) 
     return punkty
 
 
+def _przeskaluj(dane: bytes, szerokosc: int) -> tuple[bytes, str]:
+    """Zmniejsza zdjęcie przed wklejeniem do dokumentu.
+
+    Aukcje wystawiają zdjęcia w pełnej rozdzielczości; sześć takich w jednym pliku
+    to kilkanaście megabajtów, czyli załącznik, którego poczta nie przepuści.
+    W ofercie zdjęcia są miniaturami do obejrzenia, a nie materiałem do druku,
+    więc skalujemy je do szerokości ekranowej i zapisujemy jako JPEG.
+
+    Gdy cokolwiek pójdzie nie tak, oddajemy oryginał: lepsze duże zdjęcie
+    niż żadne.
+    """
+    try:
+        import io
+
+        from PIL import Image
+
+        obraz = Image.open(io.BytesIO(dane))
+        if obraz.width > szerokosc:
+            wysokosc = round(obraz.height * szerokosc / obraz.width)
+            obraz = obraz.resize((szerokosc, wysokosc), Image.LANCZOS)
+        if obraz.mode not in ("RGB", "L"):
+            obraz = obraz.convert("RGB")
+        bufor = io.BytesIO()
+        obraz.save(bufor, format="JPEG", quality=78, optimize=True)
+        return bufor.getvalue(), "image/jpeg"
+    except Exception:
+        logger.debug("[raport] nie udało się przeskalować zdjęcia", exc_info=True)
+        return dane, "image/jpeg"
+
+
 def _zdjecia_do_wklejenia(adresy: list[str]) -> list[str]:
     """Zamienia adresy zdjęć na `data:` — obraz wchodzi do pliku HTML.
 
     Raport był dotąd zbiorem odnośników do serwerów aukcji. Klient dostaje ten
     plik mailem i otwiera go czasem bez internetu, a aukcja zdejmuje zdjęcia po
-    sprzedaży lota — w obu przypadkach zostawała pusta ramka i oferta bez auta.
+    sprzedaży lota; w obu przypadkach zostawała pusta ramka i oferta bez auta.
     Wklejone zdjęcie jedzie razem z dokumentem i przeżywa jedno i drugie.
 
     Przy niepowodzeniu zostaje zwykły adres: lepszy odnośnik, który może zadziałać,
@@ -309,7 +350,8 @@ def _zdjecia_do_wklejenia(adresy: list[str]) -> list[str]:
     import base64
     import urllib.request
 
-    limit_na_zdjecie = int(os.getenv("REPORT_IMAGE_MAX_BYTES", str(2 * 1024 * 1024)))
+    szerokosc = int(os.getenv("REPORT_IMAGE_WIDTH_PX", "900"))
+    limit_na_zdjecie = int(os.getenv("REPORT_IMAGE_MAX_BYTES", str(4 * 1024 * 1024)))
     # Poczta odbija załączniki powyżej ok. 20 MB, a raport bywa wysyłany mailem.
     limit_razem = int(os.getenv("REPORT_IMAGE_TOTAL_BYTES", str(8 * 1024 * 1024)))
     czas = float(os.getenv("REPORT_IMAGE_TIMEOUT_SECONDS", "5"))
@@ -328,6 +370,7 @@ def _zdjecia_do_wklejenia(adresy: list[str]) -> list[str]:
             if len(dane) > limit_na_zdjecie or not typ.startswith("image/"):
                 wynik.append(adres)
                 continue
+            dane, typ = _przeskaluj(dane, szerokosc)
             zuzyte += len(dane)
             wynik.append(f"data:{typ};base64,{base64.b64encode(dane).decode('ascii')}")
         except Exception:
@@ -684,7 +727,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "photo_url": lot.images[0] if lot.images else None,
         # Galeria, nie jedno zdjecie: klient decyduje o wydatku rzedu 100 tys. zl
         # i pierwsze, o co pyta, to „a jak to wyglada z drugiej strony".
-        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:6]),
+        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:12]),
         "headline_text": ai.client_description_pl or f"Sprawdzony {lot.year} {lot.make} {lot.model} z aukcji USA",
         "subhead_text": f"Szacowany koszt w Polsce: {total_cost_pln}",
         "story_paragraphs": [
