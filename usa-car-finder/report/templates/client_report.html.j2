@@ -78,6 +78,7 @@
 
   .uszkodzenie { border-left: 3px solid var(--warn); background: #fbf1de;
                  padding: 10px 14px; }
+  .uszkodzenie.dobry { border-left-color: #14624a; background: #e8f3ee; }
   .uszkodzenie .co { font-weight: 700; }
   .uszkodzenie .ile { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
 
@@ -154,10 +155,10 @@
     {% endif %}
 
     <section>
-      <h2>Co jest uszkodzone</h2>
-      <div class="uszkodzenie">
-        <div class="co">{{ damage_what }}</div>
-        <div class="ile">{{ damage_repair }}</div>
+      <h2>{{ stan.tytul }}</h2>
+      <div class="uszkodzenie{% if not stan.ostrzezenie %} dobry{% endif %}">
+        <div class="co">{{ stan.wartosc }}</div>
+        <div class="ile">{{ stan.opis }}</div>
       </div>
     </section>
 

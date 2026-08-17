@@ -135,6 +135,56 @@ def _data_aukcji_po_polsku(surowa: Optional[str]) -> str:
     return moment.strftime("%d.%m.%Y, godz. %H:%M")
 
 
+_OPIS_OCENY = (
+    (4.5, "praktycznie bez wad — ślady zwykłego użytkowania, nic do naprawy przed jazdą"),
+    (4.0, "bardzo dobry stan — pojedyncze rysy albo odpryski lakieru"),
+    (3.0, "widoczne ślady eksploatacji — kosmetyka do poprawy, mechanika sprawna"),
+    (2.0, "wymaga napraw blacharsko-lakierniczych"),
+    (0.0, "poważne uszkodzenia — auto do gruntownej naprawy"),
+)
+
+
+def _stan_pojazdu(item: AnalyzedLot) -> dict:
+    """Sekcja o stanie — inna dla auta po szkodzie, inna dla auta z oceną.
+
+    Manheim nie podaje pola „uszkodzenie": zamiast niego wystawia ocenę stanu
+    w skali do 5. Dotąd wchodziła ona pod nagłówek „Co jest uszkodzone" jako
+    napis „Condition grade 4.9", co czytało się jak usterka, a znaczy coś wprost
+    przeciwnego. Klientowi trzeba powiedzieć, co ta liczba znaczy — sama w sobie
+    nie mówi mu nic.
+    """
+    lot = item.lot
+    ai = item.analysis
+    surowe = (lot.damage_primary or "").strip()
+
+    import re as _re
+
+    trafienie = _re.search(r"(?:condition\s*grade|grade)\s*([0-5](?:[.,]\d)?)", surowe, _re.I)
+    if trafienie:
+        ocena = float(trafienie.group(1).replace(",", "."))
+        opis = next(tekst for prog, tekst in _OPIS_OCENY if ocena >= prog)
+        return {
+            "tytul": "Stan techniczny",
+            "wartosc": f"Ocena {ocena:.1f} na 5",
+            "opis": (
+                f"To ocena stanu wystawiona przez giełdę: {opis}. "
+                "Dotyczy wyglądu i mechaniki, nie historii pojazdu — tę sprawdzam osobno."
+            ),
+            "ostrzezenie": ocena < 3.5,
+        }
+
+    return {
+        "tytul": "Co jest uszkodzone",
+        "wartosc": _damage_str(lot),
+        "opis": (
+            f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}"
+            if ai.estimated_repair_usd
+            else "Zakres naprawy wycenię po obejrzeniu zdjęć w wyższej rozdzielczości."
+        ),
+        "ostrzezenie": True,
+    }
+
+
 def _build_client_facts(item: AnalyzedLot) -> list[dict]:
     """Fakty do oferty — etykieta i wartość, bez języka sprzedaży.
 
@@ -163,7 +213,15 @@ def _build_client_facts(item: AnalyzedLot) -> list[dict]:
     # „XLE" jako silnika jest po prostu nieprawdą, więc etykieta idzie za treścią.
     silnik = _engine_str(lot)
     dodaj("Wersja" if silnik and silnik == (lot.trim or "") else "Silnik", silnik)
-    dodaj("Uszkodzenie", lot.damage_primary)
+    # Gdy „uszkodzeniem" jest ocena stanu z Manheima, wiersz pomijamy: ma własną
+    # sekcję niżej, z wyjaśnieniem skali. Powtórzony tutaj wracałby jako
+    # „Uszkodzenie: Condition grade 4.9" — czyli w formie, której się pozbywamy.
+    import re as _re
+
+    if lot.damage_primary and not _re.search(
+        r"(?:condition\s*grade|grade)\s*[0-5]", lot.damage_primary, _re.I
+    ):
+        dodaj("Uszkodzenie", lot.damage_primary)
     dodaj("Tytuł własności", lot.title_type)
     dodaj("Gdzie stoi", _location_str(lot) if lot.location_state else None)
     dodaj("Aukcja", _data_aukcji_po_polsku(lot.auction_date))
@@ -447,6 +505,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         ],
         "spec_rows": _build_spec_rows(item),
         "fakty": _build_client_facts(item),
+        "stan": _stan_pojazdu(item),
         "damage_what": _damage_str(lot),
         "damage_repair": f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}" if ai.estimated_repair_usd else "Do wyceny po inspekcji",
         "damage_ok_items": _build_damage_ok_items(item),
