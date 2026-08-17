@@ -727,7 +727,11 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "photo_url": lot.images[0] if lot.images else None,
         # Galeria, nie jedno zdjecie: klient decyduje o wydatku rzedu 100 tys. zl
         # i pierwsze, o co pyta, to „a jak to wyglada z drugiej strony".
-        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:12]),
+        # Jedno zdjęcie, świadomie. Oferta ma zachęcić do rozmowy, a nie zastąpić
+        # oględzin: klient zainteresowany dostaje osobno pełną galerię i raport
+        # ze szczegółami. Przy okazji plik zostaje lekki na tyle, żeby przeszedł
+        # przez pocztę bez pytania.
+        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:1]),
         "headline_text": ai.client_description_pl or f"Sprawdzony {lot.year} {lot.make} {lot.model} z aukcji USA",
         "subhead_text": f"Szacowany koszt w Polsce: {total_cost_pln}",
         "story_paragraphs": [

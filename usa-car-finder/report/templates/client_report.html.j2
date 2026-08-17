@@ -48,14 +48,10 @@
        margin-top: 6px; letter-spacing: -.01em; }
   .sub { color: var(--ink-2); margin-top: 3px; }
 
-  /* Cztery w rzędzie i niższe kafelki: zdjęć jest do dwunastu, więc siatka ma je
-     pokazać naraz, a nie zmusić klienta do przewijania przez pół strony. */
-  .gallery { display: grid; gap: 4px; grid-template-columns: repeat(4, 1fr);
-             margin: 6mm 16mm 0; }
-  .gallery > :first-child { grid-column: 1 / -1; }
-  .gallery img { width: 100%; height: 104px; object-fit: cover; display: block;
+  /* Jedno zdjęcie, na całą szerokość. Galeria idzie osobno, gdy klient odpisze. */
+  .gallery { margin: 6mm 16mm 0; }
+  .gallery img { width: 100%; height: 320px; object-fit: cover; display: block;
                  border: 1px solid var(--line); }
-  .gallery > :first-child img, .gallery > img:first-child { height: 300px; }
   .no-photo { margin: 6mm 16mm 0; padding: 24px; text-align: center;
               border: 1px dashed var(--line); color: var(--muted); }
 
@@ -104,8 +100,7 @@
     header { padding: 0 0 5mm; }
     .pad, .gallery, .cena, footer { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
     .cena { padding: 10px 14px; }
-    .gallery img { height: 24mm; }
-    .gallery > :first-child img, .gallery > img:first-child { height: 62mm; }
+    .gallery img { height: 62mm; }
     a { color: inherit; text-decoration: none; }
   }
 </style>
@@ -140,7 +135,7 @@
     </a>
   </div>
   {% else %}
-  <div class="no-photo">Zdjęcia prześlę osobno.</div>
+  <div class="no-photo">Zdjęcia prześlę w odpowiedzi na tę ofertę.</div>
   {% endif %}
 
   <div class="cena">
@@ -183,8 +178,9 @@
     <div class="kontakt">
       <h3>Jeśli to auto Pana zainteresowało, proszę o kontakt</h3>
       <p>
-        Odpiszę z dokładną kalkulacją i ustalimy limit licytacji. Bez zobowiązań. Jeśli
-        coś tu nie gra, poszukam dalej.
+        Odeślę komplet zdjęć, dokładną kalkulację i szczegółowy raport o stanie auta,
+        a potem ustalimy limit licytacji. Bez zobowiązań. Jeśli coś tu nie gra,
+        poszukam dalej.
       </p>
       {% if auction_deadline %}
       <div class="termin">
