@@ -3141,7 +3141,7 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
             status_code=503,
             detail="Bot Telegrama nie jest skonfigurowany — sprawdź Ustawienia → Powiadomienia.",
         )
-    from notify import telegram_db as tdb
+    from api import telegram_database as tdb
 
     # Ci sami odbiorcy, co przy nocnych trafieniach z nasłuchów — jedna lista,
     # jedno miejsce do wypisania się.
