@@ -139,21 +139,28 @@
     <div class="label">Koszt pod klucz w Polsce</div>
     <div class="value">{{ subhead_text | replace("Szacowany koszt w Polsce: ", "") }}</div>
     <div class="note">
-      Kwota szacunkowa — zależy od wyniku licytacji i kursu dolara. Podaję ją z zapasem,
+      Kwota szacunkowa, zależy od wyniku licytacji i kursu dolara. Podaję ją z zapasem,
       żeby nie było niespodzianek w drugą stronę.
     </div>
   </div>
 
   <div class="pad">
 
-    {% if fakty %}
-    <section>
+    {% if informacje %}
+    <section class="opis">
       <h2>Podstawowe informacje</h2>
-      <table class="fakty">
-        {% for fakt in fakty %}
-        <tr><td>{{ fakt.etykieta }}</td><td>{{ fakt.wartosc }}</td></tr>
-        {% endfor %}
-      </table>
+      <ul class="punkty">
+        {% for punkt in informacje %}<li>{{ punkt }}</li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if wyposazenie %}
+    <section class="opis">
+      <h2>Wyposażenie</h2>
+      <ul class="punkty">
+        {% for punkt in wyposazenie %}<li>{{ punkt }}</li>{% endfor %}
+      </ul>
     </section>
     {% endif %}
 
@@ -165,20 +172,11 @@
       </div>
     </section>
 
-    {% if informacje %}
-    <section class="opis">
-      <h2>Informacje o samochodzie</h2>
-      <ul class="punkty">
-        {% for punkt in informacje %}<li>{{ punkt }}</li>{% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-
     <div class="kontakt">
       <h3>Jeśli to auto Pana zainteresowało, proszę o kontakt</h3>
       <p>
-        Odpiszę z dokładną kalkulacją i ustalimy limit licytacji. Bez zobowiązań —
-        jeśli coś tu nie gra, poszukam dalej.
+        Odpiszę z dokładną kalkulacją i ustalimy limit licytacji. Bez zobowiązań. Jeśli
+        coś tu nie gra, poszukam dalej.
       </p>
       {% if auction_deadline %}
       <div class="termin">

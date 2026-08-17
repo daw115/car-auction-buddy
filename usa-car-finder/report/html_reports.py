@@ -145,57 +145,150 @@ def _data_aukcji_po_polsku(surowa: Optional[str]) -> str:
 
 
 _OPIS_OCENY = (
-    (4.5, "praktycznie bez wad — ślady zwykłego użytkowania, nic do naprawy przed jazdą"),
-    (4.0, "bardzo dobry stan — pojedyncze rysy albo odpryski lakieru"),
-    (3.0, "widoczne ślady eksploatacji — kosmetyka do poprawy, mechanika sprawna"),
+    (4.5, "praktycznie bez wad, ślady zwykłego użytkowania i nic do naprawy przed jazdą"),
+    (4.0, "bardzo dobry stan, pojedyncze rysy albo odpryski lakieru"),
+    (3.0, "widoczne ślady eksploatacji, kosmetyka do poprawy przy sprawnej mechanice"),
     (2.0, "wymaga napraw blacharsko-lakierniczych"),
-    (0.0, "poważne uszkodzenia — auto do gruntownej naprawy"),
+    (0.0, "poważne uszkodzenia, auto do gruntownej naprawy"),
 )
 
 
+def _z_rekordu(raw: dict, sciezka: str):
+    """Sięga w głąb surowego rekordu aukcji po ścieżce `a.b.c`."""
+    biezacy = raw
+    for czesc in sciezka.split("."):
+        if not isinstance(biezacy, dict):
+            return None
+        biezacy = biezacy.get(czesc)
+    return biezacy
+
+
+def _wyposazenie(lot) -> list[str]:
+    """Wyposażenie i dane techniczne z surowego rekordu aukcji.
+
+    Model `CarLot` nie ma na to pól, bo powstał pod filtrowanie i scoring. Klient
+    natomiast pyta dokładnie o to: jaki silnik, jaka skrzynia, jaki napęd. Dane
+    są w `raw_data` (Manheim podaje je komplet), więc wyciągamy je tutaj zamiast
+    rozszerzać model, którego reszta pipeline'u nie potrzebuje.
+
+    Czego nie ma, tego nie zmyślamy: każdy punkt powstaje tylko z obecnej wartości.
+    """
+    raw = lot.raw_data or {}
+    baza = "listing.designatedDescriptionEnrichment"
+    punkty: list[str] = []
+
+    poj = _z_rekordu(raw, f"{baza}.powertrain.engine.displacement.amount")
+    cylindry = _z_rekordu(raw, f"{baza}.powertrain.engine.cylinderCount")
+    paliwo = _z_rekordu(raw, f"{baza}.powertrain.engine.fuelCategory")
+    PALIWA = {"gasoline": "benzyna", "diesel": "diesel", "electric": "elektryk", "hybrid": "hybryda"}
+    if poj or cylindry or paliwo:
+        czesci = []
+        if poj:
+            czesci.append(f"{str(poj).replace('.', ',')} l")
+        if cylindry:
+            czesci.append(f"{cylindry} cylindry")
+        if paliwo:
+            czesci.append(PALIWA.get(str(paliwo).lower(), str(paliwo).lower()))
+        punkty.append("Silnik: " + ", ".join(czesci) + ".")
+
+    skrzynia = _z_rekordu(raw, f"{baza}.powertrain.transmission.type")
+    biegi = _z_rekordu(raw, f"{baza}.powertrain.transmission.gearCount")
+    if skrzynia:
+        rodzaj = "automatyczna" if "auto" in str(skrzynia).lower() else "manualna"
+        punkty.append(f"Skrzynia biegów: {rodzaj}{f', {biegi}-biegowa' if biegi else ''}.")
+
+    naped = _z_rekordu(raw, f"{baza}.powertrain.drivetrain.type")
+    NAPEDY = {"awd": "na cztery koła (AWD)", "4wd": "na cztery koła (4WD)",
+              "fwd": "na przednie koła", "rwd": "na tylne koła"}
+    if naped:
+        punkty.append(f"Napęd: {NAPEDY.get(str(naped).lower(), str(naped))}.")
+
+    nadwozie = _z_rekordu(raw, f"{baza}.bodyDescription.marketingBodyStyle")
+    drzwi = _z_rekordu(raw, f"{baza}.bodyDescription.passengerDoors")
+    if nadwozie:
+        punkty.append(f"Nadwozie: {nadwozie}{f', {drzwi} drzwi' if drzwi else ''}.")
+
+    KOLORY = {"black": "czarne", "white": "białe", "silver": "srebrne", "gray": "szare",
+              "grey": "szare", "blue": "niebieskie", "red": "czerwone", "green": "zielone",
+              "brown": "brązowe", "beige": "beżowe"}
+
+    def kolor(gdzie: str):
+        wartosc = _z_rekordu(raw, f"{baza}.designatedDescription.colors.{gdzie}")
+        if isinstance(wartosc, list) and wartosc:
+            nazwa = (wartosc[0] or {}).get("normalizedName") or (wartosc[0] or {}).get("oemName")
+            return KOLORY.get(str(nazwa).lower(), nazwa) if nazwa else None
+        return None
+
+    zewnatrz, wewnatrz = kolor("exterior"), kolor("interior")
+    if zewnatrz or wewnatrz:
+        czesci = []
+        if zewnatrz:
+            czesci.append(f"nadwozie {zewnatrz}")
+        if wewnatrz:
+            czesci.append(f"wnętrze {wewnatrz}")
+        punkty.append("Kolor: " + ", ".join(czesci) + ".")
+
+    return punkty
+
+
 def _informacje_o_samochodzie(item: AnalyzedLot, koszty: Optional[dict] = None) -> list[str]:
-    """Punkty do sekcji „Informacje o samochodzie" — wyłącznie z faktów.
+    """Jedna lista — dane pojazdu i to, co warto o nim powiedzieć.
 
-    NIE używamy tu `analysis.client_description_pl`. Mimo nazwy jest to notatka
-    dla brokera: zawiera cenę aukcyjną, szacunek naprawy w dolarach i wewnętrzny
-    werdykt („Rekomendacja: ryzyko"). Wklejenie jej do oferty pokazywało klientowi
-    marżę i opinię, która nigdy nie miała opuścić panelu.
+    Były to dwie sekcje: tabelka „Podstawowe informacje" i punkty „Informacje
+    o samochodzie". Powtarzały te same rzeczy (przebieg w obu, rocznik w obu),
+    więc klient czytał dwa razy to samo i zaczynał szukać różnicy, której nie było.
 
-    Każdy punkt to jedno zdanie o jednej rzeczy, po polsku, bez żargonu aukcyjnego
-    i bez kwot w dolarach — klient rozlicza się w złotówkach pod klucz.
+    NIE używamy `analysis.client_description_pl`. Mimo nazwy jest to notatka dla
+    brokera: zawiera cenę aukcyjną i wewnętrzny werdykt („Rekomendacja: ryzyko").
+    Wklejona do oferty pokazywała klientowi marżę. Wszystko poniżej pochodzi
+    z pól strukturalnych i nie zawiera kwot w dolarach — klient rozlicza się
+    w złotówkach pod klucz.
+
+    Aukcje wstawiają w puste pola napisy udające dane („Not Specified"), więc
+    wartość, która niczego nie wnosi, nie tworzy punktu.
     """
     lot = item.lot
     punkty: list[str] = []
+    PUSTE = {"not specified", "unknown", "n/a", "none", "brak", "-"}
 
-    rocznik = f"{lot.year} " if lot.year else ""
-    marka = " ".join(p for p in [lot.make, lot.model] if p)
-    if marka:
-        punkty.append(f"{rocznik}{marka}{f' w wersji {lot.trim}' if lot.trim else ''}.")
+    def wartosciowe(wartosc) -> bool:
+        return wartosc not in (None, "", 0) and str(wartosc).strip().lower() not in PUSTE
+
+    nazwa = " ".join(str(p) for p in [lot.year, lot.make, lot.model] if p)
+    if nazwa:
+        punkty.append(f"{nazwa}{f', wersja {lot.trim}' if lot.trim else ''}.")
 
     if lot.odometer_mi:
-        punkty.append(f"Przebieg {_mileage(lot.odometer_mi)}, potwierdzony przez aukcję.")
+        punkty.append(f"Przebieg: {_mileage(lot.odometer_mi)}, potwierdzony przez aukcję.")
+
+    if wartosciowe(lot.title_type):
+        punkty.append(f"Tytuł własności: {lot.title_type}.")
 
     if lot.location_state:
-        punkty.append(f"Auto stoi w {_location_str(lot)} — stamtąd organizuję transport do portu.")
+        punkty.append(f"Auto stoi w {_location_str(lot)}, stamtąd organizuję transport do portu.")
+
+    if lot.auction_date:
+        punkty.append(f"Aukcja: {_data_aukcji_po_polsku(lot.auction_date)}.")
 
     if lot.keys is True:
         punkty.append("Kluczyki są w komplecie, nie trzeba ich dorabiać.")
 
     if lot.airbags_deployed is False:
-        punkty.append("Poduszki powietrzne nierozbite — to oszczędza kilka tysięcy przy naprawie.")
+        punkty.append("Poduszki powietrzne nierozbite, co oszczędza kilka tysięcy przy naprawie.")
 
     if lot.seller_type == "insurance":
         punkty.append("Sprzedaje ubezpieczalnia, więc historia dokumentów jest kompletna.")
 
     if koszty and koszty.get("duty_rate_pct") == 0:
         punkty.append(
-            "Auto montowane w USA, więc wchodzi do Polski bez cła — przy tej klasie "
+            "Auto montowane w USA, więc wchodzi do Polski bez cła. Przy tej klasie "
             "samochodu to oszczędność rzędu kilkunastu tysięcy złotych."
         )
 
-    punkty.append(
-        "Mam komplet zdjęć i danych z aukcji — prześlę wszystko, co chce Pan zobaczyć."
-    )
+    if wartosciowe(lot.vin or lot.full_vin):
+        punkty.append(f"VIN: {lot.vin or lot.full_vin}, może go Pan sprawdzić w dowolnej bazie.")
+
+    punkty.append("Mam komplet zdjęć i danych z aukcji, prześlę wszystko, co chce Pan zobaczyć.")
     return punkty
 
 
@@ -267,7 +360,7 @@ def _stan_pojazdu(item: AnalyzedLot) -> dict:
             "wartosc": f"Ocena {ocena:.1f} na 5",
             "opis": (
                 f"To ocena stanu wystawiona przez giełdę: {opis}. "
-                "Dotyczy wyglądu i mechaniki, nie historii pojazdu — tę sprawdzam osobno."
+                "Dotyczy wyglądu i mechaniki, nie historii pojazdu. Tę sprawdzam osobno."
             ),
             "ostrzezenie": ocena < 3.5,
         }
@@ -605,7 +698,8 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "spec_rows": _build_spec_rows(item),
         "fakty": _build_client_facts(item),
         "stan": _stan_pojazdu(item),
-        "informacje": _informacje_o_samochodzie(item),
+        "informacje": _informacje_o_samochodzie(item, costs),
+        "wyposazenie": _wyposazenie(lot),
         "damage_what": _damage_str(lot),
         "damage_repair": f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}" if ai.estimated_repair_usd else "Do wyceny po inspekcji",
         "damage_ok_items": _build_damage_ok_items(item),
