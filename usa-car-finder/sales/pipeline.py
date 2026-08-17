@@ -146,10 +146,31 @@ def _zapisz(s: StanSprawy) -> StanSprawy:
     return s
 
 
-def _opis_lota(lot: Any) -> dict[str, Any]:
+def klucz_lota(lot: Any, pozycja: int = 0) -> str:
+    """Stabilny identyfikator auta w obrębie jednej sprawy.
+
+    `lot_id` NIE nadaje się na klucz, choć wygląda na gotowy: Manheim go nie
+    podaje. Przy takim aucie panel numerował pozycją, backend zapisywał napis
+    „None" i wybór klienta trafiał w próżnię — auto wracało jako „spoza oferty",
+    mimo że sami je wysłaliśmy.
+
+    Kolejność jest od najtrwalszego: numer lota, potem VIN (jeden na egzemplarz),
+    na końcu pozycja w ofercie. Pozycja wystarcza, bo klucz żyje tylko w obrębie
+    tej jednej oferty i nie ma z czym kolidować.
+    """
+    get = (lambda k: lot.get(k)) if isinstance(lot, dict) else (lambda k: getattr(lot, k, None))
+    for pole in ("lot_id", "vin"):
+        wartosc = get(pole)
+        if wartosc:
+            return str(wartosc)
+    return f"{get('source') or 'lot'}-{pozycja + 1}"
+
+
+def _opis_lota(lot: Any, pozycja: int = 0) -> dict[str, Any]:
     """Tyle, ile trzeba, żeby broker rozpoznał auto w rozmowie sprzed tygodnia."""
     get = (lambda k: lot.get(k)) if isinstance(lot, dict) else (lambda k: getattr(lot, k, None))
     return {
+        "klucz": klucz_lota(lot, pozycja),
         "lot_id": get("lot_id"),
         "source": get("source"),
         "nazwa": " ".join(str(x) for x in [get("year"), get("make"), get("model")] if x),
@@ -158,23 +179,31 @@ def _opis_lota(lot: Any) -> dict[str, Any]:
     }
 
 
+def klucz_wpisu(wpis: dict[str, Any], pozycja: int = 0) -> str:
+    """Klucz zapisanej pozycji. Sprawy sprzed tej zmiany nie mają pola `klucz`."""
+    return str(wpis.get("klucz") or wpis.get("lot_id") or f"lot-{pozycja + 1}")
+
+
 def zapisz_oferte(lead_id: int, loty) -> StanSprawy:
     """Krok 1: poszła oferta wstępna. Zapisujemy, CO poszło."""
     s = stan(lead_id)
-    s.wyslane = [_opis_lota(l) for l in loty][:6]
+    s.wyslane = [_opis_lota(l, i) for i, l in enumerate(loty)][:6]
     s.krok = max(s.krok, 2)  # od teraz czekamy na wybór klienta
     return _zapisz(s)
 
 
-def zapisz_wybor(lead_id: int, lot_ids: list[str]) -> StanSprawy:
+def zapisz_wybor(lead_id: int, klucze: list[str]) -> StanSprawy:
     """Krok 2: klient wskazał auta. Bierzemy je z wysłanych, nie z powietrza.
 
     Gdy wskaże coś, czego nie wysyłaliśmy (bo znalazł sam albo pomylił numer),
     zapisujemy to jako pozycję bez opisu — lepiej mieć ślad niż go zgubić.
     """
     s = stan(lead_id)
-    po_id = {str(w.get("lot_id")): w for w in s.wyslane}
-    s.wybrane = [po_id.get(str(i), {"lot_id": str(i), "nazwa": "spoza oferty"}) for i in lot_ids]
+    po_kluczu = {klucz_wpisu(w, i): w for i, w in enumerate(s.wyslane)}
+    s.wybrane = [
+        po_kluczu.get(str(k), {"klucz": str(k), "lot_id": str(k), "nazwa": "spoza oferty"})
+        for k in klucze
+    ]
     s.krok = max(s.krok, 3) if s.wybrane else s.krok
     return _zapisz(s)
 

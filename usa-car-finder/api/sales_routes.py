@@ -787,7 +787,8 @@ async def sprawa_oferta(lead_id: int, payload: OfertaWstepnaIn) -> dict[str, Any
 
 
 class WyborIn(BaseModel):
-    lot_ids: list[str] = Field(default_factory=list)
+    #: Klucze aut z oferty wstępnej — patrz `sales.pipeline.klucz_lota`.
+    klucze: list[str] = Field(default_factory=list)
 
 
 @router.post("/api/sales/leads/{lead_id}/sprawa/wybor")
@@ -797,7 +798,7 @@ async def sprawa_wybor(lead_id: int, payload: WyborIn) -> dict[str, Any]:
 
     if db.get_lead(lead_id) is None:
         raise HTTPException(404, f"nie ma leada {lead_id}")
-    return pipeline.zapisz_wybor(lead_id, payload.lot_ids).as_dict()
+    return pipeline.zapisz_wybor(lead_id, payload.klucze).as_dict()
 
 
 async def _raporty_na_telegram(loty: list[Any]) -> dict[str, Any]:
@@ -866,15 +867,15 @@ async def sprawa_wybor_z_odpowiedzi(lead_id: int, payload: WyborZOdpowiedziIn) -
     numery = numery_z_odpowiedzi(payload.tekst, len(stan.wyslane))
     return {
         "numery": numery,
-        "lot_ids": [str(stan.wyslane[n - 1].get("lot_id")) for n in numery],
+        "klucze": [pipeline.klucz_wpisu(stan.wyslane[n - 1], n - 1) for n in numery],
         "auta": [stan.wyslane[n - 1] for n in numery],
     }
 
 
 class RaportSzczegolowyIn(BaseModel):
-    #: Numery pozycji z oferty (1, 2, 3) albo identyfikatory lotów — co panel ma pod ręką.
+    #: Numery pozycji z oferty (1, 2, 3) albo klucze aut — co panel ma pod ręką.
     numery: list[int] = Field(default_factory=list)
-    lot_ids: list[str] = Field(default_factory=list)
+    klucze: list[str] = Field(default_factory=list)
 
 
 @router.post("/api/sales/leads/{lead_id}/sprawa/raport-szczegolowy")
@@ -903,16 +904,21 @@ async def sprawa_raport_szczegolowy(
     for n in payload.numery:
         if not 1 <= n <= len(stan.wyslane):
             raise HTTPException(400, f"W ofercie było {len(stan.wyslane)} aut, nie ma numeru {n}.")
-    wybrane_id = [str(stan.wyslane[n - 1].get("lot_id")) for n in payload.numery]
-    wybrane_id += [i for i in payload.lot_ids if i not in wybrane_id]
-    if not wybrane_id:
+    wybrane = [pipeline.klucz_wpisu(stan.wyslane[n - 1], n - 1) for n in payload.numery]
+    wybrane += [k for k in payload.klucze if k not in wybrane]
+    if not wybrane:
         raise HTTPException(400, "Nie podano, które auto klient wybrał.")
 
     # Pełne dane lota są tylko w wynikach wyszukiwania — krok 1 trzyma sam opis.
+    # Klucz liczymy tą samą funkcją, co przy zapisie oferty; `lot_id` nie nadaje
+    # się na dopasowanie, bo Manheim go nie podaje.
     wyszukiwanie = db.latest_lead_search(lead_id)
     kandydaci = (wyszukiwanie or {}).get("candidates") or []
-    po_id = {str((k.get("lot") or {}).get("lot_id")): k.get("lot") for k in kandydaci}
-    loty = [po_id[i] for i in wybrane_id if po_id.get(i)]
+    po_kluczu = {
+        pipeline.klucz_lota(k.get("lot") or {}, i): k.get("lot")
+        for i, k in enumerate(kandydaci)
+    }
+    loty = [po_kluczu[k] for k in wybrane if po_kluczu.get(k)]
     if not loty:
         raise HTTPException(
             409,
@@ -920,7 +926,7 @@ async def sprawa_raport_szczegolowy(
             "Uruchom je ponownie i wyślij raport z listy kandydatów.",
         )
 
-    pipeline.zapisz_wybor(lead_id, wybrane_id)
+    pipeline.zapisz_wybor(lead_id, wybrane)
 
     wyniki = await _raporty_na_telegram(loty)
     for nazwa in wyniki["pliki"]:
