@@ -27,8 +27,18 @@ MAX_MESSAGES = int(os.getenv("WHATSAPP_MAX_MESSAGES", "80"))
 # na ekranie ekstraktor zwracał zero wiadomości). Trzymamy się dwóch rzeczy,
 # które są częścią kontraktu z czytnikami ekranu i z protokołem:
 #   * `[role=row]` — jeden wiersz listy wiadomości,
-#   * `data-id` w formacie "<odNas>_<czat>_<idWiadomosci>", gdzie pierwszy
-#     człon to "true" dla wiadomości wysłanych przez nas.
+#   * `data-icon` o wartości `tail-in` / `tail-out` — kierunek ogonka dymka.
+#
+# Kierunku NIE da się już czytać z `data-id`. Wcześniej stało tu, że identyfikator
+# ma format "true_<czat>_<id>" i prefiks mówi, czy wiadomość jest od nas. Zmierzone
+# na żywej sesji 18 sierpnia 2026: identyfikatory wyglądają jak "3EB00D7AC5C6596C"
+# i ŻADEN nie zaczyna się od "true_". Efekt był taki, że wszystkie wiadomości,
+# łącznie z naszymi, wychodziły oznaczone jako „klient" — a parser wymagań czytał
+# nasze własne oferty jako to, czego klient szuka.
+#
+# Ogonek dymka jest rysowany tylko przy PIERWSZEJ wiadomości z serii, więc kolejne
+# dziedziczą kierunek po poprzedniej. Zapasowo `aria-label`: WhatsApp podpisuje
+# nasze wiadomości „Ty:", a cudze nazwą kontaktu.
 _EXTRACT_JS = """
 (() => {
   const main = document.querySelector('#main');
@@ -38,6 +48,7 @@ _EXTRACT_JS = """
   const seen = new Set();
   const messages = [];
   let bezTekstu = 0;
+  let ostatniKierunek = null;
   for (const row of rows) {
     const id = row.getAttribute('data-id') || '';
     if (!id || seen.has(id)) continue;
@@ -45,7 +56,18 @@ _EXTRACT_JS = """
     const bubble = row.querySelector('span.selectable-text');
     const tekst = (bubble ? bubble.innerText : '').trim();
     if (!tekst) { bezTekstu += 1; continue; }
-    messages.push({ kierunek: id.startsWith('true_') ? 'broker' : 'klient', tekst: tekst });
+    let kierunek = null;
+    if (row.querySelector('[data-icon="tail-out"]')) kierunek = 'broker';
+    else if (row.querySelector('[data-icon="tail-in"]')) kierunek = 'klient';
+    else {
+      const podpis = (row.querySelector('[aria-label]') || {}).getAttribute
+        ? row.querySelector('[aria-label]').getAttribute('aria-label') : '';
+      if (/^(Ty|You)\s*:/i.test(podpis || '')) kierunek = 'broker';
+      else if (podpis) kierunek = 'klient';
+    }
+    if (!kierunek) kierunek = ostatniKierunek || 'klient';
+    ostatniKierunek = kierunek;
+    messages.push({ kierunek: kierunek, tekst: tekst });
   }
   return JSON.stringify({
     rozmowa: header.split('\\n')[0] || '',
