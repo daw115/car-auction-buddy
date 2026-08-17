@@ -24,6 +24,12 @@ load_dotenv(override=True)
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+    # force=True, bo uvicorn konfiguruje logowanie ZANIM zaimportuje aplikację.
+    # Bez tego basicConfig jest cichym no-opem: root ma już handlery, nasze
+    # ustawienia przepadają i `journalctl -u usacar-api` pokazuje wyłącznie
+    # komunikaty systemd. Kosztowało to pół godziny szukania awarii bota,
+    # która przez cały czas wypisywała ostrzeżenie — donikąd.
+    force=True,
 )
 
 from parser.models import ClientCriteria, AnalyzedLot, SearchResponse
