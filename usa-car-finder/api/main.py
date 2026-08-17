@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "__all__")
 
-from fastapi import FastAPI, File, Form, HTTPException, Header, Depends, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Header, Depends, UploadFile, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -4117,8 +4117,16 @@ async def telegram_status(_auth: None = Depends(_require_bearer)):
 
 
 @app.post("/api/telegram/test")
-async def telegram_test(payload: dict, _auth: None = Depends(_require_bearer)):
-    """Wysyła testowe powiadomienie do wszystkich aktywnych subskrybentów (admin)."""
+async def telegram_test(
+    payload: Optional[dict] = Body(default=None),
+    _auth: None = Depends(_require_bearer),
+):
+    """Wysyła testowe powiadomienie do wszystkich aktywnych subskrybentów (admin).
+
+    Ciało jest opcjonalne. Wcześniej było wymagane i przycisk „Wyślij test"
+    w panelu kończył się błędem 422 — a to jedyny sposób sprawdzenia, czy
+    powiadomienia w ogóle dochodzą, więc musi działać samym kliknięciem.
+    """
     from notify.telegram import notify_job_completion, is_configured as _tg_configured
     if not _tg_configured():
         raise HTTPException(503, "TELEGRAM_BOT_TOKEN nie ustawiony")
