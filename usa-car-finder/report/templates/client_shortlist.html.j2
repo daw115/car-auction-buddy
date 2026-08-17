@@ -109,8 +109,12 @@
       </div>
       <div>
         {# Numer, po którym klient odpowiada. „Odpiszę: dwójka" jest szybsze
-           i mniej omylne niż przepisywanie nazwy albo numeru lota. #}
-        <h2><span class="numer">{{ loop.index }}</span> {{ auto.nazwa }}</h2>
+           i mniej omylne niż przepisywanie nazwy albo numeru lota. Przy jednym
+           aucie znika: numer bez wyboru wygląda na fragment czegoś większego. #}
+        <h2>
+          {% if auta | length > 1 %}<span class="numer">{{ loop.index }}</span>{% endif %}
+          {{ auto.nazwa }}
+        </h2>
         <div class="cena">{{ auto.cena }} <small>pod drzwi</small></div>
         <div class="fakty">
           {% for fakt in auto.fakty %}<div>{{ fakt }}</div>{% endfor %}
