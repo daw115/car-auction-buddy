@@ -129,6 +129,34 @@ def send_message(
     return _http_post_json("sendMessage", payload).get("result") or {}
 
 
+def answer_callback(callback_id: str, text: str = "", *, alert: bool = False) -> dict:
+    """Gasi „zegarek" na przycisku i pokazuje krótką odpowiedź.
+
+    Telegram wymaga tej odpowiedzi w ciągu kilku sekund, inaczej u brokera kręci
+    się kółko, choć akcja dawno się wykonała. Wysyłka na WhatsAppa trwa
+    kilkanaście sekund, więc odpowiadamy OD RAZU („wysyłam…"), a wynik dopisujemy
+    osobną wiadomością.
+    """
+    return _http_post_json(
+        "answerCallbackQuery",
+        {"callback_query_id": callback_id, "text": text[:200], "show_alert": alert},
+    ).get("result") or {}
+
+
+def przyciski_decyzji(draft_id: int) -> dict:
+    """Klawiatura pod propozycją: wyślij albo odrzuć.
+
+    Identyfikator draftu jedzie w `callback_data`, bo Telegram nie daje nic innego,
+    czym można powiązać naciśnięcie z konkretną propozycją.
+    """
+    return {
+        "inline_keyboard": [[
+            {"text": "✅ Wyślij na WhatsApp", "callback_data": f"wyslij:{draft_id}"},
+            {"text": "✖️ Odrzuć", "callback_data": f"odrzuc:{draft_id}"},
+        ]]
+    }
+
+
 def send_document(
     chat_id: int,
     file_path: str,

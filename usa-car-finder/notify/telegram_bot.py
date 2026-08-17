@@ -170,8 +170,100 @@ def _handle_preferences(chat_id: int, args: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _obsluz_decyzje(cq: dict) -> None:
+    """Naciśnięcie „Wyślij" albo „Odrzuć" pod propozycją.
+
+    To jest miejsce, w którym zgoda brokera zamienia się w wiadomość u klienta.
+    Ta sama droga co przycisk w panelu: `sales.db.approve_and_send` zapisuje
+    zgodę i jest idempotentne, więc dwa naciśnięcia nie wyślą dwa razy.
+
+    Wysyłkę robimy DOPIERO po zapisaniu zgody. Odwrotna kolejność znaczyłaby, że
+    przy awarii bazy klient dostał wiadomość, o której system nie wie.
+    """
+    from sales import db as sdb
+
+    chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id")
+    dane = cq.get("data") or ""
+    akcja, _, surowy_id = dane.partition(":")
+
+    # Przycisk działa wyłącznie dla zapisanych odbiorców. Bez tego ktoś, kto
+    # przechwyci wiadomość przekazaną dalej, mógłby wysłać treść do klienta.
+    from api import telegram_database as tdb
+
+    if chat_id not in [s["chat_id"] for s in tdb.list_active_subscribers()]:
+        tg.answer_callback(cq["id"], "Nie masz uprawnień do tej akcji.", alert=True)
+        return
+
+    try:
+        draft_id = int(surowy_id)
+    except (TypeError, ValueError):
+        tg.answer_callback(cq["id"], "Nie rozpoznaję tej propozycji.")
+        return
+
+    if akcja == "odrzuc":
+        sdb.reject_draft(draft_id)
+        tg.answer_callback(cq["id"], "Odrzucone.")
+        tg.send_message(chat_id, "✖️ Propozycja odrzucona. Nie wróci w skrzynce.")
+        return
+
+    if akcja != "wyslij":
+        tg.answer_callback(cq["id"], "Nieznana akcja.")
+        return
+
+    # Odpowiadamy natychmiast: wysyłka przez przeglądarkę trwa kilkanaście sekund,
+    # a Telegram gasi przycisk dopiero po tej odpowiedzi.
+    tg.answer_callback(cq["id"], "Wysyłam…")
+
+    wiadomosc = sdb.approve_and_send(draft_id)
+    if wiadomosc is None:
+        tg.send_message(chat_id, "⚠️ Ta propozycja była już zatwierdzona albo odrzucona.")
+        return
+
+    lead = sdb.get_lead(wiadomosc.lead_id)
+    numer = (lead.phone or "").strip() if lead else ""
+    if not numer:
+        tg.send_message(
+            chat_id,
+            "⚠️ Zgoda zapisana, ale lead nie ma numeru telefonu.\n\n"
+            f"<code>{tg._html_escape(wiadomosc.text)}</code>\n\nWyślij ręcznie.",
+        )
+        return
+
+    import asyncio
+
+    from scraper.whatsapp_sender import WhatsappSendError, wyslij
+
+    try:
+        wynik = asyncio.run(wyslij(numer, wiadomosc.text))
+    except WhatsappSendError as blad:
+        tg.send_message(
+            chat_id,
+            f"❌ <b>Nie wysłałem.</b> {tg._html_escape(str(blad))}\n\n"
+            "Zgoda jest zapisana, więc treść masz w panelu. Wyślij ręcznie.",
+        )
+        return
+    except Exception:  # noqa: BLE001
+        logger.exception("[bot] wysyłka na WhatsApp wywróciła się")
+        tg.send_message(chat_id, "❌ Nie wysłałem — nieoczekiwany błąd. Sprawdź logi i wyślij ręcznie.")
+        return
+
+    tg.send_message(
+        chat_id,
+        f"✅ <b>Wysłane do klienta</b> ({wynik.numer})\n\n"
+        f"Potwierdzenie z ekranu: <i>{tg._html_escape(wynik.potwierdzenie[:120])}</i>",
+    )
+
+
 def _process_update(update: dict) -> None:
     """Routes single update do odpowiedniego handlera."""
+    cq = update.get("callback_query")
+    if cq:
+        try:
+            _obsluz_decyzje(cq)
+        except Exception:
+            logger.exception("[bot] obsługa przycisku wywróciła się")
+        return
+
     msg = update.get("message") or update.get("edited_message")
     if not msg:
         return
@@ -224,7 +316,10 @@ def _get_updates(offset: Optional[int]) -> list[dict]:
         return []
     params: dict[str, Any] = {
         "timeout": _LONG_POLL_TIMEOUT,
-        "allowed_updates": json.dumps(["message"]),
+        # Bez "callback_query" Telegram nie przysyła naciśnięć przycisków —
+        # bot odpowiadałby wyłącznie na komendy tekstowe, a przycisk „Wyślij"
+        # kręciłby się w nieskończoność.
+        "allowed_updates": json.dumps(["message", "callback_query"]),
     }
     if offset is not None:
         params["offset"] = offset

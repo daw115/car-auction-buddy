@@ -760,6 +760,59 @@ async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
     return {"draft": _draft_json(db.save_draft(draft)), "offers": offers}
 
 
+@router.post("/api/sales/drafts/{draft_id}/na-telegram")
+async def draft_na_telegram(draft_id: int) -> dict[str, Any]:
+    """Wysyła propozycję na Telegram brokera z przyciskami „Wyślij" i „Odrzuć".
+
+    Po to, żeby zatwierdzanie dało się robić z telefonu, w trakcie rozmowy,
+    bez wracania do panelu. Naciśnięcie „Wyślij" przechodzi tą samą drogą co
+    przycisk w panelu (`approve_and_send`), a potem nadajnik wkłada treść
+    w rozmowę na WhatsApp Web.
+
+    Sama ta trasa NICZEGO nie wysyła do klienta — przenosi propozycję pod rękę
+    brokera i czeka na jego decyzję.
+    """
+    from notify import telegram as tg
+
+    from api import telegram_database as tdb
+
+    if not tg.is_configured():
+        raise HTTPException(503, "Bot Telegrama nie jest skonfigurowany.")
+
+    draft = db.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(404, f"nie ma propozycji {draft_id}")
+    if draft.approved_at or draft.rejected_at:
+        raise HTTPException(409, "Ta propozycja jest już rozstrzygnięta.")
+
+    lead = db.get_lead(draft.lead_id)
+    naglowek = f"<b>{tg._html_escape(lead.display_name if lead else 'Klient')}</b>"
+    if lead and lead.phone:
+        naglowek += f" · {tg._html_escape(lead.phone)}"
+
+    tresc = (
+        f"{naglowek}\n\n"
+        f"{tg._html_escape(draft.final_text)}\n\n"
+        "<i>Przycisk Wyslij wstawi te tresc w rozmowe na WhatsAppie.</i>"
+    )
+
+    odbiorcy = [s["chat_id"] for s in tdb.list_active_subscribers()]
+    if not odbiorcy:
+        raise HTTPException(503, "Nikt nie jest zapisany do bota.")
+
+    wyslane = 0
+    for chat_id in odbiorcy:
+        try:
+            tg.send_message(chat_id, tresc, reply_markup=tg.przyciski_decyzji(draft_id))
+            wyslane += 1
+        except Exception:
+            logger.warning("[telegram] nie udało się wysłać propozycji %s", draft_id, exc_info=True)
+
+    if not wyslane:
+        raise HTTPException(502, "Bot nie dostarczył propozycji.")
+    return {"wyslane": wyslane, "draft_id": draft_id}
+
+
 @router.post("/api/sales/drafts/{draft_id}/approve")
 async def approve(draft_id: int, body: ApproveIn) -> dict[str, Any]:
     """ZGODA BROKERA. Zapisuje wiadomość i zwraca link do wysłania.
