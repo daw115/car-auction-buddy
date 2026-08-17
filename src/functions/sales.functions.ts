@@ -354,7 +354,16 @@ export const raportNaTelegram = createServerFn({ method: "POST" })
     }).parse,
   )
   .handler(
-    async ({ data }): Promise<{ wyslane: number; plik: string; rozmiar_kb: number }> =>
+    async ({
+      data,
+    }): Promise<{
+      wyslane: number;
+      plik: string;
+      rozmiar_kb: number;
+      /** Treść wiadomości do klienta — tylko przy `oferta-png`. Obrazek pokazuje
+       *  auta, ten tekst mówi, co z nimi zrobić. */
+      tekst?: string;
+    }> =>
       backendRequest({
         path: `/report/na-telegram?rodzaj=${data.rodzaj}`,
         method: "POST",

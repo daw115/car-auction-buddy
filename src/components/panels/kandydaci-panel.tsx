@@ -15,7 +15,7 @@ import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ImageDown, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Copy, ImageDown, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import {
   getLeadCandidates,
@@ -51,6 +51,9 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
   const fnPdf = useServerFn(raportNaTelegram);
   const qc = useQueryClient();
   const [zaznaczone, setZaznaczone] = useState<Set<string>>(new Set());
+  // Tekst wiadomości do klienta, zwrócony razem z wysłanym obrazkiem. Obrazek
+  // pokazuje auta, ten tekst mówi, co z nimi zrobić — broker wysyła oba.
+  const [tekstOferty, setTekstOferty] = useState<string | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["kandydaci", leadId],
@@ -119,8 +122,10 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
         },
       });
     },
-    onSuccess: (w) =>
-      toast.success(`Obrazek na Telegramie (${w.rozmiar_kb} KB). Przekaż go klientowi w rozmowie.`),
+    onSuccess: (w) => {
+      setTekstOferty(w.tekst ?? null);
+      toast.success(`Obrazek na Telegramie (${w.rozmiar_kb} KB). Przekaż go klientowi w rozmowie.`);
+    },
     onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się wysłać oferty."),
   });
 
@@ -278,6 +283,30 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
             )}
             Wyślij ofertę jako obrazek na mój Telegram ({zaznaczone.size})
           </Button>
+
+          {tekstOferty && (
+            <div className="mt-2 rounded border bg-muted/40 p-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium">Wiadomość do wysłania razem z obrazkiem</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(tekstOferty)
+                      .then(() => toast.success("Skopiowane."))
+                      .catch(() =>
+                        toast.error("Przeglądarka nie dała skopiować — zaznacz i skopiuj ręcznie."),
+                      );
+                  }}
+                >
+                  <Copy className="mr-1 h-3 w-3" /> Kopiuj
+                </Button>
+              </div>
+              <p className="whitespace-pre-wrap text-xs text-muted-foreground">{tekstOferty}</p>
+            </div>
+          )}
 
           <Button
             className="mt-2 w-full"
