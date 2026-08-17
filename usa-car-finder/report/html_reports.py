@@ -252,6 +252,59 @@ def _wyposazenie(lot) -> list[str]:
     return punkty
 
 
+def _rynek_polski(lot, koszty: Optional[dict] = None) -> Optional[dict]:
+    """Ceny podobnych aut na polskim rynku, do porównania z naszą kwotą.
+
+    Klient i tak to sprawdzi na Otomoto, zanim odpowie. Lepiej, żeby zobaczył
+    porównanie od nas: jeśli wychodzimy taniej, to jest argument, a jeśli drożej,
+    to lepiej wiedzieć o tym przed rozmową niż w jej trakcie.
+
+    Czytamy WYŁĄCZNIE z cache. `lookup_market_price` przy pustym cache odpala
+    Playwrighta, a render oferty nie może czekać kilkudziesięciu sekund na
+    przeglądarkę — brak danych jest lepszy niż zawieszony raport.
+    """
+    if not lot.make or not lot.year:
+        return None
+    try:
+        from report import market_price_cache
+
+        dane = market_price_cache.get_cached(
+            lot.make, lot.model, lot.year - 1, lot.year + 1, False
+        )
+    except Exception:
+        logger.debug("[raport] cache cen rynkowych niedostępny", exc_info=True)
+        return None
+
+    if not dane or not dane.get("sample_size") or not dane.get("mean_pln"):
+        return None
+
+    nasza = float(koszty["private_total_pln"]) if koszty and koszty.get("private_total_pln") else None
+    roznica = None
+    if nasza and dane.get("mean_pln"):
+        roznica = round(nasza - float(dane["mean_pln"]))
+
+    return {
+        "min": format_pln(dane.get("low_pln")),
+        "max": format_pln(dane.get("high_pln")),
+        "srednia": format_pln(dane.get("mean_pln")),
+        "ile_ofert": dane.get("sample_size"),
+        "rocznik_od": lot.year - 1,
+        "rocznik_do": lot.year + 1,
+        # Zdanie zamiast samej liczby: „taniej o 12 tys." mówi klientowi więcej
+        # niż zestawienie dwóch kwot, które musi od siebie odjąć.
+        "wniosek": (
+            f"To o {format_pln(abs(roznica))} taniej niż średnia na polskim rynku."
+            if roznica is not None and roznica < -1000
+            else f"To o {format_pln(abs(roznica))} drożej niż średnia, ale auto jest z aukcji "
+                 "i wybieram konkretny egzemplarz, nie pierwszy z brzegu."
+            if roznica is not None and roznica > 1000
+            else "To mniej więcej średnia cena rynkowa za taki egzemplarz."
+            if roznica is not None
+            else None
+        ),
+    }
+
+
 def _informacje_o_samochodzie(item: AnalyzedLot, koszty: Optional[dict] = None) -> list[str]:
     """Jedna lista — dane pojazdu i to, co warto o nim powiedzieć.
 
@@ -777,6 +830,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "stan": _stan_pojazdu(item, costs),
         "informacje": _informacje_o_samochodzie(item, costs),
         "wyposazenie": _wyposazenie(lot),
+        "rynek": _rynek_polski(lot, costs),
         "damage_what": _damage_str(lot),
         "damage_repair": f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}" if ai.estimated_repair_usd else "Do wyceny po inspekcji",
         "damage_ok_items": _build_damage_ok_items(item),
