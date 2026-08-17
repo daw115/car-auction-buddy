@@ -22,6 +22,7 @@ from typing import Iterable, Optional
 from urllib.parse import quote
 
 from parser.models import CarLot
+from pricing.import_calculator import calculate_lot_import_costs
 from scoring.budget import Settlement, landed_cost_for_lot, landed_cost_pln
 
 MAX_OFFERS = 4
@@ -33,6 +34,7 @@ class OfferLine:
     lot: CarLot
     landed_pln: float
     over_budget: bool = False
+    usd_rate: Optional[float] = None
 
     def render(self) -> str:
         name = f"{self.lot.year or ''} {_short_name(self.lot)}".strip()
@@ -44,10 +46,17 @@ class OfferLine:
         # Spacja jako separator tysięcy, ale TYLKO w liczbie — zamiana przecinków
         # w całej linii zjadałaby ten po nazwie modelu.
         price = f"{self.landed_pln:,.0f}".replace(",", "\u00a0")
+        # Dolary w nawiasie: klient płaci w złotówkach, ale auto pochodzi z USA
+        # i sam przelicza, żeby porównać z ogłoszeniami. Ta sama kwota po tym
+        # samym kursie, nie cena aukcyjna.
+        w_nawiasie = ""
+        if self.usd_rate:
+            w_dolarach = f"{self.landed_pln / self.usd_rate:,.0f}".replace(",", "\u00a0")
+            w_nawiasie = f" ({w_dolarach} $)"
         # Klient zobaczy kwotę i sam policzy, że to więcej niż mówił. Napisane wprost
         # brzmi jak propozycja; przemilczane brzmi jak próba przemycenia.
         suffix = " (powyżej budżetu)" if self.over_budget else ""
-        return f"• {name}: {price} zł{suffix}"
+        return f"• {name}: {price} zł{w_nawiasie}{suffix}"
 
 
 @dataclass(frozen=True)
@@ -133,7 +142,14 @@ def build_draft(
         over = bool(budget_pln and landed > budget_pln)
         if over and not allow_over_budget:
             continue
-        lines.append(OfferLine(lot=lot, landed_pln=landed, over_budget=over))
+        # Kurs bierzemy z tej samej kalkulacji, która policzyła cenę pod klucz.
+        # Osobne pytanie o kurs mogłoby trafić na inny dzień notowań i klient
+        # dostałby dwie kwoty, które się nie przeliczają.
+        kurs = usd_rate
+        if kurs is None:
+            koszty = calculate_lot_import_costs(lot)
+            kurs = float(koszty["usd_rate"]) if koszty and koszty.get("usd_rate") else None
+        lines.append(OfferLine(lot=lot, landed_pln=landed, over_budget=over, usd_rate=kurs))
 
     if not lines:
         return None

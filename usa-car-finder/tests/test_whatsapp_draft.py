@@ -19,7 +19,10 @@ def test_prices_are_landed_pln_not_auction_usd():
     draft = build_draft([lot(price=6000.0)], client_name="Wojciech Beyger")
 
     assert "zł" in draft.text
-    assert "USD" not in draft.text and "$" not in draft.text
+    # Dolar w treści jest, ale jako RÓWNOWARTOŚĆ kwoty pod klucz w nawiasie —
+    # nigdy jako cena aukcyjna. Ta druga pokazywałaby klientowi marżę.
+    assert "6 000 $" not in draft.text and "6000" not in draft.text
+    assert "USD" not in draft.text
     # 6 000 USD z Florydy to ~52 tys. zł pod klucz (49 425 sprowadzenie + 2 804 prowizji),
     # nie 24 tys. z przeliczenia kursem.
     # Próg zamiast wpisanej liczby: kurs bierzemy z NBP, więc konkretna kwota zmienia
