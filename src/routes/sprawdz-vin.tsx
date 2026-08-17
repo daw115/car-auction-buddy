@@ -33,7 +33,7 @@ export const Route = createFileRoute("/sprawdz-vin")({
         name: "description",
         content:
           "Wklej VIN i sprawdź, czy auto z USA ma zerowe cło, jaka jest stawka akcyzy " +
-          "i ile wyjdzie pod klucz w Polsce. Bez podawania kontaktu.",
+          "i ile wyjdzie pod drzwi w Polsce. Bez podawania kontaktu.",
       },
     ],
   }),
@@ -74,7 +74,7 @@ function ResultCard({ wynik }: { wynik: VinCheckResult }) {
       {wynik.landed_pln !== undefined ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded border p-3">
-            <p className="text-xs text-muted-foreground">Cena pod klucz w Polsce</p>
+            <p className="text-xs text-muted-foreground">Cena pod drzwi w Polsce</p>
             <p className="text-2xl font-semibold">{pln(wynik.landed_pln)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Zakup, transport, odprawa, akcyza i prowizja. Bez rejestracji i bez naprawy.
@@ -199,7 +199,7 @@ function LeadForm({ wynik }: { wynik: VinCheckResult }) {
             rows={2}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Budżet pod klucz, rocznik, na kiedy."
+            placeholder="Budżet pod drzwi, rocznik, na kiedy."
           />
         </div>
         {/* Pole-pułapka: ukryte przed człowiekiem, bot wypełnia wszystko, co znajdzie. */}

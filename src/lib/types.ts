@@ -55,7 +55,7 @@ export type ClientCriteria = {
   /** Segment z pierwszej rozmowy ("suv"). Kontekst dla agenta, nie filtr: samo
    *  nadwozie niczego nie zawęzi w wyszukiwaniu pełnotekstowym Copart/IAAI. */
   segment?: string | null;
-  /** Budżet "pod klucz" w Polsce, tak jak podaje go klient ("50/60 tys").
+  /** Budżet "pod drzwi" w Polsce, tak jak podaje go klient ("50/60 tys").
    *  Sufit ceny aukcyjnej liczy backend — zależy od stanu USA i formy zakupu. */
   budget_pln_from?: number | null;
   budget_pln_to?: number | null;

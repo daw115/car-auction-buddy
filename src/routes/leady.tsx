@@ -140,7 +140,7 @@ function LeadyPage() {
                     <div className="text-xs text-muted-foreground">
                       {[lead.make, lead.model].filter(Boolean).join(" ") || "bez kryteriów"}
                       {lead.budget_pln
-                        ? ` · ${lead.budget_pln.toLocaleString("pl-PL")} zł pod klucz`
+                        ? ` · ${lead.budget_pln.toLocaleString("pl-PL")} zł pod drzwi`
                         : ""}
                       {lead.phone ? ` · ${lead.phone}` : ""}
                     </div>

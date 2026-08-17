@@ -536,7 +536,7 @@ function KartaKlienta() {
             <div className="space-y-2">
               <div>
                 <label className="text-xs text-muted-foreground" htmlFor="pole-budzet">
-                  Budżet pod klucz (zł)
+                  Budżet pod drzwi (zł)
                 </label>
                 <Input
                   id="pole-budzet"
@@ -680,7 +680,7 @@ function KartaKlienta() {
                 )}
                 <div className="text-xs text-muted-foreground">
                   {lead.budget_pln
-                    ? `budżet ${lead.budget_pln.toLocaleString("pl-PL")} zł pod klucz`
+                    ? `budżet ${lead.budget_pln.toLocaleString("pl-PL")} zł pod drzwi`
                     : "budżet niepodany — bez niego nie policzymy ceny końcowej"}
                 </div>
                 {/* Różnica między tym, co klient MA, a tym, co BĘDZIE miał po sprzedaży
@@ -743,7 +743,12 @@ function KartaKlienta() {
             )}
           </Card>
 
-          <SprawaPanel leadId={id} />
+          <SprawaPanel
+            leadId={id}
+            ostatniaOdKlienta={
+              [...(lead.messages ?? [])].reverse().find((m) => m.author === "klient")?.text ?? null
+            }
+          />
 
           <KandydaciPanel leadId={id} budzetPln={lead.budget_pln ?? null} />
 

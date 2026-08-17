@@ -2,20 +2,27 @@
  *
  *  Etap leada mówi „gdzie jesteśmy", ale nie „co pokazaliśmy". Po tygodniu
  *  milczenia broker musi wiedzieć, czy klient nie odpisuje na trzy auta czy na
- *  jedno i który raport dostał — z rozmowy na WhatsAppie tego nie widać, bo idą
- *  tam PDF-y, których treści wątek nie pokazuje.
+ *  jedno i który raport dostał — z rozmowy na WhatsAppie tego nie widać, bo idzie
+ *  tam obrazek oferty i załączniki, których treści wątek nie pokazuje.
  *
  *  Krok 1 i 3 zapisują się SAME, przy wysyłce oferty i raportu. Ręcznie zaznacza
- *  się tylko to, czego system nie może wiedzieć: co klient wybrał i czy kupuje.
+ *  się tylko to, czego system nie może wiedzieć: co klient wybrał i czy kupuje —
+ *  a i to podpowiadamy, czytając numer z jego ostatniej odpowiedzi.
  */
 
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, FileText, Loader2, X } from "lucide-react";
 
-import { getStanSprawy, zapiszDecyzje, zapiszWybor } from "@/functions/sales.functions";
+import {
+  getStanSprawy,
+  odczytajWybor,
+  wyslijRaportSzczegolowy,
+  zapiszDecyzje,
+  zapiszWybor,
+} from "@/functions/sales.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,10 +30,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 const KROKI = ["Oferta wstępna", "Wybrane auta", "Raport szczegółowy", "Decyzja"] as const;
 
-export function SprawaPanel({ leadId }: { leadId: number }) {
+type Props = {
+  leadId: number;
+  /** Ostatnia wiadomość od klienta — z niej czytamy numer wybranego auta. */
+  ostatniaOdKlienta?: string | null;
+};
+
+export function SprawaPanel({ leadId, ostatniaOdKlienta = null }: Props) {
   const fnStan = useServerFn(getStanSprawy);
+  const fnOdczyt = useServerFn(odczytajWybor);
   const fnWybor = useServerFn(zapiszWybor);
   const fnDecyzja = useServerFn(zapiszDecyzje);
+  const fnRaport = useServerFn(wyslijRaportSzczegolowy);
   const qc = useQueryClient();
   const [zaznaczone, setZaznaczone] = useState<Set<string>>(new Set());
 
@@ -48,6 +63,30 @@ export function SprawaPanel({ leadId }: { leadId: number }) {
       odswiez();
     },
     onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się zapisać."),
+  });
+
+  /** Zapisuje wybór i od razu wysyła oba raporty na Telegram — jedno kliknięcie
+   *  zamiast trzech. Klient odpisał numerem, więc dalsza droga jest tylko jedna. */
+  const raport = useMutation({
+    mutationFn: (lotIds: string[]) => fnRaport({ data: { leadId, lotIds } }),
+    onSuccess: (w) => {
+      toast.success(
+        `Raporty na Telegramie (${w.pliki.length} pliki, ${w.rozmiar_kb} KB). Raport klienta przekaż w rozmowie.`,
+      );
+      setZaznaczone(new Set());
+      odswiez();
+    },
+    onError: (e: { message?: string }) =>
+      toast.error(e.message || "Nie udało się wysłać raportów."),
+  });
+
+  // Podpowiedź, nie automat. Oferta jest ponumerowana i klient odpisuje „2",
+  // ale „mam 2 dzieci" też zawiera dwójkę — dlatego numer tylko podświetlamy,
+  // a zaznacza go broker.
+  const { data: podpowiedz } = useQuery({
+    queryKey: ["wybor-z-odpowiedzi", leadId, ostatniaOdKlienta],
+    queryFn: () => fnOdczyt({ data: { leadId, tekst: ostatniaOdKlienta! } }),
+    enabled: Boolean(ostatniaOdKlienta) && (data?.wyslane?.length ?? 0) > 0,
   });
 
   const decyzja = useMutation({
@@ -106,6 +145,26 @@ export function SprawaPanel({ leadId }: { leadId: number }) {
       {(data?.wyslane?.length ?? 0) > 0 && (
         <div className="mb-3">
           <div className="mb-1 text-xs font-medium">Wysłane w ofercie ({data!.wyslane.length})</div>
+
+          {(podpowiedz?.numery.length ?? 0) > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-primary/40 bg-primary/5 p-2 text-xs">
+              <span>
+                Klient odpisał <b>{podpowiedz!.numery.map((n) => `nr ${n}`).join(" i ")}</b>
+                {podpowiedz!.auta[0]?.nazwa
+                  ? ` — ${podpowiedz!.auta.map((a) => a.nazwa).join(", ")}`
+                  : ""}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => setZaznaczone(new Set(podpowiedz!.lot_ids))}
+              >
+                Zaznacz
+              </Button>
+            </div>
+          )}
+
           <div className="space-y-1">
             {data!.wyslane.map((auto, i) => {
               const id = String(auto.lot_id ?? i);
@@ -139,15 +198,32 @@ export function SprawaPanel({ leadId }: { leadId: number }) {
             })}
           </div>
           {zaznaczone.size > 0 && (
-            <Button
-              size="sm"
-              className="mt-2"
-              disabled={wybor.isPending}
-              onClick={() => wybor.mutate()}
-            >
-              {wybor.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              Klient wybrał te ({zaznaczone.size})
-            </Button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {/* Wybór klienta prowadzi zawsze do tego samego: raport o wskazanym
+                  aucie. Osobny przycisk „zapisz" zostaje dla sytuacji, gdy klient
+                  wskazał, ale raport ma iść później. */}
+              <Button
+                size="sm"
+                disabled={raport.isPending || wybor.isPending}
+                onClick={() => raport.mutate([...zaznaczone])}
+              >
+                {raport.isPending ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Wybrał te — wyślij raport ({zaznaczone.size})
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={wybor.isPending || raport.isPending}
+                onClick={() => wybor.mutate()}
+              >
+                {wybor.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Tylko zapisz wybór
+              </Button>
+            </div>
           )}
         </div>
       )}

@@ -2,7 +2,7 @@
  *
  *  Backend dokleja go do `lot.raw_data.unified_score` (scoring/unified.py), więc
  *  jedzie tą samą drogą co reszta lota i nie wymaga osobnego zapytania. Kwoty
- *  są w złotówkach pod klucz, bo tak klient podaje budżet — cena aukcyjna w USD
+ *  są w złotówkach pod drzwi, bo tak klient podaje budżet — cena aukcyjna w USD
  *  nie mówi nic o tym, czy auto się mieści.
  */
 
@@ -72,8 +72,8 @@ export function overBudgetLabel(verdict: BudgetVerdict): string {
   return "ponad budżet";
 }
 
-/** Cena pod klucz do pokazania brokerowi obok ceny aukcyjnej. */
+/** Cena pod drzwi do pokazania brokerowi obok ceny aukcyjnej. */
 export function landedLabel(verdict: BudgetVerdict | null): string | null {
   if (!verdict?.landedPln) return null;
-  return `${verdict.landedPln.toLocaleString("pl-PL", { maximumFractionDigits: 0 })} zł pod klucz`;
+  return `${verdict.landedPln.toLocaleString("pl-PL", { maximumFractionDigits: 0 })} zł pod drzwi`;
 }

@@ -345,7 +345,7 @@ export const criteriaShape = z.object({
     .optional(),
   // Segment z rozmowy ("suv") — kontekst dla agenta, nie filtr wyszukiwania.
   segment: z.string().max(40).optional().nullable(),
-  // Budżet "pod klucz" w Polsce. Sufit ceny aukcyjnej liczy backend, bo zależy
+  // Budżet "pod drzwi" w Polsce. Sufit ceny aukcyjnej liczy backend, bo zależy
   // od stanu USA i formy zakupu — przeliczanie kursem dawało wynik 2x za wysoki.
   budget_pln_from: z.number().min(0).max(5_000_000).optional().nullable(),
   budget_pln_to: z.number().min(0).max(5_000_000).optional().nullable(),

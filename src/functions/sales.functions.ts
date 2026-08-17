@@ -299,7 +299,7 @@ export const getLeadCandidates = createServerFn({ method: "GET" })
  * Propozycja wiadomości, która ZNA auta wybrane przez brokera.
  *
  * Bez tego wywołania agent dostawał puste pole `offers` i pisał ogólniki —
- * backend liczył ceny pod klucz do szuflady. Kolejności zaznaczonych aut nie
+ * backend liczył ceny pod drzwi do szuflady. Kolejności zaznaczonych aut nie
  * zmieniamy: broker wybrał je w takiej i taką zobaczy klient.
  */
 export const proposeOffer = createServerFn({ method: "POST" })
@@ -314,7 +314,7 @@ export const proposeOffer = createServerFn({ method: "POST" })
   )
   .handler(
     async ({ data }): Promise<{ draft: InboxItem | null; reason?: string }> =>
-      // Backend zwraca tez `offers` (wyliczone ceny pod klucz), ale panel ich nie
+      // Backend zwraca tez `offers` (wyliczone ceny pod drzwi), ale panel ich nie
       // renderuje — kwoty sa juz w tresci propozycji. Nie deklarujemy ich w typie,
       // zeby nie obiecywac ksztaltu, ktorego nikt nie czyta.
       backendRequest({
@@ -334,17 +334,21 @@ export const proposeOffer = createServerFn({ method: "POST" })
  * a potem wstawia treść w rozmowę na WhatsApp Web.
  */
 /**
- * Wysyła PDF na Telegram brokera, żeby przekazał go klientowi w WhatsAppie.
+ * Wysyła raport na Telegram brokera, żeby przekazał go klientowi w WhatsAppie.
  *
  * Link `wa.me` przenosi wyłącznie tekst i nie da się tym podać załącznika.
  * Bot dociera natomiast na ten sam telefon, na którym toczy się rozmowa —
  * plik przychodzi w kilka sekund i przekazuje się go jednym gestem.
+ *
+ * `oferta-png` to pierwszy kontakt: obrazek, nie PDF. Klient widzi trzy auta
+ * od razu w wątku, zamiast pobierać plik i otwierać go w innej aplikacji.
+ * PDF-y (`klient`, `broker`) idą dopiero wtedy, gdy wskaże numer.
  */
 export const raportNaTelegram = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
-      rodzaj: z.enum(["shortlist", "klient", "broker"]),
+      rodzaj: z.enum(["oferta-png", "shortlist", "klient", "broker"]),
       lots: z.array(z.record(z.string(), z.unknown())).min(1).max(10),
       clientName: z.string().max(160).optional().nullable(),
     }).parse,
@@ -364,12 +368,14 @@ export const raportNaTelegram = createServerFn({ method: "POST" })
   );
 
 /** Cztery kroki sprawy: oferta wstępna, wybór klienta, raport, decyzja. */
+export type WyslaneAuto = { lot_id?: string | null; nazwa?: string; url?: string | null };
+
 export type StanSprawy = {
   lead_id: number;
   krok: number;
   krok_nazwa: string;
-  wyslane: Array<{ lot_id?: string | null; nazwa?: string; url?: string | null }>;
-  wybrane: Array<{ lot_id?: string | null; nazwa?: string }>;
+  wyslane: WyslaneAuto[];
+  wybrane: WyslaneAuto[];
   raporty: string[];
   decyzja: string | null;
   notatka: string;
@@ -397,6 +403,50 @@ export const zapiszWybor = createServerFn({ method: "POST" })
     async ({ data }): Promise<StanSprawy> =>
       backendRequest({
         path: `/api/sales/leads/${data.leadId}/sprawa/wybor`,
+        method: "POST",
+        body: { lot_ids: data.lotIds },
+      }),
+  );
+
+/** Co klient wskazał, sądząc po tym, co odpisał na ofertę.
+ *
+ *  Podpowiedź, nie automat: backend czyta z tekstu numery pozycji, panel je
+ *  zaznacza, a potwierdza broker. „Mam 2 dzieci" też zawiera dwójkę.
+ */
+export const odczytajWybor = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      tekst: z.string().min(1).max(2000),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ numery: number[]; lot_ids: string[]; auta: WyslaneAuto[] }> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/sprawa/wybor-z-odpowiedzi`,
+        method: "POST",
+        body: { tekst: data.tekst },
+      }),
+  );
+
+/** Krok 2 → 3 jednym kliknięciem: zapisuje wybór i wysyła oba raporty na Telegram.
+ *
+ *  Bez tego broker musiał zaznaczyć wybór, wrócić do listy kandydatów, odszukać
+ *  tam to samo auto i wysłać raport osobnym przyciskiem.
+ */
+export const wyslijRaportSzczegolowy = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      lotIds: z.array(z.string().min(1)).max(3),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ sprawa: StanSprawy; pliki: string[]; rozmiar_kb: number }> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/sprawa/raport-szczegolowy`,
         method: "POST",
         body: { lot_ids: data.lotIds },
       }),

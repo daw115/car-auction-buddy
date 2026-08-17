@@ -1,7 +1,7 @@
 /** Auta znalezione pod konkretnego klienta — i jedyne miejsce, z którego agent
  *  dostaje je do napisania oferty.
  *
- *  Do sierpnia 2026 backend liczył kandydatów i ceny pod klucz do szuflady:
+ *  Do sierpnia 2026 backend liczył kandydatów i ceny pod drzwi do szuflady:
  *  `GET /api/sales/leads/{id}/candidates` nie miał w panelu ani jednego wywołania,
  *  a `POST .../offer` — ani jednego przycisku. Agent pisał więc oferty, nie znając
  *  aut, i wychodziły z tego ogólniki.
@@ -15,7 +15,7 @@ import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileDown, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { ImageDown, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import {
   getLeadCandidates,
@@ -30,7 +30,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 type Props = {
   leadId: number;
-  /** Budżet pod klucz w złotówkach — po nim poznajemy, co jest ponad. */
+  /** Budżet pod drzwi w złotówkach — po nim poznajemy, co jest ponad. */
   budzetPln: number | null;
 };
 
@@ -101,23 +101,27 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
     onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się napisać oferty."),
   });
 
-  /** Krótka lista jako PDF, prosto na telefon brokera. Stamtąd przekazuje ją
-   *  klientowi w rozmowie — panel nie ma jak podać załącznika przez wa.me. */
-  const pdfNaTelegram = useMutation({
+  /** Krótka lista jako OBRAZEK, prosto na telefon brokera. Stamtąd przekazuje ją
+   *  klientowi w rozmowie — panel nie ma jak podać załącznika przez wa.me.
+   *
+   *  Obrazek, nie PDF: pierwszą ofertę klient ma zobaczyć w wątku, bez pobierania
+   *  pliku i otwierania go w innej aplikacji. Auta są ponumerowane, więc odpowiada
+   *  samą cyfrą. PDF przychodzi później, razem ze szczegółowym raportem. */
+  const obrazekNaTelegram = useMutation({
     mutationFn: async () => {
       const wybrane = kandydaci.filter((k, i) => zaznaczone.has(kluczLota(k, i)));
-      if (!wybrane.length) throw new Error("Zaznacz auta do raportu.");
+      if (!wybrane.length) throw new Error("Zaznacz auta do oferty.");
       return fnPdf({
         data: {
-          rodzaj: "shortlist" as const,
+          rodzaj: "oferta-png" as const,
           lots: wybrane.slice(0, 3).map((k) => k.lot as unknown as Record<string, unknown>),
           clientName: null,
         },
       });
     },
     onSuccess: (w) =>
-      toast.success(`PDF na Telegramie (${w.rozmiar_kb} KB). Przekaż go klientowi w rozmowie.`),
-    onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się wysłać PDF-a."),
+      toast.success(`Obrazek na Telegramie (${w.rozmiar_kb} KB). Przekaż go klientowi w rozmowie.`),
+    onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się wysłać oferty."),
   });
 
   const wBudzecie = kandydaci.filter((k) => !ponadBudzet(k));
@@ -129,7 +133,7 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
           <h3 className="text-sm font-semibold">🚗 Znalezione auta</h3>
           <p className="text-xs text-muted-foreground">
             Zaznacz te, które chcesz pokazać klientowi. Agent napisze wiadomość{" "}
-            <b>znając te konkretne auta</b> i ich ceny pod klucz.
+            <b>znając te konkretne auta</b> i ich ceny pod drzwi.
           </p>
         </div>
         <Button
@@ -236,8 +240,8 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       {typeof l.landed_cost_pln === "number"
-                        ? `${l.landed_cost_pln.toLocaleString("pl-PL")} zł pod klucz`
-                        : "cena pod klucz nieustalona"}
+                        ? `${l.landed_cost_pln.toLocaleString("pl-PL")} zł pod drzwi`
+                        : "cena pod drzwi nieustalona"}
                       {l.odometer_mi ? ` · ${l.odometer_mi.toLocaleString("pl-PL")} mi` : ""}
                       {l.damage_primary ? ` · ${l.damage_primary}` : ""}
                     </span>
@@ -264,15 +268,15 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
           <Button
             variant="outline"
             className="mt-3 w-full"
-            disabled={zaznaczone.size === 0 || pdfNaTelegram.isPending}
-            onClick={() => pdfNaTelegram.mutate()}
+            disabled={zaznaczone.size === 0 || obrazekNaTelegram.isPending}
+            onClick={() => obrazekNaTelegram.mutate()}
           >
-            {pdfNaTelegram.isPending ? (
+            {obrazekNaTelegram.isPending ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
-              <FileDown className="mr-1.5 h-4 w-4" />
+              <ImageDown className="mr-1.5 h-4 w-4" />
             )}
-            Wyślij PDF na mój Telegram ({zaznaczone.size})
+            Wyślij ofertę jako obrazek na mój Telegram ({zaznaczone.size})
           </Button>
 
           <Button

@@ -93,7 +93,7 @@ export function CriteriaForm({
             }
           />
         </Field>
-        <Field label="Budżet pod klucz od (zł)">
+        <Field label="Budżet pod drzwi od (zł)">
           <Input
             type="number"
             placeholder="np. 50000"
@@ -106,7 +106,7 @@ export function CriteriaForm({
             }
           />
         </Field>
-        <Field label="Budżet pod klucz do (zł)">
+        <Field label="Budżet pod drzwi do (zł)">
           <Input
             type="number"
             placeholder="np. 60000"
@@ -255,7 +255,7 @@ export function CriteriaForm({
           })}
         </div>
         <p className="col-span-full text-[11px] text-muted-foreground">
-          Budżet podajemy tak, jak mówi go klient: kwota pod klucz w Polsce. Sufit ceny aukcyjnej
+          Budżet podajemy tak, jak mówi go klient: kwota pod drzwi w Polsce. Sufit ceny aukcyjnej
           wylicza backend — zależy od stanu USA (transport wchodzi do podstawy celnej) i od formy
           zakupu. 60 tys. zł to ok. 8 100 USD z Florydy.
         </p>
