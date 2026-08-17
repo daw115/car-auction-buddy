@@ -670,6 +670,52 @@ export const backendClearLlmCache = createServerFn({ method: "POST" })
     );
   });
 
+/** Kasuje z cache'u wyłącznie surowy HTML, zostawiając szkielety JSON.
+ *
+ *  Panel oferował tylko „wyczyść wszystko", co przy każdej zmianie szablonu
+ *  kasowało też wyniki modelu — a te kosztują. Regeneracja rekordu z sześcioma
+ *  lotami spada wtedy z ~42 s i realnego rachunku do ~5 s i zera.
+ */
+export const backendClearLlmCacheHtmlOnly = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .handler(async () => {
+    return callBackendSafe<{ removed: number }>(
+      { path: "/api/llm-cache/html-only", method: "DELETE" },
+      { removed: 0 },
+    );
+  });
+
+/** Status bota Telegrama: czy skonfigurowany i kto dostaje powiadomienia z nasłuchów. */
+export const backendTelegramStatus = createServerFn({ method: "GET" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .handler(async () => {
+    return callBackendSafe<{
+      configured: boolean;
+      bot_username?: string | null;
+      subscribers?: Array<{ chat_id: number | string; name?: string | null }>;
+      error?: string | null;
+    }>({ path: "/api/telegram/status", method: "GET" }, { configured: false, subscribers: [] });
+  });
+
+/** Wysyła testową wiadomość — jedyny sposób sprawdzenia, czy powiadomienia dochodzą. */
+export const backendTelegramTest = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .handler(
+    async (): Promise<{ sent?: boolean; detail?: string }> =>
+      backendRequest({ path: "/api/telegram/test", method: "POST" }),
+  );
+
+export const backendTelegramRemoveSubscriber = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(z.object({ chatId: z.union([z.number(), z.string()]) }).parse)
+  .handler(
+    async ({ data }): Promise<{ removed?: boolean }> =>
+      backendRequest({
+        path: `/api/telegram/subscribers/${encodeURIComponent(String(data.chatId))}`,
+        method: "DELETE",
+      }),
+  );
+
 export const backendListLlmCacheEntries = createServerFn({ method: "GET" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator((d: { limit?: number } | undefined) => d ?? {})

@@ -22,6 +22,7 @@ import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsPowiadomieniaRouteImport } from './routes/settings.powiadomienia'
 import { Route as SettingsFiltersRouteImport } from './routes/settings.filters'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsDefaultCriteriaRouteImport } from './routes/settings.default-criteria'
@@ -104,6 +105,11 @@ const IndexRoute = IndexRouteImport.update({
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsPowiadomieniaRoute = SettingsPowiadomieniaRouteImport.update({
+  id: '/powiadomienia',
+  path: '/powiadomienia',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsFiltersRoute = SettingsFiltersRouteImport.update({
@@ -224,6 +230,7 @@ export interface FileRoutesByFullPath {
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
+  '/settings/powiadomienia': typeof SettingsPowiadomieniaRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/public/lead': typeof ApiPublicLeadRoute
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
+  '/settings/powiadomienia': typeof SettingsPowiadomieniaRoute
   '/settings': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/public/lead': typeof ApiPublicLeadRoute
@@ -290,6 +298,7 @@ export interface FileRoutesById {
   '/settings/default-criteria': typeof SettingsDefaultCriteriaRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/filters': typeof SettingsFiltersRoute
+  '/settings/powiadomienia': typeof SettingsPowiadomieniaRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/dev/auth': typeof ApiDevAuthRoute
   '/api/public/lead': typeof ApiPublicLeadRoute
@@ -325,6 +334,7 @@ export interface FileRouteTypes {
     | '/settings/default-criteria'
     | '/settings/diagnostics'
     | '/settings/filters'
+    | '/settings/powiadomienia'
     | '/settings/'
     | '/api/dev/auth'
     | '/api/public/lead'
@@ -357,6 +367,7 @@ export interface FileRouteTypes {
     | '/settings/default-criteria'
     | '/settings/diagnostics'
     | '/settings/filters'
+    | '/settings/powiadomienia'
     | '/settings'
     | '/api/dev/auth'
     | '/api/public/lead'
@@ -390,6 +401,7 @@ export interface FileRouteTypes {
     | '/settings/default-criteria'
     | '/settings/diagnostics'
     | '/settings/filters'
+    | '/settings/powiadomienia'
     | '/settings/'
     | '/api/dev/auth'
     | '/api/public/lead'
@@ -517,6 +529,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/powiadomienia': {
+      id: '/settings/powiadomienia'
+      path: '/powiadomienia'
+      fullPath: '/settings/powiadomienia'
+      preLoaderRoute: typeof SettingsPowiadomieniaRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/filters': {
@@ -676,6 +695,7 @@ interface SettingsRouteChildren {
   SettingsDefaultCriteriaRoute: typeof SettingsDefaultCriteriaRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsFiltersRoute: typeof SettingsFiltersRoute
+  SettingsPowiadomieniaRoute: typeof SettingsPowiadomieniaRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
@@ -684,6 +704,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsDefaultCriteriaRoute: SettingsDefaultCriteriaRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsFiltersRoute: SettingsFiltersRoute,
+  SettingsPowiadomieniaRoute: SettingsPowiadomieniaRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 

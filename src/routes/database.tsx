@@ -49,6 +49,7 @@ import {
   backendListLlmCacheEntries,
   backendDeleteLlmCacheEntry,
   backendClearLlmCache,
+  backendClearLlmCacheHtmlOnly,
   backendListHtmlCache,
   backendFetchHtml,
   backendListModelNormalizations,
@@ -784,6 +785,8 @@ function LlmCacheSection() {
   const fn = useServerFn(backendListLlmCacheEntries);
   const fnDelete = useServerFn(backendDeleteLlmCacheEntry);
   const fnClear = useServerFn(backendClearLlmCache);
+  const fnClearHtml = useServerFn(backendClearLlmCacheHtmlOnly);
+  const [czyszczeHtml, setCzyszczeHtml] = useState(false);
   const fnHtml = useServerFn(backendFetchHtml);
 
   const load = useCallback(async () => {
@@ -842,6 +845,33 @@ function LlmCacheSection() {
           <Badge variant="secondary" className="text-[10px]">
             {items.length} wpisów
           </Badge>
+          {/* Tanszy wariant: kasuje surowy HTML, zostawia szkielety JSON od modelu.
+              Po zmianie szablonu to wystarczy, a regeneracja rekordu z szescioma
+              lotami spada z ~42 s i realnego rachunku do ~5 s i zera. */}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={items.length === 0 || czyszczeHtml}
+            onClick={() => {
+              setCzyszczeHtml(true);
+              fnClearHtml()
+                .then((w) => {
+                  toast.success(`Usunięto ${w.removed} wpisów HTML. Wyniki modelu zostały.`);
+                  void load();
+                })
+                .catch((e: { message?: string }) =>
+                  toast.error(e.message || "Nie udało się wyczyścić."),
+                )
+                .finally(() => setCzyszczeHtml(false));
+            }}
+          >
+            {czyszczeHtml ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+            )}
+            Wyczyść tylko HTML
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" disabled={items.length === 0}>
