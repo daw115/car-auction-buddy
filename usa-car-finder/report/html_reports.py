@@ -1015,7 +1015,13 @@ def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     }
 
 
-def render_client_shortlist(items, *, client_name: Optional[str] = None, ile: int = 3) -> str:
+def render_client_shortlist(
+    items,
+    *,
+    client_name: Optional[str] = None,
+    ile: int = 3,
+    pokaz_naglowek: bool = True,
+) -> str:
     """Krótka lista najlepszych aut — pierwszy kontakt po wyszukaniu.
 
     Osobny dokument, nie zlepek trzech pełnych raportów. Pierwszy kontakt ma
@@ -1025,6 +1031,10 @@ def render_client_shortlist(items, *, client_name: Optional[str] = None, ile: in
 
     Kolejności nie zmieniamy — auta przychodzą w rankingu ze scoringu, a broker
     mógł je już przestawić albo odsiać w panelu.
+
+    `pokaz_naglowek=False` zdejmuje powitanie i prośbę o odpowiedź — dla obrazka
+    wysyłanego w rozmowie, gdzie tę rolę pełni sama wiadomość
+    (`report/whatsapp.tekst_do_oferty`). PDF zostaje dokumentem i nagłówek ma.
     """
     wybrane = list(items)[:ile]
     auta = []
@@ -1064,6 +1074,7 @@ def render_client_shortlist(items, *, client_name: Optional[str] = None, ile: in
     return _jinja_env.get_template("client_shortlist.html.j2").render(
         auta=auta,
         naglowek=naglowek,
+        pokaz_naglowek=pokaz_naglowek,
         generated_at=datetime.now().strftime("%d.%m.%Y %H:%M"),
     )
 

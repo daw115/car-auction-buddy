@@ -35,6 +35,8 @@
   .lead { color: var(--ink-2); margin-top: 6px; max-width: 130mm; }
 
   .auta { padding: 0 16mm; }
+  /* Bez nagłówka pierwsze auto zaczyna się na krawędzi kartki. */
+  .auta:first-child { padding-top: 8mm; }
   .auto { display: grid; grid-template-columns: 62mm 1fr; gap: 6mm;
           padding: 7mm 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
   .auto:last-child { border-bottom: none; }
@@ -79,6 +81,10 @@
 <body>
 <div class="page">
 
+  {# Nagłówek to treść WIADOMOŚCI, nie dokumentu: powitanie i prośba o odpowiedź
+     idą tekstem obok obrazka (report/whatsapp.tekst_do_oferty). W obrazku zostają
+     same auta. Dla samodzielnego PDF-a nagłówek nadal ma sens, więc został. #}
+  {% if pokaz_naglowek %}
   <header>
     <div class="eyebrow">Auta z aukcji w USA</div>
     <h1>{{ naglowek }}</h1>
@@ -96,6 +102,7 @@
       {% endif %}
     </p>
   </header>
+  {% endif %}
 
   <div class="auta">
     {% for auto in auta %}

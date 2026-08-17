@@ -105,6 +105,39 @@ def _greeting(client_name: Optional[str]) -> str:
     return f"Dzień dobry, {first}"
 
 
+def _ile_aut(ile: int) -> str:
+    """Liczebnik po polsku. 2-4 „auta", od 5 „aut" — bez tego wychodzi „5 auta"."""
+    return "auto" if ile == 1 else ("auta" if 2 <= ile <= 4 else "aut")
+
+
+def tekst_do_oferty(ile: int, *, client_name: Optional[str] = None) -> str:
+    """Wiadomość, która idzie RAZEM z obrazkiem oferty.
+
+    Nagłówek był wcześniej wrysowany w obrazek: powitanie, zdanie o tym, co klient
+    dostaje, i prośba o odpowiedź. To jest treść wiadomości, nie dokumentu — na
+    obrazku wyglądała jak list wklejony w katalog, a w rozmowie powtarzała się
+    z tym, co broker i tak pisze. Obrazek pokazuje auta, wiadomość mówi, co z nimi
+    zrobić.
+
+    Ceny opisujemy tak samo jak wszędzie indziej: pod drzwi w Polsce. Klient tak
+    podaje budżet i po to jedno zdanie tu jest — bez niego kwota z obrazka wygląda
+    na cenę aukcyjną, do której coś jeszcze dojdzie.
+    """
+    powitanie = _greeting(client_name)
+    if ile == 1:
+        return (
+            f"{powitanie}. Znalazłem auto, które pasuje do tego, czego Pan szuka. "
+            "Cena jest policzona pod drzwi w Polsce. Jeśli Pana interesuje, proszę "
+            "dać znać, a odeślę komplet zdjęć i szczegółowy raport o tym egzemplarzu."
+        )
+    return (
+        f"{powitanie}. Wybrałem {ile} {_ile_aut(ile)}, które pasują do tego, czego Pan "
+        "szuka. Ceny są policzone pod drzwi w Polsce. Proszę odpisać samym numerem, "
+        "które Pana interesuje, a odeślę komplet zdjęć i szczegółowy raport o tym "
+        "egzemplarzu."
+    )
+
+
 def build_draft(
     lots: Iterable[CarLot],
     *,

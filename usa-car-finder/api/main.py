@@ -3152,13 +3152,24 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
         # w innej aplikacji; obrazek klient widzi od razu w wątku i odpowiada numerem.
         from report import screenshot
 
-        html = render_client_shortlist(lots_for_report, client_name=request.client_name)
+        # Bez nagłówka: powitanie i prośba o odpowiedź to treść WIADOMOŚCI, nie
+        # dokumentu. Wrysowane w obrazek wyglądały jak list wklejony w katalog
+        # i powtarzały to, co broker i tak pisze obok.
+        html = render_client_shortlist(
+            lots_for_report, client_name=request.client_name, pokaz_naglowek=False
+        )
         try:
             plik_bin = screenshot.html_na_png(html)
         except screenshot.ScreenshotNiedostepny as blad:
             raise HTTPException(status_code=503, detail=str(blad)) from blad
         nazwa = screenshot.nazwa_pliku(request.client_name)
-        podpis = "Oferta wstępna dla klienta. Przekaż jako zdjęcie w rozmowie."
+
+        # Podpisem jest DOKŁADNIE tekst dla klienta, nie instrukcja dla brokera.
+        # Broker kopiuje go do rozmowy, a gdy przekaże zdjęcie razem z podpisem,
+        # klient dostanie to samo, co miał dostać — bez zdania „przekaż dalej".
+        from report.whatsapp import tekst_do_oferty
+
+        podpis = tekst_do_oferty(len(lots_for_report[:3]), client_name=request.client_name)
 
         try:
             wyslane_png = wysylka.wyslij_plik(
@@ -3166,7 +3177,14 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
             )
         except wysylka.NicNieDoszlo as blad:
             raise HTTPException(status_code=502, detail=str(blad)) from blad
-        return {"wyslane": wyslane_png, "plik": nazwa, "rozmiar_kb": round(len(plik_bin) / 1024)}
+        return {
+            "wyslane": wyslane_png,
+            "plik": nazwa,
+            "rozmiar_kb": round(len(plik_bin) / 1024),
+            # Panel pokazuje ten tekst do skopiowania — obrazek bez wiadomości
+            # to katalog bez listu przewodniego.
+            "tekst": podpis,
+        }
 
     if rodzaj == "klient":
         html = render_client_report(lots_for_report[0], criteria=request.criteria)
