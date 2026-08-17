@@ -377,7 +377,14 @@ export const raportNaTelegram = createServerFn({ method: "POST" })
   );
 
 /** Cztery kroki sprawy: oferta wstępna, wybór klienta, raport, decyzja. */
-export type WyslaneAuto = { lot_id?: string | null; nazwa?: string; url?: string | null };
+export type WyslaneAuto = {
+  /** Stabilny identyfikator w obrębie sprawy — `lot_id`, VIN albo pozycja.
+   *  Manheim nie podaje `lot_id`, więc samo `lot_id` na klucz się nie nadaje. */
+  klucz?: string;
+  lot_id?: string | null;
+  nazwa?: string;
+  url?: string | null;
+};
 
 export type StanSprawy = {
   lead_id: number;
@@ -399,13 +406,13 @@ export const getStanSprawy = createServerFn({ method: "GET" })
       backendRequest({ path: `/api/sales/leads/${data.leadId}/sprawa`, method: "GET" }),
   );
 
-/** Krok 2: na które auta wskazał klient. Identyfikatory z oferty wstępnej. */
+/** Krok 2: na które auta wskazał klient. Klucze z oferty wstępnej. */
 export const zapiszWybor = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(
     z.object({
       leadId: z.number().int().positive(),
-      lotIds: z.array(z.string().min(1)).max(10),
+      klucze: z.array(z.string().min(1)).max(10),
     }).parse,
   )
   .handler(
@@ -413,7 +420,7 @@ export const zapiszWybor = createServerFn({ method: "POST" })
       backendRequest({
         path: `/api/sales/leads/${data.leadId}/sprawa/wybor`,
         method: "POST",
-        body: { lot_ids: data.lotIds },
+        body: { klucze: data.klucze },
       }),
   );
 
@@ -431,7 +438,7 @@ export const odczytajWybor = createServerFn({ method: "POST" })
     }).parse,
   )
   .handler(
-    async ({ data }): Promise<{ numery: number[]; lot_ids: string[]; auta: WyslaneAuto[] }> =>
+    async ({ data }): Promise<{ numery: number[]; klucze: string[]; auta: WyslaneAuto[] }> =>
       backendRequest({
         path: `/api/sales/leads/${data.leadId}/sprawa/wybor-z-odpowiedzi`,
         method: "POST",
@@ -449,7 +456,7 @@ export const wyslijRaportSzczegolowy = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       leadId: z.number().int().positive(),
-      lotIds: z.array(z.string().min(1)).max(3),
+      klucze: z.array(z.string().min(1)).max(3),
     }).parse,
   )
   .handler(
@@ -457,7 +464,7 @@ export const wyslijRaportSzczegolowy = createServerFn({ method: "POST" })
       backendRequest({
         path: `/api/sales/leads/${data.leadId}/sprawa/raport-szczegolowy`,
         method: "POST",
-        body: { lot_ids: data.lotIds },
+        body: { klucze: data.klucze },
       }),
   );
 

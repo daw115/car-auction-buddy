@@ -56,7 +56,7 @@ export function SprawaPanel({ leadId, ostatniaOdKlienta = null }: Props) {
   };
 
   const wybor = useMutation({
-    mutationFn: () => fnWybor({ data: { leadId, lotIds: [...zaznaczone] } }),
+    mutationFn: () => fnWybor({ data: { leadId, klucze: [...zaznaczone] } }),
     onSuccess: () => {
       toast.success("Zapisane. Teraz raport szczegółowy o tych autach.");
       setZaznaczone(new Set());
@@ -68,7 +68,7 @@ export function SprawaPanel({ leadId, ostatniaOdKlienta = null }: Props) {
   /** Zapisuje wybór i od razu wysyła oba raporty na Telegram — jedno kliknięcie
    *  zamiast trzech. Klient odpisał numerem, więc dalsza droga jest tylko jedna. */
   const raport = useMutation({
-    mutationFn: (lotIds: string[]) => fnRaport({ data: { leadId, lotIds } }),
+    mutationFn: (klucze: string[]) => fnRaport({ data: { leadId, klucze } }),
     onSuccess: (w) => {
       toast.success(
         `Raporty na Telegramie (${w.pliki.length} pliki, ${w.rozmiar_kb} KB). Raport klienta przekaż w rozmowie.`,
@@ -158,7 +158,7 @@ export function SprawaPanel({ leadId, ostatniaOdKlienta = null }: Props) {
                 size="sm"
                 variant="outline"
                 className="h-6 px-2 text-xs"
-                onClick={() => setZaznaczone(new Set(podpowiedz!.lot_ids))}
+                onClick={() => setZaznaczone(new Set(podpowiedz!.klucze))}
               >
                 Zaznacz
               </Button>
@@ -167,8 +167,10 @@ export function SprawaPanel({ leadId, ostatniaOdKlienta = null }: Props) {
 
           <div className="space-y-1">
             {data!.wyslane.map((auto, i) => {
-              const id = String(auto.lot_id ?? i);
-              const wybrany = data!.wybrane.some((w) => String(w.lot_id) === id);
+              // Klucz, nie `lot_id`: Manheim go nie podaje, a wtedy panel i backend
+              // liczyły pozycję każdy po swojemu i wybór klienta trafiał w próżnię.
+              const id = String(auto.klucz ?? auto.lot_id ?? i);
+              const wybrany = data!.wybrane.some((w) => String(w.klucz ?? w.lot_id) === id);
               return (
                 <label
                   key={id}
