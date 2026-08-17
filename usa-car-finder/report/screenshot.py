@@ -56,10 +56,15 @@ def html_na_png(html: str, *, szerokosc: Optional[int] = None) -> bytes:
         with sync_playwright() as pw:
             przegladarka = pw.chromium.launch(args=["--no-sandbox"])
             try:
-                strona = przegladarka.new_page(viewport={"width": szer, "height": 1200})
+                # Niskie okno celowo: `full_page` nigdy nie schodzi poniżej wysokości
+                # widoku, więc przy standardowych 1080 krótka oferta dostawałaby
+                # kilkaset pikseli pustego tła pod spodem. W czacie widać głównie
+                # miniaturę, a miniatura w połowie pusta to zmarnowana pierwsza chwila.
+                strona = przegladarka.new_page(viewport={"width": szer, "height": 200})
                 strona.set_content(html, wait_until="load")
-                # `full_page` bierze całą wysokość dokumentu, także tę poza ekranem —
-                # inaczej z trzech aut widać byłoby półtora.
+                kartka = strona.query_selector(".page")
+                if kartka is not None:
+                    return kartka.screenshot(type="png")
                 return strona.screenshot(full_page=True, type="png")
             finally:
                 przegladarka.close()

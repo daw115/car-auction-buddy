@@ -194,6 +194,38 @@ def send_document(
     return _http_post_multipart("sendDocument", fields, files).get("result") or {}
 
 
+def send_photo(
+    chat_id: int,
+    file_path: str,
+    *,
+    caption: Optional[str] = None,
+    parse_mode: str = "HTML",
+    filename: Optional[str] = None,
+) -> dict:
+    """Wysyła obrazek jako Photo, nie jako Document.
+
+    Różnica jest cała w tym, co broker może z tym zrobić dalej. Document trzeba
+    zapisać i dołączyć jako plik, a wtedy klient dostaje na WhatsAppie załącznik
+    do pobrania. Photo przekazuje się dalej jednym kliknięciem i u klienta ląduje
+    jako obrazek widoczny w wątku — czyli to, po co w ogóle robimy tu obrazek
+    zamiast PDF-a.
+
+    Telegram skaluje zdjęcia do 1280 px na dłuższym boku. Nasza oferta jest węższa
+    i niższa, więc przechodzi bez przeskalowania; gdyby kiedyś urosła, tekst
+    zacząłby się rozmywać i lepszym wyjściem byłby wtedy podział na jeden obrazek
+    na auto niż wysyłka pliku.
+    """
+    p = Path(file_path)
+    if not p.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    fields: dict[str, Any] = {"chat_id": chat_id, "parse_mode": parse_mode}
+    if caption:
+        fields["caption"] = caption[:1020] + "…" if len(caption) > 1024 else caption
+    files = {"photo": (filename or p.name, p.read_bytes(), "image/png")}
+    return _http_post_multipart("sendPhoto", fields, files).get("result") or {}
+
+
 def send_to_subscriber(
     chat_id: int,
     summary_text: str,

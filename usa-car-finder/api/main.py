@@ -3140,23 +3140,12 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
     if not lots_for_report:
         raise HTTPException(status_code=400, detail="Brak lotów do raportu")
 
-    from notify import telegram as tg
+    from notify import wysylka
 
-    if not tg.is_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="Bot Telegrama nie jest skonfigurowany — sprawdź Ustawienia → Powiadomienia.",
-        )
-    from api import telegram_database as tdb
-
-    # Ci sami odbiorcy, co przy nocnych trafieniach z nasłuchów — jedna lista,
-    # jedno miejsce do wypisania się.
-    odbiorcy = [s["chat_id"] for s in tdb.list_active_subscribers()]
-    if not odbiorcy:
-        raise HTTPException(
-            status_code=503,
-            detail="Nikt nie jest zapisany do bota. Napisz do niego /start ze swojego telefonu.",
-        )
+    try:
+        odbiorcy = wysylka.odbiorcy()
+    except wysylka.BrakOdbiorcow as blad:
+        raise HTTPException(status_code=503, detail=str(blad)) from blad
 
     if rodzaj == "oferta-png":
         # Pierwszy kontakt idzie OBRAZKIEM. PDF w rozmowie trzeba pobrać i otworzyć
@@ -3171,25 +3160,12 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
         nazwa = screenshot.nazwa_pliku(request.client_name)
         podpis = "Oferta wstępna dla klienta. Przekaż jako zdjęcie w rozmowie."
 
-        import tempfile
-
-        from notify import telegram as tg2
-
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_png:
-            tmp_png.write(plik_bin)
-            sciezka_png = tmp_png.name
-        wyslane_png = 0
         try:
-            for chat_id in odbiorcy:
-                try:
-                    tg2.send_document(chat_id, sciezka_png, caption=podpis, filename=nazwa)
-                    wyslane_png += 1
-                except Exception:
-                    logger.warning("[telegram] nie udało się wysłać %s", nazwa, exc_info=True)
-        finally:
-            Path(sciezka_png).unlink(missing_ok=True)
-        if not wyslane_png:
-            raise HTTPException(status_code=502, detail="Bot nie dostarczył obrazka.")
+            wyslane_png = wysylka.wyslij_plik(
+                plik_bin, nazwa, podpis, jako_zdjecie=True, chaty=odbiorcy
+            )
+        except wysylka.NicNieDoszlo as blad:
+            raise HTTPException(status_code=502, detail=str(blad)) from blad
         return {"wyslane": wyslane_png, "plik": nazwa, "rozmiar_kb": round(len(plik_bin) / 1024)}
 
     if rodzaj == "klient":
@@ -3210,22 +3186,10 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
     except pdf_export.PdfNiedostepny as blad:
         raise HTTPException(status_code=503, detail=str(blad)) from blad
 
-    wyslane = 0
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf)
-        sciezka = tmp.name
     try:
-        for chat_id in odbiorcy:
-            try:
-                tg.send_document(chat_id, sciezka, caption=podpis, filename=nazwa)
-                wyslane += 1
-            except Exception:
-                logger.warning("[telegram] nie udało się wysłać %s do %s", nazwa, chat_id, exc_info=True)
-    finally:
-        Path(sciezka).unlink(missing_ok=True)
-
-    if not wyslane:
-        raise HTTPException(status_code=502, detail="Bot nie dostarczył pliku. Sprawdź logi.")
+        wyslane = wysylka.wyslij_plik(pdf, nazwa, podpis, chaty=odbiorcy)
+    except wysylka.NicNieDoszlo as blad:
+        raise HTTPException(status_code=502, detail=str(blad)) from blad
     return {"wyslane": wyslane, "plik": nazwa, "rozmiar_kb": round(len(pdf) / 1024)}
 
 

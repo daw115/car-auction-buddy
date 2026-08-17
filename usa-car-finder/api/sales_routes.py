@@ -800,6 +800,135 @@ async def sprawa_wybor(lead_id: int, payload: WyborIn) -> dict[str, Any]:
     return pipeline.zapisz_wybor(lead_id, payload.lot_ids).as_dict()
 
 
+async def _raporty_na_telegram(loty: list[Any]) -> dict[str, Any]:
+    """Raport klienta i raport brokera dla wybranych aut, oba na Telegram brokera.
+
+    Razem, bo to jedna czynność: broker przekazuje klientowi jego raport, a swój
+    czyta przed rozmową. Rozdzielone na dwa przyciski znaczyłoby, że któryś
+    czasem nie zostanie kliknięty.
+    """
+    from notify import wysylka
+    from parser.models import AnalyzedLot
+    from report import pdf_export
+    from report.html_reports import render_broker_report, render_client_report
+
+    if not pdf_export.dostepny():
+        raise HTTPException(503, "Generator PDF nie jest dostępny na tym serwerze.")
+
+    try:
+        chaty = wysylka.odbiorcy()
+    except wysylka.BrakOdbiorcow as blad:
+        raise HTTPException(503, str(blad)) from blad
+
+    pliki: list[str] = []
+    laczny_rozmiar = 0
+    for surowy in loty:
+        lot = surowy if isinstance(surowy, AnalyzedLot) else AnalyzedLot(**surowy)
+        warianty = (
+            (render_client_report(lot), "raport", "Szczegółowy raport dla klienta. Przekaż go w rozmowie."),
+            (render_broker_report(lot), "broker", "Raport brokerski — do Twojej wiadomości, nie dla klienta."),
+        )
+        for html, przyrostek, podpis in warianty:
+            try:
+                pdf = pdf_export.html_na_pdf(html)
+            except pdf_export.PdfNiedostepny as blad:
+                raise HTTPException(503, str(blad)) from blad
+            nazwa = pdf_export.nazwa_pliku(lot.lot, przyrostek)
+            try:
+                wysylka.wyslij_plik(pdf, nazwa, podpis, chaty=chaty)
+            except wysylka.NicNieDoszlo as blad:
+                raise HTTPException(502, str(blad)) from blad
+            pliki.append(nazwa)
+            laczny_rozmiar += len(pdf)
+
+    return {"pliki": pliki, "rozmiar_kb": round(laczny_rozmiar / 1024)}
+
+
+class WyborZOdpowiedziIn(BaseModel):
+    tekst: str
+
+
+@router.post("/api/sales/leads/{lead_id}/sprawa/wybor-z-odpowiedzi")
+async def sprawa_wybor_z_odpowiedzi(lead_id: int, payload: WyborZOdpowiedziIn) -> dict[str, Any]:
+    """Co klient wskazał, sądząc po tym, co odpisał na ofertę.
+
+    Nie zapisuje niczego. Oferta jest ponumerowana i klient odpisuje „2", ale
+    „mam 2 dzieci" też zawiera dwójkę, więc numery wracają do panelu jako
+    propozycja zaznaczenia i przechodzą przez brokera.
+    """
+    from sales import pipeline
+    from sales.odpowiedz import numery_z_odpowiedzi
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    stan = pipeline.stan(lead_id)
+    numery = numery_z_odpowiedzi(payload.tekst, len(stan.wyslane))
+    return {
+        "numery": numery,
+        "lot_ids": [str(stan.wyslane[n - 1].get("lot_id")) for n in numery],
+        "auta": [stan.wyslane[n - 1] for n in numery],
+    }
+
+
+class RaportSzczegolowyIn(BaseModel):
+    #: Numery pozycji z oferty (1, 2, 3) albo identyfikatory lotów — co panel ma pod ręką.
+    numery: list[int] = Field(default_factory=list)
+    lot_ids: list[str] = Field(default_factory=list)
+
+
+@router.post("/api/sales/leads/{lead_id}/sprawa/raport-szczegolowy")
+async def sprawa_raport_szczegolowy(
+    lead_id: int, payload: RaportSzczegolowyIn
+) -> dict[str, Any]:
+    """Krok 2 → 3 jednym kliknięciem: klient wskazał numer, idą raporty.
+
+    Wcześniej broker musiał zaznaczyć wybór, wrócić do listy kandydatów, odszukać
+    tam to samo auto i wysłać raport osobnym przyciskiem. Numer z rozmowy wystarcza,
+    żeby zrobić to wszystko: loty odnajdujemy w ostatnim wyszukiwaniu leada, bo krok 1
+    zapisuje o nich tylko tyle, ile trzeba do rozpoznania w rozmowie.
+
+    Raport klienta i raport brokera idą razem — brokerowi na Telegram, jak wszystko
+    inne. Do klienta nadal nic nie wychodzi bez jego kliknięcia.
+    """
+    from sales import pipeline
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+
+    stan = pipeline.stan(lead_id)
+    if not stan.wyslane:
+        raise HTTPException(400, "Ta sprawa nie ma jeszcze oferty wstępnej.")
+
+    for n in payload.numery:
+        if not 1 <= n <= len(stan.wyslane):
+            raise HTTPException(400, f"W ofercie było {len(stan.wyslane)} aut, nie ma numeru {n}.")
+    wybrane_id = [str(stan.wyslane[n - 1].get("lot_id")) for n in payload.numery]
+    wybrane_id += [i for i in payload.lot_ids if i not in wybrane_id]
+    if not wybrane_id:
+        raise HTTPException(400, "Nie podano, które auto klient wybrał.")
+
+    # Pełne dane lota są tylko w wynikach wyszukiwania — krok 1 trzyma sam opis.
+    wyszukiwanie = db.latest_lead_search(lead_id)
+    kandydaci = (wyszukiwanie or {}).get("candidates") or []
+    po_id = {str((k.get("lot") or {}).get("lot_id")): k.get("lot") for k in kandydaci}
+    loty = [po_id[i] for i in wybrane_id if po_id.get(i)]
+    if not loty:
+        raise HTTPException(
+            409,
+            "Nie mam już pełnych danych tych aut — wyszukiwanie wygasło. "
+            "Uruchom je ponownie i wyślij raport z listy kandydatów.",
+        )
+
+    pipeline.zapisz_wybor(lead_id, wybrane_id)
+
+    wyniki = await _raporty_na_telegram(loty)
+    for nazwa in wyniki["pliki"]:
+        pipeline.zapisz_raport(lead_id, nazwa)
+
+    return {"sprawa": pipeline.stan(lead_id).as_dict(), **wyniki}
+
+
 class RaportIn(BaseModel):
     nazwa_pliku: str
 
