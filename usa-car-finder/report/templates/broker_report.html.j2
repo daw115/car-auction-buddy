@@ -7,13 +7,13 @@
 <style>
   :root {
     --navy: #0a1628;
-    --blue: #1a56a0;
-    --accent: #f0a500;
+    --blue: #14568f;
+    --accent: #14568f;
     --ok: #15803d;
     --ok-bg: #dcfce7;
-    --amber: #b45309;
+    --amber: #8a5710;
     --amber-bg: #fef3c7;
-    --red: #b91c1c;
+    --red: #8f2f2a;
     --red-bg: #fee2e2;
     --info: #1d4ed8;
     --info-bg: #dbeafe;
@@ -23,7 +23,7 @@
     --bg: #f1f5f9;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 20px; }
 
   /* CONFIDENTIAL BAR */
@@ -164,6 +164,14 @@
   @media print {
     body { background: #fff; }
     .wrap { max-width: none; padding: 0; }
+  }
+
+  @page { size: A4; margin: 12mm; }
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .page, .wrap { max-width: none; }
+    .section, .auto, table { break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
   }
 </style>
 </head>
