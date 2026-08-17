@@ -3110,6 +3110,85 @@ async def generate_client_shortlist(request: ApproveReportRequest, format: str =
     )
 
 
+@app.post("/report/na-telegram")
+async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str = "shortlist"):
+    """Wysyła PDF na Telegram brokera, żeby mógł go przekazać dalej w WhatsAppie.
+
+    To jest obejście ograniczenia, którego nie da się usunąć: link `wa.me` przenosi
+    wyłącznie tekst, więc panel nie ma jak podać klientowi załącznika. Bot Telegrama
+    natomiast dociera na ten sam telefon, na którym broker prowadzi rozmowę — plik
+    przychodzi w kilka sekund i wystarczy go przekazać dalej.
+
+    Do KLIENTA nadal nic nie wychodzi samo. Odbiorcą jest broker.
+    """
+    import tempfile
+
+    from report import pdf_export
+    from report.html_reports import (
+        render_broker_report,
+        render_client_report,
+        render_client_shortlist,
+    )
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu")
+
+    from notify import telegram as tg
+
+    if not tg.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Bot Telegrama nie jest skonfigurowany — sprawdź Ustawienia → Powiadomienia.",
+        )
+    from notify import telegram_db as tdb
+
+    # Ci sami odbiorcy, co przy nocnych trafieniach z nasłuchów — jedna lista,
+    # jedno miejsce do wypisania się.
+    odbiorcy = [s["chat_id"] for s in tdb.list_active_subscribers()]
+    if not odbiorcy:
+        raise HTTPException(
+            status_code=503,
+            detail="Nikt nie jest zapisany do bota. Napisz do niego /start ze swojego telefonu.",
+        )
+
+    if rodzaj == "klient":
+        html = render_client_report(lots_for_report[0], criteria=request.criteria)
+        nazwa = pdf_export.nazwa_pliku(lots_for_report[0].lot, "raport")
+        podpis = "Szczegółowy raport dla klienta. Przekaż go w rozmowie."
+    elif rodzaj == "broker":
+        html = render_broker_report(lots_for_report[0], criteria=request.criteria)
+        nazwa = pdf_export.nazwa_pliku(lots_for_report[0].lot, "broker")
+        podpis = "Raport brokerski — do Twojej wiadomości, nie dla klienta."
+    else:
+        html = render_client_shortlist(lots_for_report, client_name=request.client_name)
+        nazwa = "propozycje.pdf"
+        podpis = f"Propozycje dla klienta ({len(lots_for_report[:3])} auta). Przekaż w WhatsAppie."
+
+    try:
+        pdf = pdf_export.html_na_pdf(html)
+    except pdf_export.PdfNiedostepny as blad:
+        raise HTTPException(status_code=503, detail=str(blad)) from blad
+
+    wyslane = 0
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf)
+        sciezka = tmp.name
+    try:
+        for chat_id in odbiorcy:
+            try:
+                tg.send_document(chat_id, sciezka, caption=podpis, filename=nazwa)
+                wyslane += 1
+            except Exception:
+                logger.warning("[telegram] nie udało się wysłać %s do %s", nazwa, chat_id, exc_info=True)
+    finally:
+        Path(sciezka).unlink(missing_ok=True)
+
+    if not wyslane:
+        raise HTTPException(status_code=502, detail="Bot nie dostarczył pliku. Sprawdź logi.")
+    return {"wyslane": wyslane, "plik": nazwa, "rozmiar_kb": round(len(pdf) / 1024)}
+
+
 @app.post("/report/client-pdf")
 async def generate_client_pdf(request: ApproveReportRequest):
     """Szczegółowy raport o JEDNYM aucie jako PDF — to, co idzie po wyborze klienta."""
