@@ -702,7 +702,13 @@ export const backendTelegramTest = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .handler(
     async (): Promise<{ sent?: boolean; detail?: string }> =>
-      backendRequest({ path: "/api/telegram/test", method: "POST" }),
+      backendRequest({
+        path: "/api/telegram/test",
+        method: "POST",
+        // Tytuł, po którym w Telegramie widać, że to test z panelu, a nie
+        // trafienie z nocnego nasłuchu.
+        body: { title: "Wiadomość testowa z panelu" },
+      }),
   );
 
 export const backendTelegramRemoveSubscriber = createServerFn({ method: "POST" })
