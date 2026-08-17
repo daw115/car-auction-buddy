@@ -3,7 +3,7 @@ import { useNavigate, createFileRoute, Link, useRouter } from "@tanstack/react-r
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Loader2, MessageSquare, RefreshCw, Search, X } from "lucide-react";
+import { ArrowLeft, Check, Loader2, MessageSquare, RefreshCw, Search, Send, X } from "lucide-react";
 
 import {
   approveDraft,
@@ -15,6 +15,7 @@ import {
   promoteLead,
   setLeadStage,
   startLeadSearch,
+  sendDraftToTelegram,
 } from "@/functions/sales.functions";
 import { readWhatsappConversation, transcribeRecording } from "@/functions/intake.functions";
 import { KandydaciPanel } from "@/components/panels/kandydaci-panel";
@@ -93,6 +94,7 @@ function KartaKlienta() {
   const fnApprove = useServerFn(approveDraft);
   const fnReject = useServerFn(rejectDraft);
   const fnRegenerate = useServerFn(regenerateDraft);
+  const fnNaTelegram = useServerFn(sendDraftToTelegram);
   const fnReply = useServerFn(recordClientReply);
   const fnStage = useServerFn(setLeadStage);
   const fnPatch = useServerFn(patchLead);
@@ -276,6 +278,29 @@ function KartaKlienta() {
                     }
                   >
                     <Check className="mr-1.5 h-3.5 w-3.5" /> Zatwierdź i otwórz WhatsApp
+                  </Button>
+                  {/* Zatwierdzanie z telefonu: propozycja ląduje na Telegramie
+                      z przyciskami, a „Wyślij" wstawia treść w rozmowę na
+                      WhatsAppie. Bez wracania do panelu w trakcie rozmowy. */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={zajety !== null}
+                    title="Prześlij na Telegram, żeby zatwierdzić z telefonu"
+                    onClick={() =>
+                      zrob(
+                        "tg",
+                        () => fnNaTelegram({ data: { draftId: draft.id } }),
+                        "Wysłane na Telegram. Zatwierdź na telefonie.",
+                      )
+                    }
+                  >
+                    {zajety === "tg" ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    Na Telegram
                   </Button>
                   <Button
                     size="sm"

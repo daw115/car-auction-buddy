@@ -326,6 +326,24 @@ export const proposeOffer = createServerFn({ method: "POST" })
       }),
   );
 
+/**
+ * Przerzuca propozycję na Telegram brokera, z przyciskami „Wyślij" i „Odrzuć".
+ *
+ * Po to, żeby zatwierdzać z telefonu w trakcie rozmowy, bez wracania do panelu.
+ * Naciśnięcie „Wyślij" idzie tą samą drogą co przycisk tutaj (approve_and_send),
+ * a potem wstawia treść w rozmowę na WhatsApp Web.
+ */
+export const sendDraftToTelegram = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(z.object({ draftId: z.number().int().positive() }).parse)
+  .handler(
+    async ({ data }): Promise<{ wyslane: number; draft_id: number }> =>
+      backendRequest({
+        path: `/api/sales/drafts/${data.draftId}/na-telegram`,
+        method: "POST",
+      }),
+  );
+
 export const regenerateDraft = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
