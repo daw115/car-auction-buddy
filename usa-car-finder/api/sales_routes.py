@@ -760,6 +760,90 @@ async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
     return {"draft": _draft_json(db.save_draft(draft)), "offers": offers}
 
 
+@router.get("/api/sales/leads/{lead_id}/sprawa")
+async def stan_sprawy(lead_id: int) -> dict[str, Any]:
+    """Na którym z czterech kroków stoi sprawa i co dokładnie już poszło."""
+    from sales import pipeline
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+    return pipeline.stan(lead_id).as_dict()
+
+
+class OfertaWstepnaIn(BaseModel):
+    lots: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/api/sales/leads/{lead_id}/sprawa/oferta")
+async def sprawa_oferta(lead_id: int, payload: OfertaWstepnaIn) -> dict[str, Any]:
+    """Krok 1: zapisz, które auta poszły w ofercie wstępnej."""
+    from sales import pipeline
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+    if not payload.lots:
+        raise HTTPException(400, "Pusta oferta — nie ma czego zapisać.")
+    return pipeline.zapisz_oferte(lead_id, payload.lots).as_dict()
+
+
+class WyborIn(BaseModel):
+    lot_ids: list[str] = Field(default_factory=list)
+
+
+@router.post("/api/sales/leads/{lead_id}/sprawa/wybor")
+async def sprawa_wybor(lead_id: int, payload: WyborIn) -> dict[str, Any]:
+    """Krok 2: na które auta wskazał klient."""
+    from sales import pipeline
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+    return pipeline.zapisz_wybor(lead_id, payload.lot_ids).as_dict()
+
+
+class RaportIn(BaseModel):
+    nazwa_pliku: str
+
+
+@router.post("/api/sales/leads/{lead_id}/sprawa/raport")
+async def sprawa_raport(lead_id: int, payload: RaportIn) -> dict[str, Any]:
+    """Krok 3: raport szczegółowy poszedł do klienta."""
+    from sales import pipeline
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+    return pipeline.zapisz_raport(lead_id, payload.nazwa_pliku).as_dict()
+
+
+class DecyzjaIn(BaseModel):
+    decyzja: str
+    notatka: str = ""
+
+
+@router.post("/api/sales/leads/{lead_id}/sprawa/decyzja")
+async def sprawa_decyzja(lead_id: int, payload: DecyzjaIn) -> dict[str, Any]:
+    """Krok 4: decyzja KLIENTA o zakupie.
+
+    Przy „kupuje" przesuwamy etap leada na `decyzja` — stamtąd zaczyna się
+    licytacja, która jest już osobnym rozdziałem. Przy „rezygnuje" na `stracony`.
+    """
+    from sales import pipeline
+    from sales.models import Stage
+
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(404, f"nie ma leada {lead_id}")
+    try:
+        wynik = pipeline.zapisz_decyzje(lead_id, payload.decyzja, payload.notatka)
+    except ValueError as blad:
+        raise HTTPException(400, str(blad)) from blad
+
+    # Etap leada przesuwamy tą samą drogą co ekran „Etap" w panelu, żeby nie było
+    # dwóch sposobów zmiany tego samego pola.
+    lead = db.get_lead(lead_id)
+    lead.stage = Stage.DECYZJA if payload.decyzja == "kupuje" else Stage.STRACONY
+    db.update_lead(lead)
+    return wynik.as_dict()
+
+
 @router.post("/api/sales/drafts/{draft_id}/na-telegram")
 async def draft_na_telegram(draft_id: int) -> dict[str, Any]:
     """Wysyła propozycję na Telegram brokera z przyciskami „Wyślij" i „Odrzuć".
