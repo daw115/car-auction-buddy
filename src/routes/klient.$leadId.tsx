@@ -19,6 +19,7 @@ import {
 } from "@/functions/sales.functions";
 import { readWhatsappConversation, transcribeRecording } from "@/functions/intake.functions";
 import { KandydaciPanel } from "@/components/panels/kandydaci-panel";
+import { SprawaPanel } from "@/components/panels/sprawa-panel";
 import { WatchesPanel } from "@/components/panels/watches-panel";
 import type { ClientCriteria } from "@/lib/types";
 
@@ -741,6 +742,8 @@ function KartaKlienta() {
               </p>
             )}
           </Card>
+
+          <SprawaPanel leadId={id} />
 
           <KandydaciPanel leadId={id} budzetPln={lead.budget_pln ?? null} />
 

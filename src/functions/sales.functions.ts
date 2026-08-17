@@ -333,6 +333,64 @@ export const proposeOffer = createServerFn({ method: "POST" })
  * Naciśnięcie „Wyślij" idzie tą samą drogą co przycisk tutaj (approve_and_send),
  * a potem wstawia treść w rozmowę na WhatsApp Web.
  */
+/** Cztery kroki sprawy: oferta wstępna, wybór klienta, raport, decyzja. */
+export type StanSprawy = {
+  lead_id: number;
+  krok: number;
+  krok_nazwa: string;
+  wyslane: Array<{ lot_id?: string | null; nazwa?: string; url?: string | null }>;
+  wybrane: Array<{ lot_id?: string | null; nazwa?: string }>;
+  raporty: string[];
+  decyzja: string | null;
+  notatka: string;
+  zmieniono: string | null;
+};
+
+export const getStanSprawy = createServerFn({ method: "GET" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(z.object({ leadId: z.number().int().positive() }).parse)
+  .handler(
+    async ({ data }): Promise<StanSprawy> =>
+      backendRequest({ path: `/api/sales/leads/${data.leadId}/sprawa`, method: "GET" }),
+  );
+
+/** Krok 2: na które auta wskazał klient. Identyfikatory z oferty wstępnej. */
+export const zapiszWybor = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      lotIds: z.array(z.string().min(1)).max(10),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<StanSprawy> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/sprawa/wybor`,
+        method: "POST",
+        body: { lot_ids: data.lotIds },
+      }),
+  );
+
+/** Krok 4: decyzja klienta. Dwie wartości, bez „zastanawia się". */
+export const zapiszDecyzje = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      decyzja: z.enum(["kupuje", "rezygnuje"]),
+      notatka: z.string().max(2000).default(""),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<StanSprawy> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/sprawa/decyzja`,
+        method: "POST",
+        body: { decyzja: data.decyzja, notatka: data.notatka },
+      }),
+  );
+
 export const sendDraftToTelegram = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ draftId: z.number().int().positive() }).parse)

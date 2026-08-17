@@ -85,6 +85,9 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
       if (wynik.draft) {
         toast.success("Propozycja gotowa — jest na górze karty, do przeczytania przed wysłaniem.");
         qc.invalidateQueries({ queryKey: ["lead", leadId] });
+        // Krok 1 sprawy zapisuje się sam: broker nie ma pamiętać o klikaniu
+        // czegoś, co system i tak wie.
+        qc.invalidateQueries({ queryKey: ["sprawa", leadId] });
       } else {
         toast.warning(wynik.reason || "Agent nie ma nic do napisania na tym etapie.");
       }
