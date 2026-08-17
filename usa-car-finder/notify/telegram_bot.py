@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
@@ -323,7 +324,12 @@ def _get_updates(offset: Optional[int]) -> list[dict]:
     }
     if offset is not None:
         params["offset"] = offset
-    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    # Sklejanie ręczne przepuszczało do adresu wszystko, co było w wartości.
+    # Przy jednym elemencie („message") działało; po dołożeniu drugiego json.dumps
+    # wstawił spację po przecinku i urllib odrzucał adres jako zawierający znaki
+    # sterujące — bot przestał odbierać JAKIEKOLWIEK zdarzenia, także komendy.
+    # Awaria była cicha: pętla logowała ostrzeżenie i próbowała dalej w kółko.
+    qs = urllib.parse.urlencode(params)
     url = f"https://api.telegram.org/bot{token}/getUpdates?{qs}"
     try:
         with urllib.request.urlopen(url, timeout=_LONG_POLL_TIMEOUT + 10) as resp:
