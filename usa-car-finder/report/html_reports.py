@@ -144,12 +144,20 @@ def _data_aukcji_po_polsku(surowa: Optional[str]) -> str:
     return moment.strftime("%d.%m.%Y, godz. %H:%M")
 
 
+# Pełne zdania, nie równoważniki. Poprzednia wersja brzmiała jak tłumaczenie
+# amerykańskiej tabelki („praktycznie bez wad, ślady zwykłego użytkowania")
+# i klient czytał to jak instrukcję obsługi, a nie jak zdanie od człowieka.
 _OPIS_OCENY = (
-    (4.5, "praktycznie bez wad, ślady zwykłego użytkowania i nic do naprawy przed jazdą"),
-    (4.0, "bardzo dobry stan, pojedyncze rysy albo odpryski lakieru"),
-    (3.0, "widoczne ślady eksploatacji, kosmetyka do poprawy przy sprawnej mechanice"),
-    (2.0, "wymaga napraw blacharsko-lakierniczych"),
-    (0.0, "poważne uszkodzenia, auto do gruntownej naprawy"),
+    (4.5, "Auto jest praktycznie bez wad. Widać, że ktoś nim jeździł, ale nic nie wymaga "
+          "naprawy, żeby ruszyć nim w drogę."),
+    (4.0, "Auto jest w bardzo dobrym stanie. Zdarzają się pojedyncze rysy albo odpryski "
+          "lakieru, nic poważniejszego."),
+    (3.0, "Widać, że auto było używane. Mechanicznie jest sprawne, ale karoseria i wnętrze "
+          "wymagają kosmetyki."),
+    (2.0, "Auto wymaga blacharki i lakierowania. To normalne przy tej ocenie i wliczam to "
+          "w kalkulację."),
+    (0.0, "Auto jest poważnie uszkodzone i wymaga gruntownej naprawy. Mówię o tym wprost, "
+          "bo to zmienia rachunek."),
 )
 
 
@@ -379,7 +387,7 @@ def _zdjecia_do_wklejenia(adresy: list[str]) -> list[str]:
     return wynik
 
 
-def _stan_pojazdu(item: AnalyzedLot) -> dict:
+def _stan_pojazdu(item: AnalyzedLot, koszty: Optional[dict] = None) -> dict:
     """Sekcja o stanie — inna dla auta po szkodzie, inna dla auta z oceną.
 
     Manheim nie podaje pola „uszkodzenie": zamiast niego wystawia ocenę stanu
@@ -400,22 +408,43 @@ def _stan_pojazdu(item: AnalyzedLot) -> dict:
         opis = next(tekst for prog, tekst in _OPIS_OCENY if ocena >= prog)
         return {
             "tytul": "Stan techniczny",
-            "wartosc": f"Ocena {ocena:.1f} na 5",
+            # Przecinek dziesiętny, nie kropka. „4.9" to pierwsza rzecz, po której
+            # widać, że tekst jest tłumaczony, a nie pisany po polsku.
+            "wartosc": f"{ocena:.1f}".replace(".", ",") + " na 5 możliwych",
             "opis": (
-                f"To ocena stanu wystawiona przez giełdę: {opis}. "
-                "Dotyczy wyglądu i mechaniki, nie historii pojazdu. Tę sprawdzam osobno."
+                # Najpierw kto ocenił, potem co to znaczy. Odwrotnie brzmiało jak
+                # dopisek tłumacza doklejony na końcu cudzego zdania.
+                f"Taką ocenę wystawili rzeczoznawcy giełdy, na której auto stoi. {opis} "
+                "Ocena mówi o wyglądzie i technice. Historię pojazdu sprawdzam osobno "
+                "i opiszę ją w kalkulacji."
             ),
             "ostrzezenie": ocena < 3.5,
         }
 
+    # Kwota pod klucz to koszt SPROWADZENIA (zakup, transport, cło, akcyza, VAT,
+    # prowizja). Naprawy w niej nie ma — model kosztów nie ma takiej pozycji.
+    # Klient, który tego nie wie, liczy, że auto przyjedzie naprawione, i wraca
+    # z pretensją przy odbiorze. Mówimy to wprost i w złotówkach, bo w dolarach
+    # rozlicza się aukcja, a nie on.
+    if ai.estimated_repair_usd and koszty and koszty.get("usd_rate"):
+        w_zlotowkach = round(float(ai.estimated_repair_usd) * float(koszty["usd_rate"]))
+        opis = (
+            f"Naprawę wyceniam wstępnie na około {w_zlotowkach:,} zł".replace(",", " ")
+            + ". Ta kwota dochodzi do ceny podanej wyżej, bo auto przyjeżdża "
+            "w stanie z aukcji. Dokładną wycenę podam po obejrzeniu zdjęć w pełnej "
+            "rozdzielczości."
+        )
+    else:
+        opis = (
+            "Koszt naprawy wycenię po obejrzeniu zdjęć w pełnej rozdzielczości. "
+            "Ta kwota dochodzi do ceny podanej wyżej, bo auto przyjeżdża w stanie "
+            "z aukcji."
+        )
+
     return {
         "tytul": "Co jest uszkodzone",
         "wartosc": _damage_str(lot),
-        "opis": (
-            f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}"
-            if ai.estimated_repair_usd
-            else "Zakres naprawy wycenię po obejrzeniu zdjęć w wyższej rozdzielczości."
-        ),
+        "opis": opis,
         "ostrzezenie": True,
     }
 
@@ -744,7 +773,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         ],
         "spec_rows": _build_spec_rows(item),
         "fakty": _build_client_facts(item),
-        "stan": _stan_pojazdu(item),
+        "stan": _stan_pojazdu(item, costs),
         "informacje": _informacje_o_samochodzie(item, costs),
         "wyposazenie": _wyposazenie(lot),
         "damage_what": _damage_str(lot),
