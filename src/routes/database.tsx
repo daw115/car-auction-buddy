@@ -129,9 +129,9 @@ function formatDuration(seconds: number | null | undefined): string {
 
 function durationColorClass(seconds: number | null | undefined): string {
   if (seconds == null) return "text-muted-foreground italic";
-  if (seconds < 300) return "text-success dark:text-emerald-400";
-  if (seconds < 900) return "text-blue-600 dark:text-blue-400";
-  return "text-orange-600 dark:text-orange-400";
+  if (seconds < 300) return "text-success text-success";
+  if (seconds < 900) return "text-primary text-primary";
+  return "text-warning text-warning";
 }
 
 function fmtSize(kb: number | undefined) {
@@ -1449,7 +1449,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
         <Badge variant="outline" className="text-success">
           👍 {upCount}
         </Badge>
-        <Badge variant="outline" className="text-red-600">
+        <Badge variant="outline" className="text-destructive">
           👎 {downCount}
         </Badge>
         {record?.title && <Badge variant="secondary">{record.title}</Badge>}
@@ -1500,7 +1500,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
                       </a>
                     )}
                     {fb?.reason && (
-                      <span className="italic text-red-600 dark:text-red-400 truncate max-w-[300px]">
+                      <span className="italic text-destructive text-destructive truncate max-w-[300px]">
                         „{fb.reason}"
                       </span>
                     )}
@@ -1510,7 +1510,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
                 <Button
                   variant={fb?.vote === "up" ? "default" : "ghost"}
                   size="icon"
-                  className={`h-7 w-7 ${fb?.vote === "up" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-muted-foreground hover:text-success"}`}
+                  className={`h-7 w-7 ${fb?.vote === "up" ? "bg-success hover:bg-success text-white" : "text-muted-foreground hover:text-success"}`}
                   disabled={busy}
                   onClick={() => handleUp(lot)}
                   title={fb?.vote === "up" ? "Cofnij polubienie" : "Polub"}
@@ -1520,7 +1520,7 @@ function RecordDetailView({ record, recordId }: { record: any; recordId: string 
                 <Button
                   variant={fb?.vote === "down" ? "default" : "ghost"}
                   size="icon"
-                  className={`h-7 w-7 ${fb?.vote === "down" ? "bg-red-600 hover:bg-red-700 text-white" : "text-muted-foreground hover:text-red-600"}`}
+                  className={`h-7 w-7 ${fb?.vote === "down" ? "bg-destructive hover:bg-destructive text-white" : "text-muted-foreground hover:text-destructive"}`}
                   disabled={busy}
                   onClick={() => handleDown(lot)}
                   title={fb?.vote === "down" ? "Cofnij odrzucenie" : "Odrzuć"}
@@ -1622,7 +1622,7 @@ function AnalyzeFeedbackDialog({
                     <div className="text-xs text-muted-foreground mb-1">Preferowane marki</div>
                     <div className="flex flex-wrap gap-1">
                       {rec.preferred_makes.map((m: string) => (
-                        <Badge key={m} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                        <Badge key={m} className="bg-success hover:bg-success text-white">
                           {m}
                         </Badge>
                       ))}
@@ -1634,7 +1634,7 @@ function AnalyzeFeedbackDialog({
                     <div className="text-xs text-muted-foreground mb-1">Unikane uszkodzenia</div>
                     <div className="flex flex-wrap gap-1">
                       {rec.avoided_damage_types.map((d: string) => (
-                        <Badge key={d} className="bg-red-600 hover:bg-red-700 text-white">
+                        <Badge key={d} className="bg-destructive hover:bg-destructive text-white">
                           {d}
                         </Badge>
                       ))}
@@ -1669,7 +1669,7 @@ function AnalyzeFeedbackDialog({
                 <Badge variant="outline" className="text-success">
                   👍 {stats.up ?? 0}
                 </Badge>
-                <Badge variant="outline" className="text-red-600">
+                <Badge variant="outline" className="text-destructive">
                   👎 {stats.down ?? 0}
                 </Badge>
                 {stats.avg_score_up != null && (

@@ -369,7 +369,7 @@ function BackendRecordRow({
         )}
       </div>
       {record.analysis_notice && (
-        <div className="mt-1 text-[10px] text-warning dark:text-amber-400 truncate">
+        <div className="mt-1 text-[10px] text-warning text-warning truncate">
           {record.analysis_notice}
         </div>
       )}
@@ -587,7 +587,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                 </Badge>
                 <Link
                   to="/records"
-                  className="text-[10px] text-blue-500 hover:underline ml-1"
+                  className="text-[10px] text-primary hover:underline ml-1"
                   title="Zobacz wszystkie rekordy"
                 >
                   📜 Historia
@@ -641,7 +641,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
       {(artifactUrls.client_bundle ||
         artifactUrls.client_short_bundle ||
         artifactUrls.broker_bundle) && (
-        <Card className="p-3 mb-4 border-amber-500/30 bg-amber-500/5">
+        <Card className="p-3 mb-4 border-warning/40 bg-warning/10">
           <div className="text-sm font-semibold mb-2">📦 Auto-zbiorcze raporty</div>
           <div className="text-xs text-muted-foreground mb-2">
             Klient = tylko POLECAM. Broker = wszystkie showcase (POLECAM + RYZYKO). Auta ponad
@@ -701,7 +701,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
             Top {aiAnalyzedCount} po pre-rank → AI ocenia
           </div>
         </Card>
-        <Card className="p-3 border-green-500/40">
+        <Card className="p-3 border-success/40">
           <div className="text-xs text-muted-foreground">🎯 Showcase</div>
           <div className="text-2xl font-bold">{showcaseCount}</div>
           <div className="text-xs text-muted-foreground">Wszystkie POLECAM + 2 RYZYKO</div>
@@ -738,7 +738,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
 
       {/* NOTATKA DIAGNOSTYCZNA */}
       {(record as any).analysis_notice && collectedCount <= 2 && (
-        <Alert className="mb-4 border-amber-500/40">
+        <Alert className="mb-4 border-warning/40">
           <AlertDescription className="text-xs whitespace-pre-line">
             {(record as any).analysis_notice}
           </AlertDescription>
@@ -798,7 +798,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                       : overBudget
                         ? "border-dashed border-border bg-muted/30 opacity-60"
                         : isShowcase
-                          ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/40 text-foreground"
+                          ? "bg-success/10 dark:bg-success/10 border-success/40 text-foreground"
                           : "border-border"
                   }`}
                 >
@@ -829,9 +829,9 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                           }
                           className={
                             auctionInfo.variant === "danger"
-                              ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40"
+                              ? "bg-destructive/15 text-destructive text-destructive border-destructive/40"
                               : auctionInfo.variant === "warning"
-                                ? "bg-amber-500/15 text-warning dark:text-amber-400 border-amber-500/40"
+                                ? "bg-warning/10 text-warning text-warning border-warning/40"
                                 : "text-muted-foreground"
                           }
                         >
@@ -851,7 +851,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                           }
                           className={`text-xs shrink-0 ml-auto ${
                             ai.recommendation === "PONAD BUDŻET"
-                              ? "border-amber-500/40 bg-amber-500/10 text-warning"
+                              ? "border-warning/40 bg-warning/10 text-warning"
                               : ""
                           }`}
                         >
@@ -875,7 +875,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                       {overBudget && budget && (
                         <Badge
                           variant="outline"
-                          className="border-amber-500/40 bg-amber-500/10 text-xs text-warning"
+                          className="border-warning/40 bg-warning/10 text-xs text-warning"
                         >
                           {overBudgetLabel(budget)}
                         </Badge>
@@ -934,7 +934,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                           href={reports.client_url}
                           target="_blank"
                           rel="noopener"
-                          className="text-xs px-2 py-1 rounded bg-green-500/10 hover:bg-green-500/20 text-green-700 dark:text-green-400"
+                          className="text-xs px-2 py-1 rounded bg-success/10 hover:bg-success/10 text-success text-success"
                           title="Pełny — Gemini+Otomoto+storytelling"
                         >
                           📄 Auto-raport pełny klient
@@ -945,7 +945,7 @@ export function RecordDetailView({ recordId, onClose }: { recordId: number; onCl
                           href={reports.broker_url}
                           target="_blank"
                           rel="noopener"
-                          className="text-xs px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-400"
+                          className="text-xs px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-primary text-primary"
                           title="Pełny brokerski — scoring + bid + market"
                         >
                           📋 Auto-raport broker

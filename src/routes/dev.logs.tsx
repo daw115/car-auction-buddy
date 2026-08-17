@@ -39,10 +39,10 @@ type LogEntry = {
 
 const LEVEL_STYLES: Record<LogEntry["level"], string> = {
   info: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-  warn: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  error: "bg-red-500/15 text-red-400 border-red-500/30",
+  warn: "bg-warning/10 text-warning border-warning/40",
+  error: "bg-destructive/15 text-destructive border-destructive/40",
   debug: "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30",
-  http: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  http: "bg-blue-500/15 text-primary border-blue-500/30",
 };
 
 const LEVELS: LogEntry["level"][] = ["info", "warn", "error", "debug", "http"];
@@ -418,12 +418,12 @@ ${rows}
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${
                 connected
-                  ? "border-green-500/40 bg-green-500/10 text-green-500"
+                  ? "border-success/40 bg-success/10 text-success"
                   : "border-muted bg-muted/30 text-muted-foreground"
               }`}
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-green-500" : "bg-muted-foreground"}`}
+                className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-success" : "bg-muted-foreground"}`}
               />
               {connected ? "live" : "offline"}
             </span>
@@ -796,7 +796,7 @@ function DevLogsGate() {
                 .
               </div>
             ) : attemptsLeft !== null && attemptsLeft >= 0 ? (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-warning dark:text-amber-400">
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning text-warning">
                 Nieprawidłowe hasło. Pozostało prób: {attemptsLeft}.
               </div>
             ) : null}
