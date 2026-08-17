@@ -212,7 +212,13 @@ def build_draft(
             "Ceny nie obejmują naprawy. W razie zainteresowania możemy wstępnie "
             "ocenić jej koszt."
         )
-    czesci_stopki.append("Proszę odpisać samym numerem — które Pana interesuje?")
+    # Przy jednym aucie nie ma czego numerować, a prośba o numer brzmi wtedy jak
+    # wysłana z szablonu — czyli dokładnie tak, jak nie chcemy, żeby brzmiała.
+    czesci_stopki.append(
+        "Czy to auto Pana interesuje?"
+        if len(lines) == 1
+        else "Proszę odpisać samym numerem — które Pana interesuje?"
+    )
     footer = "\n".join(czesci_stopki)
 
     text = "\n".join([header, "", *(line.render() for line in lines), "", footer])

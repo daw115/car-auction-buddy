@@ -82,11 +82,18 @@
   <header>
     <div class="eyebrow">Auta z aukcji w USA</div>
     <h1>{{ naglowek }}</h1>
+    {# Jedno auto i kilka aut to dwa różne teksty, nie ten sam z podmienioną
+       końcówką: przy jednym nie ma czego wybierać ani po czym numerować. #}
     <p class="lead">
-      Wybrałem {{ auta | length }}
-      {% if auta | length == 1 %}auto{% else %}auta{% endif %}, które pasują do tego,
-      czego Pan szuka. Ceny są policzone pod drzwi w Polsce. Proszę napisać, które
-      Pana interesuje, a odeślę komplet zdjęć i szczegółowy raport o tym egzemplarzu.
+      {% if auta | length == 1 %}
+      Znalazłem auto, które pasuje do tego, czego Pan szuka. Cena jest policzona
+      pod drzwi w Polsce. Jeśli Pana interesuje, proszę dać znać, a odeślę komplet
+      zdjęć i szczegółowy raport o tym egzemplarzu.
+      {% else %}
+      Wybrałem {{ auta | length }} auta, które pasują do tego, czego Pan szuka.
+      Ceny są policzone pod drzwi w Polsce. Proszę napisać, które Pana interesuje,
+      a odeślę komplet zdjęć i szczegółowy raport o tym egzemplarzu.
+      {% endif %}
     </p>
   </header>
 
@@ -117,11 +124,19 @@
   </div>
 
   <div class="kontakt">
+    {% if auta | length == 1 %}
+    <h3>Czy to auto Pana interesuje?</h3>
+    <p>
+      Proszę odpisać, a odeślę komplet zdjęć, szczegółowy raport o stanie tego
+      egzemplarza i dokładną kalkulację. Bez zobowiązań.
+    </p>
+    {% else %}
     <h3>Które z nich Pana interesuje?</h3>
     <p>
       Proszę odpisać samym numerem, na przykład „2". Odeślę wtedy komplet zdjęć,
       szczegółowy raport o stanie tego egzemplarza i dokładną kalkulację. Bez zobowiązań.
     </p>
+    {% endif %}
   </div>
 
   <footer>{{ generated_at }}</footer>

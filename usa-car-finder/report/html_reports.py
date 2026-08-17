@@ -71,8 +71,11 @@ def _mileage(value) -> str:
 
 
 def _damage_str(lot) -> str:
-    parts = [lot.damage_primary, lot.damage_secondary]
-    return " + ".join(p for p in parts if p) or "brak danych"
+    """Szkoda po polsku. Kody aukcji („RIGHT SIDE") są tu tłumaczone, bo trafiają
+    wprost do zdania w ofercie — patrz `report/uszkodzenia.py`."""
+    from report.uszkodzenia import opis as _opis_szkody
+
+    return _opis_szkody(lot.damage_primary, lot.damage_secondary)
 
 
 def _location_str(lot) -> str:
