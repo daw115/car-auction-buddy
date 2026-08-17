@@ -33,6 +33,7 @@ import { ClientMessageCard, type ParseError } from "@/components/panels/client-m
 import { CriteriaForm } from "@/components/panels/criteria-form";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PrzebiegWyszukiwania } from "@/components/panels/przebieg-wyszukiwania";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -1043,6 +1044,9 @@ function HomePage() {
               </div>
             </div>
           </div>
+          {/* Bez tego przez kilkanascie minut widac bylo samo kolko i nie dalo sie
+              odroznic pracy od zawieszenia. */}
+          <PrzebiegWyszukiwania />
         </Card>
       )}
 
