@@ -175,6 +175,31 @@ def build_draft(
     czesci_stopki = [
         "W każdej cenie: zakup, transport, cło, akcyza i prowizja, bez dopłat po drodze."
     ]
+
+    # Porównanie z polskim rynkiem, jeśli wszystkie auta w wiadomości są tym samym
+    # modelem. Przy mieszanej liście jedna średnia byłaby myląca: klient odniósłby
+    # ją do wszystkich pozycji, a dotyczy jednej. Czytamy tylko z cache — pusty
+    # cache odpala Playwrighta, a wiadomość ma powstać w sekundę.
+    modele = {(line.lot.make, line.lot.model) for line in lines}
+    if len(modele) == 1:
+        marka, model = next(iter(modele))
+        rocznik = lines[0].lot.year
+        if marka and rocznik:
+            try:
+                from report import market_price_cache
+
+                rynek = market_price_cache.get_cached(
+                    marka, model, rocznik - 1, rocznik + 1, False
+                )
+            except Exception:
+                rynek = None
+            if rynek and rynek.get("sample_size") and rynek.get("mean_pln"):
+                czesci_stopki.append(
+                    f"Dla porównania: na polskim rynku podobne chodzą po "
+                    f"{rynek['low_pln'] / 1000:.0f} do {rynek['high_pln'] / 1000:.0f} tys. zł, "
+                    f"średnio {rynek['mean_pln'] / 1000:.0f} tys. "
+                    f"(z {rynek['sample_size']} ogłoszeń)."
+                )
     if po_szkodzie:
         czesci_stopki.append(
             "Ceny nie obejmują naprawy. W razie zainteresowania możemy wstępnie "
