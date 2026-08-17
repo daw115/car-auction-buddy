@@ -333,6 +333,36 @@ export const proposeOffer = createServerFn({ method: "POST" })
  * Naciśnięcie „Wyślij" idzie tą samą drogą co przycisk tutaj (approve_and_send),
  * a potem wstawia treść w rozmowę na WhatsApp Web.
  */
+/**
+ * Wysyła PDF na Telegram brokera, żeby przekazał go klientowi w WhatsAppie.
+ *
+ * Link `wa.me` przenosi wyłącznie tekst i nie da się tym podać załącznika.
+ * Bot dociera natomiast na ten sam telefon, na którym toczy się rozmowa —
+ * plik przychodzi w kilka sekund i przekazuje się go jednym gestem.
+ */
+export const raportNaTelegram = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      rodzaj: z.enum(["shortlist", "klient", "broker"]),
+      lots: z.array(z.record(z.string(), z.unknown())).min(1).max(10),
+      clientName: z.string().max(160).optional().nullable(),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<{ wyslane: number; plik: string; rozmiar_kb: number }> =>
+      backendRequest({
+        path: `/report/na-telegram?rodzaj=${data.rodzaj}`,
+        method: "POST",
+        body: {
+          approved_lots: data.lots.map((lot) => ({ ...lot, included_in_report: true })),
+          client_name: data.clientName ?? null,
+        },
+        // Render PDF-a ze zdjęciami wklejonymi jako data: potrafi potrwać.
+        timeoutMs: 120_000,
+      }),
+  );
+
 /** Cztery kroki sprawy: oferta wstępna, wybór klienta, raport, decyzja. */
 export type StanSprawy = {
   lead_id: number;

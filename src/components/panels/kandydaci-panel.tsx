@@ -15,9 +15,14 @@ import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { FileDown, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
-import { getLeadCandidates, proposeOffer, type LeadCandidate } from "@/functions/sales.functions";
+import {
+  getLeadCandidates,
+  proposeOffer,
+  raportNaTelegram,
+  type LeadCandidate,
+} from "@/functions/sales.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +48,7 @@ function opisLota(k: LeadCandidate): string {
 export function KandydaciPanel({ leadId, budzetPln }: Props) {
   const fnKandydaci = useServerFn(getLeadCandidates);
   const fnOferta = useServerFn(proposeOffer);
+  const fnPdf = useServerFn(raportNaTelegram);
   const qc = useQueryClient();
   const [zaznaczone, setZaznaczone] = useState<Set<string>>(new Set());
 
@@ -95,6 +101,25 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
     onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się napisać oferty."),
   });
 
+  /** Krótka lista jako PDF, prosto na telefon brokera. Stamtąd przekazuje ją
+   *  klientowi w rozmowie — panel nie ma jak podać załącznika przez wa.me. */
+  const pdfNaTelegram = useMutation({
+    mutationFn: async () => {
+      const wybrane = kandydaci.filter((k, i) => zaznaczone.has(kluczLota(k, i)));
+      if (!wybrane.length) throw new Error("Zaznacz auta do raportu.");
+      return fnPdf({
+        data: {
+          rodzaj: "shortlist" as const,
+          lots: wybrane.slice(0, 3).map((k) => k.lot as unknown as Record<string, unknown>),
+          clientName: null,
+        },
+      });
+    },
+    onSuccess: (w) =>
+      toast.success(`PDF na Telegramie (${w.rozmiar_kb} KB). Przekaż go klientowi w rozmowie.`),
+    onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się wysłać PDF-a."),
+  });
+
   const wBudzecie = kandydaci.filter((k) => !ponadBudzet(k));
 
   return (
@@ -132,6 +157,25 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
       ) : (
         <>
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+            {/* Trzy, nie wszystkie: przy dłuższej liście klient odkłada decyzję,
+                a „później" znaczy w tej branży „aukcja się skończyła". Ranking
+                jest deterministyczny (scoring/unified.py), więc „najlepsze" to
+                nie opinia panelu — bierzemy wierzch listy, pomijając ponad budżet. */}
+            <Button
+              size="sm"
+              disabled={wBudzecie.length === 0}
+              onClick={() => {
+                const trzy = wBudzecie.slice(0, 3);
+                setZaznaczone(new Set(trzy.map((k) => kluczLota(k, kandydaci.indexOf(k)))));
+                toast.info(
+                  trzy.length < 3
+                    ? `W budżecie mieszczą się tylko ${trzy.length}. Zaznaczyłem wszystkie.`
+                    : "Zaznaczone trzy najlepsze. Sprawdź je przed napisaniem oferty.",
+                );
+              }}
+            >
+              Weź trzy najlepsze
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -218,7 +262,21 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
           </div>
 
           <Button
+            variant="outline"
             className="mt-3 w-full"
+            disabled={zaznaczone.size === 0 || pdfNaTelegram.isPending}
+            onClick={() => pdfNaTelegram.mutate()}
+          >
+            {pdfNaTelegram.isPending ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="mr-1.5 h-4 w-4" />
+            )}
+            Wyślij PDF na mój Telegram ({zaznaczone.size})
+          </Button>
+
+          <Button
+            className="mt-2 w-full"
             disabled={zaznaczone.size === 0 || napiszOferte.isPending}
             onClick={() => napiszOferte.mutate()}
           >
