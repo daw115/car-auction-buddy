@@ -13,10 +13,10 @@ def lot(lot_id="A", price=6000.0, state="FL", damage="Front End", model="RAV4"):
 
 
 def test_offer_carries_the_landed_price_not_the_auction_bid():
-    """Klient myśli w złotówkach pod klucz — stawka aukcyjna nic mu nie mówi."""
+    """Klient myśli w złotówkach pod drzwi — stawka aukcyjna nic mu nie mówi."""
     oferta = offer_from_lot(lot(price=6000.0))
 
-    assert oferta["cena_pln"] > 40_000, "6 tys. USD to ok. 52 tys. zł pod klucz, nie 24 tys."
+    assert oferta["cena_pln"] > 40_000, "6 tys. USD to ok. 52 tys. zł pod drzwi, nie 24 tys."
     assert "Toyota RAV4" in oferta["nazwa"]
     assert oferta["ponad_budzet"] is False
 
@@ -68,4 +68,4 @@ def test_endpoint_refuses_when_nothing_can_be_priced(monkeypatch):
         )
 
     assert response.status_code == 422
-    assert "ceny pod klucz" in response.json()["detail"]
+    assert "ceny pod drzwi" in response.json()["detail"]

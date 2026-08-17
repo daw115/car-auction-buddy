@@ -134,7 +134,7 @@ def test_brak_kontaktu_jest_pierwsza_rzecza_do_zrobienia():
 @pytest.mark.parametrize(
     "tekst, oczekiwany",
     [
-        ("budżet 120 tys. pod klucz", 120_000),
+        ("budżet 120 tys. pod drzwi", 120_000),
         ("mam 30 tysięcy złotych", 30_000),
         ("do 85k", 85_000),
         ("80-120 tysięcy", 120_000),          # górna granica jest budżetem
@@ -248,13 +248,13 @@ def test_walidator_odrzuca_wiecej_niz_cztery_zdania():
 
 def test_cyfry_sa_dozwolone_bo_agent_powtarza_policzona_cene():
     """Inaczej niż w prozie oferty — bez cyfr nie da się rozmawiać o cenie."""
-    assert validate_message("Cena pod klucz to 95 000 zł.") is not None
+    assert validate_message("Cena pod drzwi to 95 000 zł.") is not None
 
 
 def test_kwota_spoza_danych_jest_wykrywana():
     """Model nie ma prawa przeliczać. Kwota, której nie policzyliśmy, jest zmyślona."""
     oferty = [{"cena_pln": 95_000, "nazwa": "Ford Explorer"}]
-    assert not mentions_unknown_amount("Cena pod klucz to 95 000 zł.", oferty)
+    assert not mentions_unknown_amount("Cena pod drzwi to 95 000 zł.", oferty)
     assert mentions_unknown_amount("Wyjdzie jakieś 88 000 zł.", oferty)
     assert not mentions_unknown_amount("Sprawdzę i wrócę z konkretem.", oferty)
 

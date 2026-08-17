@@ -280,7 +280,7 @@ def _missing(lead: Lead) -> list[str]:
     if lead.damage_ok is None:
         braki.append("czy godzi się na auto po szkodzie")
     if not lead.potential_budget_pln:
-        braki.append("budżet pod klucz w złotówkach")
+        braki.append("budżet pod drzwi w złotówkach")
     if not lead.make:
         braki.append("marka i model")
     if not (lead.year_from or lead.year_to):

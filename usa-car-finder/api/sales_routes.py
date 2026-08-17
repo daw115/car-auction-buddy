@@ -270,7 +270,7 @@ VIN_CHECK_RATE_LIMIT = int(os.getenv("VIN_CHECK_RATE_LIMIT_PER_HOUR", "60"))
 
 @public_router.post("/api/public/vin-check")
 async def vin_check(body: VinCheckIn, request: Request) -> dict[str, Any]:
-    """Darmowe sprawdzenie: czy TO auto ma zerowe cło i ile wyjdzie pod klucz.
+    """Darmowe sprawdzenie: czy TO auto ma zerowe cło i ile wyjdzie pod drzwi.
 
     BEZ BRAMKI KONTAKTOWEJ — wynik wraca od razu, bez podawania telefonu. To jest
     świadoma decyzja i wynika z arytmetyki, nie z hojności: przy prowizji rzędu
@@ -749,7 +749,7 @@ async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
     if not offers:
         raise HTTPException(
             422,
-            "Żadnego z tych aut nie da się wycenić — bez ceny pod klucz nie ma czego proponować.",
+            "Żadnego z tych aut nie da się wycenić — bez ceny pod drzwi nie ma czego proponować.",
         )
 
     draft = propose_reply(lead, db.messages(lead_id), offers=offers)

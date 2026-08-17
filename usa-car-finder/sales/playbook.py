@@ -111,7 +111,7 @@ STAGE_GOALS: dict[Stage, str] = {
         "Nie sprzedawaj — na tym etapie klient sprawdza, czy w ogóle odpisujemy."
     ),
     Stage.KWALIFIKACJA: (
-        "Zdobądź brakujące dane: budżet pod klucz, rocznik, zgodę na auto po szkodzie. "
+        "Zdobądź brakujące dane: budżet pod drzwi, rocznik, zgodę na auto po szkodzie. "
         "Jedno pytanie w wiadomości. Trzy pytania naraz zostają bez odpowiedzi."
     ),
     Stage.SZUKANIE: (

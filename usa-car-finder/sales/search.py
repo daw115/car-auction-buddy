@@ -80,7 +80,7 @@ def readiness(lead: Lead) -> Readiness:
     if not lead.make:
         missing.append("marka")
     if not lead.confirmed_budget_pln:
-        missing.append("budżet pod klucz")
+        missing.append("budżet pod drzwi")
 
     # Sufit liczymy z budżetu POTWIERDZONEGO, więc klient z autem do sprzedania
     # zobaczy węższą listę, niż na jaką go ostatecznie stać. To jest zamierzone,
@@ -100,7 +100,7 @@ def readiness(lead: Lead) -> Readiness:
 def criteria_from_lead(lead: Lead, *, max_results: int = MAX_CANDIDATES):
     """`ClientCriteria` z danych leada. None, gdy nie ma nawet marki.
 
-    Budżet przekazujemy jako kwotę POD KLUCZ (`budget_pln_to`), a nie jako
+    Budżet przekazujemy jako kwotę POD DRZWI (`budget_pln_to`), a nie jako
     `budget_usd` — to jest ta sama liczba, którą klient wypowiedział, a sufit
     ceny aukcyjnej wylicza z niej `scoring/budget.py` osobno dla każdego stanu USA.
     Przeliczenie budżetu na dolary tutaj oznaczałoby zgadywanie kursu i kosztów

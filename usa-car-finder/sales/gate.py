@@ -34,7 +34,7 @@ from typing import Optional
 from sales.models import Lead, LeadScore, Segment, Stage
 
 # Minimalny budżet, przy którym transakcja zarabia na siebie po odjęciu kosztu
-# pozyskania. Przy 150 tys. zł pod klucz stawka aukcyjna to około 25 tys. USD,
+# pozyskania. Przy 150 tys. zł pod drzwi stawka aukcyjna to około 25 tys. USD,
 # a prowizja basic około 4 700 zł — dopiero od tego poziomu jest z czego żyć.
 # Niżej trzeba albo wariantu premium, albo leada z polecenia, który nic nie kosztował.
 MIN_BUDGET_PLN = float(os.getenv("SALES_MIN_BUDGET_PLN", "150000"))

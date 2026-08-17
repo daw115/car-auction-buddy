@@ -7,7 +7,7 @@ aut**, które mu proponujemy. Pisał ogólniki tam, gdzie miał podać konkrety.
 Auta wybiera broker, nie automat. To ta sama zasada, co przy wysyłce: system
 liczy i pisze, człowiek decyduje, co klient zobaczy.
 
-Cena pod klucz idzie przez tę samą funkcję, co reszta systemu
+Cena pod drzwi idzie przez tę samą funkcję, co reszta systemu
 (`pricing.import_calculator.client_price_pln` przez `scoring.budget`), żeby klient
 nie dostał w rozmowie innej kwoty niż w mailu i w wiadomości WhatsApp.
 """
@@ -53,7 +53,7 @@ def offer_from_lot(
             state=lot.location_state,
         )
     except Exception:
-        logger.warning("[offers] nie policzyłem ceny pod klucz dla %s", lot.lot_id, exc_info=True)
+        logger.warning("[offers] nie policzyłem ceny pod drzwi dla %s", lot.lot_id, exc_info=True)
         return None
 
     return {

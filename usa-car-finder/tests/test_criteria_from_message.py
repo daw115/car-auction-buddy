@@ -26,7 +26,7 @@ def test_note_with_several_models_becomes_targets():
 
 
 def test_budget_stays_in_pln_and_is_not_converted():
-    """Kwota od klienta to budżet pod klucz, nie cena aukcyjna.
+    """Kwota od klienta to budżet pod drzwi, nie cena aukcyjna.
 
     Przeliczanie jej kursem dawało sufit ponad dwa razy za wysoki.
     """

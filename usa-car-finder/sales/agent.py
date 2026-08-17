@@ -113,7 +113,7 @@ def _lead_block(lead: Lead, score: LeadScore) -> str:
         "model": lead.model,
         "rocznik od": lead.year_from,
         "rocznik do": lead.year_to,
-        "budżet pod klucz (PLN)": f"{lead.budget_pln:,.0f}".replace(",", " ") if lead.budget_pln else None,
+        "budżet pod drzwi (PLN)": f"{lead.budget_pln:,.0f}".replace(",", " ") if lead.budget_pln else None,
         "forma rozliczenia": "firma" if lead.settlement == "company" else "osoba prywatna",
         "max przebieg (mile)": lead.max_odometer_mi,
         "na kiedy (dni)": lead.timeline_days,
@@ -146,7 +146,7 @@ def _offers_block(offers: Optional[list[dict[str, Any]]]) -> str:
     linie = []
     for o in offers:
         cena = f"{o['cena_pln']:,.0f}".replace(",", " ")
-        linia = f"- {o.get('nazwa', 'auto')} — {cena} zł pod klucz"
+        linia = f"- {o.get('nazwa', 'auto')} — {cena} zł pod drzwi"
         if o.get("ponad_budzet"):
             linia += " (powyżej budżetu)"
         if o.get("uszkodzenie"):
@@ -470,7 +470,7 @@ def _fallback_draft(
                 "Auta z aukcji są po szkodzie i dlatego są tańsze. "
                 "Czy takie wchodzi w grę?"
             ),
-            "budżet pod klucz w złotówkach": (
+            "budżet pod drzwi w złotówkach": (
                 "Jaką kwotą Pan dysponuje na auto gotowe do odbioru w Polsce, "
                 "razem ze wszystkimi kosztami?"
             ),

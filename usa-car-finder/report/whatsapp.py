@@ -6,7 +6,7 @@ podejmuje człowiek. To świadoma decyzja: wiadomość idzie do klienta pod nazw
 brokera i musi przejść przez jego akceptację.
 
 Zasady treści (wypracowane na realnych leadach z arkusza):
-  * ceny podajemy W ZŁOTÓWKACH POD KLUCZ, razem z prowizją. Klient mówi "budżet 50/60 tys"
+  * ceny podajemy W ZŁOTÓWKACH POD DRZWI, razem z prowizją. Klient mówi "budżet 50/60 tys"
     i tak myśli; cena aukcyjna w dolarach nic mu nie mówi, a podana bez kontekstu wygląda
     na ukrywanie kosztów. Prowizja doliczona dopiero po ofercie to dokładnie ta dopłata
     po drodze, której obiecujemy nie robić — liczy to pricing/import_calculator.client_price_pln;
@@ -35,6 +35,8 @@ class OfferLine:
     landed_pln: float
     over_budget: bool = False
     usd_rate: Optional[float] = None
+    #: Numer pozycji zgodny z obrazkiem oferty — klient odpowiada samą cyfrą.
+    numer: int = 1
 
     def render(self) -> str:
         name = f"{self.lot.year or ''} {_short_name(self.lot)}".strip()
@@ -56,7 +58,7 @@ class OfferLine:
         # Klient zobaczy kwotę i sam policzy, że to więcej niż mówił. Napisane wprost
         # brzmi jak propozycja; przemilczane brzmi jak próba przemycenia.
         suffix = " (powyżej budżetu)" if self.over_budget else ""
-        return f"• {name}: {price} zł{w_nawiasie}{suffix}"
+        return f"{self.numer}. {name}: {price} zł{w_nawiasie}{suffix}"
 
 
 @dataclass(frozen=True)
@@ -142,14 +144,19 @@ def build_draft(
         over = bool(budget_pln and landed > budget_pln)
         if over and not allow_over_budget:
             continue
-        # Kurs bierzemy z tej samej kalkulacji, która policzyła cenę pod klucz.
+        # Kurs bierzemy z tej samej kalkulacji, która policzyła cenę pod drzwi.
         # Osobne pytanie o kurs mogłoby trafić na inny dzień notowań i klient
         # dostałby dwie kwoty, które się nie przeliczają.
         kurs = usd_rate
         if kurs is None:
             koszty = calculate_lot_import_costs(lot)
             kurs = float(koszty["usd_rate"]) if koszty and koszty.get("usd_rate") else None
-        lines.append(OfferLine(lot=lot, landed_pln=landed, over_budget=over, usd_rate=kurs))
+        lines.append(
+            OfferLine(
+                lot=lot, landed_pln=landed, over_budget=over, usd_rate=kurs,
+                numer=len(lines) + 1,
+            )
+        )
 
     if not lines:
         return None
@@ -162,7 +169,7 @@ def build_draft(
     )
     header = (
         f"{_greeting(client_name)}, mam {len(lines)} "
-        f"{'auto' if len(lines) == 1 else 'auta'}{budget_note}. Ceny pod klucz w Polsce:"
+        f"{'auto' if len(lines) == 1 else 'auta'}{budget_note}. Ceny pod drzwi w Polsce:"
     )
     # „Bez dopłat po drodze" było prawdą tylko dla aut bez szkody. Kalkulacja nie
     # zawiera naprawy, a przy locie po szkodzie to różnica rzędu kilkunastu tysięcy
@@ -205,7 +212,7 @@ def build_draft(
             "Ceny nie obejmują naprawy. W razie zainteresowania możemy wstępnie "
             "ocenić jej koszt."
         )
-    czesci_stopki.append("Podesłać pełną kalkulację?")
+    czesci_stopki.append("Proszę odpisać samym numerem — które Pana interesuje?")
     footer = "\n".join(czesci_stopki)
 
     text = "\n".join([header, "", *(line.render() for line in lines), "", footer])

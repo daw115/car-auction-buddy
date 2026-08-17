@@ -39,7 +39,7 @@ def auth() -> dict[str, str]:
 # parking i połowa asercji tutaj mierzyłaby próg zamiast tego, co ma mierzyć.
 # Samo sito ma własną suitę: `tests/test_gate_and_vincheck.py`.
 ZGLOSZENIE = {
-    "message": "Szukam BMW X5 2022+, budżet 350 tys. pod klucz. "
+    "message": "Szukam BMW X5 2022+, budżet 350 tys. pod drzwi. "
                "Wiem, że to auta powypadkowe. Potrzebuję na już.",
     "name": "Marek Kowalski",
     "phone": "605083832",

@@ -224,7 +224,7 @@
       <div class="cost-row"><span class="k">Transport do Polski</span><span class="v">{{ "{:,}".format(cost.transport_pl_pln) }} PLN</span></div>
       <div class="cost-row"><span class="k">Akcyza ({{ cost.excise_pct }}%)</span><span class="v">{{ "{:,}".format(cost.excise_pln) }} PLN</span></div>
       <div class="cost-row"><span class="k">Prowizja</span><span class="v">{{ "{:,}".format(cost.broker_fee_pln) }} PLN</span></div>
-      <div class="cost-row total"><span class="k">CENA POD KLUCZ</span><span class="v">{{ "{:,}".format(cost.grand_total_pln) }} PLN</span></div>
+      <div class="cost-row total"><span class="k">CENA POD DRZWI</span><span class="v">{{ "{:,}".format(cost.grand_total_pln) }} PLN</span></div>
       {% if cost.repair_pln > 0 %}
       <div class="cost-row"><span class="k">Szacowana naprawa (poza ceną)</span><span class="v">{{ "{:,}".format(cost.repair_pln) }} PLN</span></div>
       {% endif %}
@@ -245,7 +245,7 @@
   <!-- CTA -->
   <div class="cta">
     <h3>🚗 Zainteresowany?</h3>
-    <p>Skontaktuj się — sprawdzimy lot, ustalimy strategię licytacji i zorganizujemy import pod klucz.</p>
+    <p>Skontaktuj się — sprawdzimy lot, ustalimy strategię licytacji i zorganizujemy import pod drzwi.</p>
     <a href="{{ lot.url }}" target="_blank" rel="noopener">Zobacz lot na {{ lot.source|capitalize }}</a>
   </div>
 

@@ -100,7 +100,7 @@ def test_salvage_blocks_only_when_client_wants_clean_title():
 
 
 def test_budget_ceiling_uses_landed_cost_not_naive_conversion():
-    """60 tys PLN pod klucz to ~8 tys USD ceny aukcyjnej, nie 15 tys.
+    """60 tys PLN pod drzwi to ~8 tys USD ceny aukcyjnej, nie 15 tys.
 
     Naiwne dzielenie budżetu przez kurs pokazywałoby auta dwa razy za drogie.
     """
@@ -190,7 +190,7 @@ def test_explanation_shows_every_component_contribution():
 
 
 def test_model_gets_the_same_budget_the_scoring_uses():
-    """Model i scoring muszą mierzyć tym samym: kwotą pod klucz w PLN.
+    """Model i scoring muszą mierzyć tym samym: kwotą pod drzwi w PLN.
 
     Wcześniej prompt podawał budżet w USD "łącznie z transportem i naprawą",
     więc model oceniał dopasowanie według innej definicji niż ta, z której
@@ -200,7 +200,7 @@ def test_model_gets_the_same_budget_the_scoring_uses():
 
     linia = _budget_line(ClientCriteria(make="Toyota", budget_pln_to=60_000))
 
-    assert "zł pod klucz" in linia
+    assert "zł pod drzwi" in linia
     assert "USD" not in linia
     # Przecinki w wyliczeniu muszą przeżyć formatowanie liczby.
     assert "zakup, transport, cło" in linia

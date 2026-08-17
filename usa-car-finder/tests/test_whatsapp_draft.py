@@ -15,15 +15,15 @@ def lot(model="RAV4", price=6000.0, state="FL", odo=51_000, year=2019) -> CarLot
 
 
 def test_prices_are_landed_pln_not_auction_usd():
-    """Klient myśli w złotówkach pod klucz — cena aukcyjna w USD nic mu nie mówi."""
+    """Klient myśli w złotówkach pod drzwi — cena aukcyjna w USD nic mu nie mówi."""
     draft = build_draft([lot(price=6000.0)], client_name="Wojciech Beyger")
 
     assert "zł" in draft.text
-    # Dolar w treści jest, ale jako RÓWNOWARTOŚĆ kwoty pod klucz w nawiasie —
+    # Dolar w treści jest, ale jako RÓWNOWARTOŚĆ kwoty pod drzwi w nawiasie —
     # nigdy jako cena aukcyjna. Ta druga pokazywałaby klientowi marżę.
     assert "6 000 $" not in draft.text and "6000" not in draft.text
     assert "USD" not in draft.text
-    # 6 000 USD z Florydy to ~52 tys. zł pod klucz (49 425 sprowadzenie + 2 804 prowizji),
+    # 6 000 USD z Florydy to ~52 tys. zł pod drzwi (49 425 sprowadzenie + 2 804 prowizji),
     # nie 24 tys. z przeliczenia kursem.
     # Próg zamiast wpisanej liczby: kurs bierzemy z NBP, więc konkretna kwota zmienia
     # się co dzień. Test na "52" pilnowałby tabeli kursowej, a nie tego, co sprawdza.
@@ -69,7 +69,9 @@ def test_caps_at_four_offers():
     """Więcej pozycji paraliżuje wybór."""
     draft = build_draft([lot(model=f"M{i}", price=5000 + i * 100) for i in range(9)])
     assert draft.offers == MAX_OFFERS
-    assert draft.text.count("•") == MAX_OFFERS
+    import re as _re
+
+    assert len(_re.findall(r"^\d+\. ", draft.text, _re.M)) == MAX_OFFERS
 
 
 def test_returns_nothing_when_there_is_nothing_to_offer():
@@ -116,7 +118,7 @@ def test_wa_me_link_carries_the_text_and_normalises_the_number():
 
 
 def test_company_settlement_gives_higher_landed_price():
-    """Firma płaci VAT od całości — ta sama aukcja kosztuje więcej pod klucz."""
+    """Firma płaci VAT od całości — ta sama aukcja kosztuje więcej pod drzwi."""
     prywatnie = build_draft([lot(price=6000.0)], settlement="private")
     firma = build_draft([lot(price=6000.0)], settlement="company")
     assert prywatnie.text != firma.text
@@ -307,7 +309,7 @@ def test_voice_intake_returns_criteria_and_never_starts_a_scrape(monkeypatch):
         transcriber,
         "transcribe",
         lambda path, language=None: transcriber.Transcript(
-            text="Szukam Audi Q7 z 2019 roku, budżet 200 tysięcy pod klucz.",
+            text="Szukam Audi Q7 z 2019 roku, budżet 200 tysięcy pod drzwi.",
             language="pl", duration_s=12.0, model="small",
         ),
     )
@@ -362,7 +364,7 @@ def test_conversation_is_rendered_for_the_requirements_parser():
         messages=[
             {"kierunek": "klient", "tekst": "Szukam Audi Q7"},
             {"kierunek": "broker", "tekst": "Jaki budżet?"},
-            {"kierunek": "klient", "tekst": "Do 200 tysięcy pod klucz"},
+            {"kierunek": "klient", "tekst": "Do 200 tysięcy pod drzwi"},
         ],
         total=3,
     )

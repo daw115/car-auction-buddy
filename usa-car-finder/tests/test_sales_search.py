@@ -7,7 +7,7 @@ przepisywał je ręcznie do formularza. Etap SZUKANIE istniał w modelu i nic go
 nie wypełniało.
 
 Te testy pilnują trzech rzeczy:
-  1. że kryteria powstają z leada bez gubienia budżetu pod klucz,
+  1. że kryteria powstają z leada bez gubienia budżetu pod drzwi,
   2. że wyszukiwanie zostawia ślad także wtedy, gdy padnie — inaczej lead wisi
      w stanie "trwa" i nikt się nie dowie,
   3. że nie da się puścić dwóch scrape'ów dla tego samego leada.
@@ -74,7 +74,7 @@ def test_brak_budzetu_nie_blokuje_ale_jest_zgloszony():
     """Bez budżetu scoring nie odróżni auta w zasięgu klienta od dwa razy za drogiego."""
     gotowosc = readiness(lead(budget_pln=None))
     assert gotowosc.ready
-    assert "budżet pod klucz" in gotowosc.missing
+    assert "budżet pod drzwi" in gotowosc.missing
 
 
 def test_liczba_kandydatow_jest_ograniczona():
@@ -180,7 +180,7 @@ def test_brak_budzetu_przechodzi_ale_z_ostrzezeniem(client, auth):
     zapisany = db.create_lead(lead(budget_pln=None))
     r = client.post(f"/api/sales/leads/{zapisany.id}/search", headers=auth)
     assert r.status_code == 200
-    assert any("budżet pod klucz" in w for w in r.json()["warnings"])
+    assert any("budżet pod drzwi" in w for w in r.json()["warnings"])
 
 
 def test_drugi_scrape_dla_tego_samego_leada_jest_odrzucany(client, auth):

@@ -96,7 +96,7 @@ def test_price_is_rounded_up_never_down():
 
 
 def test_company_settlement_costs_more_than_private():
-    """Firma płaci VAT od całości — ta sama aukcja kosztuje więcej pod klucz."""
+    """Firma płaci VAT od całości — ta sama aukcja kosztuje więcej pod drzwi."""
     prywatnie = build_car(analyzed(lot()), settlement="private")
     firma = build_car(analyzed(lot()), settlement="company")
     assert firma.client_price_pln > prywatnie.client_price_pln
@@ -181,7 +181,7 @@ def test_empty_offer_says_so_instead_of_pretending():
 def test_prose_with_digits_is_rejected():
     """Cyfra od modelu to liczba, której nikt nie policzył."""
     assert offer_agent._clean_prose("Auto po stłuczce przodu.", 130)
-    assert offer_agent._clean_prose("Cena to 40 000 zł pod klucz.", 130) is None
+    assert offer_agent._clean_prose("Cena to 40 000 zł pod drzwi.", 130) is None
 
 
 @pytest.mark.parametrize(
@@ -380,7 +380,7 @@ def over_budget(car: CarLot) -> AnalyzedLot:
 def test_over_budget_car_never_fills_a_slot_in_the_client_email():
     """Regresja: od kiedy scoring nie zeruje takich lotów, stoją wysoko w rankingu.
 
-    Bez filtra wypełniałyby wolne miejsca w czwórce dla klienta — z ceną pod klucz
+    Bez filtra wypełniałyby wolne miejsca w czwórce dla klienta — z ceną pod drzwi
     i bez słowa o tym, że przekraczają kwotę, którą klient podał.
     """
     tanie = analyzed(lot(lot_id="TANI", price=6_000.0))
@@ -427,7 +427,7 @@ def test_intro_does_not_promise_the_budget_when_a_car_exceeds_it():
         use_llm=False,
         allow_over_budget=True,
     )
-    assert "budżet" not in text_of(offer.client_html).lower().split("cena pod klucz")[0]
+    assert "budżet" not in text_of(offer.client_html).lower().split("cena pod drzwi")[0]
 
 
 def test_model_sentence_claiming_budget_fit_is_rejected_for_an_over_budget_car():

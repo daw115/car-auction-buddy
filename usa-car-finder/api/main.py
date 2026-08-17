@@ -3158,6 +3158,40 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
             detail="Nikt nie jest zapisany do bota. Napisz do niego /start ze swojego telefonu.",
         )
 
+    if rodzaj == "oferta-png":
+        # Pierwszy kontakt idzie OBRAZKIEM. PDF w rozmowie trzeba pobrać i otworzyć
+        # w innej aplikacji; obrazek klient widzi od razu w wątku i odpowiada numerem.
+        from report import screenshot
+
+        html = render_client_shortlist(lots_for_report, client_name=request.client_name)
+        try:
+            plik_bin = screenshot.html_na_png(html)
+        except screenshot.ScreenshotNiedostepny as blad:
+            raise HTTPException(status_code=503, detail=str(blad)) from blad
+        nazwa = screenshot.nazwa_pliku(request.client_name)
+        podpis = "Oferta wstępna dla klienta. Przekaż jako zdjęcie w rozmowie."
+
+        import tempfile
+
+        from notify import telegram as tg2
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_png:
+            tmp_png.write(plik_bin)
+            sciezka_png = tmp_png.name
+        wyslane_png = 0
+        try:
+            for chat_id in odbiorcy:
+                try:
+                    tg2.send_document(chat_id, sciezka_png, caption=podpis, filename=nazwa)
+                    wyslane_png += 1
+                except Exception:
+                    logger.warning("[telegram] nie udało się wysłać %s", nazwa, exc_info=True)
+        finally:
+            Path(sciezka_png).unlink(missing_ok=True)
+        if not wyslane_png:
+            raise HTTPException(status_code=502, detail="Bot nie dostarczył obrazka.")
+        return {"wyslane": wyslane_png, "plik": nazwa, "rozmiar_kb": round(len(plik_bin) / 1024)}
+
     if rodzaj == "klient":
         html = render_client_report(lots_for_report[0], criteria=request.criteria)
         nazwa = pdf_export.nazwa_pliku(lots_for_report[0].lot, "raport")
@@ -4183,7 +4217,7 @@ class DefaultCriteriaSettings(BaseModel):
     max_results: int = 15
     sources: list[str] = Field(default_factory=lambda: ["copart", "iaai"])
     # Kryteria z rozmowy z klientem: kilka modeli naraz, segment jako kontekst,
-    # budżet "pod klucz" w PLN. Wszystko opcjonalne — szablon ma się wypełniać
+    # budżet "pod drzwi" w PLN. Wszystko opcjonalne — szablon ma się wypełniać
     # stopniowo, bo pierwsza rozmowa rzadko daje komplet.
     targets: list[dict] = Field(default_factory=list)
     segment: Optional[str] = None

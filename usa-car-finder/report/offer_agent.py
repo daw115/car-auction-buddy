@@ -10,7 +10,7 @@ mieć liczb pochodzących z generowania tekstu.
 
 Podział odpowiedzialności jest więc twardy:
 
-  Python  — wszystko, co da się policzyć lub przepisać: cena pod klucz, przebieg, tłumaczenie
+  Python  — wszystko, co da się policzyć lub przepisać: cena pod drzwi, przebieg, tłumaczenie
             żargonu aukcyjnego, prowizja, terminy, HTML. Każda liczba w ofercie pochodzi
             z pricing/import_calculator.py.
   Model   — wyłącznie proza: jedno zdanie wstępu, jedno zdanie "dlaczego to auto", zdanie
@@ -26,7 +26,7 @@ Założenia biznesowe, na których stoi treść — opisane szerzej w agent-ofer
   * Jesteśmy BROKEREM, nie komisem. Nie mamy auta na placu, nie naprawiamy go i nie dajemy
     gwarancji na naprawę. Zarabiamy prowizję. Oferta nie może obiecywać niczego z modelu
     "kupiłem, naprawiłem, sprzedaję".
-  * Klient myśli w złotówkach pod klucz. Cena aukcyjna w USD nic mu nie mówi (ta sama
+  * Klient myśli w złotówkach pod drzwi. Cena aukcyjna w USD nic mu nie mówi (ta sama
     zasada co w report/whatsapp.py).
   * Cena z aukcji to STAWKA, nie cena. Aukcja może pójść wyżej, więc mówimy "przy tej
     stawce", a nie "cena tego auta".
@@ -197,7 +197,7 @@ class OfferCar:
     fee_tier: FeeTier
     report_url: Optional[str] = None
     why: Optional[str] = None        # jedno zdanie od modelu, może zostać puste
-    over_budget: bool = False        # cena pod klucz wyższa niż budżet klienta
+    over_budget: bool = False        # cena pod drzwi wyższa niż budżet klienta
 
     @property
     def name(self) -> str:
@@ -370,7 +370,7 @@ def build_car(
 ) -> Optional[OfferCar]:
     """Pozycja oferty albo None, gdy lota nie da się wycenić.
 
-    Bez ceny aukcyjnej nie ma ceny pod klucz, a auto bez ceny w ofercie to zaproszenie
+    Bez ceny aukcyjnej nie ma ceny pod drzwi, a auto bez ceny w ofercie to zaproszenie
     do rozmowy o tym, czego nie wiemy — lepiej je pominąć.
     """
     lot, analysis = _unwrap(item)
@@ -598,7 +598,7 @@ def _fallback_prose(cars: list[OfferCar], client_name: Optional[str], budget_pln
     fits_budget = budget_pln and all(car.client_price_pln <= budget_pln for car in cars)
     budget_note = f" pod budżet {round(budget_pln / 1000)} tys. zł" if fits_budget else ""
     return {
-        "intro": f"Mam {count_word} {noun}{budget_note} — poniżej ceny pod klucz w Polsce.",
+        "intro": f"Mam {count_word} {noun}{budget_note} — poniżej ceny pod drzwi w Polsce.",
         "closing": "Podesłać pełną kalkulację dla któregoś z nich?",
         "broker_note": None,
         "why": {},
@@ -837,7 +837,7 @@ def _render_client_email(
             <h2 style="font-size:20px;line-height:1.25;margin:0 0 6px 0;color:#111827;">{_E(car.name)}</h2>
             <div style="font-size:14px;color:#667085;line-height:1.6;">{_E(" · ".join(facts))}</div>
             <div style="margin-top:12px;font-size:20px;font-weight:800;color:#163b66;">{_E(car.price_label)}</div>
-            <div style="font-size:12px;color:#667085;margin-top:2px;">cena pod klucz w Polsce{
+            <div style="font-size:12px;color:#667085;margin-top:2px;">cena pod drzwi w Polsce{
                 " — powyżej podanego budżetu" if car.over_budget else ""}</div>
             {why}
             {link}
@@ -1043,7 +1043,7 @@ def build_offer(
         warnings.append("żadnego lota nie dało się wycenić — tego maila nie ma po co wysyłać")
     if over and not allow_over_budget:
         warnings.append(
-            f"{len(over)} aut pominięto — cena pod klucz ponad budżet klienta "
+            f"{len(over)} aut pominięto — cena pod drzwi ponad budżet klienta "
             "(są w sekcji poniżej, do świadomego dobrania)"
         )
     if any(car.over_budget for car in client_cars):

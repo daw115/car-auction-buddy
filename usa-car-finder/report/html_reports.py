@@ -316,7 +316,7 @@ def _informacje_o_samochodzie(item: AnalyzedLot, koszty: Optional[dict] = None) 
     brokera: zawiera cenę aukcyjną i wewnętrzny werdykt („Rekomendacja: ryzyko").
     Wklejona do oferty pokazywała klientowi marżę. Wszystko poniżej pochodzi
     z pól strukturalnych i nie zawiera kwot w dolarach — klient rozlicza się
-    w złotówkach pod klucz.
+    w złotówkach pod drzwi.
 
     Aukcje wstawiają w puste pola napisy udające dane („Not Specified"), więc
     wartość, która niczego nie wnosi, nie tworzy punktu.
@@ -476,7 +476,7 @@ def _stan_pojazdu(item: AnalyzedLot, koszty: Optional[dict] = None) -> dict:
             "ostrzezenie": ocena < 3.5,
         }
 
-    # Kwota pod klucz to koszt SPROWADZENIA (zakup, transport, cło, akcyza, VAT,
+    # Kwota pod drzwi to koszt SPROWADZENIA (zakup, transport, cło, akcyza, VAT,
     # prowizja). Naprawy w niej nie ma — model kosztów nie ma takiej pozycji.
     # Klient, który tego nie wie, liczy, że auto przyjedzie naprawione, i wraca
     # z pretensją przy odbiorze. Mówimy to wprost i w złotówkach, bo w dolarach
@@ -753,7 +753,7 @@ def _whatsapp_line(lot) -> str:
     draft = build_draft([lot])
     if not draft:
         name = f"{lot.year or ''} {lot.make or ''} {lot.model or ''}".strip()
-        return f"{name} z aukcji USA — mam pełną kalkulację pod klucz. Podesłać?"
+        return f"{name} z aukcji USA — mam pełną kalkulację pod drzwi. Podesłać?"
     return draft.text
 
 
@@ -765,12 +765,12 @@ def _build_notes(item: AnalyzedLot) -> dict:
     return {
         "offer_mode": "Oferta importu z aukcji USA",
         "main_trigger": ai.client_description_pl or f"Wyjątkowa okazja na {name} z aukcji USA",
-        "headline_a": f"{name} z USA — transparentny import pod klucz",
+        "headline_a": f"{name} z USA — transparentny import pod drzwi",
         "headline_b": f"Oszczędź vs. rynek PL — {name} prosto z aukcji ubezpieczeniowej",
         "headline_c": f"Konkretna kalkulacja kosztów zamiast domysłów — {name}",
         "communication_risks": "Klient może obawiać się ukrytych kosztów i formalności — zaadresuj to w pierwszej wiadomości",
         "followup_48h": f"Aukcja {lot.auction_date or 'wkrótce'} — potrzebuję potwierdzenia limitu bidu do 24h przed końcem",
-        # Gotowa treść z report/whatsapp.py: cena pod klucz w złotówkach, bez
+        # Gotowa treść z report/whatsapp.py: cena pod drzwi w złotówkach, bez
         # wewnętrznej oceny. Broker akceptuje i wysyła — nic nie idzie automatem.
         "short_whatsapp": _whatsapp_line(lot),
         "damaging_admission": "To auto ma uszkodzenia karoserii — piszę o tym otwarcie, bo ukrywanie tego nie ma sensu",
@@ -1017,7 +1017,7 @@ def render_client_shortlist(items, *, client_name: Optional[str] = None, ile: in
 
     Osobny dokument, nie zlepek trzech pełnych raportów. Pierwszy kontakt ma
     doprowadzić do WYBORU, a nie do decyzji zakupowej: klient dostaje zdjęcie,
-    cenę pod klucz, przebieg i stan, i wskazuje palcem. Pełny raport o jednym
+    cenę pod drzwi, przebieg i stan, i wskazuje palcem. Pełny raport o jednym
     aucie idzie dopiero po jego odpowiedzi.
 
     Kolejności nie zmieniamy — auta przychodzą w rankingu ze scoringu, a broker
