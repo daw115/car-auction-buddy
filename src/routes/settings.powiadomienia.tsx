@@ -95,7 +95,7 @@ function PowiadomieniaPage() {
               <p className="mt-3 text-sm text-muted-foreground">
                 Bez tokena bota nasłuchy działają, ale nie mają jak Cię zawiadomić — trafienia
                 zobaczysz dopiero na karcie klienta, w sekcji „Ostatnio wyłowione”. Token ustawia
-                się na serwerze w <code>/etc/usacar/api.env</code>.
+                się na serwerze w pliku <code>.env</code> w katalogu backendu.
               </p>
             ) : (
               <div className="mt-4">
