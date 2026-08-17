@@ -91,16 +91,27 @@ _WYSLIJ_JS = """
 })()
 """
 
-# Odczyt ostatniej wiadomości WYCHODZĄCEJ — dowód, że treść faktycznie poszła.
-# Prefiks `true_` w `data-id` znaczy „od nas"; to ta sama konwencja, na której
-# stoi czytnik.
+# Dowód, że treść poszła: szukamy JEJ SAMEJ wśród ostatnich wiadomości.
+#
+# Pierwsza wersja sprawdzała kierunek po prefiksie `true_` w `data-id` i po
+# klasach `message-out`. Zmierzone na żywej sesji: ani jedno, ani drugie już nie
+# istnieje — identyfikatory wyglądają jak `3EB00D7AC5C6596C4DAE7A`, a klasy to
+# wygenerowane skróty (`x1n2onr6`). Wiadomość faktycznie poszła, a nadajnik
+# twierdził, że nie.
+#
+# Porównanie treści jest odporne na te przebudowy: jeśli nasz tekst widnieje
+# w rozmowie, to znaczy, że tam trafił. Normalizujemy białe znaki, bo WhatsApp
+# dokleja do wiersza godzinę i status doręczenia.
 _POTWIERDZENIE_JS = """
 (() => {
-  const wiersze = Array.from(document.querySelectorAll('[data-id]'));
-  const nasze = wiersze.filter(r => (r.getAttribute('data-id') || '').startsWith('true_'));
-  if (!nasze.length) return null;
-  const ostatni = nasze[nasze.length - 1];
-  return (ostatni.innerText || '').slice(0, 200);
+  const szukane = %s;
+  const norm = t => (t || '').replace(/\\s+/g, ' ').trim();
+  const wiersze = Array.from(document.querySelectorAll('[data-id]')).slice(-8);
+  for (let i = wiersze.length - 1; i >= 0; i--) {
+    const tekst = norm(wiersze[i].innerText);
+    if (tekst.includes(norm(szukane))) return tekst.slice(0, 200);
+  }
+  return null;
 })()
 """
 
@@ -176,7 +187,9 @@ async def wyslij(numer: str, tresc: str) -> WynikWysylki:
 
             # 4. Dowód z ekranu. Bez tego „wysłane" znaczyłoby tylko „kliknąłem".
             await asyncio.sleep(2.0)
-            potwierdzenie = await _ocen(ws, _POTWIERDZENIE_JS, 3)
+            import json as _json
+
+            potwierdzenie = await _ocen(ws, _POTWIERDZENIE_JS % _json.dumps(tresc), 3)
 
     if not potwierdzenie:
         raise WhatsappSendError(
