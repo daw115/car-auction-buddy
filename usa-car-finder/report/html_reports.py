@@ -415,7 +415,7 @@ def _stan_pojazdu(item: AnalyzedLot, koszty: Optional[dict] = None) -> dict:
                 # Najpierw kto ocenił, potem co to znaczy. Odwrotnie brzmiało jak
                 # dopisek tłumacza doklejony na końcu cudzego zdania.
                 f"Taką ocenę wystawili rzeczoznawcy giełdy, na której auto stoi. {opis} "
-                "Ocena mówi o wyglądzie i technice. Historię pojazdu sprawdzam osobno "
+                "Ocena mówi o wyglądzie i stanie technicznym. Historię pojazdu sprawdzam osobno "
                 "i opiszę ją w kalkulacji."
             ),
             "ostrzezenie": ocena < 3.5,
@@ -426,20 +426,13 @@ def _stan_pojazdu(item: AnalyzedLot, koszty: Optional[dict] = None) -> dict:
     # Klient, który tego nie wie, liczy, że auto przyjedzie naprawione, i wraca
     # z pretensją przy odbiorze. Mówimy to wprost i w złotówkach, bo w dolarach
     # rozlicza się aukcja, a nie on.
-    if ai.estimated_repair_usd and koszty and koszty.get("usd_rate"):
-        w_zlotowkach = round(float(ai.estimated_repair_usd) * float(koszty["usd_rate"]))
-        opis = (
-            f"Naprawę wyceniam wstępnie na około {w_zlotowkach:,} zł".replace(",", " ")
-            + ". Ta kwota dochodzi do ceny podanej wyżej, bo auto przyjeżdża "
-            "w stanie z aukcji. Dokładną wycenę podam po obejrzeniu zdjęć w pełnej "
-            "rozdzielczości."
-        )
-    else:
-        opis = (
-            "Koszt naprawy wycenię po obejrzeniu zdjęć w pełnej rozdzielczości. "
-            "Ta kwota dochodzi do ceny podanej wyżej, bo auto przyjeżdża w stanie "
-            "z aukcji."
-        )
+    # Bez podawania kwoty. Wycena z jednego zdjęcia i szacunku aukcji potrafi się
+    # rozminąć z warsztatem o kilka tysięcy, a liczba raz wpisana do oferty staje
+    # się dla klienta obietnicą. Mówimy, że możemy ją policzyć, gdy będzie chciał.
+    opis = (
+        "Naprawa nie jest wliczona w kwotę podaną wyżej, bo auto przyjeżdża w stanie "
+        "z aukcji. W razie zainteresowania możemy wstępnie ocenić koszt naprawy."
+    )
 
     return {
         "tytul": "Co jest uszkodzone",
