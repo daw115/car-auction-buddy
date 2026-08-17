@@ -16,7 +16,7 @@ import {
   setLeadStage,
   startLeadSearch,
 } from "@/functions/sales.functions";
-import { readWhatsappConversation } from "@/functions/intake.functions";
+import { readWhatsappConversation, transcribeRecording } from "@/functions/intake.functions";
 import { KandydaciPanel } from "@/components/panels/kandydaci-panel";
 import { WatchesPanel } from "@/components/panels/watches-panel";
 import type { ClientCriteria } from "@/lib/types";
@@ -99,6 +99,7 @@ function KartaKlienta() {
   const fnStartSearch = useServerFn(startLeadSearch);
   const fnPromote = useServerFn(promoteLead);
   const fnReadWhatsapp = useServerFn(readWhatsappConversation);
+  const fnTranskrypcja = useServerFn(transcribeRecording);
 
   const [odpowiedz, setOdpowiedz] = useState("");
   const [tresc, setTresc] = useState<string | null>(null);
@@ -369,6 +370,46 @@ function KartaKlienta() {
               >
                 Wczytaj z WhatsAppa
               </Button>
+
+              {/* Trzecia droga wywiadu: nagranie rozmowy. Backend transkrybuje
+                  LOKALNIE (faster-whisper) — nagranie nie opuszcza serwera. */}
+              <label
+                className={`inline-flex cursor-pointer items-center rounded-md border px-3 text-xs font-medium ${
+                  zajety !== null ? "pointer-events-none opacity-50" : "hover:bg-muted"
+                }`}
+                title="Wgraj nagranie rozmowy — transkrypcja idzie lokalnie"
+              >
+                {zajety === "audio" ? "Transkrybuję…" : "🎙 Wgraj nagranie"}
+                <input
+                  type="file"
+                  accept="audio/*,video/mp4,.ogg,.m4a,.mp3,.wav"
+                  className="hidden"
+                  onChange={(event) => {
+                    const plik = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!plik) return;
+                    void zrob(
+                      "audio",
+                      async () => {
+                        const dane = new FormData();
+                        dane.append("file", plik);
+                        const wynik = await fnTranskrypcja({ data: dane });
+                        if (wynik.transcript?.text) setOdpowiedz(wynik.transcript.text);
+                        setRozpoznane(
+                          wynik.criteria || wynik.summary || (wynik.assumed?.length ?? 0) > 0
+                            ? {
+                                criteria: wynik.criteria ?? null,
+                                assumed: wynik.assumed ?? [],
+                                summary: wynik.summary ?? "",
+                              }
+                            : null,
+                        );
+                      },
+                      "Nagranie spisane — sprawdź, co usłyszałem.",
+                    );
+                  }}
+                />
+              </label>
             </div>
 
             {rozpoznane ? (
