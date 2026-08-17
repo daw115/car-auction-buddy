@@ -1,0 +1,123 @@
+{# Krótka lista: trzy auta na jednej stronie, do wysłania po pierwszym wyszukaniu.
+
+   Pierwszy kontakt ma doprowadzić do wyboru, a nie do decyzji zakupowej. Klient
+   dostaje więc tyle, ile trzeba, żeby wskazać palcem: zdjęcie, cenę pod klucz,
+   przebieg i stan. Szczegóły jednego auta idą dopiero wtedy, gdy je wybierze.
+
+   Trzy, nie dziesięć: przy dłuższej liście klient odkłada decyzję na później,
+   a „później" w tej branży znaczy „aukcja się skończyła".
+#}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Propozycje aut z aukcji w USA</title>
+<style>
+  :root {
+    --ink: #16202b; --ink-2: #46545f; --muted: #6f7e89;
+    --paper: #ffffff; --wash: #f4f7f9; --line: #dde4e9;
+    --accent: #14568f; --warn: #8a5710;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); color: var(--ink); background: var(--wash);
+         font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 210mm; margin: 0 auto; background: var(--paper); padding: 0 0 14mm; }
+
+  header { padding: 12mm 16mm 6mm; border-bottom: 2px solid var(--ink); }
+  .eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
+             text-transform: uppercase; color: var(--accent); }
+  h1 { font-family: var(--serif); font-size: 26px; font-weight: 600; margin-top: 6px;
+       line-height: 1.15; }
+  .lead { color: var(--ink-2); margin-top: 6px; max-width: 130mm; }
+
+  .auta { padding: 0 16mm; }
+  .auto { display: grid; grid-template-columns: 62mm 1fr; gap: 6mm;
+          padding: 7mm 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
+  .auto:last-child { border-bottom: none; }
+  .auto img { width: 100%; height: 44mm; object-fit: cover; display: block;
+              border: 1px solid var(--line); }
+  .brak-foto { width: 100%; height: 44mm; border: 1px dashed var(--line);
+               display: flex; align-items: center; justify-content: center;
+               color: var(--muted); font-size: 12px; text-align: center; padding: 8px; }
+  .auto h2 { font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .cena { font-family: var(--serif); font-size: 22px; margin-top: 4px; }
+  .cena small { font-family: var(--sans); font-size: 12px; color: var(--muted); }
+  .fakty { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+  .fakty div { padding: 2px 0; }
+  .stan { margin-top: 6px; font-size: 12px; padding: 6px 9px; border-left: 3px solid var(--warn);
+          background: #fbf1de; }
+  .stan.dobry { border-left-color: #14624a; background: #e8f3ee; }
+
+  .kontakt { margin: 9mm 16mm 0; padding: 14px 18px; border: 1px solid var(--ink);
+             break-inside: avoid; }
+  .kontakt h3 { font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .kontakt p { margin-top: 6px; color: var(--ink-2); }
+
+  footer { margin: 9mm 16mm 0; padding-top: 8px; border-top: 1px solid var(--line);
+           font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  @page { size: A4; margin: 12mm; }
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .page { max-width: none; padding: 0; }
+    header { padding: 0 0 5mm; }
+    .auta, .kontakt, footer { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+    .auto img, .brak-foto { height: 38mm; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">Auta z aukcji w USA</div>
+    <h1>{{ naglowek }}</h1>
+    <p class="lead">
+      Wybrałem {{ auta | length }}
+      {% if auta | length == 1 %}auto{% else %}auta{% endif %}, które pasują do tego,
+      czego Pan szuka. Ceny są policzone pod klucz w Polsce. Proszę napisać, które
+      Pana interesuje, a odeślę komplet zdjęć i szczegółowy raport o tym egzemplarzu.
+    </p>
+  </header>
+
+  <div class="auta">
+    {% for auto in auta %}
+    <div class="auto">
+      <div>
+        {% if auto.zdjecie %}
+        <img src="{{ auto.zdjecie }}" alt="{{ auto.nazwa }}">
+        {% else %}
+        <div class="brak-foto">Zdjęcia prześlę osobno</div>
+        {% endif %}
+      </div>
+      <div>
+        <h2>{{ auto.nazwa }}</h2>
+        <div class="cena">{{ auto.cena }} <small>pod klucz</small></div>
+        <div class="fakty">
+          {% for fakt in auto.fakty %}<div>{{ fakt }}</div>{% endfor %}
+        </div>
+        <div class="stan{% if not auto.stan.ostrzezenie %} dobry{% endif %}">
+          <b>{{ auto.stan.wartosc }}</b> — {{ auto.stan.opis }}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="kontakt">
+    <h3>Które z nich Pana interesuje?</h3>
+    <p>
+      Proszę odpisać numerem albo nazwą auta. Odeślę komplet zdjęć, szczegółowy raport
+      o stanie i dokładną kalkulację, a potem ustalimy limit licytacji. Bez zobowiązań.
+    </p>
+  </div>
+
+  <footer>{{ generated_at }}</footer>
+
+</div>
+</body>
+</html>

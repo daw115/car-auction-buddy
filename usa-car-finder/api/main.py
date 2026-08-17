@@ -3077,6 +3077,89 @@ async def generate_client_html_report(request: ApproveReportRequest):
     return HTMLResponse(content=html)
 
 
+@app.post("/report/shortlist")
+async def generate_client_shortlist(request: ApproveReportRequest, format: str = "html"):
+    """Krótka lista trzech aut — pierwszy kontakt po wyszukaniu.
+
+    `format=pdf` oddaje ten sam dokument jako plik, żeby broker mógł go wysłać
+    przez WhatsAppa bez otwierania przeglądarki i drukowania do pliku.
+    """
+    from fastapi.responses import HTMLResponse, Response
+
+    from report.html_reports import render_client_shortlist
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu")
+
+    html = render_client_shortlist(lots_for_report, client_name=request.client_name)
+
+    if format.lower() != "pdf":
+        return HTMLResponse(content=html)
+
+    from report import pdf_export
+
+    try:
+        pdf = pdf_export.html_na_pdf(html)
+    except pdf_export.PdfNiedostepny as blad:
+        raise HTTPException(status_code=503, detail=str(blad)) from blad
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="propozycje.pdf"'},
+    )
+
+
+@app.post("/report/client-pdf")
+async def generate_client_pdf(request: ApproveReportRequest):
+    """Szczegółowy raport o JEDNYM aucie jako PDF — to, co idzie po wyborze klienta."""
+    from fastapi.responses import Response
+
+    from report import pdf_export
+    from report.html_reports import render_client_report
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu")
+
+    html = render_client_report(lots_for_report[0], criteria=request.criteria)
+    try:
+        pdf = pdf_export.html_na_pdf(html)
+    except pdf_export.PdfNiedostepny as blad:
+        raise HTTPException(status_code=503, detail=str(blad)) from blad
+    nazwa = pdf_export.nazwa_pliku(lots_for_report[0].lot, "raport")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{nazwa}"'},
+    )
+
+
+@app.post("/report/broker-pdf")
+async def generate_broker_pdf(request: ApproveReportRequest):
+    """Raport brokerski jako PDF — do archiwum i do rozmowy z klientem przy licytacji."""
+    from fastapi.responses import Response
+
+    from report import pdf_export
+    from report.html_reports import render_broker_report
+
+    lots_for_report = [lot for lot in request.approved_lots if lot.included_in_report]
+    if not lots_for_report:
+        raise HTTPException(status_code=400, detail="Brak lotów do raportu")
+
+    html = render_broker_report(lots_for_report[0], criteria=request.criteria)
+    try:
+        pdf = pdf_export.html_na_pdf(html)
+    except pdf_export.PdfNiedostepny as blad:
+        raise HTTPException(status_code=503, detail=str(blad)) from blad
+    nazwa = pdf_export.nazwa_pliku(lots_for_report[0].lot, "broker")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{nazwa}"'},
+    )
+
+
 @app.post("/report/broker-html")
 async def generate_broker_html_report(request: ApproveReportRequest):
     """Generuje wewnętrzny raport brokera (pełne dane, koszty, strategia bid) dla pierwszego zatwierdzonego lota."""

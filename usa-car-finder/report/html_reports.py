@@ -1012,6 +1012,59 @@ def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     }
 
 
+def render_client_shortlist(items, *, client_name: Optional[str] = None, ile: int = 3) -> str:
+    """Krótka lista najlepszych aut — pierwszy kontakt po wyszukaniu.
+
+    Osobny dokument, nie zlepek trzech pełnych raportów. Pierwszy kontakt ma
+    doprowadzić do WYBORU, a nie do decyzji zakupowej: klient dostaje zdjęcie,
+    cenę pod klucz, przebieg i stan, i wskazuje palcem. Pełny raport o jednym
+    aucie idzie dopiero po jego odpowiedzi.
+
+    Kolejności nie zmieniamy — auta przychodzą w rankingu ze scoringu, a broker
+    mógł je już przestawić albo odsiać w panelu.
+    """
+    wybrane = list(items)[:ile]
+    auta = []
+    for item in wybrane:
+        lot = item.lot
+        koszty = calculate_lot_import_costs(lot)
+        cena = format_pln(koszty["private_total_pln"]) if koszty else "do wyliczenia"
+        if koszty and koszty.get("usd_rate"):
+            w_dolarach = round(float(koszty["private_total_pln"]) / float(koszty["usd_rate"]))
+            cena = f"{cena} ({w_dolarach:,} $)".replace(",", " ")
+
+        fakty = []
+        if lot.odometer_mi:
+            fakty.append(f"Przebieg: {_mileage(lot.odometer_mi)}")
+        silnik = [p for p in _wyposazenie(lot) if p.startswith(("Silnik", "Napęd", "Skrzynia"))]
+        fakty.extend(silnik[:2])
+        if lot.location_state:
+            fakty.append(f"Lokalizacja: {_location_str(lot)}")
+        if lot.auction_date:
+            fakty.append(f"Aukcja: {_data_aukcji_po_polsku(lot.auction_date)}")
+
+        auta.append(
+            {
+                "nazwa": " ".join(str(x) for x in [lot.year, lot.make, lot.model] if x),
+                "zdjecie": (_zdjecia_do_wklejenia(list(lot.images or [])[:1]) or [None])[0],
+                "cena": cena,
+                "fakty": fakty,
+                "stan": _stan_pojazdu(item, koszty),
+            }
+        )
+
+    naglowek = (
+        f"Propozycje dla Pana{f' {client_name}' if client_name else ''}"
+        if client_name
+        else "Propozycje aut z aukcji w USA"
+    )
+    return _jinja_env.get_template("client_shortlist.html.j2").render(
+        auta=auta,
+        naglowek=naglowek,
+        generated_at=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+
+
 def render_client_report(item: AnalyzedLot, criteria: Optional[ClientCriteria] = None) -> str:
     ctx = build_client_context(item, criteria)
     tmpl = _jinja_env.get_template("client_report.html.j2")
