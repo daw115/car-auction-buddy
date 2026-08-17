@@ -74,6 +74,9 @@
   table.fakty td:first-child { color: var(--muted); width: 38%; padding-right: 14px; }
 
   .opis p + p { margin-top: 8px; }
+  ul.punkty { list-style: none; }
+  ul.punkty li { padding: 5px 0 5px 18px; position: relative; break-inside: avoid; }
+  ul.punkty li::before { content: "•"; position: absolute; left: 4px; color: var(--accent); }
   .opis { color: var(--ink-2); }
 
   .uszkodzenie { border-left: 3px solid var(--warn); background: #fbf1de;
@@ -162,10 +165,12 @@
       </div>
     </section>
 
-    {% if story_paragraphs %}
+    {% if informacje %}
     <section class="opis">
-      <h2>Od siebie</h2>
-      <p>{{ story_paragraphs[0] }}</p>
+      <h2>Informacje o samochodzie</h2>
+      <ul class="punkty">
+        {% for punkt in informacje %}<li>{{ punkt }}</li>{% endfor %}
+      </ul>
     </section>
     {% endif %}
 

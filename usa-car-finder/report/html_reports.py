@@ -3,6 +3,7 @@ Renders client_report.html.j2 and broker_report.html.j2 from AnalyzedLot data.
 """
 import logging
 import os
+import re
 from datetime import datetime
 from html import escape
 from pathlib import Path
@@ -51,12 +52,20 @@ def _resolve_pipeline_filter_bool(filter_key: str, env_var: str, default: bool) 
 
 
 def _mileage(value) -> str:
+    """Przebieg w milach i kilometrach.
+
+    Aukcje amerykańskie podają mile, a polski klient liczy w kilometrach —
+    „26 897 mi" nie mówi mu, czy auto jest przejechane, dopóki sam nie przeliczy.
+    Milę zostawiamy obok, bo to ona widnieje na liczniku i w dokumentach aukcji.
+    """
     if value is None:
         return "brak danych"
     try:
-        return f"{int(value):,} mi".replace(",", " ")
+        mile = int(value)
     except (TypeError, ValueError):
         return str(value)
+    km = round(mile * 1.609344)
+    return f"{mile:,} mi ({km:,} km)".replace(",", " ")
 
 
 def _damage_str(lot) -> str:
@@ -142,6 +151,96 @@ _OPIS_OCENY = (
     (2.0, "wymaga napraw blacharsko-lakierniczych"),
     (0.0, "poważne uszkodzenia — auto do gruntownej naprawy"),
 )
+
+
+def _informacje_o_samochodzie(item: AnalyzedLot, koszty: Optional[dict] = None) -> list[str]:
+    """Punkty do sekcji „Informacje o samochodzie" — wyłącznie z faktów.
+
+    NIE używamy tu `analysis.client_description_pl`. Mimo nazwy jest to notatka
+    dla brokera: zawiera cenę aukcyjną, szacunek naprawy w dolarach i wewnętrzny
+    werdykt („Rekomendacja: ryzyko"). Wklejenie jej do oferty pokazywało klientowi
+    marżę i opinię, która nigdy nie miała opuścić panelu.
+
+    Każdy punkt to jedno zdanie o jednej rzeczy, po polsku, bez żargonu aukcyjnego
+    i bez kwot w dolarach — klient rozlicza się w złotówkach pod klucz.
+    """
+    lot = item.lot
+    punkty: list[str] = []
+
+    rocznik = f"{lot.year} " if lot.year else ""
+    marka = " ".join(p for p in [lot.make, lot.model] if p)
+    if marka:
+        punkty.append(f"{rocznik}{marka}{f' w wersji {lot.trim}' if lot.trim else ''}.")
+
+    if lot.odometer_mi:
+        punkty.append(f"Przebieg {_mileage(lot.odometer_mi)}, potwierdzony przez aukcję.")
+
+    if lot.location_state:
+        punkty.append(f"Auto stoi w {_location_str(lot)} — stamtąd organizuję transport do portu.")
+
+    if lot.keys is True:
+        punkty.append("Kluczyki są w komplecie, nie trzeba ich dorabiać.")
+
+    if lot.airbags_deployed is False:
+        punkty.append("Poduszki powietrzne nierozbite — to oszczędza kilka tysięcy przy naprawie.")
+
+    if lot.seller_type == "insurance":
+        punkty.append("Sprzedaje ubezpieczalnia, więc historia dokumentów jest kompletna.")
+
+    if koszty and koszty.get("duty_rate_pct") == 0:
+        punkty.append(
+            "Auto montowane w USA, więc wchodzi do Polski bez cła — przy tej klasie "
+            "samochodu to oszczędność rzędu kilkunastu tysięcy złotych."
+        )
+
+    punkty.append(
+        "Mam komplet zdjęć i danych z aukcji — prześlę wszystko, co chce Pan zobaczyć."
+    )
+    return punkty
+
+
+def _zdjecia_do_wklejenia(adresy: list[str]) -> list[str]:
+    """Zamienia adresy zdjęć na `data:` — obraz wchodzi do pliku HTML.
+
+    Raport był dotąd zbiorem odnośników do serwerów aukcji. Klient dostaje ten
+    plik mailem i otwiera go czasem bez internetu, a aukcja zdejmuje zdjęcia po
+    sprzedaży lota — w obu przypadkach zostawała pusta ramka i oferta bez auta.
+    Wklejone zdjęcie jedzie razem z dokumentem i przeżywa jedno i drugie.
+
+    Przy niepowodzeniu zostaje zwykły adres: lepszy odnośnik, który może zadziałać,
+    niż brak zdjęcia. `REPORT_EMBED_IMAGES=false` wyłącza wklejanie w całości.
+    """
+    if os.getenv("REPORT_EMBED_IMAGES", "true").lower() != "true":
+        return adresy
+
+    import base64
+    import urllib.request
+
+    limit_na_zdjecie = int(os.getenv("REPORT_IMAGE_MAX_BYTES", str(2 * 1024 * 1024)))
+    # Poczta odbija załączniki powyżej ok. 20 MB, a raport bywa wysyłany mailem.
+    limit_razem = int(os.getenv("REPORT_IMAGE_TOTAL_BYTES", str(8 * 1024 * 1024)))
+    czas = float(os.getenv("REPORT_IMAGE_TIMEOUT_SECONDS", "5"))
+
+    wynik: list[str] = []
+    zuzyte = 0
+    for adres in adresy:
+        if not adres.startswith("http") or zuzyte >= limit_razem:
+            wynik.append(adres)
+            continue
+        try:
+            zadanie = urllib.request.Request(adres, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(zadanie, timeout=czas) as odpowiedz:
+                typ = odpowiedz.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                dane = odpowiedz.read(limit_na_zdjecie + 1)
+            if len(dane) > limit_na_zdjecie or not typ.startswith("image/"):
+                wynik.append(adres)
+                continue
+            zuzyte += len(dane)
+            wynik.append(f"data:{typ};base64,{base64.b64encode(dane).decode('ascii')}")
+        except Exception:
+            logger.debug("[raport] nie udało się wkleić zdjęcia %s", adres, exc_info=True)
+            wynik.append(adres)
+    return wynik
 
 
 def _stan_pojazdu(item: AnalyzedLot) -> dict:
@@ -492,7 +591,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "photo_url": lot.images[0] if lot.images else None,
         # Galeria, nie jedno zdjecie: klient decyduje o wydatku rzedu 100 tys. zl
         # i pierwsze, o co pyta, to „a jak to wyglada z drugiej strony".
-        "photos": list(lot.images or [])[:6],
+        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:6]),
         "headline_text": ai.client_description_pl or f"Sprawdzony {lot.year} {lot.make} {lot.model} z aukcji USA",
         "subhead_text": f"Szacowany koszt w Polsce: {total_cost_pln}",
         "story_paragraphs": [
@@ -506,6 +605,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "spec_rows": _build_spec_rows(item),
         "fakty": _build_client_facts(item),
         "stan": _stan_pojazdu(item),
+        "informacje": _informacje_o_samochodzie(item),
         "damage_what": _damage_str(lot),
         "damage_repair": f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}" if ai.estimated_repair_usd else "Do wyceny po inspekcji",
         "damage_ok_items": _build_damage_ok_items(item),
