@@ -65,7 +65,9 @@ def _mileage(value) -> str:
     except (TypeError, ValueError):
         return str(value)
     km = round(mile * 1.609344)
-    return f"{mile:,} mi ({km:,} km)".replace(",", " ")
+    # Kilometry na pierwszym miejscu: klient nimi liczy. Mila w nawiasie, bo to ona
+    # stoi na liczniku i w dokumentach aukcji, więc musi się zgadzać przy odbiorze.
+    return f"{km:,} km ({mile:,} mi)".replace(",", " ")
 
 
 def _damage_str(lot) -> str:
@@ -728,6 +730,12 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     costs = calculate_lot_import_costs(lot)
 
     total_cost_pln = format_pln(costs["private_total_pln"]) if costs else "brak danych"
+    # Dolary w nawiasie, bo klient rozlicza się w złotówkach, ale przy aucie z USA
+    # chce widzieć, ile to jest „po tamtej stronie". To ta sama kwota po kursie
+    # z tej samej kalkulacji, nie cena aukcyjna.
+    if costs and costs.get("usd_rate"):
+        w_dolarach = round(float(costs["private_total_pln"]) / float(costs["usd_rate"]))
+        total_cost_pln = f"{total_cost_pln} ({w_dolarach:,} $)".replace(",", " ")
 
     cta_headline = f"Zainteresowany tym {lot.make} {lot.model}?"
     cta_body = (

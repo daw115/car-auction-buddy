@@ -26,7 +26,13 @@ def test_prices_are_landed_pln_not_auction_usd():
     # się co dzień. Test na "52" pilnowałby tabeli kursowej, a nie tego, co sprawdza.
     from pricing import fx
 
-    kwota = int("".join(ch for ch in draft.text.split("—")[1] if ch.isdigit()))
+    # Dzielenie po myślniku wiązało test z interpunkcją wiadomości: zniknął myślnik
+    # (klient nie ma go czytać) i test padał, choć kwota była poprawna.
+    import re as _re
+
+    dopasowanie = _re.search(r"([\d\u00a0 ]+)\s*zł", draft.text)
+    assert dopasowanie, f"w wiadomości nie ma kwoty w zł: {draft.text!r}"
+    kwota = int("".join(ch for ch in dopasowanie.group(1) if ch.isdigit()))
     assert kwota > 6000.0 * fx.current_rate() * 1.8
 
 
@@ -82,7 +88,9 @@ def test_greeting_uses_the_first_name_only():
 def test_model_name_keeps_its_comma_before_mileage():
     """Regresja: zamiana przecinków w całej linii zjadała ten po nazwie modelu."""
     line = build_draft([lot(odo=51_000)]).text
-    assert "RAV4, 51 tys. mil" in line
+    # Przebieg podajemy w kilometrach, mile w nawiasie; przecinek po nazwie
+    # modelu ma przeżyć podmianę separatora tysięcy.
+    assert "RAV4, 82 tys. km (51 tys. mil)" in line
 
 
 def test_budget_is_mentioned_when_known():

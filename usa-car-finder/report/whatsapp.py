@@ -16,6 +16,7 @@ Zasady treści (wypracowane na realnych leadach z arkusza):
   * 3-4 pozycje. Więcej paraliżuje wybór, mniej wygląda na brak oferty;
   * kończymy pytaniem. Celem wiadomości jest rozmowa, nie zamknięcie sprzedaży.
 """
+import re
 from dataclasses import dataclass
 from typing import Iterable, Optional
 from urllib.parse import quote
@@ -36,14 +37,17 @@ class OfferLine:
     def render(self) -> str:
         name = f"{self.lot.year or ''} {_short_name(self.lot)}".strip()
         if self.lot.odometer_mi:
-            name += f", {self.lot.odometer_mi / 1000:.0f} tys. mil"
+            # Klient liczy w kilometrach; mila zostaje w nawiasie, bo to ona
+            # widnieje na liczniku i w dokumentach aukcji.
+            km = self.lot.odometer_mi * 1.609344
+            name += f", {km / 1000:.0f} tys. km ({self.lot.odometer_mi / 1000:.0f} tys. mil)"
         # Spacja jako separator tysięcy, ale TYLKO w liczbie — zamiana przecinków
         # w całej linii zjadałaby ten po nazwie modelu.
         price = f"{self.landed_pln:,.0f}".replace(",", "\u00a0")
         # Klient zobaczy kwotę i sam policzy, że to więcej niż mówił. Napisane wprost
         # brzmi jak propozycja; przemilczane brzmi jak próba przemycenia.
         suffix = " (powyżej budżetu)" if self.over_budget else ""
-        return f"• {name} — {price} zł{suffix}"
+        return f"• {name}: {price} zł{suffix}"
 
 
 @dataclass(frozen=True)
@@ -142,12 +146,26 @@ def build_draft(
     )
     header = (
         f"{_greeting(client_name)}, mam {len(lines)} "
-        f"{'auto' if len(lines) == 1 else 'auta'}{budget_note} — ceny pod klucz w Polsce:"
+        f"{'auto' if len(lines) == 1 else 'auta'}{budget_note}. Ceny pod klucz w Polsce:"
     )
-    footer = (
-        "W każdej cenie: zakup, transport, cło, akcyza i prowizja — bez dopłat po drodze.\n"
-        "Podesłać pełną kalkulację?"
+    # „Bez dopłat po drodze" było prawdą tylko dla aut bez szkody. Kalkulacja nie
+    # zawiera naprawy, a przy locie po szkodzie to różnica rzędu kilkunastu tysięcy
+    # złotych — klient dowiadywał się o niej dopiero z raportu albo przy odbiorze.
+    po_szkodzie = any(
+        (line.lot.damage_primary or "").strip()
+        and not re.search(r"(?:condition\s*grade|grade)\s*[0-5]", line.lot.damage_primary or "", re.I)
+        for line in lines
     )
+    czesci_stopki = [
+        "W każdej cenie: zakup, transport, cło, akcyza i prowizja, bez dopłat po drodze."
+    ]
+    if po_szkodzie:
+        czesci_stopki.append(
+            "Ceny nie obejmują naprawy. W razie zainteresowania możemy wstępnie "
+            "ocenić jej koszt."
+        )
+    czesci_stopki.append("Podesłać pełną kalkulację?")
+    footer = "\n".join(czesci_stopki)
 
     text = "\n".join([header, "", *(line.render() for line in lines), "", footer])
     return WhatsappDraft(text=text, offers=len(lines))

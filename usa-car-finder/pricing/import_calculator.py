@@ -308,7 +308,9 @@ def format_usd(value: Optional[float]) -> str:
 def format_pln(value: Optional[float]) -> str:
     if value is None:
         return "—"
-    return f"{round(value):,} PLN".replace(",", " ")
+    # „zł", nie „PLN". Kod waluty jest z faktury i z tabeli kursowej; człowiek
+    # czytający ofertę widzi w nim ślad tłumaczenia.
+    return f"{round(value):,} zł".replace(",", " ")
 
 
 def format_percent(value: float) -> str:
