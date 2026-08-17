@@ -4,7 +4,7 @@ Kraj montażu z numeru VIN — jedyne kryterium zerowej stawki cła.
 Od 1 lipca 2026 (rozporządzenie UE 2026/1455) auto sprowadzone z USA ma cło 0%,
 ale TYLKO jeśli zostało zmontowane w Stanach. Decyduje miejsce produkcji, nie marka
 i nie miejsce zakupu: BMW X5 ze Spartanburga ma 0%, a Audi Q5 z Meksyku kupione na
-tej samej aukcji w San Diego ma pełne 10%. Ta różnica to około 12% ceny pod klucz
+tej samej aukcji w San Diego ma pełne 10%. Ta różnica to około 12% ceny pod drzwi
 (cło plus VAT liczony od podstawy powiększonej o cło) i przesądza, czy wygramy ofertę.
 
 Kraj montażu siedzi w PIERWSZYM znaku VIN-u. To ma praktyczne znaczenie u nas: Copart

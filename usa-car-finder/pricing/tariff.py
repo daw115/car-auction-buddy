@@ -15,7 +15,7 @@ CO SIĘ ZMIENIŁO I DLACZEGO TO WAŻNE
    10%, mimo że zjechała z amerykańskiej taśmy.
 
    Skala: cło wchodzi do podstawy VAT-u, więc zerowa stawka ścina i cło, i podatek od
-   niego. Na aucie za 15 000 USD to około 9 000 zł mniej w cenie pod klucz. Kwotując
+   niego. Na aucie za 15 000 USD to około 9 000 zł mniej w cenie pod drzwi. Kwotując
    po staremu przegrywamy z każdym, kto już liczy 0%.
 
 2. AKCYZA — doszły dwie stawki hybrydowe

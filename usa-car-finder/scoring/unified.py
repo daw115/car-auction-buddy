@@ -83,7 +83,7 @@ class ClientProfile:
     require_clean_title: bool = False
     # Sufit podany wprost — używany, gdy znamy go z góry.
     budget: Optional[BudgetCeiling] = None
-    # Budżet "pod klucz" w PLN. Sufit z niego liczymy PER LOT, bo zależy od stanu USA:
+    # Budżet "pod drzwi" w PLN. Sufit z niego liczymy PER LOT, bo zależy od stanu USA:
     # towing wchodzi do podstawy celnej i mnoży się przez cło, VAT i akcyzę.
     budget_pln: Optional[float] = None
     settlement: str = "private"
@@ -105,7 +105,7 @@ class Component:
 
 @dataclass(frozen=True)
 class BudgetVerdict:
-    """Ile to auto kosztuje pod klucz i czy mieści się w budżecie klienta.
+    """Ile to auto kosztuje pod drzwi i czy mieści się w budżecie klienta.
 
     Przekroczenie budżetu to NIE jest wada auta. Auto ponad budżet może być
     najlepsze w stawce, tylko na dziś za drogie — broker musi widzieć jedno
@@ -123,7 +123,7 @@ class BudgetVerdict:
 
     @property
     def gap_pln(self) -> Optional[float]:
-        """O ile złotych pod klucz auto przekracza budżet."""
+        """O ile złotych pod drzwi auto przekracza budżet."""
         if self.landed_pln is None or self.budget_pln is None:
             return None
         return round(self.landed_pln - self.budget_pln, 2)

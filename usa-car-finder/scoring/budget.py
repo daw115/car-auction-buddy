@@ -1,5 +1,5 @@
 """
-Sufit ceny aukcyjnej wyliczony z budżetu klienta "pod klucz" w PLN.
+Sufit ceny aukcyjnej wyliczony z budżetu klienta "pod drzwi" w PLN.
 
 Klient mówi "50/60 tysięcy" i ma na myśli kwotę, którą zapłaci w Polsce — nie cenę
 na aukcji. Naiwne przeliczenie 60 000 PLN / 4,0 = 15 000 USD pokazałoby auta ponad
@@ -23,7 +23,7 @@ from pricing.import_calculator import (
 )
 Settlement = Literal["private", "company"]
 
-# "Pod klucz" znaczy: koszt sprowadzenia PLUS prowizja brokera. Definicja siedzi
+# "Pod drzwi" znaczy: koszt sprowadzenia PLUS prowizja brokera. Definicja siedzi
 # w pricing/import_calculator.client_price_pln i jest wspólna dla wszystkich kanałów.
 # UWAGA: broker_basic_gross_pln to sama PROWIZJA (3 198 PLN przy locie za 10 000),
 # a nie kwota końcowa — pomylenie tych pól zawyża sufit kilkukrotnie.
@@ -51,7 +51,7 @@ def max_bid_for_budget(
     duty_rate: Optional[float] = None,
     fee_tier: str = "basic",
 ) -> BudgetCeiling:
-    """Najwyższa cena aukcyjna mieszcząca się w budżecie 'pod klucz'.
+    """Najwyższa cena aukcyjna mieszcząca się w budżecie 'pod drzwi'.
 
     Sufit zależy od STANU, bo towing wchodzi do podstawy celnej i mnoży się przez cło,
     VAT i akcyzę — różnica Floryda/Kalifornia to około 600 USD sufitu. Dlatego liczymy
@@ -125,13 +125,13 @@ def landed_cost_for_lot(
     settlement: Settlement = "private",
     fee_tier: str = "basic",
 ) -> Optional[float]:
-    """Cena pod klucz dla konkretnego auta — jedyna wersja, którą wolno pokazać klientowi.
+    """Cena pod drzwi dla konkretnego auta — jedyna wersja, którą wolno pokazać klientowi.
 
     Różnica wobec `landed_cost_pln` to cło i akcyza wyprowadzone z danych auta: kraj
     montażu z VIN-u i rodzaj napędu z opisu wersji. Na aucie zmontowanym w USA jest to
     kilka tysięcy złotych mniej, a to zwykle cała przewaga nad ofertą konkurencji.
 
-    None, gdy lot nie ma ceny — auto bez stawki nie ma ceny pod klucz.
+    None, gdy lot nie ma ceny — auto bez stawki nie ma ceny pod drzwi.
     """
     costs = calculate_lot_import_costs(lot)
     if not costs:

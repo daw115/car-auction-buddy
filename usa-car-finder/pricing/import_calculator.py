@@ -97,7 +97,7 @@ def client_price_pln(
     klient nigdy nie zobaczył dwóch różnych kwot za to samo auto.
 
     private_total_pln / company_gross_pln to KOSZT SPROWADZENIA, nie cena sprzedaży.
-    Pokazanie go jako "pod klucz" zaniża ofertę o wysokość prowizji, czyli o 2 800-4 200 zł
+    Pokazanie go jako "pod drzwi" zaniża ofertę o wysokość prowizji, czyli o 2 800-4 200 zł
     w typowym zakresie cen.
     """
     return float(costs[SETTLEMENT_TOTAL_KEY[settlement]]) + float(costs[BROKER_FEE_KEY[fee_tier]])

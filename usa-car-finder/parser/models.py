@@ -99,7 +99,7 @@ class ClientCriteria(BaseModel):
     # w budżecie, gdy klient nie umie ich wskazać.
     segment: Optional[str] = None
 
-    # Budżet "pod klucz" w Polsce, tak jak podaje go klient ("50/60 tys").
+    # Budżet "pod drzwi" w Polsce, tak jak podaje go klient ("50/60 tys").
     # Sufit ceny aukcyjnej wylicza scoring/budget.py, bo zależy od stanu USA.
     budget_pln_from: Optional[float] = None
     budget_pln_to: Optional[float] = None

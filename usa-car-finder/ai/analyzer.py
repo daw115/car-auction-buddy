@@ -82,7 +82,7 @@ wtedy recommendation musi byc ODRZUC, a powody trafiaja do red_flags.
 
 `unified_score.over_budget` = true oznacza cos zupelnie innego: auto jest DOBRE,
 tylko drozsze niz budzet klienta. Ocena zostaje wysoka, a recommendation ma byc
-"PONAD BUDZET". Rozbicie kwotowe jest w `unified_score.budget` (cena pod klucz,
+"PONAD BUDZET". Rozbicie kwotowe jest w `unified_score.budget` (cena pod drzwi,
 budzet klienta, roznica, gotowa nota). Napisz w client_description_pl, o ile auto
 przekracza kwote i co daje w zamian — nie udawaj, ze sie miesci.
 
@@ -612,7 +612,7 @@ def _lot_payloads(lots: List[CarLot]) -> list[dict]:
 def _budget_line(criteria: ClientCriteria) -> str:
     """Budżet tak, jak liczy go scoring — inaczej model ocenia według innej miary.
 
-    Klient podaje kwotę pod klucz w złotówkach; sufit ceny aukcyjnej wylicza
+    Klient podaje kwotę pod drzwi w złotówkach; sufit ceny aukcyjnej wylicza
     scoring per lot, bo zależy od stanu USA. Stare pole budget_usd zostaje dla
     kryteriów z maila, ale nie udajemy, że znaczy to samo.
     """
@@ -623,12 +623,12 @@ def _budget_line(criteria: ClientCriteria) -> str:
         # zjadłaby przecinki w wyliczeniu poniżej.
         kwota = f"{budget_pln:,.0f}".replace(",", "\u00a0")
         return (
-            f"{kwota} zł pod klucz w Polsce ({forma}) — zakup, transport, cło, "
+            f"{kwota} zł pod drzwi w Polsce ({forma}) — zakup, transport, cło, "
             "akcyza i prowizja. Werdykt budżetowy dla każdego lota jest już "
             "policzony w unified_score.budget; nie przeliczaj go sam."
         )
     if criteria.budget_usd:
-        return f"{criteria.budget_usd} USD ceny aukcyjnej (klient nie podał kwoty pod klucz)"
+        return f"{criteria.budget_usd} USD ceny aukcyjnej (klient nie podał kwoty pod drzwi)"
     return "bez limitu (klient nie podał)"
 
 
