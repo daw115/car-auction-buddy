@@ -1,32 +1,29 @@
-{# Oferta dla klienta — dokument, nie strona reklamowa.
+{# Oferta dla klienta — jedna strona, do przeczytania w minutę.
 
-   Klient dostaje to przed decyzją o wydatku rzędu stu tysięcy złotych i zwykle
-   drukuje albo zapisuje jako PDF (panel nie generuje PDF-a; robi to przeglądarka).
-   Dlatego układ jest formatu A4, sekcje nie pękają w poprzek strony, a kolor
-   niesie znaczenie zamiast ozdabiać: granat to dane, zieleń to rzecz potwierdzona,
-   bursztyn to rzecz do sprawdzenia. Wcześniejsza wersja była landing page'em
-   z pomarańczowymi akcentami i jednym zdjęciem — czytało się to jak reklama,
-   a nie jak kalkulacja, którą można pokazać księgowej.
+   Świadomie krótka. Klient na tym etapie chce wiedzieć trzy rzeczy: jak to auto
+   wygląda, ile będzie kosztować pod kluczem i co jest z nim nie tak. Harmonogram
+   importu i lista dokumentów były tu wcześniej i tylko rozmywały te trzy rzeczy —
+   wracają do rozmowy, kiedy klient jest już zainteresowany.
+
+   Bez znaczników wypunktowania i bez języka reklamy: fakty pisane po ludzku,
+   tak jak broker powiedziałby to przez telefon.
 #}
 <!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ make }} {{ model }} {{ year }} — oferta</title>
+<title>{{ make }} {{ model }} {{ year }}</title>
 <style>
   :root {
     --ink:    #16202b;
-    --ink-2:  #44535f;
-    --muted:  #6d7d88;
+    --ink-2:  #46545f;
+    --muted:  #6f7e89;
     --paper:  #ffffff;
     --wash:   #f4f7f9;
-    --line:   #dbe2e8;
+    --line:   #dde4e9;
     --accent: #14568f;
-    --ok:     #14624a;
-    --ok-bg:  #e8f3ee;
     --warn:   #8a5710;
-    --warn-bg:#fbf1de;
 
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
     --sans: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
@@ -37,115 +34,72 @@
     font-family: var(--sans);
     color: var(--ink);
     background: var(--wash);
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 15px;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
   }
-  .page {
-    max-width: 210mm;
-    margin: 0 auto;
-    background: var(--paper);
-    padding: 0 0 24mm;
-  }
-  .pad { padding: 0 18mm; }
+  .page { max-width: 210mm; margin: 0 auto; background: var(--paper); padding: 0 0 16mm; }
+  .pad { padding: 0 16mm; }
 
-  /* ---------- nagłówek ---------- */
-  .masthead {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 16px; padding: 14mm 18mm 8mm; border-bottom: 2px solid var(--ink);
-  }
-  .brand { font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
-           text-transform: uppercase; color: var(--accent); }
+  header { padding: 12mm 16mm 6mm; border-bottom: 2px solid var(--ink); }
+  .eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
+             text-transform: uppercase; color: var(--accent); }
   h1 { font-family: var(--serif); font-size: 30px; line-height: 1.12; font-weight: 600;
        margin-top: 6px; letter-spacing: -.01em; }
-  .subtitle { color: var(--ink-2); margin-top: 4px; font-size: 15px; }
-  .meta { text-align: right; font-family: var(--mono); font-size: 10px;
-          color: var(--muted); line-height: 1.7; white-space: nowrap; }
+  .sub { color: var(--ink-2); margin-top: 3px; }
 
-  /* ---------- kwota: pierwsza rzecz, której klient szuka ---------- */
-  .headline-price {
-    margin: 8mm 18mm 0; padding: 14px 18px;
-    background: var(--wash); border-left: 3px solid var(--accent);
-  }
-  .headline-price .label { font-family: var(--mono); font-size: 10px;
-    letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-  .headline-price .value { font-family: var(--serif); font-size: 24px; margin-top: 2px; }
-
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 6mm 18mm 0; }
-  .pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 2px;
-          border: 1px solid var(--line); color: var(--ink-2); background: var(--paper); }
-  .pill-ok { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
-  .pill-amber { color: var(--warn); border-color: var(--warn); background: var(--warn-bg); }
-  .pill-blue { color: var(--accent); border-color: var(--accent); background: #eaf1f8; }
-
-  /* ---------- zdjęcia ---------- */
-  .gallery { margin: 8mm 18mm 0; display: grid; gap: 4px;
-             grid-template-columns: repeat(3, 1fr); }
+  .gallery { display: grid; gap: 4px; grid-template-columns: repeat(3, 1fr);
+             margin: 6mm 16mm 0; }
   .gallery a:first-child { grid-column: 1 / -1; }
-  .gallery img { width: 100%; height: 150px; object-fit: cover; display: block;
+  .gallery img { width: 100%; height: 130px; object-fit: cover; display: block;
                  border: 1px solid var(--line); }
-  .gallery a:first-child img { height: 300px; }
-  .gallery-note { margin: 4px 18mm 0; font-size: 11px; color: var(--muted); }
-  .no-photo { margin: 8mm 18mm 0; padding: 28px; text-align: center;
-              border: 1px dashed var(--line); color: var(--muted); font-size: 13px; }
+  .gallery a:first-child img { height: 320px; }
+  .no-photo { margin: 6mm 16mm 0; padding: 24px; text-align: center;
+              border: 1px dashed var(--line); color: var(--muted); }
 
-  /* ---------- sekcje ---------- */
-  section { margin-top: 10mm; break-inside: avoid; }
-  h2 { font-family: var(--sans); font-size: 12px; letter-spacing: .12em;
-       text-transform: uppercase; color: var(--accent); font-weight: 700;
-       padding-bottom: 5px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
-  p + p { margin-top: 8px; }
-  .story p { color: var(--ink-2); }
+  .cena { margin: 8mm 16mm 0; padding: 14px 18px; background: var(--wash);
+          border-left: 3px solid var(--accent); }
+  .cena .label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+                 text-transform: uppercase; color: var(--muted); }
+  .cena .value { font-family: var(--serif); font-size: 26px; margin-top: 2px; }
+  .cena .note { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
-  table.spec { width: 100%; border-collapse: collapse; }
-  table.spec td { padding: 8px 0; border-bottom: 1px solid var(--line);
-                  vertical-align: top; }
-  table.spec td:first-child { font-weight: 600; width: 42%; padding-right: 16px; }
-  table.spec td:last-child { color: var(--ink-2); }
+  section { margin-top: 8mm; break-inside: avoid; }
+  h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+       color: var(--accent); font-weight: 700; padding-bottom: 5px;
+       border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .box { border: 1px solid var(--line); padding: 10px 12px; }
-  .box.ok { border-left: 3px solid var(--ok); background: var(--ok-bg); }
-  .box.warn { border-left: 3px solid var(--warn); background: var(--warn-bg); }
-  .box .t { font-weight: 700; font-size: 13px; }
-  .box .b { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+  table.fakty { width: 100%; border-collapse: collapse; }
+  table.fakty td { padding: 7px 0; border-bottom: 1px solid var(--line); }
+  table.fakty td:first-child { color: var(--muted); width: 38%; padding-right: 14px; }
 
-  ol.timeline { list-style: none; counter-reset: krok; }
-  ol.timeline li { counter-increment: krok; display: grid;
-    grid-template-columns: 26mm 1fr; gap: 12px; padding: 8px 0;
-    border-bottom: 1px solid var(--line); break-inside: avoid; }
-  ol.timeline .when { font-family: var(--mono); font-size: 11px; color: var(--accent);
-                      text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
-  ol.timeline .what { font-weight: 600; }
-  ol.timeline .desc { font-size: 12px; color: var(--ink-2); }
+  .opis p + p { margin-top: 8px; }
+  .opis { color: var(--ink-2); }
 
-  ul.docs { list-style: none; columns: 2; column-gap: 24px; }
-  ul.docs li { padding: 4px 0 4px 16px; position: relative; font-size: 13px;
-               break-inside: avoid; }
-  ul.docs li::before { content: "✓"; position: absolute; left: 0; color: var(--ok);
-                       font-weight: 700; }
+  .uszkodzenie { border-left: 3px solid var(--warn); background: #fbf1de;
+                 padding: 10px 14px; }
+  .uszkodzenie .co { font-weight: 700; }
+  .uszkodzenie .ile { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
 
-  .cta { margin-top: 10mm; padding: 14px 18px; border: 1px solid var(--ink);
-         break-inside: avoid; }
-  .cta h3 { font-family: var(--serif); font-size: 19px; font-weight: 600; }
-  .cta p { color: var(--ink-2); margin-top: 4px; }
-  .scarcity { margin-top: 8px; font-size: 12px; color: var(--warn); font-weight: 600; }
+  .kontakt { margin-top: 9mm; padding: 16px 18px; border: 1px solid var(--ink);
+             break-inside: avoid; }
+  .kontakt h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; }
+  .kontakt p { margin-top: 6px; color: var(--ink-2); }
+  .termin { margin-top: 8px; font-size: 13px; color: var(--warn); font-weight: 600; }
 
-  footer { margin: 12mm 18mm 0; padding-top: 8px; border-top: 1px solid var(--line);
+  footer { margin: 10mm 16mm 0; padding-top: 8px; border-top: 1px solid var(--line);
            font-family: var(--mono); font-size: 10px; color: var(--muted);
            display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-  /* ---------- druk: to jest docelowa postać dokumentu ---------- */
   @page { size: A4; margin: 12mm; }
   @media print {
     body { background: #fff; font-size: 11pt; }
     .page { max-width: none; padding: 0; }
-    .pad, .masthead, .headline-price, .pills, .gallery, .gallery-note, footer { margin-left: 0; margin-right: 0; }
-    .masthead { padding: 0 0 6mm; }
-    .headline-price, .pills, .gallery, .gallery-note { margin-left: 0; margin-right: 0; }
-    .gallery img { height: 34mm; }
-    .gallery a:first-child img { height: 60mm; }
-    section { margin-top: 8mm; }
+    header { padding: 0 0 5mm; }
+    .pad, .gallery, .cena, footer { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+    .cena { padding: 10px 14px; }
+    .gallery img { height: 30mm; }
+    .gallery a:first-child img { height: 62mm; }
     a { color: inherit; text-decoration: none; }
   }
 </style>
@@ -153,46 +107,19 @@
 <body>
 <div class="page">
 
-  <header class="masthead">
-    <div>
-      <div class="brand">Oferta importu — auta z aukcji USA</div>
-      <h1>{{ year }} {{ make }} {{ model }}{% if trim %} {{ trim }}{% endif %}</h1>
-      <div class="subtitle">
-        {{ engine_str }}{% if location_state %} · {{ location_state }}{% endif %}
-      </div>
-    </div>
-    <div class="meta">
-      {% if lot_id %}LOT {{ lot_id }}<br>{% endif %}
-      {% if vin %}VIN {{ vin }}<br>{% endif %}
-      {{ generated_at }}
-    </div>
+  <header>
+    <div class="eyebrow">Auto z aukcji w USA</div>
+    <h1>{{ year }} {{ make }} {{ model }}{% if trim %} {{ trim }}{% endif %}</h1>
+    <div class="sub">{{ engine_str }}{% if location_state %} · {{ location_state }}{% endif %}</div>
   </header>
-
-  {# Kwota pod klucz jest jedyną liczbą, której klient naprawdę szuka —
-     stoi nad zdjęciami, żeby nie trzeba jej było wyszukiwać w tekście. #}
-  <div class="headline-price">
-    <div class="label">Szacowany koszt w Polsce</div>
-    <div class="value">{{ subhead_text | replace("Szacowany koszt w Polsce: ", "") }}</div>
-  </div>
-
-  {% if pills %}
-  <div class="pills">
-    {% for pill in pills %}
-    <span class="pill pill-{{ pill.style | default('blue') }}">{{ pill.text }}</span>
-    {% endfor %}
-  </div>
-  {% endif %}
 
   {% if photos %}
   <div class="gallery">
     {% for zdjecie in photos %}
     <a href="{{ zdjecie }}" target="_blank" rel="noreferrer">
-      <img src="{{ zdjecie }}" alt="{{ make }} {{ model }} — zdjęcie {{ loop.index }}" loading="lazy">
+      <img src="{{ zdjecie }}" alt="{{ make }} {{ model }}" loading="lazy">
     </a>
     {% endfor %}
-  </div>
-  <div class="gallery-note">
-    Zdjęcia pochodzą wprost z aukcji — kliknięcie otwiera pełny rozmiar.
   </div>
   {% elif photo_url %}
   <div class="gallery">
@@ -201,83 +128,63 @@
     </a>
   </div>
   {% else %}
-  <div class="no-photo">Zdjęcia z aukcji prześlemy w odpowiedzi na tę ofertę.</div>
+  <div class="no-photo">Zdjęcia prześlę osobno.</div>
   {% endif %}
+
+  <div class="cena">
+    <div class="label">Koszt pod klucz w Polsce</div>
+    <div class="value">{{ subhead_text | replace("Szacowany koszt w Polsce: ", "") }}</div>
+    <div class="note">
+      Kwota szacunkowa — zależy od wyniku licytacji i kursu dolara. Podaję ją z zapasem,
+      żeby nie było niespodzianek w drugą stronę.
+    </div>
+  </div>
 
   <div class="pad">
 
-    <section class="story">
-      <h2>O tym aucie</h2>
-      {% for akapit in story_paragraphs %}<p>{{ akapit }}</p>{% endfor %}
-    </section>
-
-    {% if spec_rows %}
+    {% if fakty %}
     <section>
-      <h2>Co to znaczy w praktyce</h2>
-      <table class="spec">
-        {% for wiersz in spec_rows %}
-        <tr><td>{{ wiersz.feature }}</td><td>{{ wiersz.benefit }}</td></tr>
+      <h2>Podstawowe informacje</h2>
+      <table class="fakty">
+        {% for fakt in fakty %}
+        <tr><td>{{ fakt.etykieta }}</td><td>{{ fakt.wartosc }}</td></tr>
         {% endfor %}
       </table>
     </section>
     {% endif %}
 
     <section>
-      <h2>Stan i zakres naprawy</h2>
-      <div class="box warn">
-        <div class="t">{{ damage_what }}</div>
-        <div class="b">{{ damage_repair }}</div>
+      <h2>Co jest uszkodzone</h2>
+      <div class="uszkodzenie">
+        <div class="co">{{ damage_what }}</div>
+        <div class="ile">{{ damage_repair }}</div>
       </div>
-      {% if damage_ok_items %}
-      <div class="grid2" style="margin-top:10px">
-        {% for pozycja in damage_ok_items %}
-        <div class="box ok">
-          <div class="t">{{ pozycja.title }}</div>
-          <div class="b">{{ pozycja.body }}</div>
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
     </section>
 
-    {% if timeline_steps %}
-    <section>
-      <h2>Jak to przebiega</h2>
-      <ol class="timeline">
-        {% for krok in timeline_steps %}
-        <li>
-          <div class="when">{{ krok.day_label }}</div>
-          <div>
-            <div class="what">{{ krok.label }}</div>
-            <div class="desc">{{ krok.desc }}</div>
-          </div>
-        </li>
-        {% endfor %}
-      </ol>
+    {% if story_paragraphs %}
+    <section class="opis">
+      <h2>Od siebie</h2>
+      <p>{{ story_paragraphs[0] }}</p>
     </section>
     {% endif %}
 
-    {% if docs_list %}
-    <section>
-      <h2>Dokumenty, które Pan/Pani otrzyma</h2>
-      <ul class="docs">
-        {% for dokument in docs_list %}<li>{{ dokument }}</li>{% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-
-    <div class="cta">
-      <h3>{{ cta_headline }}</h3>
-      <p>{{ cta_body }}</p>
+    <div class="kontakt">
+      <h3>Jeśli to auto Pana zainteresowało, proszę o kontakt</h3>
+      <p>
+        Odpiszę z dokładną kalkulacją i ustalimy limit licytacji. Bez zobowiązań —
+        jeśli coś tu nie gra, poszukam dalej.
+      </p>
       {% if auction_deadline %}
-      <div class="scarcity">Aukcja: {{ auction_deadline }} — {{ scarcity_note }}</div>
+      <div class="termin">
+        Aukcja odbywa się {{ auction_deadline }}, więc decyzję trzeba podjąć wcześniej.
+      </div>
       {% endif %}
     </div>
 
   </div>
 
   <footer>
-    <span>Kalkulacja szacunkowa. Ostateczna kwota zależy od wyniku licytacji i kursu USD.</span>
+    <span>{% if lot_id %}Lot {{ lot_id }}{% endif %}</span>
     <span>{{ generated_at }}</span>
   </footer>
 

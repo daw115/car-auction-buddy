@@ -119,6 +119,58 @@ def _build_pills(item: AnalyzedLot) -> list[dict]:
     return pills
 
 
+def _data_aukcji_po_polsku(surowa: Optional[str]) -> str:
+    """ISO 8601 z aukcji na datę, jaką człowiek zapisuje w kalendarzu.
+
+    Klient dostawał w ofercie `2026-08-10T20:00:00Z` — czyli strefę UTC i literę Z,
+    z których nic mu nie wynika. Jeśli formatu nie da się rozpoznać, oddajemy
+    wejście bez zmian: lepiej pokazać surowe niż zgadywać dzień.
+    """
+    if not surowa:
+        return ""
+    try:
+        moment = datetime.fromisoformat(str(surowa).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return str(surowa)
+    return moment.strftime("%d.%m.%Y, godz. %H:%M")
+
+
+def _build_client_facts(item: AnalyzedLot) -> list[dict]:
+    """Fakty do oferty — etykieta i wartość, bez języka sprzedaży.
+
+    Wcześniej szablon rozbijał po dwukropku napisy zbudowane dla innej sekcji
+    („Przebieg 26 897 mi" nie miało dwukropka i wychodziła z tego etykieta
+    „Szczegół"). Klient ma zobaczyć nazwane pola, a nie ślad po parsowaniu.
+    """
+    lot = item.lot
+    fakty: list[dict] = []
+
+    # Aukcje wstawiają w puste pola napisy, które wyglądają jak dane.
+    # „Tytuł własności: Not Specified" nie mówi klientowi nic — a zajmuje wiersz
+    # i sprawia wrażenie, że coś sprawdziliśmy.
+    PUSTE = {"not specified", "unknown", "n/a", "none", "brak", "-"}
+
+    def dodaj(etykieta: str, wartosc) -> None:
+        if wartosc in (None, "", 0):
+            return
+        if str(wartosc).strip().lower() in PUSTE:
+            return
+        fakty.append({"etykieta": etykieta, "wartosc": str(wartosc)})
+
+    dodaj("Rocznik", lot.year)
+    dodaj("Przebieg", _mileage(lot.odometer_mi) if lot.odometer_mi else None)
+    # `_engine_str` schodzi na wersję wyposażenia, gdy nie zna silnika. Podpisanie
+    # „XLE" jako silnika jest po prostu nieprawdą, więc etykieta idzie za treścią.
+    silnik = _engine_str(lot)
+    dodaj("Wersja" if silnik and silnik == (lot.trim or "") else "Silnik", silnik)
+    dodaj("Uszkodzenie", lot.damage_primary)
+    dodaj("Tytuł własności", lot.title_type)
+    dodaj("Gdzie stoi", _location_str(lot) if lot.location_state else None)
+    dodaj("Aukcja", _data_aukcji_po_polsku(lot.auction_date))
+    dodaj("VIN", lot.vin or lot.full_vin)
+    return fakty
+
+
 def _build_spec_rows(item: AnalyzedLot) -> list[dict]:
     lot = item.lot
     rows = []
@@ -394,6 +446,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
             "Podajemy tylko realne koszty — bez ukrytych opłat.",
         ],
         "spec_rows": _build_spec_rows(item),
+        "fakty": _build_client_facts(item),
         "damage_what": _damage_str(lot),
         "damage_repair": f"Szacowany koszt naprawy: {format_usd(ai.estimated_repair_usd)}" if ai.estimated_repair_usd else "Do wyceny po inspekcji",
         "damage_ok_items": _build_damage_ok_items(item),
@@ -401,7 +454,7 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "docs_list": _build_docs_list(),
         "cta_headline": cta_headline,
         "cta_body": cta_body,
-        "auction_deadline": lot.auction_date or "",
+        "auction_deadline": _data_aukcji_po_polsku(lot.auction_date),
         "scarcity_note": "Aukcja niepowtarzalna — każdy pojazd licytowany jest tylko raz",
         "vin": lot.vin or lot.full_vin or "",
         "lot_id": lot.lot_id,
