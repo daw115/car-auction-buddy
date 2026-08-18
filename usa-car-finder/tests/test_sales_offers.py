@@ -69,3 +69,30 @@ def test_endpoint_refuses_when_nothing_can_be_priced(monkeypatch):
 
     assert response.status_code == 422
     assert "ceny pod drzwi" in response.json()["detail"]
+
+
+def test_auto_bez_ceny_wraca_jako_pominiete() -> None:
+    """Świeża aukcja bez licytacji zostaje w wynikach z policzoną oceną, więc
+    broker ją widzi i zaznacza. Wyceny zrobić się nie da, ale wypadanie z oferty
+    po cichu znaczyło, że broker zaznacza trzy auta, agent pisze o dwóch,
+    a panel melduje sukces."""
+    from sales.offers import oferty_i_pominiete
+
+    z_cena = lot("1")
+    bez_ceny = lot("2")
+    bez_ceny.current_bid_usd = 0
+    bez_ceny.buy_now_price_usd = None
+
+    oferty, pominiete = oferty_i_pominiete([z_cena, bez_ceny, lot("3")])
+    assert len(oferty) == 2
+    assert [l.lot_id for l in pominiete] == ["2"]
+
+
+def test_limit_to_nie_pominiecie() -> None:
+    """`MAX_OFFERS` jest świadomą decyzją produktową, nie awarią — auta ucięte
+    limitem nie mogą trafić na listę „nie udało się wycenić"."""
+    from sales.offers import oferty_i_pominiete
+
+    oferty, pominiete = oferty_i_pominiete([lot(str(i)) for i in range(9)])
+    assert len(oferty) == 4
+    assert pominiete == []

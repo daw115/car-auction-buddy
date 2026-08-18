@@ -80,11 +80,38 @@ def offers_from_lots(
     a przestawianie ich za jego plecami znaczyłoby, że klient dostaje inną
     propozycję niż ta, którą zatwierdził.
     """
-    offers: list[dict[str, Any]] = []
+    oferty, _ = oferty_i_pominiete(
+        lots, budget_pln=budget_pln, settlement=settlement, limit=limit
+    )
+    return oferty
+
+
+def oferty_i_pominiete(
+    lots: list[CarLot],
+    *,
+    budget_pln: Optional[float] = None,
+    settlement: str = "private",
+    limit: int = MAX_OFFERS,
+) -> tuple[list[dict[str, Any]], list[CarLot]]:
+    """To samo, ale mówi też, CZEGO nie udało się wycenić.
+
+    Auto bez ceny (świeża aukcja bez licytacji) zostaje w wynikach z policzoną
+    oceną — scoring świadomie go nie dyskwalifikuje — więc broker je widzi
+    i zaznacza. Wyceny zrobić się nie da, więc wypadało z oferty po cichu:
+    broker zaznaczał trzy auta, agent pisał o dwóch, a panel meldował sukces.
+    Kto pyta o oferty, może teraz zapytać też o resztę.
+
+    Loty ucięte limitem NIE są pominięciem — limit to świadoma decyzja
+    produktowa (`MAX_OFFERS`), a nie awaria.
+    """
+    oferty: list[dict[str, Any]] = []
+    pominiete: list[CarLot] = []
     for lot in lots:
-        if len(offers) >= limit:
+        if len(oferty) >= limit:
             break
-        offer = offer_from_lot(lot, budget_pln=budget_pln, settlement=settlement)
-        if offer:
-            offers.append(offer)
-    return offers
+        oferta = offer_from_lot(lot, budget_pln=budget_pln, settlement=settlement)
+        if oferta:
+            oferty.append(oferta)
+        else:
+            pominiete.append(lot)
+    return oferty, pominiete

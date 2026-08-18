@@ -730,7 +730,7 @@ async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
     """
     from parser.models import CarLot
     from sales.agent import propose_reply
-    from sales.offers import offers_from_lots
+    from sales.offers import oferty_i_pominiete
 
     lead = db.get_lead(lead_id)
     if lead is None:
@@ -743,7 +743,7 @@ async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
         except Exception:
             logger.debug("[leads] pomijam lot o nieprawidłowym kształcie", exc_info=True)
 
-    offers = offers_from_lots(
+    offers, bez_wyceny = oferty_i_pominiete(
         lots, budget_pln=lead.budget_pln, settlement=lead.settlement
     )
     if not offers:
@@ -752,12 +752,31 @@ async def propose_offer(lead_id: int, payload: OfferIn) -> dict[str, Any]:
             "Żadnego z tych aut nie da się wycenić — bez ceny pod drzwi nie ma czego proponować.",
         )
 
-    draft = propose_reply(lead, db.messages(lead_id), offers=offers)
-    if draft is None or not draft.text:
-        powod = draft.rationale if draft else "agent nie ma nic do napisania na tym etapie"
-        return {"draft": None, "reason": powod, "offers": offers}
+    # CZĘŚCIOWE POWODZENIE MUSI BYĆ WIDOCZNE. Auto bez ceny (świeża aukcja bez
+    # licytacji) zostaje w wynikach z policzoną oceną — scoring świadomie go nie
+    # dyskwalifikuje — więc broker je widzi i może zaznaczyć. Wyceny nie da się
+    # dla niego zrobić, więc `offers_from_lots` je pomija i agent pisze o dwóch
+    # autach zamiast trzech. Pełna porażka dawała czytelne 422, częściowa wracała
+    # jako 200 z gotowym draftem i toastem „Propozycja gotowa".
+    pominiete = [
+        " ".join(str(x) for x in [l.year, l.make, l.model] if x) or (l.lot_id or "auto bez opisu")
+        for l in bez_wyceny
+    ]
+    if pominiete:
+        logger.warning(
+            "[leads] lead #%s: %s z %s aut bez ceny pod drzwi — nie weszły do oferty: %s",
+            lead_id, len(pominiete), len(lots), ", ".join(pominiete),
+        )
 
-    return {"draft": _draft_json(db.save_draft(draft)), "offers": offers}
+    draft = propose_reply(lead, db.messages(lead_id), offers=offers)
+    odpowiedz: dict[str, Any] = {"offers": offers, "pominiete": pominiete}
+    if draft is None or not draft.text:
+        odpowiedz["draft"] = None
+        odpowiedz["reason"] = draft.rationale if draft else "agent nie ma nic do napisania na tym etapie"
+        return odpowiedz
+
+    odpowiedz["draft"] = _draft_json(db.save_draft(draft))
+    return odpowiedz
 
 
 @router.get("/api/sales/leads/{lead_id}/sprawa")
