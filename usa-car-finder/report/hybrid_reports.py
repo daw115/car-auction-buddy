@@ -157,6 +157,18 @@ def _sanitize_llm_json(raw: str) -> str:
     return raw
 
 
+class OdpowiedzNieDoOdczytania(RuntimeError):
+    """Model oddał coś, co nie jest poprawnym JSON-em.
+
+    Własny typ, a nie gołe `RuntimeError`, bo pętla ponawiania rozpoznawała
+    awarie po fragmentach tekstu w komunikacie („timeout", „503"). Zepsuty JSON
+    nie pasował do żadnego wzorca i leciał wyjątek bez drugiej próby — mimo że
+    to jest dokładnie ten rodzaj usterki, który przy ponowieniu mija: ten sam
+    lot i te same dane dają za drugim razem poprawną odpowiedź. Dopasowywanie
+    po napisach jest zresztą tym, przez co ta luka powstała.
+    """
+
+
 def _parse_json_loose(raw: str) -> dict:
     """Parsuje JSON z LLM-a tolerancyjnie:
     1. _strip_json (usuwa ``` wrappers)
@@ -212,7 +224,7 @@ def _parse_json_loose(raw: str) -> dict:
         # dokumentu nie mówi nic o przyczynie i diagnoza stawała w miejscu.
         poz = getattr(e, "pos", 0) or 0
         okno = raw_sanitized[max(0, poz - 120) : poz + 120]
-        raise RuntimeError(
+        raise OdpowiedzNieDoOdczytania(
             f"JSON parse failed even with loose mode: {e}; "
             f"dlugosc={len(raw_sanitized)}; wokol_bledu={okno!r}"
         )
@@ -404,7 +416,12 @@ def _call_llm_json(system: str, user: str, max_tokens: int = 1500) -> dict:
         except Exception as exc:
             last_exc = exc
             err = str(exc).lower()
-            if attempt < max_retries - 1 and ("timeout" in err or "timed out" in err or "503" in err or "529" in err):
+            # Zepsuty JSON mija przy ponowieniu — model losuje treść, nie dane.
+            # W logu produkcyjnym 34 raporty nie powstały właśnie z tego powodu.
+            przejsciowa = isinstance(exc, OdpowiedzNieDoOdczytania) or (
+                "timeout" in err or "timed out" in err or "503" in err or "529" in err
+            )
+            if attempt < max_retries - 1 and przejsciowa:
                 logger.info(f"[Hybrid] retry {attempt+1}/{max_retries}: {type(exc).__name__}")
                 time.sleep(3)
                 continue
