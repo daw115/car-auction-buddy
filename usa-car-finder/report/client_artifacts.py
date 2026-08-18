@@ -121,9 +121,17 @@ def write_client_artifacts(
     }
     analysis_path.write_text(json.dumps(analysis_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    report_path = (output_dir / f"{slug}_client_report.md").resolve()
+    # NAZWA MÓWIŁA „client_report", A TREŚĆ JEST BRIEFEM BROKERA: są tu ceny
+    # aukcyjne, nasz wynik punktowy, werdykt, czerwone flagi i notatki brokerskie.
+    # Plik o takiej nazwie prosi się o przekazanie klientowi — i nikt by nie
+    # zauważył, bo dokument otwiera się dopiero po pobraniu.
+    report_path = (output_dir / f"{slug}_brief_brokera.md").resolve()
     lines = [
-        "# Raport ofertowy USA Car Finder",
+        "# Brief brokera — USA Car Finder",
+        "",
+        "> **Do Twojej wiadomości. Nie przekazuj tego klientowi.** Są tu ceny",
+        "> aukcyjne, wynik punktowy i notatki robocze. Raport dla klienta",
+        "> generuje panel osobno.",
         "",
         f"Wygenerowano: {generated_at}",
         "",
