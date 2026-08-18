@@ -27,6 +27,9 @@ logger = logging.getLogger("notify.telegram")
 _TELEGRAM_API_BASE = "https://api.telegram.org"
 _HTTP_TIMEOUT = int(os.getenv("TELEGRAM_HTTP_TIMEOUT", "30"))
 _MAX_DOC_BYTES = 50 * 1024 * 1024  # 50 MB Telegram limit
+# Zdjęcia mają własny, dużo niższy limit niż dokumenty. Bez sprawdzenia Telegram
+# odpowiada ogólnym „Bad Request", z którego nie wynika, że chodzi o rozmiar.
+_MAX_PHOTO_BYTES = 10 * 1024 * 1024
 
 
 def _bot_token() -> Optional[str]:
@@ -218,6 +221,12 @@ def send_photo(
     p = Path(file_path)
     if not p.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
+    rozmiar = p.stat().st_size
+    if rozmiar > _MAX_PHOTO_BYTES:
+        raise RuntimeError(
+            f"Obrazek za duży jak na zdjęcie w Telegramie: {rozmiar} > {_MAX_PHOTO_BYTES}. "
+            "Wyślij go jako dokument albo zmniejsz rozdzielczość."
+        )
 
     fields: dict[str, Any] = {"chat_id": chat_id, "parse_mode": parse_mode}
     if caption:
