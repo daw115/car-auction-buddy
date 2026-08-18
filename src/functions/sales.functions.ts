@@ -313,7 +313,16 @@ export const proposeOffer = createServerFn({ method: "POST" })
     }).parse,
   )
   .handler(
-    async ({ data }): Promise<{ draft: InboxItem | null; reason?: string }> =>
+    async ({
+      data,
+    }): Promise<{
+      draft: InboxItem | null;
+      reason?: string;
+      /** Auta, których nie dało się wycenić, więc nie weszły do propozycji.
+       *  Świeża aukcja bez licytacji nie ma ceny, a zostaje w wynikach z oceną —
+       *  broker ją zaznacza i dotąd znikała bez słowa. */
+      pominiete?: string[];
+    }> =>
       // Backend zwraca tez `offers` (wyliczone ceny pod drzwi), ale panel ich nie
       // renderuje — kwoty sa juz w tresci propozycji. Nie deklarujemy ich w typie,
       // zeby nie obiecywac ksztaltu, ktorego nikt nie czyta.

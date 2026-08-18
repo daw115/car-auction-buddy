@@ -93,6 +93,16 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
       });
     },
     onSuccess: (wynik) => {
+      // Częściowe powodzenie musi być widoczne. Auto bez ceny (świeża aukcja bez
+      // licytacji) zostaje w wynikach z oceną, więc broker je zaznacza — a do
+      // propozycji wejść nie może i dotąd znikało bez słowa.
+      if (wynik.pominiete?.length) {
+        toast.warning(
+          `Bez ceny, więc poza propozycją: ${wynik.pominiete.join(", ")}. ` +
+            "Licytacja jeszcze się nie zaczęła — wróć do nich później.",
+          { duration: 10_000 },
+        );
+      }
       if (wynik.draft) {
         toast.success("Propozycja gotowa — jest na górze karty, do przeczytania przed wysłaniem.");
         qc.invalidateQueries({ queryKey: ["lead", leadId] });
