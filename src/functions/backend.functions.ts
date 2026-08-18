@@ -482,12 +482,18 @@ export const backendListJobs = createServerFn({ method: "GET" })
  *  i trzyma regułę w jednym miejscu.
  */
 const SZUM = [
-  /"(GET|POST|PUT|DELETE) \/api\/jobs/,
-  /"(GET|POST) \/api\/logs/,
-  /"(GET|POST) \/api\/manheim\/next-job/,
-  /"(GET|POST) \/api\/capabilities/,
-  /"GET \/health/,
-  /"GET \/api\/version/,
+  // Cała gadanina uvicorna: dziennik dostępu i komunikaty startowe. Format
+  // `INFO:` z wcięciem należy wyłącznie do niego — logi aplikacji wyglądają
+  // inaczej (`2026-08-18 04:46:51 INFO report.market_price_cache | ...`),
+  // a scraper pisze wprost (`[Copart] Znaleziono 70 wyników`).
+  //
+  // Jedna reguła zamiast listy endpointów: poprzednia wersja wymieniała je po
+  // nazwie, więc każdy nowy endpoint przeciekał do widoku, dopóki ktoś go tam
+  // nie zauważył i nie dopisał. `ERROR:` od uvicorna zostaje — to bywa ważne.
+  /^INFO:\s/,
+  // Ślad po `logger.exception` wołanym bez aktywnego wyjątku. Wygląda jak
+  // urwany traceback, a nie niesie żadnej informacji.
+  /^NoneType: None$/,
 ];
 
 export const backendLogTail = createServerFn({ method: "GET" })
