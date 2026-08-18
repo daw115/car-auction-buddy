@@ -48,3 +48,6 @@ chrome_extensions/
 * 2.py
 * 2.html
 * 2.md
+
+# Worktree'y zadań w tle — kopie repo, nie jego treść.
+.claude/worktrees/
