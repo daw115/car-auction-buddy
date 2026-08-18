@@ -33,6 +33,7 @@ from report import llm_cache
 from report.cost_calculator import calculate_full_cost
 from report.html_reports import _build_pipeline_rules
 from scraper.otomoto import lookup_market_price
+from report.uszkodzenia import opis as _opis_szkody
 
 logger = logging.getLogger("report.hybrid_reports")
 
@@ -576,6 +577,8 @@ def _lot_data_compact(item: AnalyzedLot, criteria: Optional[ClientCriteria], cos
         "ai_recommendation": ai.recommendation,
         "ai_red_flags": ai.red_flags or [],
         "ai_description": ai.client_description_pl,
+        # Kod aukcji po polsku — szablon klienta nie ma pokazywać „RIGHT SIDE".
+        "uszkodzenie_pl": _opis_szkody(lot.damage_primary, lot.damage_secondary),
         "ai_notes": ai.ai_notes,
         "total_cost_to_pl_pln": cost["grand_total_pln"],
         "total_cost_to_pl_usd": cost["grand_total_usd"],

@@ -103,7 +103,7 @@
   <div class="hero">
     <span class="hero-tag">RAPORT KLIENTA · {{ lot.source|upper }} · {{ today }}</span>
     <h1>{{ lot.year }} {{ lot.make }} {{ lot.model }}{% if lot.trim %} {{ lot.trim }}{% endif %}</h1>
-    <div class="sub">Lot #{{ lot.lot_id }} · {{ lot.location_city or '' }}{% if lot.location_state %}, {{ lot.location_state }}{% endif %} · Aukcja: {{ lot.auction_date or 'TBA' }}</div>
+    <div class="sub">{{ lot.location_city or '' }}{% if lot.location_state %}, {{ lot.location_state }}{% endif %}{% if lot.auction_date %} · Aukcja: {{ lot.auction_date }}{% endif %}</div>
     <div class="tagline">{{ tagline }}</div>
   </div>
 
@@ -119,9 +119,9 @@
   <!-- STATS -->
   <div class="stats">
     <div class="stat">
-      <div class="label">Aktualna oferta</div>
-      <div class="value">${{ "{:,}".format(lot.current_bid_usd|int) if lot.current_bid_usd else '—' }}</div>
-      <div class="hint">{{ "{:,}".format((lot.current_bid_usd * cost.usd_pln)|int) }} PLN</div>
+      <div class="label">Cena pod drzwi</div>
+      <div class="value">{{ "{:,}".format(cost.grand_total_pln) }} PLN</div>
+      <div class="hint">wszystko wliczone</div>
     </div>
     <div class="stat">
       <div class="label">Przebieg</div>
@@ -129,9 +129,9 @@
       <div class="hint">{% if lot.odometer_mi %}{{ "{:,}".format((lot.odometer_mi * 1.609)|int) }} km{% endif %}</div>
     </div>
     <div class="stat">
-      <div class="label">AI Score</div>
-      <div class="value">{{ "%.1f"|format(ai.score) }} / 10</div>
-      <div class="hint">{{ ai.recommendation }}</div>
+      <div class="label">Stan</div>
+      <div class="value">{{ uszkodzenie_pl or 'bez uwag' }}</div>
+      <div class="hint">{{ lot.title_type or '' }}</div>
     </div>
     {% if market_pl and market_pl.mean_pln %}
     <div class="stat">
@@ -143,7 +143,7 @@
     <div class="stat">
       <div class="label">Tytuł</div>
       <div class="value">{{ lot.title_type or '—' }}</div>
-      <div class="hint">{{ lot.damage_primary or '' }}</div>
+      <div class="hint">{{ uszkodzenie_pl or '' }}</div>
     </div>
     {% endif %}
   </div>
@@ -190,7 +190,7 @@
       <div class="spec-row"><span class="k">Marka / Model</span><span class="v">{{ lot.make }} {{ lot.model }}</span></div>
       {% if lot.trim %}<div class="spec-row"><span class="k">Wersja</span><span class="v">{{ lot.trim }}</span></div>{% endif %}
       <div class="spec-row"><span class="k">Przebieg</span><span class="v">{% if lot.odometer_mi %}{{ "{:,}".format(lot.odometer_mi) }} mi{% endif %}</span></div>
-      <div class="spec-row"><span class="k">Uszkodzenie</span><span class="v">{{ lot.damage_primary or '—' }}</span></div>
+      <div class="spec-row"><span class="k">Uszkodzenie</span><span class="v">{{ uszkodzenie_pl or '—' }}</span></div>
       <div class="spec-row"><span class="k">Tytuł</span><span class="v">{{ lot.title_type or '—' }}</span></div>
       <div class="spec-row"><span class="k">Kluczyki</span><span class="v">{% if lot.keys %}TAK{% elif lot.keys is sameas false %}NIE{% else %}—{% endif %}</span></div>
       <div class="spec-row"><span class="k">Poduszki</span><span class="v">{% if lot.airbags_deployed is sameas true %}WYSTRZELONE{% elif lot.airbags_deployed is sameas false %}OK{% else %}—{% endif %}</span></div>
@@ -213,20 +213,16 @@
   <!-- KOSZTY -->
   <div class="section">
     <h2>💰 Pełne koszty sprowadzenia do PL</h2>
+    {# JEDNA KWOTA I LISTA TEGO, CO OBEJMUJE. Rozbicie pozycja po pozycji idzie
+       do briefu brokera: cena aukcyjna i osobno wypisana prowizja zamieniają
+       ofertę w negocjację o marżę, a klient i tak płaci kwotę pod drzwi. #}
     <div class="cost">
-      <div class="cost-row"><span class="k">Aktualna oferta (USA)</span><span class="v">${{ "{:,}".format(cost.bid_usd) }}</span></div>
-      <div class="cost-row"><span class="k">Opłata aukcyjna</span><span class="v">${{ "{:,}".format(cost.auction_fee_usd) }}</span></div>
-      <div class="cost-row"><span class="k">Transport z placu aukcyjnego</span><span class="v">${{ "{:,}".format(cost.towing_usd) }}</span></div>
-      <div class="cost-row"><span class="k">Załadunek i fracht morski</span><span class="v">${{ "{:,}".format(cost.loading_usd + cost.freight_usd) }}</span></div>
-      <div class="cost-row"><span class="k">Cło ({{ cost.duty_pct }}%)</span><span class="v">{{ "{:,}".format(cost.duty_pln) }} PLN</span></div>
-      <div class="cost-row"><span class="k">VAT {{ cost.vat_where }} ({{ cost.vat_pct }}%)</span><span class="v">{{ "{:,}".format(cost.vat_pln) }} PLN</span></div>
-      <div class="cost-row"><span class="k">Odprawa celna</span><span class="v">{{ "{:,}".format(cost.clearance_de_pln) }} PLN</span></div>
-      <div class="cost-row"><span class="k">Transport do Polski</span><span class="v">{{ "{:,}".format(cost.transport_pl_pln) }} PLN</span></div>
-      <div class="cost-row"><span class="k">Akcyza ({{ cost.excise_pct }}%)</span><span class="v">{{ "{:,}".format(cost.excise_pln) }} PLN</span></div>
-      <div class="cost-row"><span class="k">Prowizja</span><span class="v">{{ "{:,}".format(cost.broker_fee_pln) }} PLN</span></div>
       <div class="cost-row total"><span class="k">CENA POD DRZWI</span><span class="v">{{ "{:,}".format(cost.grand_total_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">W tym</span><span class="v">zakup, transport w USA i fracht morski</span></div>
+      <div class="cost-row"><span class="k"></span><span class="v">cło, akcyza, VAT i odprawa celna</span></div>
+      <div class="cost-row"><span class="k"></span><span class="v">transport do Polski i moja prowizja</span></div>
       {% if cost.repair_pln > 0 %}
-      <div class="cost-row"><span class="k">Szacowana naprawa (poza ceną)</span><span class="v">{{ "{:,}".format(cost.repair_pln) }} PLN</span></div>
+      <div class="cost-row"><span class="k">Poza ceną</span><span class="v">naprawa — auto przyjeżdża w stanie z aukcji</span></div>
       {% endif %}
     </div>
     <div style="margin-top:14px;font-size:12px;color:#7d8590">
@@ -237,7 +233,7 @@
 
   <!-- VERDICT -->
   <div class="verdict">
-    <span class="verdict-badge">{{ ai.recommendation }} · SCORE {{ "%.1f"|format(ai.score) }}/10</span>
+    <span class="verdict-badge">PODSUMOWANIE</span>
     <h3>{{ verdict_headline }}</h3>
     <p>{{ verdict_pl }}</p>
   </div>
@@ -245,15 +241,15 @@
   <!-- CTA -->
   <div class="cta">
     <h3>🚗 Zainteresowany?</h3>
-    <p>Skontaktuj się — sprawdzimy lot, ustalimy strategię licytacji i zorganizujemy import pod drzwi.</p>
-    <a href="{{ lot.url }}" target="_blank" rel="noopener">Zobacz lot na {{ lot.source|capitalize }}</a>
+    <p>Proszę dać znać — sprawdzę ten egzemplarz dokładnie, ustalę strategię licytacji i zorganizuję import pod drzwi.</p>
   </div>
 
   <!-- FOOTER -->
+  {# Bez linku do aukcji i bez nazwy modelu. Pierwsze prowadzi klienta prosto
+     tam, gdzie licytuje broker; drugie mówi mu, że raport pisała maszyna —
+     obie informacje należą do briefu brokera, nie do oferty. #}
   <div class="footer">
-    USA Car Finder · Raport wygenerowany automatycznie {{ today }}<br>
-    AI: {{ provider }} · model: {{ model }} · czas generacji: {{ generated_at }}<br>
-    <a href="{{ lot.url }}" target="_blank">Aukcja źródłowa</a>
+    USA Car Finder · {{ today }}
   </div>
 
 </div>
