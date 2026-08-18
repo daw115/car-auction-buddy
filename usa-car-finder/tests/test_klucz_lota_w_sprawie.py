@@ -10,13 +10,33 @@ tak samo.
 from sales.pipeline import klucz_lota, klucz_wpisu, _opis_lota
 
 
-def test_numer_lota_wygrywa_gdy_jest() -> None:
-    assert klucz_lota({"lot_id": "12345", "vin": "WBA123"}, 0) == "12345"
+def test_vin_wygrywa_z_numerem_lota() -> None:
+    """VIN identyfikuje egzemplarz, `lot_id` bywa nazwą kanału aukcji."""
+    assert klucz_lota({"lot_id": "12345", "vin": "WBA123"}, 0) == "WBA123"
 
 
-def test_vin_gdy_aukcja_nie_podaje_numeru_lota() -> None:
-    """Tak wyglądają loty z Manheimu — VIN jest wtedy jedynym trwałym śladem."""
-    assert klucz_lota({"lot_id": None, "vin": "WBA123", "source": "manheim"}, 0) == "WBA123"
+def test_trzy_loty_manheimu_maja_trzy_rozne_klucze() -> None:
+    """W danych z produkcji KAŻDY lot Manheima ma `lot_id = "OVE"`. Klucz na tym
+    polu sklejałby ofertę w jedno auto: klient odpisuje „1", „2" albo „3"
+    i dostaje ten sam samochód, bez żadnego błędu po drodze."""
+    oferta = [
+        {"source": "manheim", "lot_id": "OVE", "vin": "2T3P1RFV4RC470495"},
+        {"source": "manheim", "lot_id": "OVE", "vin": "2T3P1RFV7SW514400"},
+        {"source": "manheim", "lot_id": "OVE", "vin": "4T3T6RFV7PU126350"},
+    ]
+    klucze = [klucz_lota(l, i) for i, l in enumerate(oferta)]
+    assert len(set(klucze)) == 3, f"klucze się skleiły: {klucze}"
+
+
+def test_adres_aukcji_ratuje_lot_bez_vin() -> None:
+    """Ogłoszenie jest niepowtarzalne nawet wtedy, gdy VIN-u brak."""
+    assert klucz_lota(
+        {"lot_id": "OVE", "url": "https://search.manheim.com/results#/vdp/OVE.AAA.453967264"}, 0
+    ) == "https://search.manheim.com/results#/vdp/OVE.AAA.453967264"
+
+
+def test_numer_lota_gdy_nie_ma_nic_lepszego() -> None:
+    assert klucz_lota({"lot_id": "12345", "source": "copart"}, 0) == "12345"
 
 
 def test_pozycja_gdy_nie_ma_ani_numeru_ani_vin() -> None:

@@ -149,17 +149,20 @@ def _zapisz(s: StanSprawy) -> StanSprawy:
 def klucz_lota(lot: Any, pozycja: int = 0) -> str:
     """Stabilny identyfikator auta w obrębie jednej sprawy.
 
-    `lot_id` NIE nadaje się na klucz, choć wygląda na gotowy: Manheim go nie
-    podaje. Przy takim aucie panel numerował pozycją, backend zapisywał napis
-    „None" i wybór klienta trafiał w próżnię — auto wracało jako „spoza oferty",
-    mimo że sami je wysłaliśmy.
+    `lot_id` WYGLĄDA NA GOTOWY KLUCZ I NIM NIE JEST. U Manheima jest to nazwa
+    kanału aukcji, nie numer egzemplarza: w danych z produkcji wszystkie loty
+    z tego źródła mają `lot_id = "OVE"`. Klucz zbudowany na tym polu sklejałby
+    całą ofertę w jedno auto — klient odpisuje „1", „2" albo „3" i za każdym
+    razem dostaje ten sam samochód, bez żadnego błędu po drodze.
 
-    Kolejność jest od najtrwalszego: numer lota, potem VIN (jeden na egzemplarz),
-    na końcu pozycja w ofercie. Pozycja wystarcza, bo klucz żyje tylko w obrębie
-    tej jednej oferty i nie ma z czym kolidować.
+    Kolejność jest od najpewniejszego. VIN identyfikuje EGZEMPLARZ i jest jeden
+    na świecie. Adres aukcji identyfikuje OGŁOSZENIE i też jest niepowtarzalny,
+    więc ratuje loty bez VIN-u. `lot_id` dopiero potem, bo jego unikalność
+    zależy od źródła. Pozycja na końcu, gdy nie ma nic innego — klucz żyje
+    w obrębie jednej oferty, więc numer pozycji ją domyka.
     """
     get = (lambda k: lot.get(k)) if isinstance(lot, dict) else (lambda k: getattr(lot, k, None))
-    for pole in ("lot_id", "vin"):
+    for pole in ("vin", "full_vin", "url", "lot_id"):
         wartosc = get(pole)
         if wartosc:
             return str(wartosc)
@@ -180,8 +183,15 @@ def _opis_lota(lot: Any, pozycja: int = 0) -> dict[str, Any]:
 
 
 def klucz_wpisu(wpis: dict[str, Any], pozycja: int = 0) -> str:
-    """Klucz zapisanej pozycji. Sprawy sprzed tej zmiany nie mają pola `klucz`."""
-    return str(wpis.get("klucz") or wpis.get("lot_id") or f"lot-{pozycja + 1}")
+    """Klucz zapisanej pozycji. Sprawy sprzed tej zmiany nie mają pola `klucz`,
+    ale mają VIN i adres — czyli to, z czego `klucz_lota` i tak by go policzył."""
+    return str(
+        wpis.get("klucz")
+        or wpis.get("vin")
+        or wpis.get("url")
+        or wpis.get("lot_id")
+        or f"lot-{pozycja + 1}"
+    )
 
 
 def zapisz_oferte(lead_id: int, loty) -> StanSprawy:
