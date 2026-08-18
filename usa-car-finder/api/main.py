@@ -3017,12 +3017,56 @@ async def regenerate_record_bundles(
 
 
 class ApproveReportRequest(BaseModel):
-    """Zatwierdzony raport - tylko wybrane loty"""
+    """Zatwierdzony raport - tylko wybrane loty.
+
+    PRZYJMUJEMY TRZY KSZTAŁTY, BO TYLE ICH KRĄŻY PO APLIKACJI. Panel kandydatów
+    trzyma auta w postaci z `sales/search._candidates_from_result`
+    (`{lot, score, recommendation, reasoning, is_top}`), a nie jako `AnalyzedLot`,
+    i wysyłał je tutaj wprost — endpoint odpowiadał 422, więc przycisk „wyślij
+    ofertę" nie działał w ogóle. Wymuszanie pełnego `AnalyzedLot` po stronie panelu
+    znaczyłoby składanie tam `AIAnalysis` z pól, których panel nie ma; łatwiej
+    przyjąć to, co realnie przychodzi.
+    """
+
     approved_lots: list[AnalyzedLot]
     criteria: Optional[ClientCriteria] = None
     client_name: Optional[str] = None
     client_email: Optional[str] = None
     tracking_url: Optional[str] = None
+
+    @field_validator("approved_lots", mode="before")
+    @classmethod
+    def _dopusc_ksztalty_z_panelu(cls, wartosc):
+        """Owija loty, które przyszły bez `analysis`.
+
+        Ocena nie jest zmyślana: jeśli nadawca ma ją pod ręką (kandydat z panelu),
+        bierzemy jego. Sam lot bez oceny dostaje 0.0 i pusty werdykt — to widać
+        w briefie brokera jako brak danych, a nie jako auto ocenione na zero.
+        """
+        if not isinstance(wartosc, list):
+            return wartosc
+
+        znormalizowane = []
+        for pozycja in wartosc:
+            if not isinstance(pozycja, dict) or "analysis" in pozycja:
+                znormalizowane.append(pozycja)
+                continue
+            lot = pozycja.get("lot") if isinstance(pozycja.get("lot"), dict) else pozycja
+            znormalizowane.append(
+                {
+                    "lot": lot,
+                    "analysis": {
+                        "lot_id": str(lot.get("lot_id") or lot.get("vin") or ""),
+                        "score": float(pozycja.get("score") or 0.0),
+                        "recommendation": pozycja.get("recommendation") or "",
+                        "client_description_pl": "",
+                        "ai_notes": pozycja.get("reasoning") or None,
+                    },
+                    "is_top_recommendation": bool(pozycja.get("is_top")),
+                    "included_in_report": bool(pozycja.get("included_in_report", True)),
+                }
+            )
+        return znormalizowane
 
 
 @app.post("/report")

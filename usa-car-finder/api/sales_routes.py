@@ -809,7 +809,6 @@ async def _raporty_na_telegram(loty: list[Any]) -> dict[str, Any]:
     czasem nie zostanie kliknięty.
     """
     from notify import wysylka
-    from parser.models import AnalyzedLot
     from report import pdf_export
     from report.html_reports import render_broker_report, render_client_report
 
@@ -823,8 +822,7 @@ async def _raporty_na_telegram(loty: list[Any]) -> dict[str, Any]:
 
     pliki: list[str] = []
     laczny_rozmiar = 0
-    for surowy in loty:
-        lot = surowy if isinstance(surowy, AnalyzedLot) else AnalyzedLot(**surowy)
+    for lot in loty:
         warianty = (
             (render_client_report(lot), "raport", "Szczegółowy raport dla klienta. Przekaż go w rozmowie."),
             (render_broker_report(lot), "broker", "Raport brokerski — do Twojej wiadomości, nie dla klienta."),
@@ -915,16 +913,22 @@ async def sprawa_raport_szczegolowy(
     wyszukiwanie = db.latest_lead_search(lead_id)
     kandydaci = (wyszukiwanie or {}).get("candidates") or []
     po_kluczu = {
-        pipeline.klucz_lota(k.get("lot") or {}, i): k.get("lot")
-        for i, k in enumerate(kandydaci)
+        pipeline.klucz_lota(k.get("lot") or {}, i): k for i, k in enumerate(kandydaci)
     }
-    loty = [po_kluczu[k] for k in wybrane if po_kluczu.get(k)]
-    if not loty:
+    surowe = [po_kluczu[k] for k in wybrane if po_kluczu.get(k)]
+    if not surowe:
         raise HTTPException(
             409,
             "Nie mam już pełnych danych tych aut — wyszukiwanie wygasło. "
             "Uruchom je ponownie i wyślij raport z listy kandydatów.",
         )
+
+    # Kandydat z wyszukiwania ma spłaszczoną ocenę (`score`, `recommendation`),
+    # a nie zagnieżdżone `analysis`. Zamiast składać `AnalyzedLot` tutaj po raz
+    # drugi, przepuszczamy to przez ten sam walidator, co żądania z panelu.
+    from api.main import ApproveReportRequest
+
+    loty = ApproveReportRequest(approved_lots=surowe).approved_lots
 
     pipeline.zapisz_wybor(lead_id, wybrane)
 
