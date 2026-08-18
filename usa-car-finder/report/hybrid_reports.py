@@ -813,6 +813,30 @@ def render_pair_hybrid(
     client_frag = pair_fragments.get("client") or {}
     broker_frag = pair_fragments.get("broker") or {}
 
+    # MODEL BYWA ODDAJE POPRAWNY JSON W ZŁYM KSZTAŁCIE — płaski, bez podziału na
+    # „client" i „broker", albo tylko z jedną z tych sekcji. `_parse_json_loose`
+    # przepuszcza to bez słowa, bo składniowo jest w porządku, a `.get(...) or {}`
+    # zamienia brak w pustkę. Raport renderował się wtedy z nagłówkami i zerem
+    # treści: puste hasło w nagłówku, sekcja „Historia tego auta" bez ani jednego
+    # akapitu, pusty werdykt. Wygląda to na przeoczenie autora, nie na awarię.
+    #
+    # Ratujemy, co się da: przy płaskim kształcie bierzemy cały dokument jako
+    # fragment klienta, bo pola najwyższego poziomu (`tagline`, `story_paragraphs`)
+    # są dokładnie tymi, których szablon klienta szuka.
+    if not client_frag and not broker_frag and pair_fragments:
+        logger.warning(
+            "[Hybrid pair] lot %s: odpowiedź bez sekcji client/broker (klucze: %s) — "
+            "biorę ją jako fragment klienta",
+            lot.lot_id, sorted(pair_fragments)[:8],
+        )
+        client_frag = pair_fragments
+    elif not client_frag or not broker_frag:
+        logger.warning(
+            "[Hybrid pair] lot %s: brak sekcji %s w odpowiedzi modelu — ta część "
+            "raportu wyjdzie z danych deterministycznych",
+            lot.lot_id, "client" if not client_frag else "broker",
+        )
+
     # Walk-away fallback dla broker bid_thresholds
     bt = broker_frag.get("bid_thresholds") or {}
     bid_now = int(lot.current_bid_usd or lot.buy_now_price_usd or 0)

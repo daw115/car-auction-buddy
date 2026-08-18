@@ -104,7 +104,7 @@
     <span class="hero-tag">RAPORT KLIENTA · {{ lot.source|upper }} · {{ today }}</span>
     <h1>{{ lot.year }} {{ lot.make }} {{ lot.model }}{% if lot.trim %} {{ lot.trim }}{% endif %}</h1>
     <div class="sub">{{ lot.location_city or '' }}{% if lot.location_state %}, {{ lot.location_state }}{% endif %}{% if lot.auction_date %} · Aukcja: {{ lot.auction_date }}{% endif %}</div>
-    <div class="tagline">{{ tagline }}</div>
+    {% if tagline %}<div class="tagline">{{ tagline }}</div>{% endif %}
   </div>
 
   <!-- ZDJĘCIA -->
@@ -171,6 +171,10 @@
   </div>
   {% endif %}
 
+  {# Nagłówek tylko wtedy, gdy jest co pod nim postawić. Pusta sekcja z tytułem
+     „Historia tego auta" wygląda, jakby ktoś zapomniał ją dopisać — a to znaczy
+     tylko tyle, że model nie oddał tej części. #}
+  {% if story_paragraphs %}
   <!-- STORY -->
   <div class="section">
     <h2>📖 Historia tego auta</h2>
@@ -180,6 +184,7 @@
       {% endfor %}
     </div>
   </div>
+  {% endif %}
 
   <!-- SPECYFIKACJA -->
   <div class="section">
@@ -234,7 +239,7 @@
   <!-- VERDICT -->
   <div class="verdict">
     <span class="verdict-badge">PODSUMOWANIE</span>
-    <h3>{{ verdict_headline }}</h3>
+    {% if verdict_headline %}<h3>{{ verdict_headline }}</h3>{% endif %}
     <p>{{ verdict_pl }}</p>
   </div>
 

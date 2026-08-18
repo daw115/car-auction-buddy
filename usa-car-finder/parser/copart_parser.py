@@ -4,6 +4,9 @@ from typing import Optional, Tuple
 from bs4 import BeautifulSoup
 from pathlib import Path
 from .models import CarLot
+import logging
+
+logger = logging.getLogger("parser.copart")
 
 
 def parse_price(text: str) -> Optional[float]:
@@ -206,8 +209,26 @@ def parse_copart_html(html_file: Path) -> Optional[CarLot]:
                     from datetime import datetime, timezone
                     auction_dt = datetime.fromtimestamp(ad_timestamp / 1000, tz=timezone.utc)
                     auction_date_text = auction_dt.strftime("%Y-%m-%d %H:%M:%S")
-            except:
-                pass
+            except Exception as blad:
+                # Goły `except: pass` połykał tu WSZYSTKO: markę, model, rocznik,
+                # VIN, cenę, szkodę i przebieg naraz. Lot wracał jako poprawnie
+                # sparsowany, wchodził do licznika „znaleziono N lotów", a potem
+                # wypadał w filtrze kryteriów — bo nie miał czym ich spełnić.
+                # Broker widział liczbę większą niż lista i nie miał jak dojść,
+                # gdzie się rozjechały.
+                logger.warning(
+                    "[copart] lot %s: nie odczytałem danych z bloba aukcji (%s: %s)",
+                    lot_id or "bez numeru", type(blad).__name__, blad,
+                )
+        else:
+            # Brak bloba to nie to samo co zepsuty blob, ale skutek jest ten sam
+            # i równie niewidoczny. Zdarza się przy timeoucie nawigacji, gdy DOM
+            # jest już częściowy: link do lota jest, stanu strony jeszcze nie ma.
+            logger.warning(
+                "[copart] lot %s: strona bez bloba `cachedSolrLotDetailsStr` — "
+                "prawdopodobnie niedoczytany detal",
+                lot_id or "bez numeru",
+            )
 
         images = _extract_image_urls(soup, html_content)
 
