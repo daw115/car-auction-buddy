@@ -106,3 +106,24 @@ def test_numer_spoza_oferty_konczy_sie_czytelnym_bledem(sprawa_z_oferta):
         asyncio.run(sprawa_raport_szczegolowy(sprawa_z_oferta, RaportSzczegolowyIn(numery=[7])))
     assert blad.value.status_code == 400
     assert "7" in str(blad.value.detail)
+
+
+def test_czesciowe_dopasowanie_nie_przechodzi_po_cichu(sprawa_z_oferta, monkeypatch):
+    """Wcześniej niedopasowany klucz wypadał bez słowa: endpoint zwracał 200
+    i zapisywał auto jako wybrane, choć raportu o nim nigdy nie było."""
+    from fastapi import HTTPException
+
+    from api import sales_routes
+    from api.sales_routes import RaportSzczegolowyIn, sprawa_raport_szczegolowy
+
+    # W wynikach wyszukiwania zostaje tylko jedno z dwóch wysłanych aut.
+    monkeypatch.setattr(
+        sales_routes.db,
+        "latest_lead_search",
+        lambda _id: {"candidates": [{"lot": LOT_Z_COPARTU, "score": 6.4}]},
+    )
+
+    with pytest.raises(HTTPException) as blad:
+        asyncio.run(sprawa_raport_szczegolowy(sprawa_z_oferta, RaportSzczegolowyIn(numery=[1, 2])))
+    assert blad.value.status_code == 409
+    assert "1 z 2" in str(blad.value.detail)

@@ -84,3 +84,14 @@ def test_agent_ofert_korzysta_z_tego_samego_slownika() -> None:
 
     nieznany = CarLot(source="copart", lot_id="2", url="https://x/2", damage_primary="COS NOWEGO")
     assert _damage_pl(nieznany) == "zakres uszkodzeń do potwierdzenia"
+
+
+def test_nieznany_kod_nie_jest_kaleczony_w_drugiej_pozycji() -> None:
+    """„RIGHT SIDE" ze zmniejszoną pierwszą literą daje „rIGHT SIDE" — napis, który
+    wygląda na uszkodzone dane, a nie na uszkodzone auto."""
+    wynik = opis("FRONT END", "COS NIEZNANEGO")
+    assert wynik == "Uszkodzony przód, COS NIEZNANEGO"
+
+
+def test_przetlumaczona_druga_szkoda_nadal_idzie_mala_litera() -> None:
+    assert opis("FRONT END", "RIGHT SIDE") == "Uszkodzony przód, uszkodzony prawy bok"

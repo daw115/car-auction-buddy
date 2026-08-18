@@ -151,10 +151,20 @@ def opis(*kody: Optional[str], mala: bool = False) -> str:
     Druga idzie po przecinku małą literą, bo „Uszkodzony przód + REAR END"
     czytało się jak zapis z systemu, a nie jak zdanie.
     """
-    przetlumaczone = [po_polsku(k, mala=mala) for k in kody if k and k.strip()]
-    if not przetlumaczone:
+    czlony: list[tuple[str, bool]] = []
+    for kod in kody:
+        if not kod or not kod.strip():
+            continue
+        przetlumaczony = rozpoznaj(kod, mala=mala)
+        czlony.append((przetlumaczony or kod.strip(), przetlumaczony is not None))
+    if not czlony:
         return "brak danych"
-    pierwszy, *reszta = przetlumaczone
+
+    pierwszy, *reszta = czlony
     if not reszta:
-        return pierwszy
-    return f"{pierwszy}, {', '.join(_mala(t) for t in reszta)}"
+        return pierwszy[0]
+    # Małą literą tylko to, co FAKTYCZNIE przetłumaczyliśmy. Kod aukcji zostaje
+    # w oryginale, a „RIGHT SIDE" zmniejszone o pierwszą literę daje „rIGHT SIDE"
+    # — napis, który wygląda na uszkodzone dane, a nie na uszkodzone auto.
+    dodatkowe = ", ".join(_mala(t) if znany else t for t, znany in reszta)
+    return f"{pierwszy[0]}, {dodatkowe}"

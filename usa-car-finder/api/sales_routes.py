@@ -915,6 +915,18 @@ async def sprawa_raport_szczegolowy(
     po_kluczu = {
         pipeline.klucz_lota(k.get("lot") or {}, i): k for i, k in enumerate(kandydaci)
     }
+    # Wszystkie albo żadne. Wcześniej niedopasowane klucze wypadały po cichu:
+    # endpoint zwracał 200, zapisywał je jako wybrane, a raport powstawał tylko
+    # dla części. Broker widziałby „wysłane" przy aucie, o którym klient nic nie
+    # dostał — a tego z rozmowy się nie odkręca.
+    brakujace = [k for k in wybrane if not po_kluczu.get(k)]
+    if brakujace and len(brakujace) < len(wybrane):
+        raise HTTPException(
+            409,
+            f"Nie mam pełnych danych {len(brakujace)} z {len(wybrane)} wskazanych aut "
+            "— wyszukiwanie mogło wygasnąć. Uruchom je ponownie i wyślij raport "
+            "z listy kandydatów.",
+        )
     surowe = [po_kluczu[k] for k in wybrane if po_kluczu.get(k)]
     if not surowe:
         raise HTTPException(

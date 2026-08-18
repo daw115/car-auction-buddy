@@ -17,6 +17,7 @@ import logging
 from typing import Any, Optional
 
 from parser.models import CarLot
+from report.uszkodzenia import rozpoznaj
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,9 @@ def offer_from_lot(
         "nazwa": _short_name(lot),
         "cena_pln": round(landed),
         "ponad_budzet": bool(budget_pln and landed > budget_pln),
-        "uszkodzenie": lot.damage_primary or None,
+        # Po polsku, bo agent pisze z tego wiadomość do klienta. Surowy kod aukcji
+        # przechodził mu wprost do zdania („auto ma RIGHT SIDE").
+        "uszkodzenie": rozpoznaj(lot.damage_primary or "", mala=True) or lot.damage_primary or None,
     }
 
 

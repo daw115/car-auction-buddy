@@ -161,6 +161,11 @@ def klucz_lota(lot: Any, pozycja: int = 0) -> str:
     zależy od źródła. Pozycja na końcu, gdy nie ma nic innego — klucz żyje
     w obrębie jednej oferty, więc numer pozycji ją domyka.
     """
+    # Auto krąży po aplikacji w dwóch kształtach: samo (`CarLot`) i opakowane
+    # w kandydata z wyszukiwania (`{lot, score, ...}`). Klucz musi wyjść ten sam,
+    # inaczej krok 1 zapisze „lot-1", a krok 3 poszuka po VIN-ie i nie znajdzie.
+    if isinstance(lot, dict) and isinstance(lot.get("lot"), dict):
+        lot = lot["lot"]
     get = (lambda k: lot.get(k)) if isinstance(lot, dict) else (lambda k: getattr(lot, k, None))
     for pole in ("vin", "full_vin", "url", "lot_id"):
         wartosc = get(pole)
@@ -171,9 +176,12 @@ def klucz_lota(lot: Any, pozycja: int = 0) -> str:
 
 def _opis_lota(lot: Any, pozycja: int = 0) -> dict[str, Any]:
     """Tyle, ile trzeba, żeby broker rozpoznał auto w rozmowie sprzed tygodnia."""
+    klucz = klucz_lota(lot, pozycja)
+    if isinstance(lot, dict) and isinstance(lot.get("lot"), dict):
+        lot = lot["lot"]  # kandydat z wyszukiwania, nie sam lot
     get = (lambda k: lot.get(k)) if isinstance(lot, dict) else (lambda k: getattr(lot, k, None))
     return {
-        "klucz": klucz_lota(lot, pozycja),
+        "klucz": klucz,
         "lot_id": get("lot_id"),
         "source": get("source"),
         "nazwa": " ".join(str(x) for x in [get("year"), get("make"), get("model")] if x),

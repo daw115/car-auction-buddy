@@ -61,7 +61,12 @@ def html_na_png(html: str, *, szerokosc: Optional[int] = None) -> bytes:
                 # kilkaset pikseli pustego tła pod spodem. W czacie widać głównie
                 # miniaturę, a miniatura w połowie pusta to zmarnowana pierwsza chwila.
                 strona = przegladarka.new_page(viewport={"width": szer, "height": 200})
-                strona.set_content(html, wait_until="load")
+                # `domcontentloaded`, nie `load`: zdjęcia mamy wklejone jako `data:`,
+                # więc nie ma na co czekać. Czekanie na `load` sięgałoby do sieci
+                # zawsze, gdy któregoś zdjęcia nie udało się wkleić — i przy
+                # niedostępnym CDN aukcji cała oferta padałaby zamiast wyjść bez
+                # jednej fotografii.
+                strona.set_content(html, wait_until="domcontentloaded")
                 kartka = strona.query_selector(".page")
                 if kartka is not None:
                     return kartka.screenshot(type="png")

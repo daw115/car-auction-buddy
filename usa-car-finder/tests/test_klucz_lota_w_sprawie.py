@@ -62,3 +62,18 @@ def test_sprawy_sprzed_zmiany_daja_sie_odczytac() -> None:
     """Wiersze zapisane wcześniej nie mają pola `klucz` i muszą działać dalej."""
     assert klucz_wpisu({"lot_id": "999"}, 0) == "999"
     assert klucz_wpisu({}, 3) == "lot-4"
+
+
+def test_klucz_jest_ten_sam_dla_lota_i_dla_kandydata() -> None:
+    """Auto krąży po aplikacji w dwóch kształtach. Gdyby klucz od nich zależał,
+    krok 1 zapisałby „lot-1", a krok 3 szukałby po VIN-ie i nie znalazłby nic."""
+    lot = {"source": "manheim", "lot_id": "OVE", "vin": "WBA123", "url": "https://x/1"}
+    kandydat = {"lot": lot, "score": 8.2, "recommendation": "POLECAM"}
+    assert klucz_lota(kandydat, 0) == klucz_lota(lot, 0) == "WBA123"
+
+
+def test_opis_lota_czyta_dane_z_kandydata() -> None:
+    kandydat = {"lot": {"vin": "WBA9", "year": 2021, "make": "BMW", "model": "X5"}, "score": 7.0}
+    opis = _opis_lota(kandydat, 0)
+    assert opis["klucz"] == "WBA9"
+    assert opis["nazwa"] == "2021 BMW X5"
