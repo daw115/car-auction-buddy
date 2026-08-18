@@ -43,6 +43,7 @@ import re
 import subprocess
 import urllib.request
 from dataclasses import dataclass, field, replace
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional
@@ -61,6 +62,8 @@ from pricing.import_calculator import (
     engine_liters_from_trim,
     excise_rate_for,
 )
+
+logger = logging.getLogger("report.offer_agent")
 
 _AGENT_PROMPT_NAME = "agent-oferta-auto-usa.md"
 
@@ -516,15 +519,16 @@ def _strip_greeting(text: str) -> str:
 
 
 def _parse_json_loose(raw: str) -> dict:
-    """JSON z odpowiedzi modelu, nawet gdy owinie go w ```json albo doda komentarz."""
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1] if "```" in text[3:] else text[3:]
-        text = text.split("\n", 1)[1] if text.lower().startswith("json") else text
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("brak obiektu JSON w odpowiedzi")
-    return json.loads(text[start:end + 1])
+    """JSON z odpowiedzi modelu — wspólny parser z `ai/json_modelu.py`.
+
+    Tutejsza wersja radziła sobie z ```json, ale nie z przecinkiem przed klamrą
+    ani z komentarzem — a to są usterki, które model popełnia najczęściej.
+    Oferta schodziła wtedy na prozę deterministyczną bez potrzeby, bo dokument
+    dało się posprzątać jednym podstawieniem.
+    """
+    from ai.json_modelu import _parse_json_loose as _wspolny
+
+    return _wspolny(raw)
 
 
 def _validated_prose(raw: dict, cars: list[OfferCar]) -> tuple[dict, list[str]]:
@@ -1056,7 +1060,7 @@ def build_offer(
             prose_source = "llm"
         except Exception as exc:
             warnings.append(f"model nieosiągalny ({type(exc).__name__}: {exc}) — proza deterministyczna")
-            print(f"[OfferAgent] proza deterministyczna: {exc}")
+            logger.warning("[OfferAgent] proza deterministyczna: %s", exc)
 
     why_by_id = prose.get("why") or {}
     client_cars = [replace(car, why=why_by_id.get(car.lot.lot_id)) for car in client_cars]

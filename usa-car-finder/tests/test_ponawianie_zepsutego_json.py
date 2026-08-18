@@ -89,3 +89,27 @@ def test_sciezka_produkcyjna_zglasza_wlasny_typ(monkeypatch) -> None:
     monkeypatch.setattr(claude_code, "call", lambda *a, **k: "to zdecydowanie nie jest JSON")
     with pytest.raises(OdpowiedzNieDoOdczytania):
         hybrid_reports._call_claude_code_json("sys", "user")
+
+
+def test_agent_ofert_ma_te_sama_tolerancje_co_raporty() -> None:
+    """Jeden parser dla obu, bo trzy kopie tej samej wiedzy już raz kosztowały
+    34 niewygenerowane raporty. Agent ofert miał wersję bez sanityzacji, więc
+    przecinek przed klamrą spychał ofertę na prozę deterministyczną — mimo że
+    dokument dało się posprzątać jednym podstawieniem."""
+    from report.offer_agent import _parse_json_loose as parser_ofert
+
+    zepsuty = '```json\n{"intro": "Dzień dobry", "closing": "Pozdrawiam",\n}\n```'
+    assert parser_ofert(zepsuty) == {"intro": "Dzień dobry", "closing": "Pozdrawiam"}
+    assert hybrid_reports._parse_json_loose(zepsuty) == parser_ofert(zepsuty)
+
+
+def test_awaria_agenta_ofert_trafia_do_logu(caplog) -> None:
+    """Bez loggera ta awaria nie miała poziomu i nie podświetliłaby się
+    w widoku logu, który broker ogląda podczas pracy."""
+    import logging
+
+    from report import offer_agent
+
+    with caplog.at_level(logging.WARNING, logger="report.offer_agent"):
+        offer_agent.logger.warning("[OfferAgent] proza deterministyczna: %s", "test")
+    assert any("proza deterministyczna" in r.message for r in caplog.records)
