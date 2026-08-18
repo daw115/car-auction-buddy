@@ -808,6 +808,48 @@ def _results_from_analysis_data(
                     analysis.red_flags.append(note)
         results.append(AnalyzedLot(lot=lot, analysis=analysis))
 
+    # AUTA, KTÓRYCH MODEL NIE OPISAŁ, NIE MOGĄ ZNIKNĄĆ Z WYNIKÓW.
+    #
+    # Pętla wyżej idzie po ANALIZACH, nie po lotach, więc lot bez wpisu w
+    # odpowiedzi po prostu do nich nie wchodził. A wpisu potrafi zabraknąć
+    # z powodów, które z autem nie mają nic wspólnego: pominięty chunk po
+    # dwukrotnym błędzie parsowania, model gubiący pozycję przy dłuższej liście,
+    # ucięta odpowiedź. Broker dostawał wtedy krótszą listę i nie miał jak się
+    # dowiedzieć, że czegoś na niej brakuje.
+    #
+    # Ranking i tak jest deterministyczny (`scoring/unified.py`) i policzony
+    # ZANIM model cokolwiek powiedział — model dokłada tylko prozę. Auto bez
+    # jego opisu da się więc uszeregować normalnie.
+    opisane = {a.lot.lot_id for a in results}
+    bez_opisu = [lot for lot in lots if lot.lot_id not in opisane]
+    odzyskane = 0
+    for lot in bez_opisu:
+        unified = (lot.raw_data or {}).get("unified_score")
+        if not unified:
+            logger.warning(
+                "[analyzer] lot %s wypada z wyników — brak analizy modelu i brak oceny deterministycznej",
+                lot.lot_id,
+            )
+            continue
+        analysis = AIAnalysis(
+            lot_id=lot.lot_id,
+            score=float(unified["score"]),
+            recommendation="ODRZUĆ" if unified.get("disqualifiers") else (
+                OVER_BUDGET_LABEL if unified.get("over_budget") else unified.get("recommendation") or "RYZYKO"
+            ),
+            red_flags=list(unified.get("disqualifiers") or []),
+            client_description_pl="",
+            ai_notes="Opis od modelu nie dotarł — ocena i ranking policzone deterministycznie.",
+        )
+        results.append(AnalyzedLot(lot=lot, analysis=analysis))
+        odzyskane += 1
+
+    if odzyskane:
+        logger.warning(
+            "[analyzer] %s z %s lotów bez opisu od modelu — uszeregowane po ocenie deterministycznej",
+            odzyskane, len(lots),
+        )
+
     return _rank_results(results, top_n)
 
 
