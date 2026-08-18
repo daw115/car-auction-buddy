@@ -768,13 +768,17 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
         "auction_date": lot.auction_date or "",
         "pills": _build_pills(item),
         "photo_url": lot.images[0] if lot.images else None,
-        # Galeria, nie jedno zdjecie: klient decyduje o wydatku rzedu 100 tys. zl
-        # i pierwsze, o co pyta, to „a jak to wyglada z drugiej strony".
-        # Jedno zdjęcie, świadomie. Oferta ma zachęcić do rozmowy, a nie zastąpić
-        # oględzin: klient zainteresowany dostaje osobno pełną galerię i raport
-        # ze szczegółami. Przy okazji plik zostaje lekki na tyle, żeby przeszedł
-        # przez pocztę bez pytania.
-        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:1]),
+        # GALERIA, nie jedno zdjęcie — ten raport nie jest już pierwszym kontaktem.
+        # Pierwszy kontakt to obrazek oferty i tam jedno zdjęcie jest w sam raz:
+        # ma zachęcić do rozmowy, nie zastąpić oględzin. Tutaj klient JUŻ wskazał
+        # auto, a oferta obiecała mu wprost „odeślę komplet zdjęć". Jedno zdjęcie
+        # w tym miejscu jest niedotrzymaniem tej obietnicy — i pierwszym, o co
+        # dopyta, bo przy wydatku rzędu stu tysięcy pyta się „a jak to wygląda
+        # z drugiej strony".
+        #
+        # Sześć, tyle samo co w raporcie brokera: dość, by obejrzeć auto dookoła,
+        # a plik zostaje na tyle lekki, żeby przeszedł przez WhatsApp i pocztę.
+        "photos": _zdjecia_do_wklejenia(list(lot.images or [])[:6]),
         "headline_text": ai.client_description_pl or f"Sprawdzony {lot.year} {lot.make} {lot.model} z aukcji USA",
         "subhead_text": f"Szacowany koszt w Polsce: {total_cost_pln}",
         "story_paragraphs": [
