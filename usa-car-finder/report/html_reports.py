@@ -544,49 +544,6 @@ def _build_client_facts(item: AnalyzedLot) -> list[dict]:
     return fakty
 
 
-def _build_spec_rows(item: AnalyzedLot) -> list[dict]:
-    lot = item.lot
-    rows = []
-
-    if lot.odometer_mi:
-        rows.append({
-            "feature": f"Przebieg {_mileage(lot.odometer_mi)}",
-            "benefit": "Znany rzeczywisty stan licznika z rynku USA",
-        })
-
-    if lot.damage_primary:
-        rows.append({
-            "feature": f"Uszkodzenie: {lot.damage_primary}",
-            "benefit": "Konkretny zakres naprawy, bez ukrytych niespodzianek",
-        })
-
-    if lot.title_type:
-        rows.append({
-            "feature": f"Tytuł: {lot.title_type}",
-            "benefit": "Znany status prawny pojazdu przed zakupem",
-        })
-
-    if lot.keys is True:
-        rows.append({
-            "feature": "Kluczyki obecne",
-            "benefit": "Brak dodatkowych kosztów dorabiania kluczyków",
-        })
-
-    if lot.seller_type == "insurance":
-        rows.append({
-            "feature": "Sprzedawca: ubezpieczalnia",
-            "benefit": "Pewna historia dokumentacyjna, brak ukrytych zastawów",
-        })
-
-    if lot.location_state:
-        rows.append({
-            "feature": f"Lokalizacja: {_location_str(lot)}",
-            "benefit": "Znany koszt transportu do portu",
-        })
-
-    return rows
-
-
 def _build_damage_ok_items(item: AnalyzedLot) -> list[dict]:
     lot = item.lot
     ok_items = []
@@ -828,7 +785,6 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
             "Każde auto przechodzi przez naszą analizę przed wysłaniem oferty. "
             "Podajemy tylko realne koszty — bez ukrytych opłat.",
         ],
-        "spec_rows": _build_spec_rows(item),
         "fakty": _build_client_facts(item),
         "stan": _stan_pojazdu(item, costs),
         "informacje": _informacje_o_samochodzie(item, costs),
