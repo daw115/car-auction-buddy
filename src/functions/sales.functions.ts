@@ -378,10 +378,12 @@ export const raportNaTelegram = createServerFn({ method: "POST" })
 
 /** Cztery kroki sprawy: oferta wstępna, wybór klienta, raport, decyzja. */
 export type WyslaneAuto = {
-  /** Stabilny identyfikator w obrębie sprawy — `lot_id`, VIN albo pozycja.
-   *  Manheim nie podaje `lot_id`, więc samo `lot_id` na klucz się nie nadaje. */
+  /** Stabilny identyfikator w obrębie sprawy — VIN, adres aukcji, `lot_id`
+   *  albo pozycja. `lot_id` na klucz się nie nadaje: u Manheima to nazwa
+   *  kanału aukcji, ta sama dla każdego auta. */
   klucz?: string;
   lot_id?: string | null;
+  vin?: string | null;
   nazwa?: string;
   url?: string | null;
 };
@@ -404,6 +406,30 @@ export const getStanSprawy = createServerFn({ method: "GET" })
   .handler(
     async ({ data }): Promise<StanSprawy> =>
       backendRequest({ path: `/api/sales/leads/${data.leadId}/sprawa`, method: "GET" }),
+  );
+
+/** Krok 1: które auta poszły w ofercie wstępnej.
+ *
+ *  Wołane po wysłaniu obrazka, bo dopiero wtedy oferta naprawdę wyszła. Bez tego
+ *  `stan.wyslane` zostaje puste i cała reszta sprawy jest martwa: nie ma listy
+ *  aut do zaznaczenia, podpowiedź numeru się nie uruchamia, a raport szczegółowy
+ *  odpowiada „ta sprawa nie ma jeszcze oferty wstępnej".
+ */
+export const zapiszOferteWstepna = createServerFn({ method: "POST" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator(
+    z.object({
+      leadId: z.number().int().positive(),
+      lots: z.array(z.record(z.string(), z.unknown())).min(1).max(6),
+    }).parse,
+  )
+  .handler(
+    async ({ data }): Promise<StanSprawy> =>
+      backendRequest({
+        path: `/api/sales/leads/${data.leadId}/sprawa/oferta`,
+        method: "POST",
+        body: { lots: data.lots },
+      }),
   );
 
 /** Krok 2: na które auta wskazał klient. Klucze z oferty wstępnej. */

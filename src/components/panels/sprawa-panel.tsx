@@ -169,17 +169,27 @@ export function SprawaPanel({ leadId, ostatniaOdKlienta = null }: Props) {
             {data!.wyslane.map((auto, i) => {
               // Klucz, nie `lot_id`: Manheim go nie podaje, a wtedy panel i backend
               // liczyły pozycję każdy po swojemu i wybór klienta trafiał w próżnię.
-              const id = String(auto.klucz ?? auto.lot_id ?? i);
-              const wybrany = data!.wybrane.some((w) => String(w.klucz ?? w.lot_id) === id);
+              // Ostatnia deska ratunku musi brzmieć TAK SAMO jak w backendzie
+              // (`pipeline.klucz_wpisu` → `lot-{pozycja+1}`). Sprawy zapisane przed
+              // wprowadzeniem klucza nie mają tego pola, a rozjazd 0/1-based sprawiał,
+              // że zaznaczenie brokera nie pasowało do niczego.
+              const id = String(
+                auto.klucz ?? auto.vin ?? auto.url ?? auto.lot_id ?? `lot-${i + 1}`,
+              );
+              const wybrany = data!.wybrane.some(
+                (w) => String(w.klucz ?? w.vin ?? w.url ?? w.lot_id) === id,
+              );
               return (
                 <label
                   key={id}
                   className="flex items-center gap-2 rounded border p-1.5 text-sm"
                   title="Zaznacz, jeśli klient wskazał to auto"
                 >
+                  {/* Zaznaczone wcześniej auto zostaje klikalne. Blokada wyglądała
+                      na porządek, a znaczyła, że raportu nie da się wysłać drugi raz
+                      — po nieudanej wysyłce albo gdy klient poprosi o niego ponownie. */}
                   <Checkbox
                     checked={zaznaczone.has(id) || wybrany}
-                    disabled={wybrany}
                     onCheckedChange={() =>
                       setZaznaczone((p) => {
                         const n = new Set(p);

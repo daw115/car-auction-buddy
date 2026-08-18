@@ -21,6 +21,7 @@ import {
   getLeadCandidates,
   proposeOffer,
   raportNaTelegram,
+  zapiszOferteWstepna,
   type LeadCandidate,
 } from "@/functions/sales.functions";
 import { Card } from "@/components/ui/card";
@@ -49,6 +50,7 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
   const fnKandydaci = useServerFn(getLeadCandidates);
   const fnOferta = useServerFn(proposeOffer);
   const fnPdf = useServerFn(raportNaTelegram);
+  const fnZapiszOferte = useServerFn(zapiszOferteWstepna);
   const qc = useQueryClient();
   const [zaznaczone, setZaznaczone] = useState<Set<string>>(new Set());
   // Tekst wiadomości do klienta, zwrócony razem z wysłanym obrazkiem. Obrazek
@@ -94,9 +96,6 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
       if (wynik.draft) {
         toast.success("Propozycja gotowa — jest na górze karty, do przeczytania przed wysłaniem.");
         qc.invalidateQueries({ queryKey: ["lead", leadId] });
-        // Krok 1 sprawy zapisuje się sam: broker nie ma pamiętać o klikaniu
-        // czegoś, co system i tak wie.
-        qc.invalidateQueries({ queryKey: ["sprawa", leadId] });
       } else {
         toast.warning(wynik.reason || "Agent nie ma nic do napisania na tym etapie.");
       }
@@ -114,20 +113,40 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
     mutationFn: async () => {
       const wybrane = kandydaci.filter((k, i) => zaznaczone.has(kluczLota(k, i)));
       if (!wybrane.length) throw new Error("Zaznacz auta do oferty.");
-      return fnPdf({
+      const trojka = wybrane.slice(0, 3);
+      const wynik = await fnPdf({
         data: {
           rodzaj: "oferta-png" as const,
           // Cały kandydat, nie sam `k.lot`: backend potrzebuje oceny, żeby brief
           // brokera nie pokazywał zera zamiast wyniku. Endpoint akceptuje ten
           // kształt wprost (ApproveReportRequest normalizuje go u siebie).
-          lots: wybrane.slice(0, 3).map((k) => k as unknown as Record<string, unknown>),
+          lots: trojka.map((k) => k as unknown as Record<string, unknown>),
           clientName: null,
         },
       });
+
+      // KROK 1 SPRAWY, tym samym kliknięciem. Wcześniej nie zapisywał go nikt:
+      // komentarz obok mówił, że „zapisuje się sam", a `stan.wyslane` zostawało
+      // puste i cała reszta sprawy była martwa — nie było listy aut do zaznaczenia,
+      // podpowiedź numeru nigdy nie leciała, a raport szczegółowy odpowiadał
+      // „ta sprawa nie ma jeszcze oferty wstępnej".
+      //
+      // Ta sama trójka i ta sama kolejność, co na obrazku: klient odpisuje „2",
+      // więc pozycja 2 w sprawie musi być tym autem, które widzi jako drugie.
+      // Zapis idzie PO wysyłce, bo dopiero wtedy oferta naprawdę wyszła.
+      await fnZapiszOferte({
+        data: {
+          leadId,
+          lots: trojka.map((k) => k as unknown as Record<string, unknown>),
+        },
+      });
+      return wynik;
     },
     onSuccess: (w) => {
       setTekstOferty(w.tekst ?? null);
       toast.success(`Obrazek na Telegramie (${w.rozmiar_kb} KB). Przekaż go klientowi w rozmowie.`);
+      // Sprawa przechodzi na krok 2 i karta obok pokazuje wysłane auta.
+      qc.invalidateQueries({ queryKey: ["sprawa", leadId] });
     },
     onError: (e: { message?: string }) => toast.error(e.message || "Nie udało się wysłać oferty."),
   });
