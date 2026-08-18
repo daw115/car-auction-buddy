@@ -652,21 +652,42 @@ async def _execute_search(request: SearchRequest, job: jobs_store.Job) -> Search
                     broker_task = _gen_with_semaphore(render_broker_fn, item)
                     results = await asyncio.gather(client_task, broker_task, return_exceptions=True)
 
-                if not isinstance(results[0], Exception):
-                    fname = f"{slug}_{ts}_top{idx}_{lot_id_safe}_klient.html"
-                    (SEARCH_ARTIFACT_DIR / fname).write_text(results[0], encoding="utf-8")
-                    client_html_files.append(str(SEARCH_ARTIFACT_DIR / fname))
-                    links["client"] = fname
-                else:
-                    logger.exception("Client report failed lot %s: %s", item.lot.lot_id, results[0])
+                # RAPORT Z MODELU BYWA NIE DO ODCZYTANIA — i wtedy dotąd nie
+                # powstawał żaden. W logu widać 34 takie przypadki: model oddaje
+                # JSON z niedomkniętym cudzysłowem w środku prozy, parser się
+                # poddaje, plik nie zostaje zapisany, a broker dostaje listę,
+                # w której część aut ma raport, a część nie — bez słowa dlaczego.
+                #
+                # Szablon nie potrzebuje modelu i zawsze się wyrenderuje. Jest
+                # skromniejszy, ale skromniejszy raport bije brak raportu.
+                async def _zapisz_lub_z_szablonu(wynik, przyrostek: str, szablon, zbiorka: list) -> None:
+                    nazwa = f"{slug}_{ts}_top{idx}_{lot_id_safe}_{przyrostek}.html"
+                    sciezka = SEARCH_ARTIFACT_DIR / nazwa
+                    if not isinstance(wynik, Exception):
+                        sciezka.write_text(wynik, encoding="utf-8")
+                    else:
+                        logger.warning(
+                            "Raport (%s) z modelu nie powstał dla lota %s: %s — schodzę na szablon.",
+                            przyrostek, item.lot.lot_id, wynik,
+                        )
+                        try:
+                            html_szablon = await asyncio.to_thread(szablon, item, criteria)
+                        except Exception:
+                            logger.exception(
+                                "Szablon też nie dał rady dla lota %s (%s)", item.lot.lot_id, przyrostek
+                            )
+                            return
+                        sciezka.write_text(html_szablon, encoding="utf-8")
+                    zbiorka.append(str(sciezka))
+                    links["client" if przyrostek == "klient" else "broker"] = nazwa
 
-                if not isinstance(results[1], Exception):
-                    fname = f"{slug}_{ts}_top{idx}_{lot_id_safe}_broker.html"
-                    (SEARCH_ARTIFACT_DIR / fname).write_text(results[1], encoding="utf-8")
-                    broker_html_files.append(str(SEARCH_ARTIFACT_DIR / fname))
-                    links["broker"] = fname
-                else:
-                    logger.exception("Broker report failed lot %s: %s", item.lot.lot_id, results[1])
+                from report.html_reports import (
+                    render_broker_report as _szablon_brokera,
+                    render_client_report as _szablon_klienta,
+                )
+
+                await _zapisz_lub_z_szablonu(results[0], "klient", _szablon_klienta, client_html_files)
+                await _zapisz_lub_z_szablonu(results[1], "broker", _szablon_brokera, broker_html_files)
                 return links
 
             logger.info("Generuję %d raportów (klient+broker) w mode=%s, parallel...", len(polecane), reports_mode)

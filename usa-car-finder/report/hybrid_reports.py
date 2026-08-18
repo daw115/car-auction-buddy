@@ -207,7 +207,15 @@ def _parse_json_loose(raw: str) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"JSON parse failed even with loose mode: {e}; sanitized[:300]={raw_sanitized[:300]!r}")
+        # Okno WOKÓŁ miejsca błędu, nie pierwsze 300 znaków. Odpowiedzi modelu
+        # sypią się w połowie prozy (obserwowane: znak 4015), więc początek
+        # dokumentu nie mówi nic o przyczynie i diagnoza stawała w miejscu.
+        poz = getattr(e, "pos", 0) or 0
+        okno = raw_sanitized[max(0, poz - 120) : poz + 120]
+        raise RuntimeError(
+            f"JSON parse failed even with loose mode: {e}; "
+            f"dlugosc={len(raw_sanitized)}; wokol_bledu={okno!r}"
+        )
 
 
 def _call_gemini_json(system: str, user: str, max_tokens: int = 1500) -> dict:
