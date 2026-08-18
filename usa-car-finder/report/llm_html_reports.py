@@ -62,7 +62,37 @@ def _broker_skeleton() -> str:
     return _BROKER_SKELETON
 
 
-def _lot_data_for_prompt(item: AnalyzedLot, criteria: Optional[ClientCriteria] = None) -> str:
+#: Pola, których model NIE MA WIDZIEĆ, pisząc raport dla klienta.
+#:
+#: Model nie leakuje tego, czego nie dostał. Reguła w prompcie („nie podawaj
+#: ceny aukcyjnej") jest prośbą, a nie zabezpieczeniem: przy tysiącu generowań
+#: kiedyś ją pominie, a wyjdzie to dopiero u klienta. Ten sam błąd znaleziono
+#: w szablonie hybrydowym, gdzie pola były wprost wypisane w HTML-u.
+#:
+#: Cena aukcyjna i prowizja zamieniają ofertę w negocjację o marżę; nasz wynik
+#: punktowy i werdykt to metryka robocza; szacunek naprawy raz podany staje się
+#: dla klienta obietnicą (`agent-oferta-auto-usa.md`).
+_POLA_TYLKO_DLA_BROKERA = (
+    "url",
+    "current_bid_usd",
+    "buy_now_price_usd",
+    "seller_reserve_usd",
+    "seller_type",
+    "ai_score",
+    "ai_recommendation",
+    "ai_red_flags",
+    "ai_notes",
+    "ai_estimated_repair_usd",
+    "ai_estimated_total_cost_usd",
+)
+
+
+def _lot_data_for_prompt(
+    item: AnalyzedLot,
+    criteria: Optional[ClientCriteria] = None,
+    *,
+    dla_klienta: bool = False,
+) -> str:
     """Spłaszcza AnalyzedLot do JSON który Claude czyta."""
     lot = item.lot
     ai = item.analysis
@@ -107,6 +137,16 @@ def _lot_data_for_prompt(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
             "budget_usd": criteria.budget_usd,
             "max_odometer_mi": criteria.max_odometer_mi,
         }
+    if dla_klienta:
+        for pole in _POLA_TYLKO_DLA_BROKERA:
+            payload.pop(pole, None)
+        # Kod aukcji po polsku — model przepisałby „RIGHT SIDE" wprost do zdania.
+        from report.uszkodzenia import rozpoznaj
+
+        for pole in ("damage_primary", "damage_secondary"):
+            if payload.get(pole):
+                payload[pole] = rozpoznaj(payload[pole], mala=True) or payload[pole]
+
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
@@ -426,7 +466,7 @@ def render_client_report_llm(item: AnalyzedLot, criteria: Optional[ClientCriteri
     html = _call_llm(
         system=_system_prompt_client(),
         skeleton=_client_skeleton(),
-        lot_data=_lot_data_for_prompt(item, criteria),
+        lot_data=_lot_data_for_prompt(item, criteria, dla_klienta=True),
         skeleton_label="raport klienta",
         max_tokens=int(os.getenv("LLM_REPORT_MAX_TOKENS", default_max)),
     )
