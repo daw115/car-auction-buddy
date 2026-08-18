@@ -501,6 +501,23 @@ def submit(
     if lead.blocked_by is None:
         lead.blocked_by = _detect_blocker(tresc)
 
+    # POWRÓT KLIENTA WZNAWIA SPRAWĘ. Lead zamknięty (`stracony`, `wygrana`) jest
+    # odfiltrowany ze skrzynki i z listy leadów — `db.list_leads` woła się wszędzie
+    # z `only_open=True` — a agent dla tych etapów świadomie nie pisze propozycji.
+    # Nowe zgłoszenie od takiego klienta lądowało więc w bazie i znikało: broker
+    # nie widział go na żadnym ekranie, a formularz odpowiadał klientowi „ok".
+    #
+    # Wznawiamy na `nowy`, nie na etap sprzed zamknięcia: klient wraca po tygodniach
+    # z innym budżetem i innym autem, więc kwalifikacja zaczyna się od początku.
+    # „Wygrana" wznawiamy tak samo — to klient, który kupił i wraca po drugie auto,
+    # czyli najlepszy lead, jakiego można mieć.
+    if not is_new and lead.stage in (Stage.STRACONY, Stage.WYGRANA):
+        logger.info(
+            "[intake] lead #%s wraca z etapu %s — wznawiam sprawę",
+            lead.id, lead.stage.value,
+        )
+        lead.stage = Stage.NOWY
+
     if is_new:
         lead.raw_request = tresc
         lead = db.create_lead(lead)

@@ -795,6 +795,19 @@ def _results_from_analysis_data(
             # Deterministyczna ocena wygrywa z tym, co policzył model. Model bywa
             # niekonsekwentny między lotami tej samej jakości, a my potrzebujemy
             # rankingu, który da się odtworzyć i obronić przed klientem.
+            #
+            # WERDYKT TEŻ, NIE TYLKO PUNKTY. Nadpisywaliśmy `score`, a etykietę
+            # zostawialiśmy modelowi — i to ONA decyduje o wszystkim dalej:
+            # showcase filtruje po dokładnym `== "POLECAM"` / `== "RYZYKO"`,
+            # ranking sortuje po niej przed oceną, liczniki i oferta dla klienta
+            # też idą po etykiecie. Model, który pominął pole, dostawał domyślne
+            # „RYZYKO" (linia z `ad.get`), więc auto z oceną 9,7 lądowało w gorszym
+            # koszyku, a auto z oceną 5,2 wchodziło do oferty, bo model napisał
+            # „POLECAM". Rozjazd był niewidoczny: panel pokazywał wysoką ocenę
+            # obok złej etykiety i nic nie sygnalizowało błędu.
+            #
+            # Ścieżka lokalna (`_local_analysis`) i odzyskiwanie lotów bez opisu
+            # robiły to poprawnie od początku — to ta jedna odstawała.
             analysis.score = float(unified["score"])
             if unified["disqualifiers"]:
                 analysis.recommendation = "ODRZUĆ"
@@ -806,6 +819,15 @@ def _results_from_analysis_data(
                 note = ((unified.get("budget") or {}).get("note")) or "ponad budżet klienta"
                 if note not in analysis.red_flags:
                     analysis.red_flags.append(note)
+            else:
+                werdykt_scoringu = unified.get("recommendation")
+                if werdykt_scoringu and werdykt_scoringu != analysis.recommendation:
+                    logger.warning(
+                        "[analyzer] lot %s: model dał %r, scoring %r — biorę scoring",
+                        lot_id, analysis.recommendation, werdykt_scoringu,
+                    )
+                if werdykt_scoringu:
+                    analysis.recommendation = werdykt_scoringu
         results.append(AnalyzedLot(lot=lot, analysis=analysis))
 
     # AUTA, KTÓRYCH MODEL NIE OPISAŁ, NIE MOGĄ ZNIKNĄĆ Z WYNIKÓW.
