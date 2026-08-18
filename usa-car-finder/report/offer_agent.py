@@ -150,24 +150,6 @@ _VOCATIVE = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+[\s,!.�
 # ───────────────────────────────────────────────────── tłumaczenie żargonu na PL
 
 # Kolejność ma znaczenie: "front end" musi trafić przed samym "front".
-_DAMAGE_PL: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"normal wear", re.I), "normalne zużycie"),
-    (re.compile(r"minor dent|dent/scratch|scratch", re.I), "drobne wgniecenia i rysy"),
-    (re.compile(r"hail", re.I), "grad"),
-    (re.compile(r"vandalism", re.I), "wandalizm"),
-    (re.compile(r"theft", re.I), "ślady kradzieży"),
-    (re.compile(r"front", re.I), "uszkodzony przód"),
-    (re.compile(r"rear", re.I), "uszkodzony tył"),
-    (re.compile(r"side", re.I), "uszkodzony bok"),
-    (re.compile(r"undercarriage", re.I), "uszkodzone podwozie"),
-    (re.compile(r"rollover|all over", re.I), "dachowanie"),
-    (re.compile(r"mechanical|engine|transmission", re.I), "usterka mechaniczna"),
-    (re.compile(r"water|flood", re.I), "auto zalane"),
-    (re.compile(r"burn|fire", re.I), "ślady pożaru"),
-    (re.compile(r"suspension", re.I), "uszkodzone zawieszenie"),
-    (re.compile(r"biohazard", re.I), "skażenie wnętrza"),
-)
-
 _TITLE_PL: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"parts", re.I), "dokumenty tylko na części"),
     (re.compile(r"rebuilt", re.I), "auto po naprawie, dopuszczone do ruchu w USA"),
@@ -272,16 +254,24 @@ def _mileage_label(odometer_mi: Optional[int]) -> str:
 
 
 def _damage_pl(lot: CarLot) -> str:
-    """Uszkodzenia po polsku, spokojnie i wprost. Nieznany opis = 'do potwierdzenia'."""
+    """Uszkodzenia po polsku, spokojnie i wprost. Nieznany opis = 'do potwierdzenia'.
+
+    Słownik jest wspólny z raportami (`report/uszkodzenia.py`) — dwie tabele dla
+    tego samego kodu rozjeżdżają się po cichu, a rozjechały się już raz: tutejsza
+    mapowała „ALL OVER" na „dachowanie" i mówiła klientowi o zdarzeniu, którego
+    nie było.
+
+    Kodu spoza słownika NIE przepuszczamy w oryginale, inaczej niż w raporcie:
+    to jest proza oferty, a angielski napis w środku polskiego zdania wygląda
+    na tekst niedokończony.
+    """
+    from report.uszkodzenia import rozpoznaj
+
     labels: list[str] = []
     for raw in (lot.damage_primary, lot.damage_secondary):
-        if not raw:
-            continue
-        for pattern, label in _DAMAGE_PL:
-            if pattern.search(raw):
-                if label not in labels:
-                    labels.append(label)
-                break
+        etykieta = rozpoznaj(raw or "", mala=True)
+        if etykieta and etykieta not in labels:
+            labels.append(etykieta)
     if not labels:
         return "zakres uszkodzeń do potwierdzenia"
     return ", ".join(labels)

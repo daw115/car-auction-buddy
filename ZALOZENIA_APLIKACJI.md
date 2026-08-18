@@ -700,7 +700,7 @@ class ClientCriteria(BaseModel):
     sources: list[str] = ["copart", "iaai"]      # Dozwolone: copart, iaai, manheim
     targets: list[SearchTarget] = []             # Dodatkowe pary marka+model
     segment: Optional[str] = None                # np. "suv" — podpowiedź, nie filtr
-    # Budżet "pod klucz" w PLN — tak podaje go klient ("50/60 tys").
+    # Budżet "pod drzwi" w PLN — tak podaje go klient ("50/60 tys").
     # Sufit ceny aukcyjnej liczy scoring/budget.py per stan USA (towing wchodzi
     # do podstawy celnej), a cena dla klienta zawiera prowizję brokera.
     budget_pln_from: Optional[float] = None
@@ -1852,7 +1852,7 @@ kosztują ułamek pierwszego.
 
 **Czego model NIE robi:** nie liczy oceny ani rekomendacji — te powstają deterministycznie
 w `scoring/unified.py` i nadpisują to, co zwrócił model (`ai/analyzer.py`). Nie szacuje
-kosztu naprawy ani ceny pod klucz — liczy je `pricing/import_calculator.py`.
+kosztu naprawy ani ceny pod drzwi — liczy je `pricing/import_calculator.py`.
 
 ### Gmail API (Monitoring Alertów)
 
@@ -2422,7 +2422,7 @@ Total Investment (bezpieczny): $17,250
 2. **Powtarzalność** - Ocena 0-10 liczona deterministycznie w `scoring/unified.py`;
    model (Claude Code) pisze wyłącznie uzasadnienie po polsku
 3. **Lokalizacja** - Logistyka jako składowa oceny z wagą 0.10 (wschód 1.0, centrum 0.6, zachód 0.25)
-4. **Kalkulator** - 1000+ lokalizacji ze stawkami towing, budżet klienta liczony pod klucz w PLN
+4. **Kalkulator** - 1000+ lokalizacji ze stawkami towing, budżet klienta liczony pod drzwi w PLN
 5. **Oferta** - Mail HTML z 3-4 autami dla klienta + brief brokera; PDF (ReportLab) na żądanie
 
 ### Stack Technologiczny

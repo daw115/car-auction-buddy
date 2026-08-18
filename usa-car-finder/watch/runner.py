@@ -20,6 +20,7 @@ from typing import Optional
 
 from parser.models import ClientCriteria
 from watch import db as watch_db
+from report.uszkodzenia import po_polsku
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def _summary(watch: watch_db.Watch, lots: list) -> str:
                 wersja=f" {lot.trim}" if lot.trim else "",
                 przebieg=f"{lot.odometer_mi:,} mi" if lot.odometer_mi else "przebieg nieznany",
                 cena=f"{cena:,.0f} USD" if cena else "licytacja jeszcze nieotwarta",
-                stan=lot.damage_primary or "stan nieznany",
+                stan=po_polsku(lot.damage_primary or "", mala=True) or "stan nieznany",
                 ocena=f", ocena {score:.1f}" if score else "",
             )
         )

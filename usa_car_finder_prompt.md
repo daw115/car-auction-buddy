@@ -161,7 +161,7 @@ class ClientCriteria(BaseModel):
     year_from: Optional[int] = None
     year_to: Optional[int] = None
     budget_usd: Optional[float] = None        # opcjonalny sufit ceny aukcyjnej
-    # Budżet "pod klucz" w Polsce, tak jak podaje go klient ("50/60 tys").
+    # Budżet "pod drzwi" w Polsce, tak jak podaje go klient ("50/60 tys").
     # Sufit ceny aukcyjnej wylicza scoring/budget.max_bid_for_budget() PER STAN USA,
     # bo towing wchodzi do podstawy celnej i mnoży się przez cło, VAT i akcyzę.
     budget_pln_from: Optional[float] = None
@@ -921,7 +921,7 @@ Dla każdego lota zwróć obiekt JSON z polami:
   "PONAD BUDŻET" gdy `unified_score.over_budget` = true, "ODRZUĆ" gdy `unified_score.disqualifiers` niepuste)
 - red_flags (array of strings — lista problemów, może być pusta [])
 - estimated_repair_usd (zostaw 0 lub null — aukcyjne estymaty napraw są nierealne)
-- estimated_total_cost_usd (zostaw 0 lub null — koszt pod klucz liczy Python
+- estimated_total_cost_usd (zostaw 0 lub null — koszt pod drzwi liczy Python
   w pricing/import_calculator.py, model go nie szacuje)
 - client_description_pl (string — 2–3 zdania po polsku dla klienta, rzeczowo i konkretnie)
 - ai_notes (string lub null — uwagi techniczne dla brokera po polsku)

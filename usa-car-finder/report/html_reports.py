@@ -536,7 +536,7 @@ def _build_client_facts(item: AnalyzedLot) -> list[dict]:
     if lot.damage_primary and not _re.search(
         r"(?:condition\s*grade|grade)\s*[0-5]", lot.damage_primary, _re.I
     ):
-        dodaj("Uszkodzenie", lot.damage_primary)
+        dodaj("Uszkodzenie", _damage_str(lot))
     dodaj("Tytuł własności", lot.title_type)
     dodaj("Gdzie stoi", _location_str(lot) if lot.location_state else None)
     dodaj("Aukcja", _data_aukcji_po_polsku(lot.auction_date))

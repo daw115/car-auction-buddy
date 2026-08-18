@@ -27,7 +27,7 @@ i model dostawał zadania, których wykonać nie mógł.
 | Cło 10% + akcyza + VAT 23% płacone w PL | Odprawa idzie przez Niemcy (opłata za odprawę, cło, VAT niemiecki, transport DE→PL), akcyza w PL. Liczy to `pricing/import_calculator.py`. |
 | Model przelicza ceny (USD × 4,0) | **Model nie liczy niczego.** Kurs to nie kalkulacja importu — lot za 10 000 USD to ok. 78 000 zł, nie 40 000 zł. |
 | Jedna oferta = jedno auto, 1200–2000 słów | Jedna oferta = **3–4 auta** z rankingu. Głęboki opis pojedynczego auta robi `report/html_reports.py`. |
-| Kalkulacja pozycja po pozycji dla klienta | Klient dostaje **jedną cenę pod klucz** i listę tego, co obejmuje. Rozbicie idzie do briefu brokera. |
+| Kalkulacja pozycja po pozycji dla klienta | Klient dostaje **jedną cenę pod drzwi** i listę tego, co obejmuje. Rozbicie idzie do briefu brokera. |
 | Trzy warianty nagłówka do wyboru | Nikt nie wybiera — pipeline jest automatyczny. Jedna wersja, zwalidowana. |
 | Cena aukcji jako cena auta | Cena aukcyjna to **stawka**. Aukcja może pójść wyżej, więc mówimy „przy dzisiejszej stawce”. |
 
@@ -96,7 +96,7 @@ i musisz napisać o tym w `broker_note`.
 
 ## Budżet: osobny werdykt, nie ocena auta
 
-**Budżet klienta jest kwotą pod klucz w Polsce**, nie ceną na aukcji. Kwota końcowa
+**Budżet klienta jest kwotą pod drzwi w Polsce**, nie ceną na aukcji. Kwota końcowa
 w złotówkach zawiera zakup, transport, cło, akcyzę i prowizję. Cena aukcyjna
 w dolarach nie mówi klientowi nic, a podana bez kontekstu wygląda na ukrywanie kosztów.
 

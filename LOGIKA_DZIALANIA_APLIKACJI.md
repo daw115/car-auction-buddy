@@ -20,7 +20,7 @@ Użytkownik podaje:
 - budżet maksymalny,
 - preferowane paliwo (`fuel_type` — filtr serwerowy Copart) i maksymalny przebieg (`max_odometer_mi`),
 - okno zakończenia aukcji, np. od 12 godzin do 5 dni,
-- budżet „pod klucz" w PLN (`budget_pln_from` / `budget_pln_to`) oraz formę rozliczenia (`settlement`: `private` albo `company`) — sufit ceny aukcyjnej liczy z tego `scoring/budget.py` osobno dla każdego stanu USA. Wymóg `seller_type=insurance` NIE jest parametrem klienta, tylko przełącznikiem pipeline'u (patrz „Kolejność filtrowania aukcji").
+- budżet „pod drzwi" w PLN (`budget_pln_from` / `budget_pln_to`) oraz formę rozliczenia (`settlement`: `private` albo `company`) — sufit ceny aukcyjnej liczy z tego `scoring/budget.py` osobno dla każdego stanu USA. Wymóg `seller_type=insurance` NIE jest parametrem klienta, tylko przełącznikiem pipeline'u (patrz „Kolejność filtrowania aukcji").
 
 Zapytanie jest zapisywane w bazie klientów, aby można było wrócić do rekordu, raportów i historii wyszukiwań.
 

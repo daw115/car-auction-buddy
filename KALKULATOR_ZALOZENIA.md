@@ -2,7 +2,7 @@
 
 ## Cel Kalkulatora
 
-Kalkulator liczy **cenę pod klucz w Polsce** dla auta z aukcji amerykańskich (Copart, IAAI, Manheim). Wynikiem jest kwota, którą zapłaci klient: koszt sprowadzenia plus prowizja brokera (`pricing/import_calculator.client_price_pln`). Kalkulator NIE liczy wartości odsprzedaży, zysku ani ROI — służy do wyceny oferty dla klienta i do wyznaczenia sufitu licytacji z jego budżetu (`scoring/budget.max_bid_for_budget`), nie do oceny inwestycji.
+Kalkulator liczy **cenę pod drzwi w Polsce** dla auta z aukcji amerykańskich (Copart, IAAI, Manheim). Wynikiem jest kwota, którą zapłaci klient: koszt sprowadzenia plus prowizja brokera (`pricing/import_calculator.client_price_pln`). Kalkulator NIE liczy wartości odsprzedaży, zysku ani ROI — służy do wyceny oferty dla klienta i do wyznaczenia sufitu licytacji z jego budżetu (`scoring/budget.max_bid_for_budget`), nie do oceny inwestycji.
 
 ## Dane Wejściowe
 
@@ -14,7 +14,7 @@ Kalkulator liczy **cenę pod klucz w Polsce** dla auta z aukcji amerykańskich (
 
 ### 2. Koszty Naprawy
 
-Koszt naprawy **nie wchodzi** do ceny pod klucz. `report/cost_calculator.calculate_full_cost` zwraca `repair_usd` / `repair_pln` jako pozycję **obok** sumy — szacunek naprawy nie jest kosztem, który ktokolwiek zafakturuje, a wliczony po cichu rozjeżdżałby raport z ofertą.
+Koszt naprawy **nie wchodzi** do ceny pod drzwi. `report/cost_calculator.calculate_full_cost` zwraca `repair_usd` / `repair_pln` jako pozycję **obok** sumy — szacunek naprawy nie jest kosztem, który ktokolwiek zafakturuje, a wliczony po cichu rozjeżdżałby raport z ofertą.
 
 Model AI ma zakaz szacowania napraw (`ai/analyzer.SYSTEM_PROMPT`): pola `estimated_repair_usd` i `estimated_total_cost_usd` zostają na 0/null. Formularz kalkulatora nie ma pola na naprawę ani na jej ręczną korektę.
 
@@ -57,7 +57,7 @@ Podstawa naliczenia nie zmieniła się:
 - **Firma**: podstawą jest cała suma kosztów USA w PLN
 
 Cło wchodzi do podstawy VAT-u, więc zerowa stawka ścina i cło, i podatek od niego —
-na aucie za 15 000 USD to około 9 000 zł różnicy w cenie pod klucz.
+na aucie za 15 000 USD to około 9 000 zł różnicy w cenie pod drzwi.
 
 #### VAT:
 - **Osoba prywatna**: VAT niemiecki **21%** (`DE_VAT_RATE`) od (podstawa odprawy + cło) —
@@ -267,7 +267,7 @@ FIRMA:
   + prowizja basic brutto                        = 79 016 PLN
 ```
 
-W drugą stronę: budżet 60 000 PLN pod klucz (osoba prywatna, Floryda) daje sufit
+W drugą stronę: budżet 60 000 PLN pod drzwi (osoba prywatna, Floryda) daje sufit
 licytacji ok. **7 534 USD** — tyle wyznacza `scoring/budget.max_bid_for_budget`
 bisekcją, per stan USA.
 
