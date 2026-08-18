@@ -6,11 +6,16 @@
  *  do „Aktywnych jobów" i tracił kontekst tego, na co czeka.
  *
  *  Backend raportował fazy od dawna — po prostu nikt ich tutaj nie czytał.
+ *
+ *  Same fazy to jednak za mało: zmieniają się co kilkadziesiąt sekund, a między
+ *  nimi ekran znowu milczy. Dlatego pod spodem lecą surowe linie logu — tam
+ *  widać, że scraper otwiera kolejne loty, nawet gdy faza się nie rusza.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { backendListJobs } from "@/functions/backend.functions";
+import { LogScrapera } from "@/components/panels/log-scrapera";
 
 const IKONA: Record<string, string> = {
   done: "✅",
@@ -75,6 +80,8 @@ export function PrzebiegWyszukiwania() {
           ))}
         </div>
       )}
+
+      <LogScrapera aktywny />
     </div>
   );
 }

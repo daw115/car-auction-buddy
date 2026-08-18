@@ -470,6 +470,47 @@ export const backendListJobs = createServerFn({ method: "GET" })
     );
   });
 
+/** Linie logu serwera — to, co scraper wypisuje w trakcie pracy.
+ *
+ *  Backend miał `/api/logs/tail` od dawna, ale panel nigdy o niego nie pytał:
+ *  broker widział fazy (zmieniają się co kilkadziesiąt sekund) i nic pomiędzy,
+ *  więc przy dłuższej ciszy nie dało się odróżnić pracy od zawieszenia.
+ *
+ *  SZUM ODCINAMY TUTAJ, nie w komponencie. Log jest w 90% dziennikiem dostępu
+ *  uvicorna — w próbce 193 z 400 linii to samo odpytywanie o joby, a odpytywanie
+ *  o TEN endpoint dokłada kolejne. Filtr po stronie serwera oszczędza przesył
+ *  i trzyma regułę w jednym miejscu.
+ */
+const SZUM = [
+  /"(GET|POST|PUT|DELETE) \/api\/jobs/,
+  /"(GET|POST) \/api\/logs/,
+  /"(GET|POST) \/api\/manheim\/next-job/,
+  /"(GET|POST) \/api\/capabilities/,
+  /"GET \/health/,
+  /"GET \/api\/version/,
+];
+
+export const backendLogTail = createServerFn({ method: "GET" })
+  .middleware([devRequestLogger, siteSessionMiddleware])
+  .inputValidator((d: { lines?: number; grep?: string } | undefined) => d ?? {})
+  .handler(async ({ data }): Promise<{ lines: string[]; plik: string | null }> => {
+    const params = new URLSearchParams();
+    // Bierzemy z zapasem, bo po odsianiu szumu zostaje ułamek.
+    params.set("lines", String(Math.min(Math.max(data.lines ?? 500, 50), 5000)));
+    if (data.grep) params.set("grep", data.grep);
+
+    const odp = await callBackendSafe<{ lines?: string[]; log_file?: string }>(
+      { path: `/api/logs/tail?${params}` },
+      { lines: [], log_file: undefined },
+    );
+
+    const istotne = (odp.lines ?? [])
+      .map((l) => l.replace(/\s+$/, ""))
+      .filter((l) => l.length > 0 && !SZUM.some((wzorzec) => wzorzec.test(l)));
+
+    return { lines: istotne.slice(-80), plik: odp.log_file ?? null };
+  });
+
 /** DELETE /api/jobs/{id} (fallback POST /cancel). */
 export const backendCancelJob = createServerFn({ method: "POST" })
   .middleware([devRequestLogger, siteSessionMiddleware])
