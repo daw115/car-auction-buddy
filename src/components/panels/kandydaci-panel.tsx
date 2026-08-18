@@ -117,7 +117,10 @@ export function KandydaciPanel({ leadId, budzetPln }: Props) {
       return fnPdf({
         data: {
           rodzaj: "oferta-png" as const,
-          lots: wybrane.slice(0, 3).map((k) => k.lot as unknown as Record<string, unknown>),
+          // Cały kandydat, nie sam `k.lot`: backend potrzebuje oceny, żeby brief
+          // brokera nie pokazywał zera zamiast wyniku. Endpoint akceptuje ten
+          // kształt wprost (ApproveReportRequest normalizuje go u siebie).
+          lots: wybrane.slice(0, 3).map((k) => k as unknown as Record<string, unknown>),
           clientName: null,
         },
       });
