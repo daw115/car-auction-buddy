@@ -368,14 +368,22 @@ def _call_claude_code_json(system: str, user: str, max_tokens: int = 1500) -> di
     idzie osobną flagą i wpada do cache'u promptów — przy serii lotów to różnica rzędu
     dziesięciokrotności kosztu. Effort niski: to zadanie mechaniczne, wypełnienie schematu
     JSON o twardych limitach znaków, a nie problem do przemyślenia.
+
+    BIERZEMY SUROWY TEKST I PARSUJEMY GO SAMI. `claude_code.call_json` ma własny,
+    nietolerancyjny parser, więc na tej ścieżce — a to jest ścieżka produkcyjna —
+    nie działała ani sanityzacja z `_parse_json_loose`, ani ponawianie: wyjątek
+    wychodził jako goły `JSONDecodeError`, którego pętla nie rozpoznawała jako
+    przejściowego. W logu widać obie sygnatury: „line 1 column 4016" spod
+    tolerancyjnego parsera i „line 47 column 3" spod tego drugiego.
     """
-    return claude_code.call_json(
+    tekst = claude_code.call(
         system, user,
         model_env="CLAUDE_CODE_REPORTS_MODEL",
         effort=os.getenv("CLAUDE_CODE_REPORTS_EFFORT", "low"),
         timeout=int(os.getenv("CLAUDE_CODE_TIMEOUT_SECONDS", "180")),
         label="raport",
     )
+    return _parse_json_loose(tekst)
 
 
 def _call_llm_json(system: str, user: str, max_tokens: int = 1500) -> dict:

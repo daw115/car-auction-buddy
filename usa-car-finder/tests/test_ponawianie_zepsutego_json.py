@@ -64,3 +64,28 @@ def test_uporczywa_awaria_nadal_konczy_sie_wyjatkiem(monkeypatch) -> None:
 
     with pytest.raises(OdpowiedzNieDoOdczytania):
         hybrid_reports._call_llm_json("sys", "user")
+
+
+def test_sciezka_produkcyjna_uzywa_tolerancyjnego_parsera(monkeypatch) -> None:
+    """`claude-code` to provider produkcyjny, a szedł własnym, nietolerancyjnym
+    parserem z `ai/claude_code.py`. Ani sanityzacja, ani ponawianie go nie
+    dotyczyły: wyjątek wychodził jako goły `JSONDecodeError`. W logu widać obie
+    sygnatury — „line 1 column 4016" spod tolerancyjnego parsera i „line 47
+    column 3" spod tamtego."""
+    from ai import claude_code
+
+    # Dokładnie to, co model oddał na produkcji: zbędny przecinek przed klamrą,
+    # do tego owinięcie w markdown, którego surowy `json.loads` nie znosi.
+    monkeypatch.setattr(
+        claude_code, "call", lambda *a, **k: '```json\n{"tagline": "Dobre auto",\n}\n```'
+    )
+    assert hybrid_reports._call_claude_code_json("sys", "user") == {"tagline": "Dobre auto"}
+
+
+def test_sciezka_produkcyjna_zglasza_wlasny_typ(monkeypatch) -> None:
+    """Bez tego pętla ponawiania nie rozpozna awarii jako przejściowej."""
+    from ai import claude_code
+
+    monkeypatch.setattr(claude_code, "call", lambda *a, **k: "to zdecydowanie nie jest JSON")
+    with pytest.raises(OdpowiedzNieDoOdczytania):
+        hybrid_reports._call_claude_code_json("sys", "user")
