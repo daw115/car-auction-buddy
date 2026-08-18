@@ -51,6 +51,15 @@ function CalculatorPage() {
   const [recalls, setRecalls] = useState<RecallItem[]>([]);
   const [recallStatus, setRecallStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [fx, setFx] = useState<FxRates | null>(null);
+  // Stawki prawne dla konkretnego VIN-u. Dopóki ich nie ma, kalkulator liczy
+  // drożej (cło 10%) i mówi o tym wprost w notatkach.
+  const [stawki, setStawki] = useState<{
+    duty_rate_pct: number;
+    excise_rate_pct: number;
+    duty_reason?: string;
+    excise_reason?: string;
+    assumptions?: string[];
+  } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   // kalkulator state
@@ -79,10 +88,12 @@ function CalculatorPage() {
         fuel,
         broker_margin_pct: margin,
         exchange_rate_buffer_pct: buffer,
+        duty_rate_pct: stawki?.duty_rate_pct ?? null,
+        excise_rate_pct: stawki?.excise_rate_pct ?? null,
       },
       { usd_pln: fx.usd_pln, usd_eur: fx.usd_eur },
     );
-  }, [fx, carPrice, repair, state, engineCc, fuel, margin, buffer]);
+  }, [fx, carPrice, repair, state, engineCc, fuel, margin, buffer, stawki]);
 
   async function runVin() {
     if (vin.trim().length < 11) {
@@ -92,6 +103,7 @@ function CalculatorPage() {
     setBusy("vin");
     setRecalls([]);
     setRecallStatus("idle");
+    setStawki(null);
     try {
       const r = await fnDecodeVin({ data: { vin: vin.trim() } });
       setVinResult(r);
@@ -105,6 +117,35 @@ function CalculatorPage() {
         else setFuel("gasoline");
       }
       toast.success(`Zdekodowano: ${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`);
+
+      // Cło i akcyza z backendu, bo tam mieszka prawo. Bez tego kalkulator liczył
+      // 10% każdemu, a auto złożone w USA ma od lipca 2026 zero — na aucie za
+      // 15 tys. dolarów to około sześciu tysięcy złotych różnicy w wycenie.
+      try {
+        const odp = await fetch("/api/public/vin-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vin: vin.trim(),
+            make: r.make ?? undefined,
+            model: r.model ?? undefined,
+          }),
+        });
+        if (odp.ok) {
+          const dane = await odp.json();
+          if (typeof dane?.duty_rate_pct === "number") {
+            setStawki(dane);
+            toast.info(
+              dane.duty_free
+                ? "Cło 0% — auto złożone w USA."
+                : `Cło ${dane.duty_rate_pct}% — ${dane.assembly_country ?? "kraj montażu spoza USA"}.`,
+            );
+          }
+        }
+      } catch {
+        // Kalkulator ma działać także wtedy, gdy backend milczy: zostaje wariant
+        // droższy, a notatka mówi, że stawka jest założona.
+      }
       // pobierz recall'e
       if (r.make && r.model && r.year) {
         setRecallStatus("loading");
