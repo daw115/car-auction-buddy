@@ -50,4 +50,4 @@ chrome_extensions/
 * 2.md
 
 # Worktree'y zadań w tle — kopie repo, nie jego treść.
-.claude/worktrees/
+**/.claude/worktrees/
