@@ -3203,7 +3203,7 @@ async def wyslij_raport_na_telegram(request: ApproveReportRequest, rodzaj: str =
             lots_for_report, client_name=request.client_name, pokaz_naglowek=False
         )
         try:
-            plik_bin = screenshot.html_na_png(html)
+            plik_bin = await screenshot.html_na_png_async(html)
         except screenshot.ScreenshotNiedostepny as blad:
             raise HTTPException(status_code=503, detail=str(blad)) from blad
         nazwa = screenshot.nazwa_pliku(request.client_name)

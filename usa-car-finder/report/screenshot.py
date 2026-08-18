@@ -72,6 +72,23 @@ def html_na_png(html: str, *, szerokosc: Optional[int] = None) -> bytes:
         raise ScreenshotNiedostepny(f"Nie udało się wyrenderować obrazka: {blad}") from blad
 
 
+async def html_na_png_async(html: str, *, szerokosc: Optional[int] = None) -> bytes:
+    """To samo, ale wołalne z endpointu FastAPI.
+
+    Synchroniczne API Playwrighta odmawia pracy, gdy w bieżącym wątku kręci się
+    pętla asyncio — a każdy endpoint tej aplikacji jest `async`. Objawia się to
+    dopiero na żywym serwerze („Please use the Async API instead"), bo wywołane
+    wprost z Pythona to samo wywołanie przechodzi bez zarzutu.
+
+    Wątek zamiast asynchronicznego API Playwrighta, bo render jest jednorazowy
+    i tak trwa sekundy: druga implementacja tej samej rzeczy kosztowałaby więcej
+    niż jedno przełączenie wątku.
+    """
+    import asyncio
+
+    return await asyncio.to_thread(html_na_png, html, szerokosc=szerokosc)
+
+
 def nazwa_pliku(client_name: Optional[str] = None) -> str:
     """Nazwa widoczna w WhatsAppie. Bez znaków spoza ASCII, bo telefony potrafią
     je zamienić w krzaki albo uciąć rozszerzenie."""
