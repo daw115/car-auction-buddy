@@ -557,14 +557,31 @@ export const backendListRecords = createServerFn({ method: "GET" })
   });
 
 /** GET /api/records/{id} — szczegóły rekordu. */
+/** Szczegóły rekordu z historii.
+ *
+ *  NIE przez `callBackendSafe`. Ten wariant połyka KAŻDY błąd — timeout przy
+ *  dużym rekordzie, 502 podczas restartu backendu, wygasłą sesję — i oddaje
+ *  `null`, czyli dokładnie to samo, co „rekordu nie ma". Karta pokazywała wtedy
+ *  kręcące się kółko albo pustkę, a broker nie miał jak odróżnić awarii od
+ *  usuniętego wpisu i próbował klikać dalej.
+ *
+ *  Wyjątek przepuszczamy w górę: TanStack Query ma na to `isError`, a przy
+ *  ponowieniu żądanie może się udać. Rekord, którego naprawdę nie ma, backend
+ *  zgłasza jako 404 — i to jedyny przypadek, w którym `null` jest prawdą.
+ */
 export const backendGetRecord = createServerFn({ method: "GET" })
   .middleware([devRequestLogger, siteSessionMiddleware])
   .inputValidator(z.object({ id: z.coerce.string().min(1).max(200) }).parse)
-  .handler(async ({ data }) => {
-    return callBackendSafe<Record<string, any> | null>(
-      { path: `/api/records/${encodeURIComponent(data.id)}` },
-      null,
-    );
+  .handler(async ({ data }): Promise<Record<string, any> | null> => {
+    try {
+      return await callBackend<Record<string, any>>({
+        path: `/api/records/${encodeURIComponent(data.id)}`,
+      });
+    } catch (blad) {
+      const tresc = blad instanceof Error ? blad.message : String(blad);
+      if (/\b404\b|not found/i.test(tresc)) return null;
+      throw blad;
+    }
   });
 
 /** DELETE /api/records/{id}. */
