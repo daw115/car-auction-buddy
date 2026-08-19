@@ -65,7 +65,8 @@ ClientCriteria → AutomatedScraper (Playwright) → HTML cache + parsed CarLot[
 - **AI scoring (`ai/analyzer.py`)** — `analyze_lots(lots, criteria)` is the single entry. Behavior is driven by env vars:
   - `AI_ANALYSIS_MODE` ∈ `claude-code` (what `.env` actually sets), `auto`, `openai`/`gpt`, `anthropic`, `local`
   - `AI_ANALYSIS_STRICT=true` → no fallback to local on missing keys / API errors
-  - **The score is computed outside the model.** `scoring/unified.py` produces it deterministically (weighted components with weight renormalisation, thresholds 7.5 POLECAM / 5.0 RYZYKO), and `ai/analyzer.py` overwrites whatever the model returned. Scoring rule changes go in `scoring/unified.py`, **not** in the prompt.
+  - **The score AND the verdict are computed outside the model.** `scoring/unified.py` produces both deterministically (weighted components with weight renormalisation, thresholds 7.5 POLECAM / 5.0 RYZYKO), and `ai/analyzer.py` overwrites whatever the model returned. Scoring rule changes go in `scoring/unified.py`, **not** in the prompt.
+    Until 2026-08-18 only the *score* was overwritten and the label was left to the model — which mattered because the **label**, not the score, drives everything downstream: the showcase filters on exact `== "POLECAM"`, `_rank_results` sorts by label *before* score, and the client offer is assembled per label. A model that omitted the field got the `"RYZYKO"` default, so a 9.7 car dropped a bucket; worse in the other direction, a 5.2 car reached the client because the model wrote `POLECAM`. A label outside the four allowed values fell out of every bucket at once. Nothing signalled any of it — the panel showed a high score next to the wrong label. A mismatch is now logged at WARNING.
   - US region is one component (`logistics`, weight 0.10) via `scoring/regions.py` — not a flat ±1.5 bonus. Flood/fire, frame damage, salvage-when-Clean-required and red-light are hard disqualifiers: score 0.0 and ODRZUĆ.
   - The `condition` component is an **AutoGrade 0–5** from `scoring/autograde.py`, the same scale Manheim prints on a listing. Manheim supplies a grade; Copart and IAAI supply only damage text, so we compute the equivalent — without a shared scale you cannot answer whether a Copart lot is in better shape than a Manheim one. When the auction supplies its own grade, **that number wins**; ours runs alongside and flags a divergence ≥0.5 for the broker.
   - **AutoGrade is condition ONLY.** The published NAAA/Manheim methodology explicitly excludes mileage, model year, make, trim, colour, options, MSRP, announcements, estimated repair cost and repair action — value is meant to come from grade *plus* year/mileage/MMR. Keep it that way: putting any of those into `autograde.py` turns it into a second buying score and destroys comparability with the auction's number. Price, mileage and logistics have their own components in `unified.py`; that is where they belong.
@@ -101,7 +102,7 @@ ClientCriteria → AutomatedScraper (Playwright) → HTML cache + parsed CarLot[
   - A parked lead is **never hidden**. `/api/sales/inbox` returns `items` (passed) and `parked` (with `parked_reasons` and `unlock`), both carrying `lead_id`. Hiding rejects would turn a filter into silent customer loss. `worth_model_call()` also stops the model burning tokens on parked leads — except when the client refused a damaged car, where one good message flips the single most common loss reason.
   - `POST /api/public/vin-check` is deliberately **ungated**: VIN in, duty/excise/landed price out, no contact required. It filters by self-selection instead of harvesting phone numbers, and it is the only public calculator on the Polish market that can be right — the eight competitor calculators ask for price and engine size, never VIN, so none of them knows whether duty is 0% or 10% (175 of 307 lots in our sample were US-assembled). **The one dangerous direction is an unidentified EV**: not knowing the drivetrain gives 0% instead of 10% duty, so `tariff.rates_for` emits an explicit assumption whenever preferential duty is applied without a confident drivetrain. Always pass `make` and `model` when you have them — with only a trim string, "Long Range" reads as combustion and a Tesla silently loses both its 10% duty and its 0% excise.
 
-- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `<slug>_analysis.json` and `<slug>_client_report.md` into `data/client_searches/` and exposes them via `/artifacts/{filename}`), `whatsapp.py` (short client message + wa.me link — **generates only, never sends**; the broker approves and sends it). Mail HTML structure must follow `przyklady_maili_README.md`.
+- **Reports (`report/`)** — `generator.py` (PDF via WeasyPrint/ReportLab), `html_generator.py` (Jinja2 templates in `report/templates/`), `offer_agent.py` (client offer + broker brief — every figure is computed in Python from `pricing/import_calculator.py`; the LLM only writes prose and its output is validated in `_clean_prose`, so digits, auction jargon and banned phrases never reach the client. The system prompt is `agent-oferta-auto-usa.md`), `client_artifacts.py` (writes `<slug>_analysis.json` and `<slug>_brief_brokera.md` into `data/client_searches/` and exposes them via `/artifacts/{filename}` — the markdown is a **broker** document despite once being named `_client_report.md`: it carries auction prices, our score, red flags and a "Notatki brokerskie" section, and the old name invited forwarding it to a client), `whatsapp.py` (short client message + wa.me link — **generates only, never sends**; the broker approves and sends it). Mail HTML structure must follow `przyklady_maili_README.md`.
 
 ## Configuration knobs that change behavior significantly
 
@@ -116,6 +117,25 @@ These env vars are read across modules; consult before debugging "why does the s
 - Orchestrator: `ORCHESTRATOR_MAX_RESULTS`, `CLIENT_EMAIL`, `GMAIL_ADDRESS`
 
 The `README.md` in `usa-car-finder/` has a fuller annotated `.env` example.
+
+## Two rules that came out of the 17-19 August 2026 sweep
+
+**One source of knowledge per fact.** Damage-code translation lived in two tables
+and they drifted: `offer_agent.py` mapped `ALL OVER` onto "dachowanie" and told
+clients about a rollover that never happened. JSON parsing from the model lived
+in three places and the strictest one — `ai/claude_code.parse_json`, the
+*production* path — swallowed 34 reports over one night. Both now live in one
+module (`report/uszkodzenia.py`, `ai/json_modelu.py`). Before adding a second
+implementation of anything the model touches, look for the first one.
+
+**A partial failure must not look like a small result.** Every serious bug found
+in that sweep had the same shape: something failed, the system carried on, and
+the output was quietly poorer — a report that was never written, a car dropped
+from the results because the loop iterated over model answers instead of lots,
+a case step nobody saved, keys that matched nothing. When you write `except`,
+`continue` or `or []` on a path that builds something the broker will look at,
+answer this first: *if this branch fires, how does he find out?* A `logger.debug`
+is not an answer; the log view in the panel filters on level.
 
 ## Working in Polish
 
