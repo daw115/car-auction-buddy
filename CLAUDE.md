@@ -13,7 +13,7 @@ Kluczowe funkcje:
 
 - **Scraper jobs** — uruchamianie zewnętrznego scrapera przez REST API (`SCRAPER_BASE_URL`), polling statusu, anulowanie, rerun.
 - **Cache wyników** — wyniki cache'owane w DB po hashu parametrów (date window, seller type, damage), żeby nie scrapować ponownie.
-- **AI analysis** — analiza ofert przez Anthropic API (`ANTHROPIC_API_KEY`, model w `ANTHROPIC_MODEL`).
+- **AI analysis** — panel sam nie woła modelu: analizę, oceny i raporty robi backend FastAPI (`ai/analyzer.py`, `report/`), a panel je wyłącznie pokazuje. `ANTHROPIC_API_KEY` w tym repo dotyczy pojedynczych, pobocznych wywołań z `anthropic.server.ts`; ścieżka produkcyjna backendu chodzi na subskrypcji Claude Code, nie na kluczu API.
 - **Watchlist + raporty PDF** — `@react-pdf/renderer`, generowane server-side.
 - **Panel statusu** — szczegółowe komunikaty błędów dla `error/failed`, przycisk „Pobierz logi", „Uruchom ponownie".
 - **Operation logs** — strukturyzowane logi w tabeli `operation_logs` (przez `src/server/logger.server.ts`).
@@ -52,65 +52,53 @@ bun remove <pkg>     # usuń zależność
 
 ## 4. Struktura katalogów
 
+Stan na 19 sierpnia 2026, sprawdzony z drzewem. Poprzednia wersja tej sekcji
+opisywała układ sprzed przenosin i myliła w rzeczy podstawowej: server functions
+mieszkają w `src/functions/`, a `src/server/` trzyma helpery server-only.
+
 ```
 src/
-├── routes/                       # File-based routing (TanStack Start)
+├── routes/                       # File-based routing (TanStack Start, flat dot convention)
 │   ├── __root.tsx                # ROOT layout (html/head/body shell). Nie zmieniać struktury.
-│   ├── index.tsx                 # / — główny panel scrapera (formularz + status + wyniki)
-│   ├── dashboard.tsx             # /dashboard
-│   ├── calculator.tsx            # /calculator — kalkulator kosztów
-│   ├── settings.tsx              # /settings
-│   ├── watchlist.tsx             # /watchlist
-│   └── api/                      # Server routes (raw HTTP / webhooks)
-│       ├── health.ts             # GET /api/health
-│       ├── config.ts             # GET /api/config (status env + app_config)
-│       ├── records.ts
-│       ├── reports/pdf.ts        # generowanie PDF
-│       └── public/hooks/         # endpointy publiczne (cron, webhooki) — bez auth
-│           └── cleanup-logs.ts
+│   ├── index.tsx                 # / — panel scrapera: formularz, postęp, log, wyniki
+│   ├── leady.tsx                 # skrzynka sprzedażowa
+│   ├── klient.$leadId.tsx        # karta klienta: rozmowa, kandydaci, sprawa
+│   ├── calculator.tsx            # kalkulator importu (stawki cła bierze z backendu)
+│   ├── sprawdz-vin.tsx           # PUBLICZNA strona checkera VIN
+│   ├── settings*.tsx             # ustawienia, w tym powiadomienia Telegrama
+│   └── api/                      # Server routes (raw HTTP)
+│       ├── version.ts            # GET /api/version — wersja, commit, czas builda
+│       ├── health.ts, config.ts, diagnostics.ts
+│       ├── dev/                  # auth i strumień logów dla trybu deweloperskiego
+│       └── public/               # BEZ logowania: lead.ts, vin-check.ts, hooks/
 │
-├── server/                       # Kod SERWEROWY (server functions + helpery)
-│   ├── api.functions.ts          # createServerFn — scraper start/status/cancel/logs/cache
-│   ├── external.functions.ts     # createServerFn — wywołania zewnętrznych API
-│   ├── watchlist.functions.ts    # createServerFn — watchlist CRUD
-│   ├── anthropic.server.ts       # klient Anthropic (server-only)
-│   ├── logger.server.ts          # writeLog / makeLogger -> operation_logs (sanitizacja sekretów!)
-│   ├── lot-report.ts             # logika raportu pojedynczego lota
-│   ├── pdf-report.server.ts      # render PDF (@react-pdf/renderer)
-│   ├── report.ts                 # logika raportu zbiorczego
-│   └── prompts/                  # prompty AI (system-prompt.ts, lot-prompt.ts, .txt)
+├── functions/                    # SERVER FUNCTIONS (createServerFn) — TU, nie w server/
+│   ├── backend.functions.ts      # proxy do FastAPI: joby, rekordy, logi scrapera
+│   ├── sales.functions.ts        # leady, kandydaci, sprawa, raporty na Telegram
+│   ├── intake.functions.ts       # przyjęcie zgłoszenia z formularza
+│   ├── clients.functions.ts, ai-providers.functions.ts, external.functions.ts
+│   ├── default-criteria.functions.ts, pipeline-filters.functions.ts
+│   ├── site-auth.functions.ts + site-session-middleware.functions.ts   # bramka hasła
+│   └── dev-logging-middleware.functions.ts
 │
+├── server/                       # Helpery SERVER-ONLY (Vite blokuje import z klienta)
+│   ├── site-session.server.ts    # podpisany token sesji panelu
+│   ├── logger.server.ts          # writeLog / makeLogger → operation_logs (sanitizacja!)
+│   ├── log-stream.server.ts, dev-auth.server.ts, dev-logger.server.ts
+│   └── external-apis.server.ts
+│
+├── queries/                      # współdzielone klucze i opcje react-query
 ├── components/
-│   ├── ui/                       # shadcn/ui — NIE edytować ręcznie chyba że dodajesz wariant
-│   ├── JsonDetails.tsx
-│   └── LogsPanel.tsx
-│
-├── hooks/use-mobile.tsx
-│
-├── integrations/supabase/
-│   ├── client.ts                 # Klient ANON (browser + server). NIE EDYTOWAĆ — auto-generowany.
-│   ├── client.server.ts          # supabaseAdmin (service-role, server-only)
-│   ├── types.ts                  # NIE EDYTOWAĆ — auto-generowany ze schematu DB
-│   └── auth-middleware.ts
-│
+│   ├── panels/                   # karty ekranów: kandydaci, sprawa, log scrapera, joby…
+│   └── ui/                       # shadcn/ui — NIE edytować ręcznie
 ├── lib/
-│   ├── cost-calculator.ts        # czysta logika kalkulacji kosztów
-│   ├── types.ts                  # współdzielone typy domenowe
-│   └── utils.ts                  # cn() i drobne helpery
-│
-├── styles.css                    # Tailwind v4 + tokeny (oklch). Tu definiujesz kolory.
-├── router.tsx                    # konfiguracja routera (defaultErrorComponent)
-└── routeTree.gen.ts              # AUTO-GENEROWANY przez router-plugin. NIE EDYTOWAĆ.
-
-supabase/
-├── config.toml                   # project_id + per-function config. NIE zmieniaj project-level.
-└── migrations/                   # SQL migracje (kolejność po nazwie pliku)
-
-.env                              # Lokalny dev. Produkcja: /etc/usacar/dashboard.env na serwerze (0600 root)
-vite.config.ts                    # Używa @lovable.dev/vite-tanstack-config — NIE dodawać duplikatów pluginów
+│   ├── backend-transport.server.ts  # jedyna droga do FastAPI (token, timeouty)
+│   ├── cost-calculator.ts        # kalkulacja kosztów; STAWKI PRAWNE z backendu
+│   └── types.ts, utils.ts, auction-sources.ts…
+├── integrations/supabase/        # klient + typy (auto-generowane, nie edytować)
+├── styles.css                    # Tailwind v4 + tokeny (oklch)
+└── routeTree.gen.ts              # AUTO-GENEROWANY. NIE EDYTOWAĆ.
 ```
-
----
 
 ## 5. Reguły, których NIE wolno łamać
 
@@ -132,7 +120,7 @@ vite.config.ts                    # Używa @lovable.dev/vite-tanstack-config —
 - Bez trailing slash w `to=` (`/products`, nie `/products/`).
 - Łańcuch `createServerFn().inputValidator().handler()` musi być ciągły — nie przerywać `});`.
 
-### Server functions (`src/server/*.functions.ts`)
+### Server functions (`src/functions/*.functions.ts`)
 
 - Importuj z `@tanstack/react-start` (nie `@tanstack/start`).
 - `process.env.X` czytaj **wewnątrz** `.handler()`, nie na top-level modułu.
