@@ -56,6 +56,22 @@ dalej, a wynik był uboższy bez żadnego sygnału.
 - Oferta gubiła auta bez ceny, panel zamieniał awarię backendu w „rekordu nie
   ma", parser Coparta połykał całą ekstrakcję gołym `except: pass`.
 
+### Podpowiedzi do rozmowy z nowym klientem
+
+Karta klienta mówiła dotąd, CZEGO nie wiemy („czy godzi się na auto po szkodzie",
+„budżet pod drzwi w złotówkach"). To są nazwy pól, a w rozmowie potrzebne jest
+zdanie — i broker układał je sam, przy telefonie, na gorąco.
+
+Każdy brak ma teraz **gotowe zdanie w dwóch formach**: dłuższe z powodem do
+rozmowy telefonicznej i krótkie do wiadomości, bo długi tekst na WhatsAppie
+zostaje bez odpowiedzi. Pod spodem jedna linijka „dlaczego" — dla brokera, nie
+dla klienta. Kolejność nie jest przypadkowa: najpierw pytania, które mogą
+zakończyć rozmowę (zgoda na auto po szkodzie, budżet), potem doprecyzowujące.
+
+Zdania są zgodne z tym, co produkt naprawdę robi: nie obiecują naprawy (auto
+przyjeżdża w stanie z aukcji, wycenę robimy osobno) i podają prawdziwy czas
+transportu morskiego, 3-6 tygodni zależnie od stanu.
+
 ### Widoczność pracy
 
 Panel pokazuje **log scrapera** w trakcie wyszukiwania — fazy zmieniają się co
