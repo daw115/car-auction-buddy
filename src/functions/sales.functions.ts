@@ -37,6 +37,15 @@ export type LeadScore = {
   next_action: string;
   red_flags: string[];
   missing: string[];
+  /** Gotowe zdania do zadania w rozmowie — po jednym na każdy brak, w dwóch
+   *  formach. `missing` mówi CZEGO nie wiemy, to mówi CO POWIEDZIEĆ. */
+  podpowiedzi?: Array<{
+    klucz: string;
+    temat: string;
+    przez_telefon: string;
+    na_pismie: string;
+    dlaczego: string;
+  }>;
   components: ScoreComponent[];
 };
 

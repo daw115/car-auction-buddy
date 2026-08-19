@@ -20,6 +20,7 @@ import {
 import { readWhatsappConversation, transcribeRecording } from "@/functions/intake.functions";
 import { KandydaciPanel } from "@/components/panels/kandydaci-panel";
 import { SprawaPanel } from "@/components/panels/sprawa-panel";
+import { CoPowiedziec } from "@/components/panels/co-powiedziec";
 import { WatchesPanel } from "@/components/panels/watches-panel";
 import type { ClientCriteria } from "@/lib/types";
 
@@ -507,7 +508,12 @@ function KartaKlienta() {
           <Card className="p-4">
             <h3 className="mb-2 text-sm font-semibold">🎯 Co teraz</h3>
             <p className="text-sm">{lead.score.next_action}</p>
-            {lead.score.missing.length > 0 && (
+            {/* Gotowe zdania, a nie nazwy pól. Broker układał je dotąd sam,
+                przy telefonie, na gorąco — a pytanie o zgodę na auto po szkodzie
+                jest najtrudniejszym zdaniem w tej sprzedaży. */}
+            {lead.score.podpowiedzi?.length ? (
+              <CoPowiedziec podpowiedzi={lead.score.podpowiedzi} />
+            ) : lead.score.missing.length > 0 ? (
               <div className="mt-3">
                 <div className="text-xs font-medium text-muted-foreground">Do dopytania</div>
                 <ul className="mt-1 list-inside list-disc text-sm">
@@ -516,7 +522,7 @@ function KartaKlienta() {
                   ))}
                 </ul>
               </div>
-            )}
+            ) : null}
             {lead.score.red_flags.length > 0 && (
               <div className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 p-2">
                 <div className="text-xs font-medium text-warning">Uwaga</div>
