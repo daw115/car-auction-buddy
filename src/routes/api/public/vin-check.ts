@@ -34,6 +34,9 @@ export const Route = createFileRoute("/api/public/vin-check")({
         try {
           return Response.json(
             await backendRequest({
+              // Adres z krawędzi Cloudflare — bez niego backend widzi loopback
+              // panelu i limit zgłoszeń działa globalnie dla całego świata.
+              clientIp: request.headers.get("cf-connecting-ip"),
               path: "/api/public/vin-check",
               method: "POST",
               body: dane.data,

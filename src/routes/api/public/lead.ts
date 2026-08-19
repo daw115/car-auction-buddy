@@ -33,7 +33,14 @@ export const Route = createFileRoute("/api/public/lead")({
         }
         try {
           return Response.json(
-            await backendRequest({ path: "/api/public/leads", method: "POST", body: dane.data }),
+            await backendRequest({
+              // Adres z krawędzi Cloudflare — bez niego backend widzi loopback
+              // panelu i limit zgłoszeń działa globalnie dla całego świata.
+              clientIp: request.headers.get("cf-connecting-ip"),
+              path: "/api/public/leads",
+              method: "POST",
+              body: dane.data,
+            }),
           );
         } catch (blad) {
           console.error("[public-lead] backend nie odpowiedział:", blad);

@@ -48,6 +48,17 @@ export type BackendRequest<TBody = unknown> = {
   validate?: (raw: unknown) => void;
   /** Test seam — dependency-inject fetch for the legacy branch only. */
   fetchImpl?: typeof fetch;
+  /**
+   * Adres klienta końcowego, przekazywany dalej jako `X-Forwarded-For`.
+   *
+   * Panel woła backend PO STRONIE SERWERA, więc backend widzi zawsze `127.0.0.1`.
+   * Limit zgłoszeń na trasach publicznych liczył się przez to globalnie: dziesięć
+   * zgłoszeń na godzinę dla całego świata, a jedenasty klient dostawał odmowę.
+   * Podajemy tu wyłącznie adres z krawędzi Cloudflare (`cf-connecting-ip`),
+   * którego klient nie ma jak podrobić — surowego `x-forwarded-for` od klienta
+   * NIE przepisujemy, bo daje się rotować i limit stałby się fikcją.
+   */
+  clientIp?: string | null;
 };
 
 export type BackendTransportKind = "ubuntu" | "legacy";
@@ -177,6 +188,7 @@ async function requestLegacy<T>(req: BackendRequest): Promise<T> {
         Authorization: `Bearer ${token}`,
         Accept: responseType === "json" ? "application/json" : "text/html, */*",
         ...(req.body != null ? { "Content-Type": "application/json" } : {}),
+        ...(req.clientIp ? { "X-Forwarded-For": req.clientIp } : {}),
       },
       body: req.body != null ? JSON.stringify(req.body) : undefined,
       signal: ctrl.signal,
