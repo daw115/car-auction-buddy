@@ -129,6 +129,10 @@ class LeadScore:
     red_flags: list[str]
     missing: list[str]                 # czego nie wiemy, a musimy się dowiedzieć
     next_action: str
+    #: Gotowe zdania do zadania w rozmowie — po jednym na każdy brak, w dwóch
+    #: formach (telefon i wiadomość). `missing` mówi CZEGO nie wiemy, to mówi
+    #: CO POWIEDZIEĆ; różnica jest sednem przy pytaniu o zgodę na auto po szkodzie.
+    podpowiedzi: list[dict] = field(default_factory=list)
 
     def component(self, key: str) -> Optional[ScoreComponent]:
         return next((c for c in self.components if c.key == key), None)

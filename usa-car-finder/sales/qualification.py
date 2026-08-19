@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sales.models import Lead, LeadScore, ScoreComponent, Segment, Stage
+from sales.podpowiedzi import dla_brakow
 
 # Wagi bazowe. Suma 1,0 przy komplecie danych; przy brakach renormalizujemy.
 WEIGHTS: dict[str, float] = {
@@ -274,22 +275,41 @@ def _red_flags(lead: Lead, sufit_usd: Optional[float]) -> list[str]:
     return flagi
 
 
-def _missing(lead: Lead) -> list[str]:
-    """Czego nie wiemy, a musimy — to jest lista pytań do zadania w rozmowie."""
-    braki: list[str] = []
+#: Braki: klucz techniczny i etykieta widoczna w panelu. Klucze zgadzają się
+#: z `sales/podpowiedzi.py`, żeby lista pól i gotowe zdania nie mogły się
+#: rozjechać — a rozjeżdżały się już w tym projekcie dwie tabele tłumaczeń
+#: i trzy parsery, więc to nie jest ostrożność teoretyczna.
+_ETYKIETY_BRAKOW = {
+    "damage_ok": "czy godzi się na auto po szkodzie",
+    "budzet": "budżet pod drzwi w złotówkach",
+    "marka_model": "marka i model",
+    "rocznik": "rocznik",
+    "termin": "na kiedy potrzebuje auta",
+    "telefon": "numer telefonu",
+}
+
+
+def _klucze_brakow(lead: Lead) -> list[str]:
+    """Czego nie wiemy, a musimy — w kolejności ważności dla rozmowy."""
+    klucze: list[str] = []
     if lead.damage_ok is None:
-        braki.append("czy godzi się na auto po szkodzie")
+        klucze.append("damage_ok")
     if not lead.potential_budget_pln:
-        braki.append("budżet pod drzwi w złotówkach")
+        klucze.append("budzet")
     if not lead.make:
-        braki.append("marka i model")
+        klucze.append("marka_model")
     if not (lead.year_from or lead.year_to):
-        braki.append("rocznik")
+        klucze.append("rocznik")
     if lead.timeline_days is None:
-        braki.append("na kiedy potrzebuje auta")
+        klucze.append("termin")
     if not lead.phone:
-        braki.append("numer telefonu")
-    return braki
+        klucze.append("telefon")
+    return klucze
+
+
+def _missing(lead: Lead) -> list[str]:
+    """Etykiety braków — kształt, którego panel używa od początku."""
+    return [_ETYKIETY_BRAKOW[k] for k in _klucze_brakow(lead)]
 
 
 def _next_action(
@@ -413,5 +433,6 @@ def score_lead(lead: Lead) -> LeadScore:
         components=sorted(components, key=lambda c: c.weight, reverse=True),
         red_flags=flagi,
         missing=braki,
+        podpowiedzi=dla_brakow(_klucze_brakow(lead)),
         next_action=_next_action(lead, segment, braki, sufit),
     )

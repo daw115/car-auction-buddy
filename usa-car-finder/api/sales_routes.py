@@ -199,6 +199,10 @@ def _score_json(score: LeadScore) -> dict[str, Any]:
         "next_action": score.next_action,
         "red_flags": score.red_flags,
         "missing": score.missing,
+        # Gotowe zdania do rozmowy. `missing` mówi CZEGO nie wiemy, to mówi
+        # CO POWIEDZIEĆ — i to jest różnica, która decyduje przy pytaniu
+        # o zgodę na auto po szkodzie.
+        "podpowiedzi": score.podpowiedzi,
         "components": [
             {
                 "key": c.key,
