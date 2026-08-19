@@ -17,11 +17,20 @@ from api import job_db
 
 
 @pytest.fixture(autouse=True)
-def baza(tmp_path, monkeypatch):
-    monkeypatch.setenv("JOBS_DB_PATH", str(tmp_path / "jobs.db"))
+def baza(tmp_path):
+    """Ścieżkę podajemy WPROST, nie przez zmienną środowiskową.
+
+    Pierwsza wersja ustawiała `JOBS_DB_PATH`, a moduł czyta `JOB_DB_PATH` —
+    testy pisały więc do prawdziwej bazy w repo i wywracały się na powtórzonym
+    identyfikatorze przy drugim uruchomieniu.
+    """
+    poprzednia = job_db._db_path
     job_db._initialized = False
-    job_db.init_db()
+    job_db.init_db(tmp_path / "jobs.db")
     yield
+    job_db._initialized = False
+    if poprzednia:
+        job_db.init_db(poprzednia)
 
 
 def _dodaj(job_id: str, *, dni_temu: int, status: str = "done", wynik: str = '{"all_results": []}'):
