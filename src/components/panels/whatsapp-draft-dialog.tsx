@@ -95,6 +95,27 @@ export function WhatsappDraftDialog({
     }
   }
 
+  /** Adres WhatsAppa z BIEŻĄCĄ treścią, nie z tą sprzed poprawek brokera.
+   *
+   *  Pole tekstowe jest edytowalne, a przycisk prowadził do `waMeUrl` zbudowanego
+   *  raz, przy generowaniu. Broker poprawiał kwotę albo zdanie, klikał „Otwórz
+   *  WhatsApp" i wysyłał klientowi wersję sprzed poprawki — nie widząc różnicy,
+   *  bo w oknie miał przed oczami swój poprawiony tekst.
+   *
+   *  Numer i resztę adresu bierzemy z backendu (on zna normalizację telefonu),
+   *  podmieniamy wyłącznie parametr `text`.
+   */
+  const linkWhatsApp = (() => {
+    if (!waMeUrl || !text) return waMeUrl;
+    try {
+      const adres = new URL(waMeUrl);
+      adres.searchParams.set("text", text);
+      return adres.toString();
+    } catch {
+      return waMeUrl;
+    }
+  })();
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -182,7 +203,7 @@ export function WhatsappDraftDialog({
             <Button asChild disabled={!waMeUrl}>
               {/* Otwarcie WhatsAppa to nie wysyłka — broker wciąż klika „wyślij”. */}
               <a
-                href={waMeUrl ?? "#"}
+                href={linkWhatsApp ?? "#"}
                 target="_blank"
                 rel="noreferrer"
                 aria-disabled={!waMeUrl}
