@@ -19,7 +19,7 @@ import logging
 import os
 import sqlite3
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -98,6 +98,47 @@ def load_all_rows() -> list[dict]:
     with _lock, _connect() as conn:
         rows = conn.execute("SELECT * FROM jobs ORDER BY created_at").fetchall()
     return [dict(r) for r in rows]
+
+
+def zwolnij_miejsce(*, dni_wynikow: int = 90, dni_wierszy: int = 365) -> dict[str, int]:
+    """Retencja rejestru jobów. Wiersz zostaje dłużej niż jego wynik.
+
+    Rejestr rósł bez końca, a `load_all_rows` wczytuje przy starcie WSZYSTKO,
+    razem z `result_json`. Na produkcji po 3,5 miesiąca: 115 jobów i 15,6 MB,
+    czyli ~136 KB na job — i tyle samo w pamięci procesu API, dwa razy, bo
+    wczytanie dzieje się w dwóch miejscach.
+
+    DWA OKNA, BO TO DWIE RÓŻNE POTRZEBY. Wynik (pełna lista lotów z analizą)
+    jest ciężki i przydatny krótko — po trzech miesiącach aukcje dawno się
+    skończyły. Sam wiersz waży tyle co nic, a niesie historię: kiedy szukaliśmy,
+    czego, ile znaleźliśmy. Kasujemy więc najpierw wyniki, a wiersze dopiero po
+    roku.
+
+    Nie ruszamy jobów nieukończonych: `running` bez wyniku to praca w toku,
+    a nie śmieć.
+    """
+    if not _initialized:
+        return {"wyniki": 0, "wiersze": 0}
+
+    granica_wynikow = (datetime.now(timezone.utc) - timedelta(days=dni_wynikow)).isoformat()
+    granica_wierszy = (datetime.now(timezone.utc) - timedelta(days=dni_wierszy)).isoformat()
+
+    with _lock, _connect() as conn:
+        wyniki = conn.execute(
+            "UPDATE jobs SET result_json = NULL "
+            "WHERE result_json IS NOT NULL AND status != 'running' AND created_at < ?",
+            (granica_wynikow,),
+        ).rowcount
+        wiersze = conn.execute(
+            "DELETE FROM jobs WHERE status != 'running' AND created_at < ?",
+            (granica_wierszy,),
+        ).rowcount
+    if wyniki or wiersze:
+        logger.info(
+            "[job_db] retencja: zwolniono wyniki %s jobów (>%s dni), usunięto %s wierszy (>%s dni)",
+            wyniki, dni_wynikow, wiersze, dni_wierszy,
+        )
+    return {"wyniki": wyniki, "wiersze": wiersze}
 
 
 def find_reusable_row(criteria_hash: str, ttl_seconds: int) -> Optional[dict]:

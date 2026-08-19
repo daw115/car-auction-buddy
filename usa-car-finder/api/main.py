@@ -44,6 +44,13 @@ async def lifespan(app: FastAPI):
     try:
         from api import job_db
         job_db.init_db()
+        # Retencja PRZED wczytaniem rejestru: `load_all_rows()` materializuje
+        # wszystko razem z `result_json`, więc sprzątanie po fakcie oszczędzałoby
+        # tylko dysk, a nie pamięć procesu.
+        try:
+            job_db.zwolnij_miejsce()
+        except Exception:
+            logger.warning("[lifespan] retencja rejestru jobów nie doszła do skutku", exc_info=True)
         orphans = job_db.mark_orphaned_running_as_interrupted()
         if orphans:
             logger.warning("[lifespan] Oznaczono %d zombi-jobów jako interrupted", orphans)
