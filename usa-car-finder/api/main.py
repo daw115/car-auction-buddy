@@ -190,7 +190,9 @@ async def lifespan(app: FastAPI):
         logger.exception("[lifespan] Failed to close shared extension context")
 
 
-app = FastAPI(title="USA Car Finder", version="1.0.0", lifespan=lifespan)
+from wersja import NAZWA as _NAZWA_APLIKACJI, WERSJA as _WERSJA  # noqa: E402
+
+app = FastAPI(title=_NAZWA_APLIKACJI, version=_WERSJA, lifespan=lifespan)
 
 # CORS dla zdalnego dashboardu (np. Cloudflare Workers / Pages).
 # DASHBOARD_ORIGINS = lista originów przecinkiem; "*" aby otworzyć wszystkim (NIE w produkcji).
@@ -5049,6 +5051,26 @@ connect();
 </script>
 </body></html>"""
     return HTMLResponse(content=html, headers=response_headers)
+
+
+@app.get("/version")
+async def wersja_aplikacji():
+    """Czym jest ten backend — bez zaglądania w symlinki na serwerze.
+
+    Panel ma `/api/version` od początku, backend nie miał nic: żeby sprawdzić,
+    co stoi na produkcji, trzeba było czytać `readlink /opt/usacar/current`.
+    Przy dwóch wdrożeniach pod rząd łatwo tu o pomyłkę, a to jest pierwsze
+    pytanie przy każdej diagnozie.
+    """
+    import sys as _sys
+
+    return {
+        "nazwa": _NAZWA_APLIKACJI,
+        "wersja": _WERSJA,
+        "python": _sys.version.split()[0],
+        "tryb_analizy": os.getenv("AI_ANALYSIS_MODE", "?"),
+        "tryb_raportow": os.getenv("REPORTS_MODE", "hybrid"),
+    }
 
 
 @app.get("/health")

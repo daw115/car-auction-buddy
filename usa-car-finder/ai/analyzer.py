@@ -271,7 +271,7 @@ def _enrich_lots_with_bidfax(lots: List[CarLot], criteria: ClientCriteria) -> No
     try:
         from scraper.bidfax import lookup_with_cache, IN_PROGRESS as BIDFAX_IN_PROGRESS
     except ImportError as exc:
-        print(f"[AI/Bidfax] Moduł bidfax niedostępny ({exc}) - pomijam wzbogacenie")
+        logger.warning(f"[AI/Bidfax] Moduł bidfax niedostępny ({exc}) - pomijam wzbogacenie")
         return
 
     # Bidfax wymaga PRAWDZIWEGO VIN 17 znaków (ISO 3779). Akceptujemy:
@@ -323,7 +323,7 @@ def _enrich_lots_with_bidfax(lots: List[CarLot], criteria: ClientCriteria) -> No
         # asyncio.run() crashuje gdy już jesteśmy w event-loopie (np. wywołane
         # z FastAPI). Wtedy enrichment musi być wywołany przez orkiestratora
         # zanim wejdziemy w event loop. Surfacujemy ostrzeżenie i kontynuujemy.
-        print(f"[AI/Bidfax] Nie można uruchomić w istniejącym event loop ({exc}) - pomijam")
+        logger.warning(f"[AI/Bidfax] Nie można uruchomić w istniejącym event loop ({exc}) - pomijam")
         return
     except Exception as exc:
         print(f"[AI/Bidfax] Lookup nieudany ({exc}) - kontynuuję bez wzbogacenia")
@@ -376,7 +376,7 @@ def analyze_lots(
         from ai.frame_damage_vision import enrich_lots_with_frame_check
         enrich_lots_with_frame_check(lots)
     except Exception as exc:
-        print(f"[AI/Frame] Vision check failed ({exc}) - kontynuuję bez")
+        logger.warning(f"[AI/Frame] Vision check failed ({exc}) - kontynuuję bez")
 
     _attach_unified_scores(lots, criteria)
 
@@ -488,7 +488,7 @@ def analyze_lots(
             print(f"[AI] Kiro CLI niedostępne ({exc}). Używam lokalnego scoringu.")
 
     if not has_openai_key and not anthropic_key and not gemini_key and not kiro_key:
-        print("[AI] Brak OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY i KIRO_API_KEY — używam lokalnego scoringu.")
+        logger.warning("[AI] Brak OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY i KIRO_API_KEY — używam lokalnego scoringu.")
 
     return _analyze_lots_locally(lots, criteria, top_n=top_n)
 
@@ -739,7 +739,7 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str, max_toke
         except anthropic.APIStatusError as exc:
             if exc.status_code in (429, 500, 502, 503, 520, 521, 522, 524) and attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 60)
-                print(f"[AI] Anthropic HTTP {exc.status_code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Anthropic HTTP {exc.status_code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 last_exc = RuntimeError(f"Anthropic HTTP {exc.status_code}: {_sanitize_error_text(str(exc)[:500])}")
                 continue
@@ -748,7 +748,7 @@ def _call_anthropic_messages(model: str, system: str, user_prompt: str, max_toke
             last_exc = exc
             if attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 60)
-                print(f"[AI] Anthropic error: {exc}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Anthropic error: {exc}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 continue
             raise
@@ -1210,13 +1210,13 @@ def _call_gemini(model: str, system: str, user_prompt: str, max_tokens: int = 81
             if exc.code == 429 and attempt < max_retries - 1:
                 # Gemini free tier 15 RPM rolling window — czekaj 30s, potem 60s
                 wait = 30 if attempt == 0 else 60
-                print(f"[AI] Gemini HTTP 429 (rate limit), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Gemini HTTP 429 (rate limit), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 last_exc = RuntimeError(f"Gemini HTTP 429: rate limit")
                 continue
             if exc.code in (500, 502, 503) and attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 60)
-                print(f"[AI] Gemini HTTP {exc.code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Gemini HTTP {exc.code}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 last_exc = RuntimeError(f"Gemini HTTP {exc.code}: {sanitized}")
                 continue
@@ -1225,7 +1225,7 @@ def _call_gemini(model: str, system: str, user_prompt: str, max_tokens: int = 81
             last_exc = exc
             if attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 60)
-                print(f"[AI] Gemini network error: {exc}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Gemini network error: {exc}, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 continue
             raise
@@ -1291,7 +1291,7 @@ def _analyze_lots_with_gemini(
             all_analyses.extend(chunk_analyses)
             print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: zwrócono {len(chunk_analyses)} analiz")
         except (json.JSONDecodeError, ValueError) as e:
-            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
+            logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
             shrunk = chunk_lots[:max(1, len(chunk_lots) // 2)]
             chunk_data = _lot_payloads(shrunk)
             chunk_prompt = _analysis_user_prompt(chunk_data, criteria)
@@ -1303,11 +1303,11 @@ def _analyze_lots_with_gemini(
                     max_tokens=max_tokens,
                 ).strip()
                 all_analyses.extend(_parse_analysis_json(raw))
-                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
+                logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
             except Exception as inner_exc:
-                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
+                logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
         except Exception as exc:
-            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
+            logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
 
     if not all_analyses:
         raise RuntimeError("Gemini: żaden chunk nie zwrócił poprawnych analiz")
@@ -1351,7 +1351,7 @@ def _call_kiro(model: str, system: str, user_prompt: str, max_tokens: int = 8192
             last_exc = RuntimeError(f"Kiro CLI timeout po {timeout}s")
             if attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 30)
-                print(f"[AI] Kiro CLI timeout, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Kiro CLI timeout, retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 continue
             raise last_exc from exc
@@ -1361,7 +1361,7 @@ def _call_kiro(model: str, system: str, user_prompt: str, max_tokens: int = 8192
             last_exc = RuntimeError(f"Kiro CLI exit {result.returncode}: {sanitized}")
             if attempt < max_retries - 1:
                 wait = min(2 ** attempt * 2, 30)
-                print(f"[AI] Kiro CLI błąd (exit {result.returncode}), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
+                logger.warning(f"[AI] Kiro CLI błąd (exit {result.returncode}), retry {attempt + 1}/{max_retries - 1} za {wait}s...")
                 time.sleep(wait)
                 continue
             raise last_exc
@@ -1455,7 +1455,7 @@ def _analyze_lots_with_kiro(
             all_analyses.extend(chunk_analyses)
             print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: zwrócono {len(chunk_analyses)} analiz")
         except (json.JSONDecodeError, ValueError) as e:
-            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
+            logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
             shrunk = chunk_lots[:max(1, len(chunk_lots) // 2)]
             chunk_data = _lot_payloads(shrunk)
             chunk_prompt = _analysis_user_prompt(chunk_data, criteria)
@@ -1467,11 +1467,11 @@ def _analyze_lots_with_kiro(
                     max_tokens=max_tokens,
                 ).strip()
                 all_analyses.extend(_parse_analysis_json(raw))
-                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
+                logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
             except Exception as inner_exc:
-                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
+                logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
         except Exception as exc:
-            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
+            logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
 
     if not all_analyses:
         raise RuntimeError("Kiro: żaden chunk nie zwrócił poprawnych analiz")
@@ -1522,7 +1522,7 @@ def _analyze_lots_with_claude_code(
             all_analyses.extend(chunk_analyses)
             print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: zwrócono {len(chunk_analyses)} analiz")
         except (json.JSONDecodeError, ValueError) as e:
-            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
+            logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: parse error ({e}), retry z połową ({len(chunk_lots)//2 or 1} lotów)...")
             shrunk = chunk_lots[:max(1, len(chunk_lots) // 2)]
             chunk_prompt = _analysis_user_prompt(_lot_payloads(shrunk), criteria)
             try:
@@ -1533,11 +1533,11 @@ def _analyze_lots_with_claude_code(
                     max_tokens=max_tokens,
                 ).strip()
                 all_analyses.extend(_parse_analysis_json(raw))
-                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
+                logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry: OK po zmniejszeniu")
             except Exception as inner_exc:
-                print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
+                logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks} retry też padł: {inner_exc} — pomijam ten chunk")
         except Exception as exc:
-            print(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
+            logger.warning(f"[AI] Chunk {chunk_idx + 1}/{n_chunks}: błąd ({exc}) — pomijam")
 
     if not all_analyses:
         raise RuntimeError("Claude Code: żaden chunk nie zwrócił poprawnych analiz")
@@ -1566,11 +1566,11 @@ def _analyze_lots_with_claude(lots: List[CarLot], criteria: ClientCriteria, top_
     try:
         analyses_data = _parse_analysis_json(raw)
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"[AI] Błąd parsowania JSON: {e}")
+        logger.warning(f"[AI] Błąd parsowania JSON: {e}")
         print(f"[AI] Surowa odpowiedź (pierwsze 500 znaków): {raw[:500]}")
         with open("/tmp/ai_response_error.txt", "w") as f:
             f.write(raw)
-        print("[AI] Pełna odpowiedź zapisana do /tmp/ai_response_error.txt")
+        logger.warning("[AI] Pełna odpowiedź zapisana do /tmp/ai_response_error.txt")
 
         if len(lots) > 10:
             print("[AI] Retry z mniejszą liczbą lotów...")
