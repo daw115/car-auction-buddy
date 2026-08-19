@@ -56,19 +56,43 @@ _hits: dict[str, deque[float]] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Adres, po którym liczymy limit.
+
+    `cf-connecting-ip` ma pierwszeństwo: Cloudflare wstawia go na swojej krawędzi
+    i klient nie ma jak go podrobić. `x-forwarded-for` przychodzi od klienta
+    i daje się rotować, więc sam w sobie zamieniłby limit w fikcję — ale panel
+    przekazuje w nim adres z krawędzi, więc bierzemy go jako drugi.
+
+    Bez żadnego z nich zostaje `request.client.host`, czyli LOOPBACK: panel woła
+    backend po `127.0.0.1`, więc cały świat trafiał do jednego kubełka i limit
+    pomyślany jako „na adres" działał jak globalny na całą stronę.
+    """
+    for naglowek in ("cf-connecting-ip", "x-forwarded-for"):
+        wartosc = request.headers.get(naglowek, "")
+        if wartosc:
+            return wartosc.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
-def _rate_limit(request: Request) -> None:
+def _rate_limit(request: Request, *, opis_zgloszenia: str = "") -> None:
+    """Limit zgłoszeń. Przy odmowie ZOSTAWIA ŚLAD, bo lead wtedy przepada.
+
+    `_rate_limit` rzuca przed `intake.submit`, więc odrzucone zgłoszenie nie
+    istnieje nigdzie poza dziennikiem dostępu. Klient widzi „spróbuj później",
+    broker nie widzi nic i nie wie, że kogoś stracił — a to jedyna automatyczna
+    droga pozyskania klienta w całym systemie.
+    """
     ip = _client_ip(request)
     now = time.time()
     okno = _hits[ip]
     while okno and now - okno[0] > RATE_LIMIT_WINDOW_S:
         okno.popleft()
     if len(okno) >= RATE_LIMIT_MAX:
+        logger.warning(
+            "[leads] LIMIT: odrzucone zgłoszenie z %s (%s). Limit %s/h dotyczy adresu, "
+            "a backend widzi adres panelu — sprawdź, czy nagłówek klienta dochodzi.",
+            ip, opis_zgloszenia or "bez kontaktu", RATE_LIMIT_MAX,
+        )
         raise HTTPException(429, "Za dużo zgłoszeń z tego adresu. Proszę spróbować później.")
     okno.append(now)
 
@@ -409,13 +433,16 @@ async def submit_lead(
     albo powodu odrzucenia dałoby każdemu z ulicy wgląd w to, jak kwalifikujemy
     klientów — i gotowy sposób na obejście tej kwalifikacji.
     """
-    _rate_limit(request)
-
+    # Pułapka PRZED limitem: zgłoszenie bota ma być darmowe. Odwrotna kolejność
+    # znaczyła, że bot łomoczący raz na sześć minut wyczerpywał budżet godziny
+    # i jedenasty, prawdziwy klient dostawał odmowę.
     if form.website:
         # Bot wypełnił pole-pułapkę. Odpowiadamy tak samo jak przy sukcesie, żeby nie
         # podpowiadać, że pułapka istnieje — i nie zapisujemy niczego.
         logger.info("[leads] odrzucone przez honeypot z %s", _client_ip(request))
         return {"ok": True}
+
+    _rate_limit(request, opis_zgloszenia=form.phone or form.email or "bez kontaktu")
 
     try:
         wynik = intake.submit(

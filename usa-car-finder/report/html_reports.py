@@ -742,12 +742,13 @@ def build_client_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     ai = item.analysis
     costs = calculate_lot_import_costs(lot)
 
-    total_cost_pln = format_pln(costs["private_total_pln"]) if costs else "brak danych"
+    do_zaplaty = _cena_dla_klienta(lot, costs)
+    total_cost_pln = format_pln(do_zaplaty) if do_zaplaty else "brak danych"
     # Dolary w nawiasie, bo klient rozlicza się w złotówkach, ale przy aucie z USA
     # chce widzieć, ile to jest „po tamtej stronie". To ta sama kwota po kursie
     # z tej samej kalkulacji, nie cena aukcyjna.
     if costs and costs.get("usd_rate"):
-        w_dolarach = round(float(costs["private_total_pln"]) / float(costs["usd_rate"]))
+        w_dolarach = round(do_zaplaty / float(costs["usd_rate"])) if do_zaplaty else 0
         total_cost_pln = f"{total_cost_pln} ({w_dolarach:,} $)".replace(",", " ")
 
     cta_headline = f"Zainteresowany tym {lot.make} {lot.model}?"
@@ -975,6 +976,31 @@ def build_broker_context(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     }
 
 
+def _cena_dla_klienta(lot, koszty: Optional[dict]) -> Optional[float]:
+    """Kwota, którą klient realnie zapłaci — z prowizją.
+
+    JEDNA DEFINICJA NA WSZYSTKIE DOKUMENTY. `private_total_pln` to KOSZT
+    SPROWADZENIA, nie cena sprzedaży, i tak mówi o nim docstring
+    `pricing.import_calculator.client_price_pln`. Obrazek oferty i raport
+    szczegółowy pokazywały jednak właśnie jego, pod etykietą „pod drzwi", a
+    wiadomość na WhatsAppie liczyła przez `client_price_pln` — z prowizją.
+
+    Klient dostawał więc w jednej rozmowie dwie kwoty za to samo auto,
+    różniące się o 2,6-3,6 tys. zł (zmierzone na lotach z produkcji). Kto
+    uwierzył obrazkowi, dopłacał przy odbiorze — czyli dokładnie ta niespodzianka,
+    której oferta obiecuje nigdy nie robić.
+    """
+    if not koszty:
+        return None
+    try:
+        from scoring.budget import landed_cost_for_lot
+
+        return float(landed_cost_for_lot(lot, settlement="private"))
+    except Exception:
+        logger.warning("[raport] nie policzyłem ceny klienta dla %s", getattr(lot, "lot_id", "?"), exc_info=True)
+        return None
+
+
 def render_client_shortlist(
     items,
     *,
@@ -1001,9 +1027,10 @@ def render_client_shortlist(
     for item in wybrane:
         lot = item.lot
         koszty = calculate_lot_import_costs(lot)
-        cena = format_pln(koszty["private_total_pln"]) if koszty else "do wyliczenia"
-        if koszty and koszty.get("usd_rate"):
-            w_dolarach = round(float(koszty["private_total_pln"]) / float(koszty["usd_rate"]))
+        do_zaplaty = _cena_dla_klienta(lot, koszty)
+        cena = format_pln(do_zaplaty) if do_zaplaty else "do wyliczenia"
+        if do_zaplaty and koszty and koszty.get("usd_rate"):
+            w_dolarach = round(do_zaplaty / float(koszty["usd_rate"]))
             cena = f"{cena} ({w_dolarach:,} $)".replace(",", " ")
 
         fakty = []

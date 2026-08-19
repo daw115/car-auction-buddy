@@ -614,6 +614,10 @@ def render_client_hybrid(item: AnalyzedLot, criteria: Optional[ClientCriteria] =
     # 4) Render template (zawsze fresh — Jinja2 + dzisiejsze dane)
     template = _env().get_template("client_hybrid.html.j2")
     html = template.render(
+        # Szkoda po polsku — do SZABLONU, nie tylko do promptu. Wcześniej stała
+        # wyłącznie w danych dla modelu, więc szablon widział pustkę i pisał
+        # klientowi „Stan: bez uwag" nawet o aucie zalanym.
+        uszkodzenie_pl=_opis_szkody(lot.damage_primary, lot.damage_secondary),
         lot=lot,
         ai=ai,
         cost=cost,
@@ -711,6 +715,10 @@ def render_broker_hybrid(
 
     template = _env().get_template("broker_hybrid.html.j2")
     html = template.render(
+        # Szkoda po polsku — do SZABLONU, nie tylko do promptu. Wcześniej stała
+        # wyłącznie w danych dla modelu, więc szablon widział pustkę i pisał
+        # klientowi „Stan: bez uwag" nawet o aucie zalanym.
+        uszkodzenie_pl=_opis_szkody(lot.damage_primary, lot.damage_secondary),
         lot=lot,
         ai=ai,
         cost=cost,
@@ -850,6 +858,10 @@ def render_pair_hybrid(
     # Render KLIENT
     client_template = _env().get_template("client_hybrid.html.j2")
     client_html = client_template.render(
+        # Szkoda po polsku — do SZABLONU, nie tylko do promptu. Wcześniej stała
+        # wyłącznie w danych dla modelu, więc szablon widział pustkę i pisał
+        # klientowi „Stan: bez uwag" nawet o aucie zalanym.
+        uszkodzenie_pl=_opis_szkody(lot.damage_primary, lot.damage_secondary),
         lot=lot, ai=ai, cost=cost, market_pl=market_pl,
         tagline=client_frag.get("tagline", ""),
         story_paragraphs=client_frag.get("story_paragraphs", []),
