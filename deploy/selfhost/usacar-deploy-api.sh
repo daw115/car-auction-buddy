@@ -59,6 +59,13 @@ sudo -n rsync -a --delete \
     --exclude '.env' --exclude playwright_profiles --exclude .git \
     "$SRC/usa-car-finder/" "$REL/usa-car-finder/"
 
+# Prompty agentów leżą w KORZENIU repo, a rsync wyżej bierze tylko katalog
+# usa-car-finder/ — bez tej linii release ich nie ma i oba agenty padają:
+# oferta cicho schodzi na prozę deterministyczną (jedyny ślad to WARNING), a
+# agent sprzedaży rzuca PromptMissing. Korzeń release'u zaspokaja obie ścieżki:
+# offer_agent szuka w _PACKAGE_DIR.parent, sales/agent.py w parents[2].
+sudo -n rsync -a "$SRC"/agent-*.md "$REL"/
+
 # .env jako symlink — patrz nagłówek, punkt 2.
 sudo -n ln -sfn "$ENV_FILE" "$REL/usa-car-finder/.env"
 sudo -n chmod -R a-w "$REL"
