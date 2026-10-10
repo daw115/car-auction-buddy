@@ -1,0 +1,18 @@
+[Unit]
+Description=USA Car Finder API (FastAPI uvicorn + Telegram bot polling)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dawid
+WorkingDirectory=/home/dawid/usacar/usa-car-finder
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/dawid/usacar/usa-car-finder/venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/usacar-api.log
+StandardError=append:/var/log/usacar-api.log
+
+[Install]
+WantedBy=multi-user.target
