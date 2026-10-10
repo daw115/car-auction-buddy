@@ -6,6 +6,9 @@
 #   - katalog client_searches (raporty wygenerowane dla klientow)
 #   - Postgres dashboardu (hasla logowania, watchlista, logi operacji)
 #   - konfiguracje z sekretami (env, unity systemd, cloudflared)
+#   - POSWIADCZENIA TUNELU: /etc/cloudflared/<id>.json i ~/.cloudflared/cert.pem
+#     Brak tych dwoch plikow w kopii z 10 sierpnia byl jedyna rzecza, ktorej po
+#     wyczyszczeniu dysku NIE dalo sie odtworzyc z niczego. Reszta wrocila.
 #
 # SQLite kopiowany przez VACUUM INTO, nie cp. Zwykle cp na zywej bazie potrafi
 # zlapac plik w polowie transakcji i dac uszkodzona kopie; VACUUM INTO robi
@@ -91,6 +94,8 @@ tar -cf - --ignore-failed-read \
     /etc/systemd/system/usacar-api.service \
     /etc/systemd/system/usacar-api.service.d \
     /etc/cloudflared/config.yml \
+    /etc/cloudflared/*.json \
+    /home/dawid/.cloudflared/cert.pem \
     2>/dev/null | zstd -q -3 -o "$DEST/config.tar.zst" \
   && note "config -> $(du -h "$DEST/config.tar.zst" | cut -f1)" \
   || warn "backup konfiguracji nieudany"
