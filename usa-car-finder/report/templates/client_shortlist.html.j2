@@ -127,7 +127,11 @@
           {% for fakt in auto.fakty %}<div>{{ fakt }}</div>{% endfor %}
         </div>
         <div class="stan{% if not auto.stan.ostrzezenie %} dobry{% endif %}">
-          <b>{{ auto.stan.wartosc }}</b> — {{ auto.stan.opis }}
+          {# Kropka, nie długi myślnik. Myślnik w polskim zdaniu dla klienta
+             czyta się jak tekst złożony maszynowo — to pierwsza rzecz, po
+             której widać, że oferty nie pisze człowiek. Pilnuje tego
+             tests/test_bez_myslnika_u_klienta.py. #}
+          <b>{{ auto.stan.wartosc }}</b>. {{ auto.stan.opis }}
         </div>
       </div>
     </div>
