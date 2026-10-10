@@ -18,10 +18,26 @@ async function pingScraper(): Promise<Status> {
   }
 }
 
+// Two tables, not one. After the server rebuild PostgREST kept a schema cache
+// built on an empty database and answered PGRST205 for `site_user_passwords`, so
+// every login failed while this check still saw `app_config` and reported `ok`.
+// A green status next to a dead panel is worse than no status, so we also probe
+// the table every user has to go through.
+const PROBED_TABLES = ["app_config", "site_user_passwords"] as const;
+
 async function pingDatabase(): Promise<Status> {
   try {
-    const { error } = await supabaseAdmin.from("app_config").select("id").limit(1);
-    return error ? "down" : "ok";
+    const results = await Promise.all(
+      PROBED_TABLES.map((table) =>
+        supabaseAdmin
+          .from(table)
+          .select("*", { count: "exact", head: true })
+          .limit(1)
+          // Explicit type: `from()` with a union of table names loses response inference.
+          .then((res: { error: unknown }) => !res.error),
+      ),
+    );
+    return results.every(Boolean) ? "ok" : "down";
   } catch {
     return "down";
   }
