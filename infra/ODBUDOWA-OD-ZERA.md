@@ -19,12 +19,16 @@ Czas przebiegu: około 40 minut, z czego trzy komendy po stronie Windowsa.
 | Sekrety panelu | `/etc/usacar/dashboard.env` | nie |
 | Sekrety bazy | `/opt/usacar-db/.env` | nie |
 | Config tunelu | `/etc/cloudflared/config.yml` | nie |
-| **Poświadczenia tunelu** | `/etc/cloudflared/<id>.json` | **nie i nie da się odtworzyć** |
+| **Poświadczenia tunelu** | `/etc/cloudflared/<id>.json`, `~/.cloudflared/cert.pem` | nie, ale **od 10.10.2026 są w nocnej kopii** |
 | Bazy SQLite, raporty, Postgres | `~/usacar/.../data`, `~/backups` | nie |
 | Sesje Copart / IAAI / Manheim | `playwright_profiles/`, profil Chrome | nie |
 
-Wszystko poza poświadczeniami tunelu siedzi w nocnej kopii
-(`usacar-backup.timer`, katalog `~/backups/<data>/`, plik `config.tar.zst`).
+Wszystko siedzi w nocnej kopii (`usacar-backup.timer`, katalog
+`~/backups/<data>/`, plik `config.tar.zst`). **Poświadczeń tunelu w niej nie
+było** i to była jedyna rzecz, której po wyczyszczeniu dysku nie dało się
+odtworzyć z niczego — kopia brała `config.yml`, a pomijała plik z `TunnelSecret`,
+bez którego ta konfiguracja jest bezużyteczna. Naprawione w repo panelu; nowe
+kopie zawierają `<id>.json` i `cert.pem`, sprawdzone przez wylistowanie archiwum.
 
 **Kopia leżała na tym samym dysku co dane i zginęła razem z nim.** Uratowała
 sytuację wyłącznie kopia ściągnięta wcześniej na Maca — ze stanu sprzed dwóch
@@ -181,11 +185,21 @@ Kolejność i obejścia w skrypcie nie są ozdobne. Każde wynikło z błędu.
 
 ## Czego skrypt NIE zrobi za Ciebie
 
-1. **Tunel Cloudflare.** Poświadczenia przepadły z dyskiem.
-   `cloudflared tunnel login` otwiera przeglądarkę, potem
-   `cloudflared tunnel token --cred-file /etc/cloudflared/<id>.json <id>`
-   i `sudo systemctl enable --now cloudflared`. Do tego czasu panel działa
-   wyłącznie z LAN.
+1. **Tunel Cloudflare**, o ile kopia jest starsza niż 10.10.2026 i nie ma w
+   niej poświadczeń. `cloudflared tunnel login` otwiera przeglądarkę. Uwaga na
+   kolejność: `tunnel token` zapisuje plik jako wołający użytkownik, więc
+   celowanie wprost w `/etc/cloudflared/` kończy się `permission denied` po
+   udanym logowaniu. Najpierw do katalogu domowego, potem `sudo install`:
+
+   ```bash
+   ID=99e0969c-9300-4a2e-a857-c54ff1b7273e
+   umask 077 && cloudflared tunnel token --cred-file "$HOME/$ID.json" "$ID"
+   sudo install -m 600 -o root -g root "$HOME/$ID.json" "/etc/cloudflared/$ID.json"
+   shred -u "$HOME/$ID.json"
+   sudo systemctl enable --now cloudflared
+   ```
+
+   Do tego czasu panel działa wyłącznie z LAN, a `ssh wsl2-cf` jest martwe.
 2. **Logowanie Claude Code.** `claude /login` jako `dawid`. Bez tego analiza i
    raporty kończą się jasnym błędem („Claude Code niezalogowany"), nie ciszą.
 3. **Sesje giełd.** Copart, IAAI i Manheim trzeba zalogować od nowa; profile z
