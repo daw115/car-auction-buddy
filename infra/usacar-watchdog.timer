@@ -1,0 +1,14 @@
+[Unit]
+Description=USA Car Finder — sonda zdrowia co 2 minuty
+Requires=usacar-watchdog.service
+
+[Timer]
+# Pierwszy przebieg 2 min po starcie: uvicorn i Nitro muszą zdążyć wstać,
+# inaczej sonda restartowałaby usługi, które właśnie się podnoszą.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

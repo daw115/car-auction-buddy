@@ -1,0 +1,9 @@
+[Unit]
+Description=USA Car Finder — sonda zdrowia (backend i panel)
+After=usacar-api.service usacar-dashboard.service cloudflared.service
+
+[Service]
+Type=oneshot
+# Jako root, bo sonda restartuje usługi. Skrypt sam nie woła sudo.
+User=root
+ExecStart=/usr/local/bin/usacar-watchdog.sh
