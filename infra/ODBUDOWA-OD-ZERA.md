@@ -193,6 +193,13 @@ Kolejność i obejścia w skrypcie nie są ozdobne. Każde wynikło z błędu.
   „dlaczego" — `prose_source` schodzi na `deterministic`, a jedynym śladem jest
   ostrzeżenie w briefie brokera. Nadpisania z panelu (`settings.db`, klucz
   `ai_provider_overrides`) biją `.env`, więc przy diagnozie sprawdź oba.
+- **PostgREST pamięta pustą bazę.** Cache schematu buduje się przy starcie
+  kontenera, a przy odbudowie kontenery wstają PRZED wczytaniem zrzutu. Panel
+  pytał wtedy o hasło i dostawał `PGRST205: Could not find the table
+  'public.site_user_passwords' in the schema cache`, co w przeglądarce wygląda
+  na **„Błąd połączenia z serwerem"** przy logowaniu — mimo że Postgres, panel
+  i tunel są zdrowe. Lekarstwo bez przestoju: `NOTIFY pgrst, 'reload schema'`.
+  Objaw dotyczy WSZYSTKICH tabel, więc panel byłby pusty także po wejściu.
 - **Repozytorium jest publiczne**, więc klon nie wymaga żadnych poświadczeń.
   Uwaga na gałęzie: backend to `feat/claude-code-provider`, panel
   `feat/selfhost`, a `main` jest z 20 lipca i nie zna całego sierpnia.

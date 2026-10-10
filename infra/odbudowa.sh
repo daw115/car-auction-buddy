@@ -151,7 +151,14 @@ psql "$BAZA" -q -v ON_ERROR_STOP=1 -v authenticator_password="'$AUTHENTICATOR_PA
 if [ -f "$KOPIA/postgres.sql.zst" ]; then
   zstd -dc "$KOPIA/postgres.sql.zst" | psql "$BAZA" -q -v ON_ERROR_STOP=1
 fi
-ok "tabel: $(psql "$BAZA" -tAc "select count(*) from pg_tables where schemaname='public'" | tr -d ' ')"
+# PostgREST buduje cache schematu przy starcie, a startuje tu PRZED zrzutem.
+# Bez tego przeładowania każde zapytanie panelu kończy się
+# "PGRST205: Could not find the table 'public.<cokolwiek>' in the schema cache",
+# co w przeglądarce wygląda na "Błąd połączenia z serwerem" przy logowaniu —
+# baza i panel są zdrowe, tylko PostgREST pamięta pustą bazę.
+psql "$BAZA" -q -c "NOTIFY pgrst, 'reload schema'"
+sleep 3
+ok "tabel: $(psql "$BAZA" -tAc "select count(*) from pg_tables where schemaname='public'" | tr -d ' '), schemat PostgREST przeładowany"
 
 krok "9/11 bun"
 # Wariant baseline: CPU tego serwera (i5-3210M) nie ma AVX2, standardowy bun
