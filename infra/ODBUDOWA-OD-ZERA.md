@@ -176,9 +176,23 @@ Kolejność i obejścia w skrypcie nie są ozdobne. Każde wynikło z błędu.
   tego, jaką sieć WSL sobie wylosuje.
 - **`KIRO_CLI_PATH` prowadzi w pustkę.** Kopia `.env` jest z czasów, gdy analiza
   stała na Kiro, a binarka żyła tylko na skasowanym dysku. Wydanie 1.0.0 chodzi
-  na Claude Code (`AI_ANALYSIS_MODE=claude-code`), instalowanym natywnie do
-  `~/.local/bin/claude` — `ai/claude_code.cli_path()` szuka właśnie tam, bo samo
-  `claude` nie jest widoczne spod usługi systemd.
+  na Claude Code, instalowanym natywnie do `~/.local/bin/claude` —
+  `ai/claude_code.cli_path()` szuka właśnie tam, bo samo `claude` nie jest
+  widoczne spod usługi systemd. **Provider ustawia się w CZTERECH miejscach** i
+  łatwo przeoczyć dwa ostatnie, bo nazwa `kiro` nie wywala niczego głośno:
+
+  ```
+  AI_ANALYSIS_MODE=claude-code                 # analiza lotów
+  LLM_REPORTS_PROVIDER=claude-code             # raporty
+  OFFER_AGENT_AI_PROVIDER=claude-code          # proza w ofercie dla klienta
+  MODEL_NORMALIZATION_AI_PROVIDER=claude-code  # normalizacja nazw modeli
+  FRAME_DAMAGE_AI_PROVIDER=gemini              # wizja; darmowy klucz działa
+  ```
+
+  Przy kiro w `OFFER_AGENT_AI_PROVIDER` oferta wychodzi poprawna, tylko bez zdań
+  „dlaczego" — `prose_source` schodzi na `deterministic`, a jedynym śladem jest
+  ostrzeżenie w briefie brokera. Nadpisania z panelu (`settings.db`, klucz
+  `ai_provider_overrides`) biją `.env`, więc przy diagnozie sprawdź oba.
 - **Repozytorium jest publiczne**, więc klon nie wymaga żadnych poświadczeń.
   Uwaga na gałęzie: backend to `feat/claude-code-provider`, panel
   `feat/selfhost`, a `main` jest z 20 lipca i nie zna całego sierpnia.
@@ -222,3 +236,17 @@ systemctl list-timers --all | grep usacar
 sudo systemctl start usacar-backup.service && ls -ld ~/backups/*/
 sudo systemctl stop usacar-dashboard && sudo /usr/local/bin/usacar-watchdog.sh   # ×2, ma podnieść
 ```
+
+Provider sprawdzaj **PATH-em usługi**, nie swojej powłoki logowania — `claude`
+siedzi w `~/.local/bin`, którego systemd nie ma w `PATH`:
+
+```bash
+cd ~/usacar/usa-car-finder
+env -i HOME=$HOME PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  ./venv/bin/python -c 'import sys; sys.path.insert(0, "/opt/usacar/current/usa-car-finder");
+from ai import claude_code; print(claude_code.cli_path(), claude_code.is_available())'
+```
+
+Najgłębszy test bez logowania do giełd: zbuduj ofertę na locie z bazy
+(`lot_feedback.lot_snapshot`, ale wybierz taki z niezerową ceną aukcyjną, bo lot
+bez ceny jest celowo pomijany) i sprawdź, czy `offer.prose_source == "llm"`.
