@@ -97,6 +97,15 @@ tar -cf - --ignore-failed-read \
 
 chmod -R go-rwx "$DEST"
 
+# Usluga chodzi jako root, bo musi czytac /etc/usacar/dashboard.env (0600 root).
+# Katalog powstawal wiec jako root:root 0700 i wlasciciel serwera nie mogl go
+# nawet wylistowac — a to on ma sciagac kopie poza maszyne (patrz README).
+# Oddajemy katalog wlascicielowi DEST_ROOT, prawa 0700 zostaja bez zmian.
+if [ "$(id -u)" -eq 0 ]; then
+  chown -R "$(stat -c %u:%g "$DEST_ROOT")" "$DEST" \
+    || warn "nie udalo sie oddac kopii wlascicielowi $DEST_ROOT"
+fi
+
 # --- 5. Retencja ---------------------------------------------------------
 # Kasujemy dopiero na koncu i tylko gdy dzisiejszy backup sie udal — inaczej
 # seria nieudanych przebiegow po cichu zjadlaby wszystkie dobre kopie.
